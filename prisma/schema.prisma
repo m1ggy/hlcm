@@ -1,0 +1,304 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+  STAFF
+  CLIENT
+}
+
+enum ApplicationStatus {
+  DRAFT
+  INFO_GATHERING
+  SUBMITTED
+  UNDER_AGENCY_REVIEW
+  NEEDS_REVISION
+  APPROVED
+  DENIED
+  CLOSED
+}
+
+enum TaskStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  BLOCKED
+  COMPLETED
+  NA
+}
+
+enum GrantPermission {
+  VIEW
+  EDIT
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(STAFF)
+  mfaSecret    String?
+  mfaEnabled   Boolean  @default(false)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  projectsCreated              Project[]                @relation("ProjectCreatedBy")
+  clientsCreated                Client[]                @relation("ClientCreatedBy")
+  applicationsOwned             Application[]            @relation("ApplicationOwner")
+  applicationsCreated           Application[]            @relation("ApplicationCreatedBy")
+  licenseTypeTemplatesCreated   LicenseTypeTemplate[]    @relation("LicenseTypeTemplateCreatedBy")
+  caseTypesCreated               CaseType[]               @relation("CaseTypeCreatedBy")
+  checklistItemTemplatesCreated ChecklistItemTemplate[]  @relation("ChecklistItemTemplateCreatedBy")
+  tasksAssigned                  Task[]                   @relation("TaskAssignee")
+  tasksReviewing                  Task[]                   @relation("TaskReviewer")
+  tasksCreated                    Task[]                   @relation("TaskCreatedBy")
+  auditLogs                       AuditLog[]
+  accessGrantsReceived            AccessGrant[]            @relation("AccessGrantUser")
+  accessGrantsGiven               AccessGrant[]            @relation("AccessGrantGrantedBy")
+  filesUploaded                   FileAsset[]              @relation("FileUploadedBy")
+
+  @@map("users")
+}
+
+// A Project is an internal engagement/case grouping — independent of which
+// company owns the client facilities inside it (e.g. a batch of renewals
+// being worked together), not a customer account.
+model Project {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  active      Boolean  @default(true)
+  createdBy   User     @relation("ProjectCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  clients Client[]
+
+  @@map("projects")
+}
+
+model Client {
+  id          String   @id @default(cuid())
+  project     Project  @relation(fields: [projectId], references: [id])
+  projectId   String
+  name        String
+  contactInfo String?
+  address     String?
+  createdBy   User     @relation("ClientCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  applications Application[]
+
+  @@map("clients")
+}
+
+// What kind of license this Application is for (CILA, IDPH, IDOA, ...).
+// Optional on Application — some Case Types (Change of Ownership) aren't
+// tied to a license type at all.
+model LicenseTypeTemplate {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  active      Boolean  @default(true)
+  createdBy   User     @relation("LicenseTypeTemplateCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  applications            Application[]
+  checklistItemTemplates  ChecklistItemTemplate[]
+
+  @@map("license_type_templates")
+}
+
+// What kind of case this is (New, Renewal, Post-License/Ongoing, Change of
+// Ownership, ...) — orthogonal to license type, drives which checklist
+// template applies.
+model CaseType {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  active      Boolean  @default(true)
+  createdBy   User     @relation("CaseTypeCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  applications            Application[]
+  checklistItemTemplates  ChecklistItemTemplate[]
+
+  @@map("case_types")
+}
+
+// A required checklist step for a given (LicenseTypeTemplate, CaseType)
+// combo. Cloned into real Task rows when an Application is created with a
+// matching combo. `phaseName` groups items into a Phase — leave null for
+// flat/simple checklists (the common case).
+model ChecklistItemTemplate {
+  id                    String               @id @default(cuid())
+  licenseTypeTemplate   LicenseTypeTemplate? @relation(fields: [licenseTypeTemplateId], references: [id])
+  licenseTypeTemplateId String?
+  caseType              CaseType             @relation(fields: [caseTypeId], references: [id])
+  caseTypeId            String
+  label                 String
+  description           String?
+  defaultRole           Role?
+  phaseName             String?
+  sortOrder             Int                  @default(0)
+  createdBy             User                 @relation("ChecklistItemTemplateCreatedBy", fields: [createdById], references: [id])
+  createdById           String
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+
+  @@map("checklist_item_templates")
+}
+
+// Phase 1 scope: bare case record. Phase 2 adds license/case type +
+// checklist clone-on-create — those two FKs stay optional so existing
+// Applications created before this migration keep working unchanged.
+model Application {
+  id          String            @id @default(cuid())
+  client      Client            @relation(fields: [clientId], references: [id])
+  clientId    String
+  name        String
+  description String?
+  status      ApplicationStatus @default(DRAFT)
+
+  licenseTypeTemplate   LicenseTypeTemplate? @relation(fields: [licenseTypeTemplateId], references: [id])
+  licenseTypeTemplateId String?
+  caseType              CaseType?            @relation(fields: [caseTypeId], references: [id])
+  caseTypeId            String?
+
+  assignedUser   User   @relation("ApplicationOwner", fields: [assignedUserId], references: [id])
+  assignedUserId String
+
+  createdBy   User     @relation("ApplicationCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  phases       Phase[]
+  tasks        Task[]
+  accessGrants AccessGrant[]
+  files        FileAsset[]
+
+  @@map("applications")
+}
+
+// Shares an Application with a user beyond its owner/assignee — e.g. a
+// colleague covering while the owner is out, or (Phase 5) a Client portal
+// user. VIEW sees the case; EDIT can also change tasks/properties/files.
+model AccessGrant {
+  id            String          @id @default(cuid())
+  application   Application     @relation(fields: [applicationId], references: [id])
+  applicationId String
+  user          User            @relation("AccessGrantUser", fields: [userId], references: [id])
+  userId        String
+  permission    GrantPermission @default(VIEW)
+  grantedBy     User            @relation("AccessGrantGrantedBy", fields: [grantedById], references: [id])
+  grantedById   String
+  createdAt     DateTime        @default(now())
+
+  @@unique([applicationId, userId])
+  @@map("access_grants")
+}
+
+// One shared file pool per Application — every user with access to the
+// case sees the same files, rather than files being scoped to a single task.
+model FileAsset {
+  id            String      @id @default(cuid())
+  application   Application @relation(fields: [applicationId], references: [id])
+  applicationId String
+  fileName      String
+  storageKey    String
+  mimeType      String
+  sizeBytes     Int
+  uploadedBy    User        @relation("FileUploadedBy", fields: [uploadedById], references: [id])
+  uploadedById  String
+  createdAt     DateTime    @default(now())
+
+  @@map("file_assets")
+}
+
+// Optional ordered grouping of Tasks within an Application (e.g. "Phase 1",
+// "Phase 2" for CILA post-license). Most Applications have none — Tasks with
+// no Phase just render as a flat list.
+model Phase {
+  id            String      @id @default(cuid())
+  application   Application @relation(fields: [applicationId], references: [id])
+  applicationId String
+  name          String
+  sortOrder     Int         @default(0)
+
+  tasks Task[]
+
+  @@map("phases")
+}
+
+// A checklist item / task. `applicationId` is null for standalone/recurring
+// ops tasks not tied to any case. `parentTaskId` set = this is a subtask.
+model Task {
+  id            String   @id @default(cuid())
+  application   Application? @relation(fields: [applicationId], references: [id])
+  applicationId String?
+  phase         Phase?       @relation(fields: [phaseId], references: [id])
+  phaseId       String?
+
+  checklistItemTemplateId String?
+
+  label       String
+  description String?
+  status      TaskStatus @default(NOT_STARTED)
+  sortOrder   Int        @default(0)
+
+  dueDate         DateTime?
+  blockedReason   String?
+  recurrenceRule  String?
+
+  assignedUser   User    @relation("TaskAssignee", fields: [assignedUserId], references: [id])
+  assignedUserId String
+  reviewer       User?   @relation("TaskReviewer", fields: [reviewerUserId], references: [id])
+  reviewerUserId String?
+
+  parentTask   Task?   @relation("TaskSubtasks", fields: [parentTaskId], references: [id])
+  parentTaskId String?
+  subtasks     Task[]  @relation("TaskSubtasks")
+
+  createdBy   User     @relation("TaskCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("tasks")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  entityType String
+  entityId   String
+  field      String?
+  oldValue   String?
+  newValue   String?
+  action     String
+  actor      User     @relation(fields: [actorId], references: [id])
+  actorId    String
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}

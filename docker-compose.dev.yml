@@ -1,0 +1,17 @@
+# Local development: Postgres only. Run the Next.js app with `npm run dev`
+# against this DB — no need to containerize the app itself while iterating.
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hclm
+      POSTGRES_PASSWORD: hclm_dev_password
+      POSTGRES_DB: hclm
+    ports:
+      - "5432:5432"
+    volumes:
+      - hclm_dev_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  hclm_dev_postgres_data:

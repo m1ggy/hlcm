@@ -1,0 +1,66 @@
+# Production/on-prem stack. Additional services (minio, clamav, libreoffice,
+# redis) are added in later phases per the project plan — not needed yet.
+#
+# `image:` pulls a prebuilt tag (set APP_IMAGE/MIGRATOR_IMAGE in a `.env` file
+# alongside this one — CI/CD writes it on every deploy). `build:` stays so an
+# operator can still `docker compose build` directly on the server if needed.
+services:
+  app:
+    image: ${APP_IMAGE:?set APP_IMAGE in .env, e.g. ghcr.io/owner/repo:latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    depends_on:
+      - postgres
+    expose:
+      - "3000"
+    volumes:
+      - hclm_uploads:/app/storage/uploads
+
+  # One-off migration runner — never started by `up`. Deploy invokes it
+  # explicitly: `docker compose --profile tools run --rm migrate`.
+  migrate:
+    image: ${MIGRATOR_IMAGE:?set MIGRATOR_IMAGE in .env, e.g. ghcr.io/owner/repo:migrate-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrator
+    env_file:
+      - .env.production
+    depends_on:
+      - postgres
+    profiles:
+      - tools
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-hclm}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.production}
+      POSTGRES_DB: ${POSTGRES_DB:-hclm}
+    volumes:
+      - hclm_postgres_data:/var/lib/postgresql/data
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - hclm_caddy_data:/data
+      - hclm_caddy_config:/config
+    depends_on:
+      - app
+
+volumes:
+  hclm_postgres_data:
+  hclm_caddy_data:
+  hclm_caddy_config:
+  hclm_uploads:

@@ -1,0 +1,106 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  DEPLOY_PATH: ${{ secrets.DROPLET_DEPLOY_PATH || '/opt/hclm-app' }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    outputs:
+      image_base: ${{ steps.vars.outputs.image_base }}
+      sha_tag: ${{ steps.vars.outputs.sha_tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute image tags
+        id: vars
+        run: |
+          echo "image_base=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+          echo "sha_tag=sha-$(echo '${{ github.sha }}' | cut -c1-12)" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build & push app image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: runner
+          push: true
+          tags: |
+            ${{ steps.vars.outputs.image_base }}:latest
+            ${{ steps.vars.outputs.image_base }}:${{ steps.vars.outputs.sha_tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push migrator image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: migrator
+          push: true
+          tags: |
+            ${{ steps.vars.outputs.image_base }}:migrate-latest
+            ${{ steps.vars.outputs.image_base }}:migrate-${{ steps.vars.outputs.sha_tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DROPLET_SSH_KEY }}
+
+      - name: Trust droplet host key
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -p "${{ secrets.DROPLET_SSH_PORT || 22 }}" -H "${{ secrets.DROPLET_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Sync compose files to droplet
+        run: |
+          ssh -p "${{ secrets.DROPLET_SSH_PORT || 22 }}" "${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}" \
+            "mkdir -p '${{ env.DEPLOY_PATH }}'"
+          scp -P "${{ secrets.DROPLET_SSH_PORT || 22 }}" docker-compose.yml Caddyfile \
+            "${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}:${{ env.DEPLOY_PATH }}/"
+
+      - name: Deploy on droplet
+        env:
+          IMAGE_BASE: ${{ needs.build-and-push.outputs.image_base }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_ACTOR: ${{ github.actor }}
+        run: |
+          ssh -p "${{ secrets.DROPLET_SSH_PORT || 22 }}" "${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}" \
+            "IMAGE_BASE='$IMAGE_BASE' GH_TOKEN='$GH_TOKEN' GH_ACTOR='$GH_ACTOR' DEPLOY_PATH='${{ env.DEPLOY_PATH }}' bash -s" <<'REMOTE'
+          set -euo pipefail
+          cd "$DEPLOY_PATH"
+
+          printf 'APP_IMAGE=%s:latest\nMIGRATOR_IMAGE=%s:migrate-latest\n' "$IMAGE_BASE" "$IMAGE_BASE" > .env
+
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
+
+          docker compose pull app
+          docker compose --profile tools pull migrate
+          docker compose --profile tools run --rm migrate
+          docker compose up -d app caddy postgres
+          docker image prune -f
+          REMOTE
