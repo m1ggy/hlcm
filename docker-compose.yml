@@ -49,6 +49,8 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    environment:
+      HCLM_DOMAIN: ${HCLM_DOMAIN:?set HCLM_DOMAIN in .env}
     ports:
       - "80:80"
       - "443:443"
