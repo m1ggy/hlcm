@@ -4,6 +4,7 @@ import type { NextAuthConfig } from "next-auth";
 // No providers here — Credentials + Prisma/bcrypt live only in auth.ts,
 // which never runs in the Edge middleware runtime.
 export const authConfig = {
+  trustHost: true,
   pages: {
     signIn: "/login",
   },
