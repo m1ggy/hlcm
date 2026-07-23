@@ -170,3 +170,92 @@ export async function updateApplication(id: string, formData: FormData) {
   revalidatePath(`/applications/${id}`);
   return application;
 }
+
+// Lean status-only update for drag-drop board views — avoids re-sending the
+// whole form just to move a card between columns.
+export async function updateApplicationStatus(id: string, status: (typeof APPLICATION_STATUSES)[number]) {
+  const session = await requireSession();
+  await assertCanEditApplication(session, id);
+  const parsedStatus = z.enum(APPLICATION_STATUSES).parse(status);
+
+  const before = await prisma.application.findUniqueOrThrow({ where: { id } });
+  const application = await prisma.application.update({ where: { id }, data: { status: parsedStatus } });
+
+  await recordFieldChanges({
+    entityType: "Application",
+    entityId: id,
+    actorId: session.user.id,
+    action: "update",
+    before,
+    after: application,
+  });
+
+  if (before.status !== application.status) {
+    await notify(
+      {
+        userId: application.assignedUserId,
+        type: "APPLICATION_STATUS_CHANGED",
+        message: `"${application.name}" status changed to ${application.status}`,
+        entityType: "Application",
+        entityId: id,
+      },
+      session.user.id
+    );
+  }
+
+  revalidatePath("/applications");
+  revalidatePath(`/applications/${id}`);
+  return application;
+}
+
+const bulkUpdateSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1),
+  assignedUserId: z.string().optional(),
+  status: z.enum(APPLICATION_STATUSES).optional(),
+});
+
+// Bulk reassign and/or status-change for the Applications table's multi-select.
+export async function bulkUpdateApplications(input: z.infer<typeof bulkUpdateSchema>) {
+  const session = await requireSession();
+  const parsed = bulkUpdateSchema.parse(input);
+
+  for (const id of parsed.ids) {
+    await assertCanEditApplication(session, id);
+  }
+
+  for (const id of parsed.ids) {
+    const before = await prisma.application.findUniqueOrThrow({ where: { id } });
+    const application = await prisma.application.update({
+      where: { id },
+      data: {
+        assignedUserId: parsed.assignedUserId,
+        status: parsed.status,
+      },
+    });
+
+    await recordFieldChanges({
+      entityType: "Application",
+      entityId: id,
+      actorId: session.user.id,
+      action: "update",
+      before,
+      after: application,
+    });
+
+    if (parsed.status && before.status !== application.status) {
+      await notify(
+        {
+          userId: application.assignedUserId,
+          type: "APPLICATION_STATUS_CHANGED",
+          message: `"${application.name}" status changed to ${application.status}`,
+          entityType: "Application",
+          entityId: id,
+        },
+        session.user.id
+      );
+    }
+  }
+
+  revalidatePath("/applications");
+  return { count: parsed.ids.length };
+}

@@ -3,7 +3,22 @@
 import { Fragment, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronRight, ChevronDown, Plus } from "lucide-react";
+import { ChevronRight, ChevronDown, Plus, GripVertical } from "lucide-react";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import {
   Table,
   TableBody,
@@ -21,7 +36,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { createTask, updateTask, setTaskReviewer } from "@/lib/actions/tasks";
+import { createTask, updateTask, setTaskReviewer, reorderTasks } from "@/lib/actions/tasks";
 import { TASK_STATUSES, TASK_STATUS_LABELS } from "@/lib/task-status";
 import { TaskItem, Option } from "./task-types";
 
@@ -49,6 +64,24 @@ export function TaskTable({
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [newRowId, setNewRowId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = tasks.findIndex((t) => t.id === active.id);
+    const newIndex = tasks.findIndex((t) => t.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    const reordered = arrayMove(tasks, oldIndex, newIndex);
+    startTransition(async () => {
+      try {
+        await reorderTasks(applicationId, reordered.map((t) => t.id));
+        router.refresh();
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Failed to reorder tasks");
+      }
+    });
+  }
 
   function toggleExpand(id: string) {
     setExpandedIds((prev) => {
@@ -80,42 +113,46 @@ export function TaskTable({
   }
 
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Task</TableHead>
-          <TableHead>Status</TableHead>
-          <TableHead>Assigned</TableHead>
-          <TableHead>Due</TableHead>
-          <TableHead>Reviewer</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {tasks.map((task) => (
-          <TaskTableRows
-            key={task.id}
-            task={task}
-            assignableUsers={assignableUsers}
-            expanded={expandedIds.has(task.id)}
-            onToggleExpand={() => toggleExpand(task.id)}
-            onAddSubtask={() => addRow(task.id)}
-            autoFocusId={newRowId}
-          />
-        ))}
-        <TableRow>
-          <TableCell colSpan={5} className="p-0">
-            <button
-              type="button"
-              onClick={() => addRow()}
-              disabled={isPending}
-              className="flex w-full items-center gap-1.5 px-2 py-2 text-left text-sm text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-            >
-              <Plus className="size-4" /> Add task
-            </button>
-          </TableCell>
-        </TableRow>
-      </TableBody>
-    </Table>
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Task</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Assigned</TableHead>
+            <TableHead>Due</TableHead>
+            <TableHead>Reviewer</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
+            {tasks.map((task) => (
+              <TaskTableRows
+                key={task.id}
+                task={task}
+                assignableUsers={assignableUsers}
+                expanded={expandedIds.has(task.id)}
+                onToggleExpand={() => toggleExpand(task.id)}
+                onAddSubtask={() => addRow(task.id)}
+                autoFocusId={newRowId}
+              />
+            ))}
+          </SortableContext>
+          <TableRow>
+            <TableCell colSpan={5} className="p-0">
+              <button
+                type="button"
+                onClick={() => addRow()}
+                disabled={isPending}
+                className="flex w-full items-center gap-1.5 px-2 py-2 text-left text-sm text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+              >
+                <Plus className="size-4" /> Add task
+              </button>
+            </TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+    </DndContext>
   );
 }
 
@@ -126,6 +163,8 @@ function InlineRow({
   expandControl,
   extra,
   autoFocusLabel,
+  rowRef,
+  rowStyle,
 }: {
   task: TaskItem;
   assignableUsers: Option[];
@@ -133,7 +172,10 @@ function InlineRow({
   expandControl?: React.ReactNode;
   extra?: React.ReactNode;
   autoFocusLabel?: boolean;
+  rowRef?: (node: HTMLElement | null) => void;
+  rowStyle?: React.CSSProperties;
 }) {
+  const router = useRouter();
   const [, startTransition] = useTransition();
   const [label, setLabel] = useState(task.label);
   const [status, setStatus] = useState(task.status);
@@ -152,6 +194,7 @@ function InlineRow({
     startTransition(async () => {
       try {
         await updateTask(task.id, formData);
+        router.refresh();
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to update task");
       }
@@ -164,6 +207,7 @@ function InlineRow({
     startTransition(async () => {
       try {
         await setTaskReviewer(task.id, next === NONE ? null : next);
+        router.refresh();
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to update reviewer");
       }
@@ -171,7 +215,7 @@ function InlineRow({
   }
 
   return (
-    <TableRow className={indent ? "bg-muted/30" : undefined}>
+    <TableRow ref={rowRef} style={rowStyle} className={indent ? "bg-muted/30" : undefined}>
       <TableCell className={indent ? "pl-10" : undefined}>
         <div className="flex items-center gap-1">
           {expandControl}
@@ -296,6 +340,13 @@ function TaskTableRows({
   onAddSubtask: () => void;
   autoFocusId: string | null;
 }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
+  const rowStyle: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : undefined,
+  };
+
   return (
     <Fragment>
       <InlineRow
@@ -303,14 +354,27 @@ function TaskTableRows({
         assignableUsers={assignableUsers}
         indent={false}
         autoFocusLabel={task.id === autoFocusId}
+        rowRef={setNodeRef}
+        rowStyle={rowStyle}
         expandControl={
-          task.subtasks.length > 0 ? (
-            <button type="button" onClick={onToggleExpand} className="text-muted-foreground">
-              {expanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+          <div className="flex items-center">
+            <button
+              type="button"
+              {...attributes}
+              {...listeners}
+              className="cursor-grab touch-none text-muted-foreground active:cursor-grabbing"
+              title="Drag to reorder"
+            >
+              <GripVertical className="size-4" />
             </button>
-          ) : (
-            <span className="inline-block w-4" />
-          )
+            {task.subtasks.length > 0 ? (
+              <button type="button" onClick={onToggleExpand} className="text-muted-foreground">
+                {expanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+              </button>
+            ) : (
+              <span className="inline-block w-4" />
+            )}
+          </div>
         }
         extra={
           <Button variant="ghost" size="icon-sm" className="size-6 shrink-0" onClick={onAddSubtask}>

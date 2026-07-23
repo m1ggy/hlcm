@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { Download } from "lucide-react";
 import { auth } from "@/auth";
 import { listApplications, listAssignableUsers } from "@/lib/actions/applications";
@@ -6,17 +5,8 @@ import { listClients } from "@/lib/actions/clients";
 import { listLicenseTypes } from "@/lib/actions/license-types";
 import { listCaseTypes } from "@/lib/actions/case-types";
 import { NewApplicationDialog } from "@/components/applications/new-application-dialog";
-import { Badge } from "@/components/ui/badge";
+import { ApplicationsViewSwitcher } from "@/components/applications/applications-view-switcher";
 import { Button } from "@/components/ui/button";
-import { STATUS_BADGE_VARIANT, STATUS_LABELS, ApplicationStatus } from "@/lib/status";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 
 export default async function ApplicationsPage() {
   const session = await auth();
@@ -47,41 +37,11 @@ export default async function ApplicationsPage() {
           />
         </div>
       </div>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Name</TableHead>
-            <TableHead>Client</TableHead>
-            <TableHead>Assigned To</TableHead>
-            <TableHead>Status</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {applications.map((app) => (
-            <TableRow key={app.id} className="relative cursor-pointer">
-              <TableCell className="font-medium">
-                <Link href={`/applications/${app.id}`} className="after:absolute after:inset-0 hover:underline">
-                  {app.name}
-                </Link>
-              </TableCell>
-              <TableCell>{app.client.name}</TableCell>
-              <TableCell>{app.assignedUser.name}</TableCell>
-              <TableCell>
-                <Badge variant={STATUS_BADGE_VARIANT[app.status as ApplicationStatus]}>
-                  {STATUS_LABELS[app.status as ApplicationStatus]}
-                </Badge>
-              </TableCell>
-            </TableRow>
-          ))}
-          {applications.length === 0 && (
-            <TableRow>
-              <TableCell colSpan={4} className="text-center text-muted-foreground">
-                No applications yet.
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
+      <ApplicationsViewSwitcher
+        applications={applications}
+        assignableUsers={assignableUsers}
+        currentUserId={session.user.id}
+      />
     </div>
   );
 }

@@ -58,6 +58,7 @@ enum NotificationType {
   TASK_STATUS_CHANGED
   APPLICATION_STATUS_CHANGED
   APPLICATION_SHARED
+  MENTIONED
 }
 
 model User {
@@ -91,6 +92,7 @@ model User {
   signatureProfile                 SignatureProfile?
   signatureEvents                  SignatureEvent[]         @relation("SignatureEventSignedBy")
   notifications                    Notification[]
+  notesAuthored                    Note[]                   @relation("NoteAuthor")
 
   @@map("users")
 }
@@ -221,6 +223,7 @@ model Application {
   accessGrants      AccessGrant[]
   files             FileAsset[]
   generatedDocuments GeneratedDocument[]
+  notes             Note[]
 
   @@map("applications")
 }
@@ -443,4 +446,20 @@ model Notification {
 
   @@index([userId, read])
   @@map("notifications")
+}
+
+// Comment thread on an Application — the collaboration surface for staff
+// discussing a case. @mentions are resolved client-side into explicit user
+// ids (not parsed from text server-side) so notification delivery never
+// depends on exact name matching.
+model Note {
+  id            String      @id @default(cuid())
+  application   Application @relation(fields: [applicationId], references: [id])
+  applicationId String
+  body          String
+  author        User        @relation("NoteAuthor", fields: [authorId], references: [id])
+  authorId      String
+  createdAt     DateTime    @default(now())
+
+  @@map("notes")
 }

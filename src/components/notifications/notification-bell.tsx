@@ -10,12 +10,7 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  listNotifications,
-  countUnreadNotifications,
-  markNotificationRead,
-  markAllNotificationsRead,
-} from "@/lib/actions/notifications";
+import { markNotificationRead, markAllNotificationsRead } from "@/lib/actions/notifications";
 
 const ENTITY_LINK: Record<string, (id: string) => string> = {
   Task: () => "/tasks",
@@ -38,9 +33,11 @@ export function NotificationBell() {
   const [, startTransition] = useTransition();
 
   async function refresh() {
-    const [count, list] = await Promise.all([countUnreadNotifications(), listNotifications()]);
+    const res = await fetch("/api/notifications");
+    if (!res.ok) return;
+    const { count, notifications } = await res.json();
     setUnread(count);
-    setNotifications(list);
+    setNotifications(notifications);
   }
 
   useEffect(() => {

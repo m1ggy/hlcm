@@ -11,7 +11,11 @@ import { listFiles } from "@/lib/actions/files";
 import { listAccessGrants, listGrantableUsers } from "@/lib/actions/access-grants";
 import { listApplicableTemplates, listGeneratedDocuments } from "@/lib/actions/generated-documents";
 import { getMySignatureProfile } from "@/lib/actions/signatures";
+import { listNotes } from "@/lib/actions/notes";
 import { ApplicationPropertiesTable } from "@/components/applications/application-properties-table";
+import { NotesPanel } from "@/components/applications/notes-panel";
+import { RecentApplicationTracker } from "@/components/applications/recent-application-tracker";
+import { FavoriteStar } from "@/components/applications/favorite-star";
 import { AuditLogPanel } from "@/components/applications/audit-log-panel";
 import { FilePool } from "@/components/applications/file-pool";
 import { AccessGrantsPanel } from "@/components/applications/access-grants-panel";
@@ -61,6 +65,7 @@ export default async function ApplicationDetailPage({
     applicableTemplates,
     generatedDocuments,
     signatureProfile,
+    notes,
   ] = await Promise.all([
     listClients(),
     listAssignableUsers(),
@@ -71,6 +76,7 @@ export default async function ApplicationDetailPage({
     listApplicableTemplates(id),
     listGeneratedDocuments(id),
     getMySignatureProfile(),
+    listNotes(id),
   ]);
 
   const clientLookup = Object.fromEntries(clients.map((c) => [c.id, c.name]));
@@ -78,17 +84,21 @@ export default async function ApplicationDetailPage({
 
   return (
     <div className="space-y-6">
-      <Breadcrumb>
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink render={<Link href="/applications" />}>Applications</BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage>{application.name}</BreadcrumbPage>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
+      <RecentApplicationTracker id={id} name={application.name} />
+      <div className="flex items-center justify-between">
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink render={<Link href="/applications" />}>Applications</BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbPage>{application.name}</BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+        <FavoriteStar applicationId={id} />
+      </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
         <Card className="lg:col-span-3">
@@ -116,6 +126,7 @@ export default async function ApplicationDetailPage({
                 <TabsTrigger value="details">Details</TabsTrigger>
                 <TabsTrigger value="files">Files</TabsTrigger>
                 <TabsTrigger value="documents">Documents</TabsTrigger>
+                <TabsTrigger value="comments">Comments</TabsTrigger>
                 <TabsTrigger value="sharing">Sharing</TabsTrigger>
                 <TabsTrigger value="audit">Audit Log</TabsTrigger>
               </TabsList>
@@ -146,6 +157,9 @@ export default async function ApplicationDetailPage({
               <TabsContent value="documents" className="space-y-4">
                 {canEdit && <DocumentGenerator applicationId={id} templates={applicableTemplates} />}
                 <GeneratedDocumentsTable applicationId={id} documents={generatedDocuments} canEdit={canEdit} />
+              </TabsContent>
+              <TabsContent value="comments">
+                <NotesPanel applicationId={id} notes={notes} mentionableUsers={assignableUsers} />
               </TabsContent>
               <TabsContent value="sharing">
                 <AccessGrantsPanel

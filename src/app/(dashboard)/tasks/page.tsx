@@ -2,7 +2,7 @@ import { auth } from "@/auth";
 import { listStandaloneTasks } from "@/lib/actions/tasks";
 import { listAssignableUsers } from "@/lib/actions/applications";
 import { NewStandaloneTaskDialog } from "@/components/tasks/new-standalone-task-dialog";
-import { StandaloneTaskRow } from "@/components/tasks/standalone-task-row";
+import { StandaloneTasksView } from "@/components/tasks/standalone-tasks-view";
 
 export default async function TasksPage() {
   const session = await auth();
@@ -22,12 +22,11 @@ export default async function TasksPage() {
         </div>
         <NewStandaloneTaskDialog assignableUsers={assignableUsers} currentUserId={session.user.id} />
       </div>
-      <div className="space-y-2">
-        {tasks.map((task) => (
-          <StandaloneTaskRow key={task.id} task={task} assignableUsers={assignableUsers} />
-        ))}
-        {tasks.length === 0 && <p className="text-sm text-muted-foreground">No tasks yet.</p>}
-      </div>
+      {tasks.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No tasks yet.</p>
+      ) : (
+        <StandaloneTasksView tasks={tasks} assignableUsers={assignableUsers} />
+      )}
     </div>
   );
 }

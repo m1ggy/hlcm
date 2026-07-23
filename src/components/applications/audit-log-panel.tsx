@@ -1,4 +1,5 @@
 import { formatActionVerb, formatAuditValue, formatFieldLabel, isEventAction, formatEventDescription } from "@/lib/audit-format";
+import { AvatarInitials } from "@/components/ui/avatar-initials";
 
 type AuditEntry = {
   id: string;
@@ -40,12 +41,19 @@ export function AuditLogPanel({
   }
 
   return (
-    <div className="space-y-3">
-      {auditLog.map((entry) => (
-        <div key={entry.id} className="border-b pb-2 text-sm last:border-0">
-          <div>{describe(entry, { clients, users })}</div>
-          <div className="text-xs text-muted-foreground">
-            {entry.actor.name} · {new Date(entry.createdAt).toLocaleString()}
+    <div className="space-y-0">
+      {auditLog.map((entry, i) => (
+        <div key={entry.id} className="relative flex gap-3 pb-5 last:pb-0">
+          {i < auditLog.length - 1 && (
+            <span className="absolute top-7 left-3.5 h-[calc(100%-0.75rem)] w-px -translate-x-1/2 bg-border" />
+          )}
+          <AvatarInitials name={entry.actor.name} className="relative z-10" />
+          <div className="min-w-0 flex-1 pt-0.5">
+            <p className="text-sm">
+              <span className="font-medium">{entry.actor.name}</span>{" "}
+              <span className="text-muted-foreground">{describe(entry, { clients, users })}</span>
+            </p>
+            <p className="text-xs text-muted-foreground">{new Date(entry.createdAt).toLocaleString()}</p>
           </div>
         </div>
       ))}

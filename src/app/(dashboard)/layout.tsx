@@ -3,6 +3,8 @@ import { auth } from "@/auth";
 import { AppSidebar } from "@/components/app-sidebar";
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { SearchBox } from "@/components/search-box";
+import { CommandPalette } from "@/components/command-palette";
+import { GlobalShortcuts } from "@/components/global-shortcuts";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 
 export default async function DashboardLayout({
@@ -26,6 +28,8 @@ export default async function DashboardLayout({
         </header>
         <main className="w-full flex-1 px-4 py-6 md:px-6">{children}</main>
       </SidebarInset>
+      <CommandPalette isAdmin={session?.user?.role === "ADMIN"} />
+      <GlobalShortcuts />
     </SidebarProvider>
   );
 }

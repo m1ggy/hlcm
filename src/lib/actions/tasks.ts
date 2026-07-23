@@ -173,6 +173,22 @@ export async function updateTask(taskId: string, formData: FormData) {
   return task;
 }
 
+// Drag-drop reordering within one phase (or the unphased group) of an
+// Application's checklist — `orderedTaskIds` is the full new order for that
+// single group, sortOrder just becomes each id's index in the array.
+export async function reorderTasks(applicationId: string, orderedTaskIds: string[]) {
+  const session = await requireSession();
+  await assertApplicationAccess(session, applicationId, "edit");
+
+  await prisma.$transaction(
+    orderedTaskIds.map((id, index) =>
+      prisma.task.updateMany({ where: { id, applicationId }, data: { sortOrder: index } })
+    )
+  );
+
+  revalidatePath(`/applications/${applicationId}`);
+}
+
 export async function setTaskReviewer(taskId: string, reviewerUserId: string | null) {
   const session = await requireSession();
   const task = await prisma.task.findUniqueOrThrow({ where: { id: taskId } });
@@ -215,11 +231,17 @@ export async function listStandaloneTasks() {
       ? { applicationId: null, parentTaskId: null }
       : { applicationId: null, parentTaskId: null, assignedUserId: session.user.id };
 
-  return prisma.task.findMany({
+  const tasks = await prisma.task.findMany({
     where,
     include: taskInclude,
     orderBy: { createdAt: "desc" },
   });
+
+  const now = Date.now();
+  return tasks.map((task) => ({
+    ...task,
+    isOverdue: !!task.dueDate && task.dueDate.getTime() < now && task.status !== "COMPLETED" && task.status !== "NA",
+  }));
 }
 
 const standaloneTaskSchema = z.object({

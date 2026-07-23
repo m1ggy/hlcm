@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/sidebar";
 import { AppSidebarNav } from "@/components/app-sidebar-nav";
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export async function AppSidebar() {
   const session = await auth();
@@ -24,10 +25,15 @@ export async function AppSidebar() {
         <AppSidebarNav isAdmin={session.user.role === "ADMIN"} />
       </SidebarContent>
       <SidebarFooter className="gap-2 border-t px-3 py-3">
-        <Link href="/account" className="text-sm hover:underline">
-          {session.user.email}
-        </Link>
-        <p className="text-xs text-muted-foreground">{session.user.role}</p>
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <Link href="/account" className="block truncate text-sm hover:underline">
+              {session.user.email}
+            </Link>
+            <p className="text-xs text-muted-foreground">{session.user.role}</p>
+          </div>
+          <ThemeToggle />
+        </div>
         <form
           action={async () => {
             "use server";

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth, signOut } from "@/auth";
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export default async function PortalLayout({
   children,
@@ -20,6 +21,7 @@ export default async function PortalLayout({
         </Link>
         <div className="flex items-center gap-3">
           <span className="text-sm text-muted-foreground">{session.user.email}</span>
+          <ThemeToggle />
           <form
             action={async () => {
               "use server";
