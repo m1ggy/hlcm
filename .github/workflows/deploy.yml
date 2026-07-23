@@ -94,7 +94,15 @@ jobs:
           set -euo pipefail
           cd "$DEPLOY_PATH"
 
-          printf 'APP_IMAGE=%s:latest\nMIGRATOR_IMAGE=%s:migrate-latest\n' "$IMAGE_BASE" "$IMAGE_BASE" > .env
+          touch .env
+          for kv in "APP_IMAGE=${IMAGE_BASE}:latest" "MIGRATOR_IMAGE=${IMAGE_BASE}:migrate-latest"; do
+            key="${kv%%=*}"
+            if grep -q "^${key}=" .env; then
+              sed -i "s|^${key}=.*|${kv}|" .env
+            else
+              echo "$kv" >> .env
+            fi
+          done
 
           echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
 

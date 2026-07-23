@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireSession, assertApplicationAccess } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
+import { notify } from "@/lib/notifications";
 
 const GRANT_PERMISSIONS = ["VIEW", "EDIT"] as const;
 
@@ -69,6 +70,18 @@ export async function addAccessGrant(applicationId: string, formData: FormData) 
     field: "accessGrant",
     newValue: `${parsed.userId}:${parsed.permission}`,
   });
+
+  const application = await prisma.application.findUniqueOrThrow({ where: { id: applicationId }, select: { name: true } });
+  await notify(
+    {
+      userId: parsed.userId,
+      type: "APPLICATION_SHARED",
+      message: `You were given ${parsed.permission.toLowerCase()} access to "${application.name}"`,
+      entityType: "Application",
+      entityId: applicationId,
+    },
+    session.user.id
+  );
 
   revalidatePath(`/applications/${applicationId}`);
   return grant;

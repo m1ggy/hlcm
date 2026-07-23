@@ -1,9 +1,9 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useRef, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Download, Trash2, Upload } from "lucide-react";
+import { Download, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -13,13 +13,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { uploadFile, deleteFile } from "@/lib/actions/files";
-import { SignPdfDialog } from "@/components/applications/sign-pdf-dialog";
+import { uploadFile } from "@/lib/actions/files";
 
 type FileRow = {
   id: string;
   fileName: string;
-  mimeType: string;
   sizeBytes: number;
   createdAt: Date;
   uploadedBy: { name: string };
@@ -31,21 +29,18 @@ function formatBytes(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function FilePool({
+export function PortalFilePool({
   applicationId,
   files,
-  canEdit,
-  hasSavedSignature,
+  canUpload,
 }: {
   applicationId: string;
   files: FileRow[];
-  canEdit: boolean;
-  hasSavedSignature: boolean;
+  canUpload: boolean;
 }) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const [isPending, startTransition] = useTransition();
-  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -66,23 +61,9 @@ export function FilePool({
     });
   }
 
-  function handleDelete(fileId: string) {
-    setDeletingId(fileId);
-    startTransition(async () => {
-      try {
-        await deleteFile(fileId, applicationId);
-        router.refresh();
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Delete failed");
-      } finally {
-        setDeletingId(null);
-      }
-    });
-  }
-
   return (
     <div className="space-y-3">
-      {canEdit && (
+      {canUpload && (
         <form ref={formRef} onSubmit={handleSubmit} className="flex items-center gap-2">
           <input
             type="file"
@@ -102,7 +83,6 @@ export function FilePool({
             <TableRow>
               <TableHead>Name</TableHead>
               <TableHead>Size</TableHead>
-              <TableHead>Uploaded By</TableHead>
               <TableHead>Date</TableHead>
               <TableHead />
             </TableRow>
@@ -110,7 +90,7 @@ export function FilePool({
           <TableBody>
             {files.length === 0 && (
               <TableRow>
-                <TableCell colSpan={5} className="text-center text-muted-foreground">
+                <TableCell colSpan={4} className="text-center text-muted-foreground">
                   No files yet
                 </TableCell>
               </TableRow>
@@ -119,39 +99,18 @@ export function FilePool({
               <TableRow key={file.id}>
                 <TableCell className="font-medium">{file.fileName}</TableCell>
                 <TableCell className="text-muted-foreground">{formatBytes(file.sizeBytes)}</TableCell>
-                <TableCell className="text-muted-foreground">{file.uploadedBy.name}</TableCell>
                 <TableCell className="text-muted-foreground">
                   {new Date(file.createdAt).toLocaleDateString()}
                 </TableCell>
                 <TableCell>
-                  <div className="flex items-center justify-end gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      nativeButton={false}
-                      render={<a href={`/api/files/${file.id}`} />}
-                    >
-                      <Download className="size-3.5" />
-                    </Button>
-                    {canEdit && file.mimeType === "application/pdf" && (
-                      <SignPdfDialog
-                        fileAssetId={file.id}
-                        applicationId={applicationId}
-                        fileName={file.fileName}
-                        hasSavedSignature={hasSavedSignature}
-                      />
-                    )}
-                    {canEdit && (
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        disabled={isPending && deletingId === file.id}
-                        onClick={() => handleDelete(file.id)}
-                      >
-                        <Trash2 className="size-3.5" />
-                      </Button>
-                    )}
-                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    nativeButton={false}
+                    render={<a href={`/api/files/${file.id}`} />}
+                  >
+                    <Download className="size-3.5" />
+                  </Button>
                 </TableCell>
               </TableRow>
             ))}

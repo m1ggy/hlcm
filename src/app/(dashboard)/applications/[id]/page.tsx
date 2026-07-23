@@ -9,10 +9,14 @@ import { listClients } from "@/lib/actions/clients";
 import { listTasksForApplication } from "@/lib/actions/tasks";
 import { listFiles } from "@/lib/actions/files";
 import { listAccessGrants, listGrantableUsers } from "@/lib/actions/access-grants";
+import { listApplicableTemplates, listGeneratedDocuments } from "@/lib/actions/generated-documents";
+import { getMySignatureProfile } from "@/lib/actions/signatures";
 import { ApplicationPropertiesTable } from "@/components/applications/application-properties-table";
 import { AuditLogPanel } from "@/components/applications/audit-log-panel";
 import { FilePool } from "@/components/applications/file-pool";
 import { AccessGrantsPanel } from "@/components/applications/access-grants-panel";
+import { DocumentGenerator } from "@/components/applications/document-generator";
+import { GeneratedDocumentsTable } from "@/components/applications/generated-documents-table";
 import { TaskBoard } from "@/components/tasks/task-board";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -47,13 +51,26 @@ export default async function ApplicationDetailPage({
   const canEdit = accessLevel === "edit";
   const grantableUsers = canEdit ? await listGrantableUsers(id) : [];
 
-  const [clients, assignableUsers, auditLog, taskData, files, accessGrants] = await Promise.all([
+  const [
+    clients,
+    assignableUsers,
+    auditLog,
+    taskData,
+    files,
+    accessGrants,
+    applicableTemplates,
+    generatedDocuments,
+    signatureProfile,
+  ] = await Promise.all([
     listClients(),
     listAssignableUsers(),
     getApplicationAuditLog(id),
     listTasksForApplication(id),
     listFiles(id),
     listAccessGrants(id),
+    listApplicableTemplates(id),
+    listGeneratedDocuments(id),
+    getMySignatureProfile(),
   ]);
 
   const clientLookup = Object.fromEntries(clients.map((c) => [c.id, c.name]));
@@ -98,6 +115,7 @@ export default async function ApplicationDetailPage({
               <TabsList className="w-full">
                 <TabsTrigger value="details">Details</TabsTrigger>
                 <TabsTrigger value="files">Files</TabsTrigger>
+                <TabsTrigger value="documents">Documents</TabsTrigger>
                 <TabsTrigger value="sharing">Sharing</TabsTrigger>
                 <TabsTrigger value="audit">Audit Log</TabsTrigger>
               </TabsList>
@@ -118,7 +136,16 @@ export default async function ApplicationDetailPage({
                 />
               </TabsContent>
               <TabsContent value="files">
-                <FilePool applicationId={id} files={files} canEdit={canEdit} />
+                <FilePool
+                  applicationId={id}
+                  files={files}
+                  canEdit={canEdit}
+                  hasSavedSignature={!!signatureProfile}
+                />
+              </TabsContent>
+              <TabsContent value="documents" className="space-y-4">
+                {canEdit && <DocumentGenerator applicationId={id} templates={applicableTemplates} />}
+                <GeneratedDocumentsTable applicationId={id} documents={generatedDocuments} canEdit={canEdit} />
               </TabsContent>
               <TabsContent value="sharing">
                 <AccessGrantsPanel

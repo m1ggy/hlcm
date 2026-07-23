@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireRole, requireSession, assertApplicationAccess, ForbiddenError, AppRole } from "@/lib/rbac";
 import { recordFieldChanges, recordAudit } from "@/lib/audit";
+import { notify } from "@/lib/notifications";
 
 const TASK_STATUSES = ["NOT_STARTED", "IN_PROGRESS", "BLOCKED", "COMPLETED", "NA"] as const;
 
@@ -142,6 +143,31 @@ export async function updateTask(taskId: string, formData: FormData) {
     after: task,
   });
 
+  if (before.assignedUserId !== task.assignedUserId) {
+    await notify(
+      {
+        userId: task.assignedUserId,
+        type: "TASK_REASSIGNED",
+        message: `You were assigned "${task.label}"`,
+        entityType: "Task",
+        entityId: taskId,
+      },
+      session.user.id
+    );
+  }
+  if (before.status !== task.status && task.reviewerUserId) {
+    await notify(
+      {
+        userId: task.reviewerUserId,
+        type: "TASK_STATUS_CHANGED",
+        message: `"${task.label}" changed to ${task.status}`,
+        entityType: "Task",
+        entityId: taskId,
+      },
+      session.user.id
+    );
+  }
+
   if (task.applicationId) revalidatePath(`/applications/${task.applicationId}`);
   else revalidatePath("/tasks");
   return task;
@@ -161,6 +187,19 @@ export async function setTaskReviewer(taskId: string, reviewerUserId: string | n
     actorId: session.user.id,
     newValue: reviewerUserId ?? undefined,
   });
+
+  if (reviewerUserId) {
+    await notify(
+      {
+        userId: reviewerUserId,
+        type: "TASK_REVIEW_REQUESTED",
+        message: `Flagged for your review: "${task.label}"`,
+        entityType: "Task",
+        entityId: taskId,
+      },
+      session.user.id
+    );
+  }
 
   if (task.applicationId) revalidatePath(`/applications/${task.applicationId}`);
   else revalidatePath("/tasks");

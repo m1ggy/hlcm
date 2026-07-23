@@ -33,12 +33,32 @@ const ACTION_VERBS: Record<string, string> = {
   unshare: "Removed shared access",
   upload_file: "Uploaded a file",
   delete_file: "Deleted a file",
+  generate_document: "Generated a document",
+  update_document_status: "Updated document status",
+  delete_document: "Deleted a document",
+  sign_document: "Signed a document",
+};
+
+const DOCUMENT_STATUS_LABELS: Record<string, string> = {
+  DRAFT: "Draft",
+  APPROVED: "Approved",
+  SENT: "Sent",
 };
 
 // Actions whose old/new value is a one-off event payload (a filename, a
 // "userId:permission" pair) rather than a before/after property change —
 // these get a custom sentence instead of the generic "X changed from A to B".
-const EVENT_ACTIONS = new Set(["share", "update_share", "unshare", "upload_file", "delete_file"]);
+const EVENT_ACTIONS = new Set([
+  "share",
+  "update_share",
+  "unshare",
+  "upload_file",
+  "delete_file",
+  "generate_document",
+  "update_document_status",
+  "delete_document",
+  "sign_document",
+]);
 
 export function isEventAction(action: string) {
   return EVENT_ACTIONS.has(action);
@@ -63,6 +83,13 @@ export function formatEventDescription(
   if (action === "unshare") return "Removed a shared access grant";
   if (action === "upload_file" && newValue) return `Uploaded "${newValue}"`;
   if (action === "delete_file" && oldValue) return `Deleted "${oldValue}"`;
+  if (action === "generate_document" && newValue) return `Generated "${newValue}"`;
+  if (action === "update_document_status" && newValue) {
+    const [fileName, status] = newValue.split(":");
+    return `Marked "${fileName}" as ${DOCUMENT_STATUS_LABELS[status] ?? status}`;
+  }
+  if (action === "delete_document" && oldValue) return `Deleted "${oldValue}"`;
+  if (action === "sign_document" && newValue) return `Signed and saved as "${newValue}"`;
   return formatActionVerb(action);
 }
 

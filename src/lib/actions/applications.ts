@@ -11,6 +11,7 @@ import {
 } from "@/lib/rbac";
 import { recordFieldChanges, recordAudit } from "@/lib/audit";
 import { cloneChecklistForApplication } from "@/lib/checklist-clone";
+import { notify } from "@/lib/notifications";
 
 const APPLICATION_STATUSES = [
   "DRAFT",
@@ -151,6 +152,19 @@ export async function updateApplication(id: string, formData: FormData) {
     before,
     after: application,
   });
+
+  if (before.status !== application.status) {
+    await notify(
+      {
+        userId: application.assignedUserId,
+        type: "APPLICATION_STATUS_CHANGED",
+        message: `"${application.name}" status changed to ${application.status}`,
+        entityType: "Application",
+        entityId: id,
+      },
+      session.user.id
+    );
+  }
 
   revalidatePath("/applications");
   revalidatePath(`/applications/${id}`);

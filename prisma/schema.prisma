@@ -41,6 +41,25 @@ enum GrantPermission {
   EDIT
 }
 
+enum FieldSource {
+  AUTO
+  CUSTOM
+}
+
+enum GeneratedDocumentStatus {
+  DRAFT
+  APPROVED
+  SENT
+}
+
+enum NotificationType {
+  TASK_REASSIGNED
+  TASK_REVIEW_REQUESTED
+  TASK_STATUS_CHANGED
+  APPLICATION_STATUS_CHANGED
+  APPLICATION_SHARED
+}
+
 model User {
   id           String   @id @default(cuid())
   name         String
@@ -67,6 +86,11 @@ model User {
   accessGrantsReceived            AccessGrant[]            @relation("AccessGrantUser")
   accessGrantsGiven               AccessGrant[]            @relation("AccessGrantGrantedBy")
   filesUploaded                   FileAsset[]              @relation("FileUploadedBy")
+  documentTemplatesCreated         DocumentTemplate[]       @relation("DocumentTemplateCreatedBy")
+  documentsGenerated               GeneratedDocument[]      @relation("GeneratedDocumentGeneratedBy")
+  signatureProfile                 SignatureProfile?
+  signatureEvents                  SignatureEvent[]         @relation("SignatureEventSignedBy")
+  notifications                    Notification[]
 
   @@map("users")
 }
@@ -121,6 +145,7 @@ model LicenseTypeTemplate {
 
   applications            Application[]
   checklistItemTemplates  ChecklistItemTemplate[]
+  documentTemplates       DocumentTemplate[]
 
   @@map("license_type_templates")
 }
@@ -191,10 +216,11 @@ model Application {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  phases       Phase[]
-  tasks        Task[]
-  accessGrants AccessGrant[]
-  files        FileAsset[]
+  phases            Phase[]
+  tasks             Task[]
+  accessGrants      AccessGrant[]
+  files             FileAsset[]
+  generatedDocuments GeneratedDocument[]
 
   @@map("applications")
 }
@@ -231,7 +257,70 @@ model FileAsset {
   uploadedById  String
   createdAt     DateTime    @default(now())
 
+  signatureEvents SignatureEvent[]
+
   @@map("file_assets")
+}
+
+// An uploaded merge-tag .docx (handbook, policy, etc.) admins manage. Scoped
+// to a license type when it only applies to that kind of case; null means it
+// shows up as an option for every Application.
+model DocumentTemplate {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  licenseTypeTemplate   LicenseTypeTemplate? @relation(fields: [licenseTypeTemplateId], references: [id])
+  licenseTypeTemplateId String?
+  storageKey  String
+  fileName    String
+  active      Boolean  @default(true)
+  createdBy   User     @relation("DocumentTemplateCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  fields             DocumentTemplateField[]
+  generatedDocuments GeneratedDocument[]
+
+  @@map("document_templates")
+}
+
+// One merge tag found in the template's .docx body. AUTO fields resolve from
+// Client/Application data at generation time (see src/lib/merge-fields.ts for
+// the fixed registry); CUSTOM fields prompt the VA for a value per generation.
+model DocumentTemplateField {
+  id         String      @id @default(cuid())
+  template   DocumentTemplate @relation(fields: [templateId], references: [id])
+  templateId String
+  key        String
+  label      String
+  source     FieldSource @default(CUSTOM)
+  autoField  String?
+  sortOrder  Int         @default(0)
+
+  @@unique([templateId, key])
+  @@map("document_template_fields")
+}
+
+// One merged-and-generated document for an Application. `fieldValues` is a
+// snapshot of the values used at generation time, kept for audit/reference —
+// regenerating creates a new row rather than overwriting this one.
+model GeneratedDocument {
+  id            String                  @id @default(cuid())
+  template      DocumentTemplate        @relation(fields: [templateId], references: [id])
+  templateId    String
+  application   Application             @relation(fields: [applicationId], references: [id])
+  applicationId String
+  fileName      String
+  storageKey    String
+  status        GeneratedDocumentStatus @default(DRAFT)
+  fieldValues   Json
+  generatedBy   User                    @relation("GeneratedDocumentGeneratedBy", fields: [generatedById], references: [id])
+  generatedById String
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
+
+  @@map("generated_documents")
 }
 
 // Optional ordered grouping of Tasks within an Application (e.g. "Phase 1",
@@ -301,4 +390,57 @@ model AuditLog {
 
   @@index([entityType, entityId])
   @@map("audit_logs")
+}
+
+// User's saved signature image, drawn/typed/uploaded once and reused across
+// documents — applying it to a specific document is still an explicit
+// per-signing action (SignatureEvent), so accountability stays per-event.
+model SignatureProfile {
+  id                String   @id @default(cuid())
+  user              User     @relation(fields: [userId], references: [id])
+  userId            String   @unique
+  signatureImageKey String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("signature_profiles")
+}
+
+// A signature flattened onto a specific FileAsset (the resulting signed PDF).
+// Position stored as ratios of page size so it's independent of any one
+// viewer's pixel scale.
+model SignatureEvent {
+  id          String   @id @default(cuid())
+  fileAsset   FileAsset @relation(fields: [fileAssetId], references: [id])
+  fileAssetId String
+  signedBy    User     @relation("SignatureEventSignedBy", fields: [signedById], references: [id])
+  signedById  String
+  pageNumber  Int
+  xRatio      Float
+  yRatio      Float
+  widthRatio  Float
+  heightRatio Float
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+
+  @@map("signature_events")
+}
+
+// In-app notification for events a user should know about (reassignment,
+// review requests, status changes, new access grants). Pull-based — no
+// background scheduler in this deployment, so everything is created inline
+// by the action that causes it.
+model Notification {
+  id         String           @id @default(cuid())
+  user       User             @relation(fields: [userId], references: [id])
+  userId     String
+  type       NotificationType
+  message    String
+  entityType String
+  entityId   String
+  read       Boolean          @default(false)
+  createdAt  DateTime         @default(now())
+
+  @@index([userId, read])
+  @@map("notifications")
 }

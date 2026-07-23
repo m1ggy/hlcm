@@ -35,7 +35,8 @@ export async function requireRole(allowed: AppRole[]) {
 
 /**
  * Applications are scoped to their owner or anyone with an Access Grant for
- * STAFF; ADMIN/MANAGER see everything.
+ * STAFF; ADMIN/MANAGER see everything; CLIENT sees only Applications shared
+ * with them via Access Grant (clients never own an Application).
  */
 export function applicationVisibilityFilter(session: Awaited<ReturnType<typeof requireSession>>) {
   const role = session.user.role as AppRole;
@@ -48,7 +49,7 @@ export function applicationVisibilityFilter(session: Awaited<ReturnType<typeof r
       ],
     };
   }
-  return { assignedUserId: "__none__" }; // CLIENT portal handled separately in Phase 5
+  return { accessGrants: { some: { userId: session.user.id } } };
 }
 
 export type ApplicationAccessLevel = "none" | "view" | "edit";
