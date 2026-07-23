@@ -108,7 +108,7 @@ jobs:
 
           docker compose pull app
           docker compose --profile tools pull migrate
-          docker compose --profile tools run --rm migrate
+          docker compose --profile tools run --rm -T migrate < /dev/null
           docker compose up -d app caddy postgres
           docker image prune -f
           REMOTE
