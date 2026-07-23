@@ -3,7 +3,7 @@
 import { Fragment, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronRight, ChevronDown, Plus, GripVertical, Trash2 } from "lucide-react";
+import { ChevronRight, ChevronDown, Plus, GripVertical, Trash2, Loader2 } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -66,6 +66,7 @@ export function TaskTable({
   const router = useRouter();
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [newRowId, setNewRowId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -87,13 +88,22 @@ export function TaskTable({
   }
 
   function handleDelete(taskId: string) {
-    if (!confirm("Delete this task? This can't be undone.")) return;
+    const subtaskCount = tasks.find((t) => t.id === taskId)?.subtasks.length ?? 0;
+    const message =
+      subtaskCount > 0
+        ? `This task has ${subtaskCount} subtask${subtaskCount === 1 ? "" : "s"} — deleting it deletes ${subtaskCount === 1 ? "that subtask" : "them"} too. This can't be undone.`
+        : "Delete this task? This can't be undone.";
+    if (!confirm(message)) return;
+
+    setDeletingId(taskId);
     startTransition(async () => {
       try {
         await deleteTask(taskId);
         router.refresh();
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to delete task");
+      } finally {
+        setDeletingId(null);
       }
     });
   }
@@ -151,6 +161,7 @@ export function TaskTable({
                 onToggleExpand={() => toggleExpand(task.id)}
                 onAddSubtask={() => addRow(task.id)}
                 onDelete={handleDelete}
+                deletingId={deletingId}
                 currentUserId={currentUserId}
                 autoFocusId={newRowId}
               />
@@ -164,7 +175,7 @@ export function TaskTable({
                 disabled={isPending}
                 className="flex w-full items-center gap-1.5 px-2 py-2 text-left text-sm text-muted-foreground hover:bg-muted/50 hover:text-foreground"
               >
-                <Plus className="size-4" /> Add task
+                {isPending ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />} Add task
               </button>
             </TableCell>
           </TableRow>
@@ -353,6 +364,7 @@ function TaskTableRows({
   onToggleExpand,
   onAddSubtask,
   onDelete,
+  deletingId,
   currentUserId,
   autoFocusId,
 }: {
@@ -362,6 +374,7 @@ function TaskTableRows({
   onToggleExpand: () => void;
   onAddSubtask: () => void;
   onDelete: (taskId: string) => void;
+  deletingId: string | null;
   currentUserId: string;
   autoFocusId: string | null;
 }) {
@@ -418,13 +431,20 @@ function TaskTableRows({
               hasReviewer
               assignableUsers={assignableUsers}
               canDelete={task.createdById === currentUserId || task.assignedUser.id === currentUserId}
+              subtaskCount={task.subtasks.length}
             />
           </div>
         }
         deleteControl={
           (task.createdById === currentUserId || task.assignedUser.id === currentUserId) && (
-            <Button variant="ghost" size="icon-sm" onClick={() => onDelete(task.id)} title="Delete task">
-              <Trash2 className="size-3.5" />
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => onDelete(task.id)}
+              disabled={deletingId === task.id}
+              title="Delete task"
+            >
+              {deletingId === task.id ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
             </Button>
           )
         }
@@ -439,8 +459,18 @@ function TaskTableRows({
             autoFocusLabel={subtask.id === autoFocusId}
             deleteControl={
               (subtask.createdById === currentUserId || subtask.assignedUser.id === currentUserId) && (
-                <Button variant="ghost" size="icon-sm" onClick={() => onDelete(subtask.id)} title="Delete task">
-                  <Trash2 className="size-3.5" />
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => onDelete(subtask.id)}
+                  disabled={deletingId === subtask.id}
+                  title="Delete task"
+                >
+                  {deletingId === subtask.id ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <Trash2 className="size-3.5" />
+                  )}
                 </Button>
               )
             }

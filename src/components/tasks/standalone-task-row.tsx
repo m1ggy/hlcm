@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Trash2 } from "lucide-react";
+import { Trash2, Loader2 } from "lucide-react";
 import { updateTask, deleteTask } from "@/lib/actions/tasks";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +29,7 @@ type StandaloneTask = {
   recurrenceRule: string | null;
   createdById: string;
   assignedUser: TaskUserRef;
+  subtasks: { id: string }[];
 };
 
 function toDateInputValue(date: Date | null) {
@@ -46,6 +47,7 @@ export function StandaloneTaskRow({
   currentUserId: string;
 }) {
   const router = useRouter();
+  const [isDeleting, setIsDeleting] = useState(false);
   const [, startTransition] = useTransition();
   const [status, setStatus] = useState(task.status);
   const [assignedUserId, setAssignedUserId] = useState(task.assignedUser.id);
@@ -69,13 +71,21 @@ export function StandaloneTaskRow({
   }
 
   function handleDelete() {
-    if (!confirm("Delete this task? This can't be undone.")) return;
+    const subtaskCount = task.subtasks.length;
+    const message =
+      subtaskCount > 0
+        ? `This task has ${subtaskCount} subtask${subtaskCount === 1 ? "" : "s"} — deleting it deletes ${subtaskCount === 1 ? "that subtask" : "them"} too. This can't be undone.`
+        : "Delete this task? This can't be undone.";
+    if (!confirm(message)) return;
+
+    setIsDeleting(true);
     startTransition(async () => {
       try {
         await deleteTask(task.id);
         router.refresh();
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to delete task");
+        setIsDeleting(false);
       }
     });
   }
@@ -97,10 +107,11 @@ export function StandaloneTaskRow({
           hasReviewer={false}
           assignableUsers={assignableUsers}
           canDelete={task.createdById === currentUserId || task.assignedUser.id === currentUserId}
+          subtaskCount={task.subtasks.length}
         />
         {(task.createdById === currentUserId || task.assignedUser.id === currentUserId) && (
-          <Button variant="ghost" size="icon-sm" onClick={handleDelete} title="Delete task">
-            <Trash2 className="size-3.5" />
+          <Button variant="ghost" size="icon-sm" onClick={handleDelete} disabled={isDeleting} title="Delete task">
+            {isDeleting ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
           </Button>
         )}
         <Select

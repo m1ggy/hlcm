@@ -15,6 +15,7 @@ type StandaloneTask = {
   recurrenceRule: string | null;
   createdById: string;
   assignedUser: TaskUserRef;
+  subtasks: { id: string }[];
   isOverdue: boolean;
 };
 

@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Expand, Trash2 } from "lucide-react";
+import { Expand, Trash2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -47,6 +47,7 @@ export function TaskDetailDialog({
   hasReviewer,
   assignableUsers,
   canDelete,
+  subtaskCount = 0,
 }: {
   taskId: string;
   label: string;
@@ -59,10 +60,12 @@ export function TaskDetailDialog({
   hasReviewer: boolean;
   assignableUsers: Option[];
   canDelete: boolean;
+  subtaskCount?: number;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [, startTransition] = useTransition();
+  const [isSaving, startTransition] = useTransition();
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const [localLabel, setLocalLabel] = useState(label);
   const [localDescription, setLocalDescription] = useState(description ?? "");
@@ -120,7 +123,13 @@ export function TaskDetailDialog({
   }
 
   function handleDelete() {
-    if (!confirm("Delete this task? This can't be undone.")) return;
+    const message =
+      subtaskCount > 0
+        ? `This task has ${subtaskCount} subtask${subtaskCount === 1 ? "" : "s"} — deleting it deletes ${subtaskCount === 1 ? "that subtask" : "them"} too. This can't be undone.`
+        : "Delete this task? This can't be undone.";
+    if (!confirm(message)) return;
+
+    setIsDeleting(true);
     startTransition(async () => {
       try {
         await deleteTask(taskId);
@@ -128,6 +137,7 @@ export function TaskDetailDialog({
         router.refresh();
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to delete task");
+        setIsDeleting(false);
       }
     });
   }
@@ -150,9 +160,14 @@ export function TaskDetailDialog({
               onBlur={() => localLabel.trim() && save({ label: localLabel })}
               className="h-9 flex-1 border-transparent px-0 text-lg font-semibold hover:border-input focus-visible:border-ring"
             />
+            {isSaving && (
+              <span className="flex items-center gap-1 text-xs font-normal text-muted-foreground">
+                <Loader2 className="size-3 animate-spin" /> Saving...
+              </span>
+            )}
             {canDelete && (
-              <Button variant="ghost" size="icon-sm" onClick={handleDelete} title="Delete task">
-                <Trash2 className="size-4" />
+              <Button variant="ghost" size="icon-sm" onClick={handleDelete} disabled={isDeleting} title="Delete task">
+                {isDeleting ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
               </Button>
             )}
           </DialogTitle>
