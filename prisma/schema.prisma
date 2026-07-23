@@ -375,6 +375,8 @@ model Task {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  notes Note[]
+
   @@map("tasks")
 }
 
@@ -452,14 +454,19 @@ model Notification {
 // discussing a case. @mentions are resolved client-side into explicit user
 // ids (not parsed from text server-side) so notification delivery never
 // depends on exact name matching.
+// Either applicationId or taskId is set (not both) — Application comments
+// are the case-level discussion thread, Task comments are notes on one
+// checklist item or standalone task specifically.
 model Note {
-  id            String      @id @default(cuid())
-  application   Application @relation(fields: [applicationId], references: [id])
-  applicationId String
+  id            String       @id @default(cuid())
+  application   Application? @relation(fields: [applicationId], references: [id])
+  applicationId String?
+  task          Task?        @relation(fields: [taskId], references: [id])
+  taskId        String?
   body          String
-  author        User        @relation("NoteAuthor", fields: [authorId], references: [id])
+  author        User         @relation("NoteAuthor", fields: [authorId], references: [id])
   authorId      String
-  createdAt     DateTime    @default(now())
+  createdAt     DateTime     @default(now())
 
   @@map("notes")
 }

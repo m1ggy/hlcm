@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/select";
 import { createTask, updateTask, setTaskReviewer, reorderTasks, deleteTask } from "@/lib/actions/tasks";
 import { TASK_STATUSES, TASK_STATUS_LABELS } from "@/lib/task-status";
+import { TaskDetailDialog } from "./task-detail-dialog";
 import { TaskItem, Option } from "./task-types";
 
 const NONE = "__none__";
@@ -401,9 +402,24 @@ function TaskTableRows({
           </div>
         }
         extra={
-          <Button variant="ghost" size="icon-sm" className="size-6 shrink-0" onClick={onAddSubtask}>
-            <Plus className="size-3.5" />
-          </Button>
+          <div className="flex shrink-0 items-center">
+            <Button variant="ghost" size="icon-sm" className="size-6" onClick={onAddSubtask} title="Add subtask">
+              <Plus className="size-3.5" />
+            </Button>
+            <TaskDetailDialog
+              taskId={task.id}
+              label={task.label}
+              description={task.description}
+              status={task.status}
+              dueDate={task.dueDate}
+              blockedReason={task.blockedReason}
+              assignedUserId={task.assignedUser.id}
+              reviewerId={task.reviewer?.id ?? null}
+              hasReviewer
+              assignableUsers={assignableUsers}
+              canDelete={task.createdById === currentUserId || task.assignedUser.id === currentUserId}
+            />
+          </div>
         }
         deleteControl={
           (task.createdById === currentUserId || task.assignedUser.id === currentUserId) && (

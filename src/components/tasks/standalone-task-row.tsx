@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { TASK_STATUSES, TASK_STATUS_LABELS, TASK_STATUS_BADGE_VARIANT } from "@/lib/task-status";
+import { TaskDetailDialog } from "./task-detail-dialog";
 import { Option, TaskUserRef } from "./task-types";
 
 type StandaloneTask = {
@@ -84,6 +85,19 @@ export function StandaloneTaskRow({
       <div className="flex flex-wrap items-center gap-2">
         <span className="min-w-[10rem] flex-1 font-medium">{task.label}</span>
         {task.recurrenceRule && <Badge variant="outline">Repeats {task.recurrenceRule}</Badge>}
+        <TaskDetailDialog
+          taskId={task.id}
+          label={task.label}
+          description={task.description}
+          status={task.status}
+          dueDate={task.dueDate}
+          blockedReason={task.blockedReason}
+          assignedUserId={task.assignedUser.id}
+          reviewerId={null}
+          hasReviewer={false}
+          assignableUsers={assignableUsers}
+          canDelete={task.createdById === currentUserId || task.assignedUser.id === currentUserId}
+        />
         {(task.createdById === currentUserId || task.assignedUser.id === currentUserId) && (
           <Button variant="ghost" size="icon-sm" onClick={handleDelete} title="Delete task">
             <Trash2 className="size-3.5" />
