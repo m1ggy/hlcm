@@ -3,7 +3,7 @@
 import { Fragment, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronRight, ChevronDown, Plus, GripVertical } from "lucide-react";
+import { ChevronRight, ChevronDown, Plus, GripVertical, Trash2 } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -36,7 +36,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { createTask, updateTask, setTaskReviewer, reorderTasks } from "@/lib/actions/tasks";
+import { createTask, updateTask, setTaskReviewer, reorderTasks, deleteTask } from "@/lib/actions/tasks";
 import { TASK_STATUSES, TASK_STATUS_LABELS } from "@/lib/task-status";
 import { TaskItem, Option } from "./task-types";
 
@@ -53,12 +53,14 @@ export function TaskTable({
   tasks,
   assignableUsers,
   defaultAssignedUserId,
+  currentUserId,
 }: {
   applicationId: string;
   phaseId: string | null;
   tasks: TaskItem[];
   assignableUsers: Option[];
   defaultAssignedUserId: string;
+  currentUserId: string;
 }) {
   const router = useRouter();
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -79,6 +81,18 @@ export function TaskTable({
         router.refresh();
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to reorder tasks");
+      }
+    });
+  }
+
+  function handleDelete(taskId: string) {
+    if (!confirm("Delete this task? This can't be undone.")) return;
+    startTransition(async () => {
+      try {
+        await deleteTask(taskId);
+        router.refresh();
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Failed to delete task");
       }
     });
   }
@@ -122,6 +136,7 @@ export function TaskTable({
             <TableHead>Assigned</TableHead>
             <TableHead>Due</TableHead>
             <TableHead>Reviewer</TableHead>
+            <TableHead className="w-8" />
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -134,12 +149,14 @@ export function TaskTable({
                 expanded={expandedIds.has(task.id)}
                 onToggleExpand={() => toggleExpand(task.id)}
                 onAddSubtask={() => addRow(task.id)}
+                onDelete={handleDelete}
+                currentUserId={currentUserId}
                 autoFocusId={newRowId}
               />
             ))}
           </SortableContext>
           <TableRow>
-            <TableCell colSpan={5} className="p-0">
+            <TableCell colSpan={6} className="p-0">
               <button
                 type="button"
                 onClick={() => addRow()}
@@ -162,6 +179,7 @@ function InlineRow({
   indent,
   expandControl,
   extra,
+  deleteControl,
   autoFocusLabel,
   rowRef,
   rowStyle,
@@ -171,6 +189,7 @@ function InlineRow({
   indent: boolean;
   expandControl?: React.ReactNode;
   extra?: React.ReactNode;
+  deleteControl?: React.ReactNode;
   autoFocusLabel?: boolean;
   rowRef?: (node: HTMLElement | null) => void;
   rowStyle?: React.CSSProperties;
@@ -321,6 +340,7 @@ function InlineRow({
           </SelectContent>
         </Select>
       </TableCell>
+      <TableCell>{deleteControl}</TableCell>
     </TableRow>
   );
 }
@@ -331,6 +351,8 @@ function TaskTableRows({
   expanded,
   onToggleExpand,
   onAddSubtask,
+  onDelete,
+  currentUserId,
   autoFocusId,
 }: {
   task: TaskItem;
@@ -338,6 +360,8 @@ function TaskTableRows({
   expanded: boolean;
   onToggleExpand: () => void;
   onAddSubtask: () => void;
+  onDelete: (taskId: string) => void;
+  currentUserId: string;
   autoFocusId: string | null;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
@@ -381,6 +405,13 @@ function TaskTableRows({
             <Plus className="size-3.5" />
           </Button>
         }
+        deleteControl={
+          (task.createdById === currentUserId || task.assignedUser.id === currentUserId) && (
+            <Button variant="ghost" size="icon-sm" onClick={() => onDelete(task.id)} title="Delete task">
+              <Trash2 className="size-3.5" />
+            </Button>
+          )
+        }
       />
       {expanded &&
         task.subtasks.map((subtask) => (
@@ -390,6 +421,13 @@ function TaskTableRows({
             assignableUsers={assignableUsers}
             indent
             autoFocusLabel={subtask.id === autoFocusId}
+            deleteControl={
+              (subtask.createdById === currentUserId || subtask.assignedUser.id === currentUserId) && (
+                <Button variant="ghost" size="icon-sm" onClick={() => onDelete(subtask.id)} title="Delete task">
+                  <Trash2 className="size-3.5" />
+                </Button>
+              )
+            }
           />
         ))}
     </Fragment>

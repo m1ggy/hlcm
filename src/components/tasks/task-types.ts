@@ -10,6 +10,7 @@ export type TaskItem = {
   dueDate: Date | null;
   blockedReason: string | null;
   phaseId: string | null;
+  createdById: string;
   assignedUser: TaskUserRef;
   reviewer: TaskUserRef | null;
   subtasks: TaskItem[];

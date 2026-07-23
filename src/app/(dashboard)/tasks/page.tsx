@@ -25,7 +25,7 @@ export default async function TasksPage() {
       {tasks.length === 0 ? (
         <p className="text-sm text-muted-foreground">No tasks yet.</p>
       ) : (
-        <StandaloneTasksView tasks={tasks} assignableUsers={assignableUsers} />
+        <StandaloneTasksView tasks={tasks} assignableUsers={assignableUsers} currentUserId={session.user.id} />
       )}
     </div>
   );

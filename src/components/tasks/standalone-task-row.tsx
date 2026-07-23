@@ -1,10 +1,13 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { updateTask } from "@/lib/actions/tasks";
+import { Trash2 } from "lucide-react";
+import { updateTask, deleteTask } from "@/lib/actions/tasks";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -23,6 +26,7 @@ type StandaloneTask = {
   dueDate: Date | null;
   blockedReason: string | null;
   recurrenceRule: string | null;
+  createdById: string;
   assignedUser: TaskUserRef;
 };
 
@@ -31,7 +35,16 @@ function toDateInputValue(date: Date | null) {
   return new Date(date).toISOString().slice(0, 10);
 }
 
-export function StandaloneTaskRow({ task, assignableUsers }: { task: StandaloneTask; assignableUsers: Option[] }) {
+export function StandaloneTaskRow({
+  task,
+  assignableUsers,
+  currentUserId,
+}: {
+  task: StandaloneTask;
+  assignableUsers: Option[];
+  currentUserId: string;
+}) {
+  const router = useRouter();
   const [, startTransition] = useTransition();
   const [status, setStatus] = useState(task.status);
   const [assignedUserId, setAssignedUserId] = useState(task.assignedUser.id);
@@ -47,8 +60,21 @@ export function StandaloneTaskRow({ task, assignableUsers }: { task: StandaloneT
     startTransition(async () => {
       try {
         await updateTask(task.id, formData);
+        router.refresh();
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to update task");
+      }
+    });
+  }
+
+  function handleDelete() {
+    if (!confirm("Delete this task? This can't be undone.")) return;
+    startTransition(async () => {
+      try {
+        await deleteTask(task.id);
+        router.refresh();
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Failed to delete task");
       }
     });
   }
@@ -58,6 +84,11 @@ export function StandaloneTaskRow({ task, assignableUsers }: { task: StandaloneT
       <div className="flex flex-wrap items-center gap-2">
         <span className="min-w-[10rem] flex-1 font-medium">{task.label}</span>
         {task.recurrenceRule && <Badge variant="outline">Repeats {task.recurrenceRule}</Badge>}
+        {(task.createdById === currentUserId || task.assignedUser.id === currentUserId) && (
+          <Button variant="ghost" size="icon-sm" onClick={handleDelete} title="Delete task">
+            <Trash2 className="size-3.5" />
+          </Button>
+        )}
         <Select
           items={Object.fromEntries(TASK_STATUSES.map((s) => [s, TASK_STATUS_LABELS[s]]))}
           value={status}

@@ -189,6 +189,37 @@ export async function reorderTasks(applicationId: string, orderedTaskIds: string
   revalidatePath(`/applications/${applicationId}`);
 }
 
+// The task's creator or the person it's assigned to (or ADMIN/MANAGER,
+// consistent with every other override in this file) can delete it — merely
+// having edit access to the Application isn't enough on its own.
+export async function deleteTask(taskId: string) {
+  const session = await requireSession();
+  const task = await prisma.task.findUniqueOrThrow({ where: { id: taskId } });
+
+  const role = session.user.role as AppRole;
+  const isCreator = task.createdById === session.user.id;
+  const isOwner = task.assignedUserId === session.user.id;
+  if (!(role === "ADMIN" || role === "MANAGER" || isCreator || isOwner)) {
+    throw new ForbiddenError("Only the task's creator or assignee can delete it");
+  }
+
+  // No onDelete cascade from parent -> subtasks in the schema, so clear
+  // those first or the delete hits a foreign key constraint.
+  await prisma.task.deleteMany({ where: { parentTaskId: taskId } });
+  await prisma.task.delete({ where: { id: taskId } });
+
+  await recordAudit({
+    entityType: "Task",
+    entityId: taskId,
+    action: "delete",
+    actorId: session.user.id,
+    oldValue: task.label,
+  });
+
+  if (task.applicationId) revalidatePath(`/applications/${task.applicationId}`);
+  else revalidatePath("/tasks");
+}
+
 export async function setTaskReviewer(taskId: string, reviewerUserId: string | null) {
   const session = await requireSession();
   const task = await prisma.task.findUniqueOrThrow({ where: { id: taskId } });

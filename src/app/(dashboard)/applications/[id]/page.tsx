@@ -115,6 +115,7 @@ export default async function ApplicationDetailPage({
               }))}
               assignableUsers={assignableUsers}
               defaultAssignedUserId={application.assignedUserId}
+              currentUserId={session.user.id}
             />
           </CardContent>
         </Card>
