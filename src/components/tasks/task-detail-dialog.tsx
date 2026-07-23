@@ -7,12 +7,12 @@ import { Expand, Trash2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import {
   Select,
   SelectContent,
@@ -143,17 +143,17 @@ export function TaskDetailDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger
         render={
           <Button variant="ghost" size="icon-sm" title="Expand task">
             <Expand className="size-3.5" />
           </Button>
         }
       />
-      <DialogContent className="sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 pr-6">
+      <SheetContent side="right" className="w-full sm:max-w-lg">
+        <SheetHeader className="pb-0">
+          <SheetTitle className="flex items-center gap-2 pr-6">
             <Input
               value={localLabel}
               onChange={(e) => setLocalLabel(e.target.value)}
@@ -161,7 +161,7 @@ export function TaskDetailDialog({
               className="h-9 flex-1 border-transparent px-0 text-lg font-semibold hover:border-input focus-visible:border-ring"
             />
             {isSaving && (
-              <span className="flex items-center gap-1 text-xs font-normal text-muted-foreground">
+              <span className="flex shrink-0 items-center gap-1 text-xs font-normal text-muted-foreground">
                 <Loader2 className="size-3 animate-spin" /> Saving...
               </span>
             )}
@@ -170,10 +170,10 @@ export function TaskDetailDialog({
                 {isDeleting ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
               </Button>
             )}
-          </DialogTitle>
-        </DialogHeader>
+          </SheetTitle>
+        </SheetHeader>
 
-        <div className="space-y-4">
+        <div className="flex-1 space-y-4 overflow-y-auto px-4 pb-4">
           <div className="space-y-1">
             <label className="text-xs text-muted-foreground">Description</label>
             <textarea
@@ -186,7 +186,7 @@ export function TaskDetailDialog({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <label className="text-xs text-muted-foreground">Status</label>
               <Select
@@ -289,7 +289,7 @@ export function TaskDetailDialog({
             <CommentThread notes={notes} mentionableUsers={assignableUsers} onSubmit={handleCommentSubmit} />
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+      </SheetContent>
+    </Sheet>
   );
 }

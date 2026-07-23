@@ -3,7 +3,7 @@
 import { Fragment, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronRight, ChevronDown, Plus, GripVertical, Trash2, Loader2 } from "lucide-react";
+import { ChevronRight, ChevronDown, Plus, GripVertical, Loader2 } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -39,6 +39,7 @@ import {
 import { createTask, updateTask, setTaskReviewer, reorderTasks, deleteTask } from "@/lib/actions/tasks";
 import { TASK_STATUSES, TASK_STATUS_LABELS } from "@/lib/task-status";
 import { TaskDetailDialog } from "./task-detail-dialog";
+import { TaskRowMenu } from "./task-row-menu";
 import { TaskItem, Option } from "./task-types";
 
 const NONE = "__none__";
@@ -88,13 +89,6 @@ export function TaskTable({
   }
 
   function handleDelete(taskId: string) {
-    const subtaskCount = tasks.find((t) => t.id === taskId)?.subtasks.length ?? 0;
-    const message =
-      subtaskCount > 0
-        ? `This task has ${subtaskCount} subtask${subtaskCount === 1 ? "" : "s"} — deleting it deletes ${subtaskCount === 1 ? "that subtask" : "them"} too. This can't be undone.`
-        : "Delete this task? This can't be undone.";
-    if (!confirm(message)) return;
-
     setDeletingId(taskId);
     startTransition(async () => {
       try {
@@ -437,15 +431,11 @@ function TaskTableRows({
         }
         deleteControl={
           (task.createdById === currentUserId || task.assignedUser.id === currentUserId) && (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={() => onDelete(task.id)}
-              disabled={deletingId === task.id}
-              title="Delete task"
-            >
-              {deletingId === task.id ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
-            </Button>
+            <TaskRowMenu
+              onDelete={() => onDelete(task.id)}
+              isDeleting={deletingId === task.id}
+              subtaskCount={task.subtasks.length}
+            />
           )
         }
       />
@@ -459,19 +449,11 @@ function TaskTableRows({
             autoFocusLabel={subtask.id === autoFocusId}
             deleteControl={
               (subtask.createdById === currentUserId || subtask.assignedUser.id === currentUserId) && (
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => onDelete(subtask.id)}
-                  disabled={deletingId === subtask.id}
-                  title="Delete task"
-                >
-                  {deletingId === subtask.id ? (
-                    <Loader2 className="size-3.5 animate-spin" />
-                  ) : (
-                    <Trash2 className="size-3.5" />
-                  )}
-                </Button>
+                <TaskRowMenu
+                  onDelete={() => onDelete(subtask.id)}
+                  isDeleting={deletingId === subtask.id}
+                  subtaskCount={0}
+                />
               )
             }
           />

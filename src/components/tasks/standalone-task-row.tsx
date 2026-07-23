@@ -3,11 +3,9 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Trash2, Loader2 } from "lucide-react";
 import { updateTask, deleteTask } from "@/lib/actions/tasks";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -17,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import { TASK_STATUSES, TASK_STATUS_LABELS, TASK_STATUS_BADGE_VARIANT } from "@/lib/task-status";
 import { TaskDetailDialog } from "./task-detail-dialog";
+import { TaskRowMenu } from "./task-row-menu";
 import { Option, TaskUserRef } from "./task-types";
 
 type StandaloneTask = {
@@ -71,13 +70,6 @@ export function StandaloneTaskRow({
   }
 
   function handleDelete() {
-    const subtaskCount = task.subtasks.length;
-    const message =
-      subtaskCount > 0
-        ? `This task has ${subtaskCount} subtask${subtaskCount === 1 ? "" : "s"} — deleting it deletes ${subtaskCount === 1 ? "that subtask" : "them"} too. This can't be undone.`
-        : "Delete this task? This can't be undone.";
-    if (!confirm(message)) return;
-
     setIsDeleting(true);
     startTransition(async () => {
       try {
@@ -110,9 +102,7 @@ export function StandaloneTaskRow({
           subtaskCount={task.subtasks.length}
         />
         {(task.createdById === currentUserId || task.assignedUser.id === currentUserId) && (
-          <Button variant="ghost" size="icon-sm" onClick={handleDelete} disabled={isDeleting} title="Delete task">
-            {isDeleting ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
-          </Button>
+          <TaskRowMenu onDelete={handleDelete} isDeleting={isDeleting} subtaskCount={task.subtasks.length} />
         )}
         <Select
           items={Object.fromEntries(TASK_STATUSES.map((s) => [s, TASK_STATUS_LABELS[s]]))}
