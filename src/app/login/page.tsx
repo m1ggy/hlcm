@@ -26,10 +26,6 @@ export default function LoginPage() {
               <Label htmlFor="password">Password</Label>
               <Input id="password" name="password" type="password" required autoComplete="current-password" />
             </div>
-            <div className="space-y-1">
-              <Label htmlFor="otp">MFA code (if enabled)</Label>
-              <Input id="otp" name="otp" type="text" inputMode="numeric" autoComplete="one-time-code" />
-            </div>
             {state?.error && (
               <p className="text-sm text-destructive">{state.error}</p>
             )}
