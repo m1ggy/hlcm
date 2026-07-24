@@ -8,7 +8,9 @@ import { authConfig } from "@/auth.config";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
-  session: { strategy: "jwt" },
+  // HIPAA-appropriate idle timeout: session expires 15 min after last
+  // activity; each request within that window rolls the expiry forward.
+  session: { strategy: "jwt", maxAge: 15 * 60, updateAge: 5 * 60 },
   providers: [
     Credentials({
       credentials: {

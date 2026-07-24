@@ -28,6 +28,9 @@ export default async function ApplicationsPage() {
           <Button variant="outline" size="sm" nativeButton={false} render={<a href="/api/export/applications" />}>
             <Download className="size-3.5" /> Export CSV
           </Button>
+          <Button variant="outline" size="sm" nativeButton={false} render={<a href="/api/export/applications/pdf" />}>
+            <Download className="size-3.5" /> Export PDF
+          </Button>
           <NewApplicationDialog
             clients={clients}
             assignableUsers={assignableUsers}

@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import path from "path";
 import { mkdir, writeFile, readFile, unlink } from "fs/promises";
+import { scanForViruses } from "@/lib/clamav";
 
 // Local-disk file pool. `storageKey` is a filename inside this dir — good
 // enough for the single-droplet deploy target; swap for S3-style storage
@@ -14,10 +15,11 @@ import { mkdir, writeFile, readFile, unlink } from "fs/promises";
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), "storage", "uploads");
 
 export async function saveUploadedFile(file: File): Promise<{ storageKey: string; sizeBytes: number }> {
+  const buffer = Buffer.from(await file.arrayBuffer());
+  await scanForViruses(buffer);
   await mkdir(UPLOAD_DIR, { recursive: true });
   const ext = path.extname(file.name);
   const storageKey = `${randomUUID()}${ext}`;
-  const buffer = Buffer.from(await file.arrayBuffer());
   await writeFile(path.join(UPLOAD_DIR, storageKey), buffer);
   return { storageKey, sizeBytes: buffer.byteLength };
 }

@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Dancing_Script } from "next/font/google";
 import { Document, Page, pdfjs } from "react-pdf";
 import SignaturePad from "signature_pad";
 import { toast } from "sonner";
@@ -15,10 +16,13 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url
 ).toString();
 
+const signatureFont = Dancing_Script({ subsets: ["latin"], weight: "700" });
+
 const PAGE_WIDTH = 560;
 const DEFAULT_SIGNATURE_WIDTH_RATIO = 0.25;
+const TYPED_SIGNATURE_CANVAS = { width: 400, height: 120 };
 
-type Source = "saved" | "draw" | "upload";
+type Source = "saved" | "draw" | "upload" | "type";
 
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -49,6 +53,7 @@ export default function SignPdfDialogContent({
   const [pageNumber, setPageNumber] = useState(1);
   const [source, setSource] = useState<Source>(hasSavedSignature ? "saved" : "draw");
   const [signatureImage, setSignatureImage] = useState<string | null>(null);
+  const [typedName, setTypedName] = useState("");
   const [placement, setPlacement] = useState<{ xRatio: number; yRatio: number } | null>(null);
   const [widthRatio, setWidthRatio] = useState(DEFAULT_SIGNATURE_WIDTH_RATIO);
 
@@ -86,6 +91,29 @@ export default function SignPdfDialogContent({
     const file = e.target.files?.[0];
     if (!file) return;
     setSignatureImage(await fileToDataUrl(file));
+  }
+
+  async function handleUseTyped() {
+    const name = typedName.trim();
+    if (!name) {
+      toast.error("Type your name first");
+      return;
+    }
+    const font = `700 48px ${signatureFont.style.fontFamily}`;
+    await document.fonts.load(font);
+    const canvas = document.createElement("canvas");
+    canvas.width = TYPED_SIGNATURE_CANVAS.width;
+    canvas.height = TYPED_SIGNATURE_CANVAS.height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#000000";
+    ctx.font = font;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(name, canvas.width / 2, canvas.height / 2);
+    setSignatureImage(canvas.toDataURL("image/png"));
   }
 
   function handlePageClick(e: React.MouseEvent<HTMLDivElement>) {
@@ -196,6 +224,13 @@ export default function SignPdfDialogContent({
             >
               Upload
             </button>
+            <button
+              type="button"
+              onClick={() => setSource("type")}
+              className={`flex-1 rounded-md px-2 py-1 ${source === "type" ? "bg-background shadow-sm" : ""}`}
+            >
+              Type
+            </button>
           </div>
 
           {source === "saved" && (
@@ -226,6 +261,24 @@ export default function SignPdfDialogContent({
 
           {source === "upload" && (
             <Input type="file" accept="image/png,image/jpeg" onChange={handleUploadChange} />
+          )}
+
+          {source === "type" && (
+            <div className="space-y-2">
+              <Input
+                placeholder="Your full name"
+                value={typedName}
+                onChange={(e) => setTypedName(e.target.value)}
+              />
+              <div className="flex h-[72px] items-center justify-center rounded border bg-white">
+                <p className={`${signatureFont.className} text-3xl text-black`}>
+                  {typedName || "Your Name"}
+                </p>
+              </div>
+              <Button size="xs" onClick={handleUseTyped}>
+                Use this
+              </Button>
+            </div>
           )}
 
           {signatureImage && (

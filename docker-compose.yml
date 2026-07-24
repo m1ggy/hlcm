@@ -1,5 +1,5 @@
-# Production/on-prem stack. Additional services (minio, clamav, libreoffice,
-# redis) are added in later phases per the project plan — not needed yet.
+# Production/on-prem stack. Additional services (minio, libreoffice, redis)
+# are added in later phases per the project plan — not needed yet.
 #
 # `image:` pulls a prebuilt tag (set APP_IMAGE/MIGRATOR_IMAGE in a `.env` file
 # alongside this one — CI/CD writes it on every deploy). `build:` stays so an
@@ -16,6 +16,7 @@ services:
       - .env.production
     depends_on:
       - postgres
+      - clamav
     expose:
       - "3000"
     volumes:
@@ -46,6 +47,17 @@ services:
     volumes:
       - hclm_postgres_data:/var/lib/postgresql/data
 
+  # Virus scanning daemon for uploaded files (see src/lib/clamav.ts). The
+  # first start takes several minutes while freshclam pulls the signature
+  # database into the clamav_data volume; uploads fail closed until then.
+  clamav:
+    image: clamav/clamav:stable
+    restart: unless-stopped
+    expose:
+      - "3310"
+    volumes:
+      - hclm_clamav_data:/var/lib/clamav
+
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
@@ -66,3 +78,4 @@ volumes:
   hclm_caddy_data:
   hclm_caddy_config:
   hclm_uploads:
+  hclm_clamav_data:
