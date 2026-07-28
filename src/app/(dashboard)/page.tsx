@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { applicationVisibilityFilter } from "@/lib/rbac";
@@ -7,6 +8,23 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { STATUS_BADGE_VARIANT, STATUS_LABELS, ApplicationStatus } from "@/lib/status";
 import { TASK_STATUS_LABELS, TaskStatusValue } from "@/lib/task-status";
+import { OverdueTaskActions } from "@/components/tasks/overdue-task-actions";
+
+function StatCard({ href, label, count }: { href: string; label: string; count: number }) {
+  return (
+    <Link href={href} className="group block">
+      <Card className="transition-colors group-hover:bg-accent/50">
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            {label}
+            <ChevronRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="text-3xl font-bold">{count}</CardContent>
+      </Card>
+    </Link>
+  );
+}
 
 export default async function HomePage() {
   const session = await auth();
@@ -26,30 +44,9 @@ export default async function HomePage() {
         <p className="text-muted-foreground">Role: {session.user.role}</p>
       </div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Link href="/projects">
-          <Card>
-            <CardHeader>
-              <CardTitle>Projects</CardTitle>
-            </CardHeader>
-            <CardContent className="text-3xl font-bold">{projectCount}</CardContent>
-          </Card>
-        </Link>
-        <Link href="/clients">
-          <Card>
-            <CardHeader>
-              <CardTitle>Clients</CardTitle>
-            </CardHeader>
-            <CardContent className="text-3xl font-bold">{clientCount}</CardContent>
-          </Card>
-        </Link>
-        <Link href="/applications">
-          <Card>
-            <CardHeader>
-              <CardTitle>Your Applications</CardTitle>
-            </CardHeader>
-            <CardContent className="text-3xl font-bold">{applicationCount}</CardContent>
-          </Card>
-        </Link>
+        <StatCard href="/projects" label="Projects" count={projectCount} />
+        <StatCard href="/clients" label="Clients" count={clientCount} />
+        <StatCard href="/applications" label="Your Applications" count={applicationCount} />
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -116,9 +113,12 @@ export default async function HomePage() {
                   {TASK_STATUS_LABELS[task.status as TaskStatusValue]}
                 </p>
               </div>
-              <span className="text-xs text-destructive">
-                Due {task.dueDate ? new Date(task.dueDate).toLocaleDateString() : ""}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-destructive">
+                  Due {task.dueDate ? new Date(task.dueDate).toLocaleDateString() : ""}
+                </span>
+                {task.dueDate && <OverdueTaskActions taskId={task.id} dueDate={task.dueDate} />}
+              </div>
             </div>
           ))}
         </CardContent>

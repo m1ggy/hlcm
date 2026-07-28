@@ -56,6 +56,9 @@ function KanbanColumn({ status, tasks }: { status: TaskStatusValue; tasks: Board
       </div>
       <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
         <div ref={setNodeRef} className="flex min-h-16 flex-col gap-2 rounded-lg bg-muted/30 p-2">
+          {tasks.length === 0 && (
+            <p className="px-1 py-2 text-center text-xs text-muted-foreground">Drop tasks here</p>
+          )}
           {tasks.map((task) => (
             <KanbanCard key={task.id} task={task} />
           ))}

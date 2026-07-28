@@ -1,6 +1,23 @@
 import { formatActionVerb, formatAuditValue, formatFieldLabel, isEventAction, formatEventDescription } from "@/lib/audit-format";
 import { AvatarInitials } from "@/components/ui/avatar-initials";
 
+function formatRelativeTime(date: Date) {
+  const seconds = Math.round((date.getTime() - Date.now()) / 1000);
+  const divisions: [Intl.RelativeTimeFormatUnit, number][] = [
+    ["year", 60 * 60 * 24 * 365],
+    ["month", 60 * 60 * 24 * 30],
+    ["day", 60 * 60 * 24],
+    ["hour", 60 * 60],
+    ["minute", 60],
+  ];
+  for (const [unit, unitSeconds] of divisions) {
+    if (Math.abs(seconds) >= unitSeconds) {
+      return new Intl.RelativeTimeFormat("en", { numeric: "auto" }).format(Math.round(seconds / unitSeconds), unit);
+    }
+  }
+  return "just now";
+}
+
 type AuditEntry = {
   id: string;
   action: string;
@@ -53,7 +70,9 @@ export function AuditLogPanel({
               <span className="font-medium">{entry.actor.name}</span>{" "}
               <span className="text-muted-foreground">{describe(entry, { clients, users })}</span>
             </p>
-            <p className="text-xs text-muted-foreground">{new Date(entry.createdAt).toLocaleString()}</p>
+            <p className="text-xs text-muted-foreground" title={new Date(entry.createdAt).toLocaleString()}>
+              {formatRelativeTime(new Date(entry.createdAt))}
+            </p>
           </div>
         </div>
       ))}
