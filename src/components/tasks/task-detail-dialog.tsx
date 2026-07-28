@@ -146,7 +146,10 @@ export function TaskDetailDialog({
           </Button>
         }
       />
-      <SheetContent side="right" className="w-full sm:max-w-lg">
+      <SheetContent
+        side="right"
+        className="w-full sm:max-w-none data-[side=right]:w-full data-[side=right]:sm:max-w-none"
+      >
         <SheetHeader className="pb-0">
           <SheetTitle className="flex items-center gap-2 pr-6">
             <Input
@@ -163,20 +166,21 @@ export function TaskDetailDialog({
           </SheetTitle>
         </SheetHeader>
 
-        <div className="flex-1 space-y-4 overflow-y-auto px-4 pb-4">
-          <div className="space-y-1">
-            <label className="text-xs text-muted-foreground">Description</label>
-            <textarea
-              value={localDescription}
-              onChange={(e) => setLocalDescription(e.target.value)}
-              onBlur={() => save({ description: localDescription })}
-              rows={3}
-              placeholder="Add more detail..."
-              className="w-full rounded-lg border border-input bg-transparent p-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-            />
-          </div>
+        <div className="flex min-h-0 flex-1">
+          <div className="min-w-0 flex-1 space-y-4 overflow-y-auto px-4 pb-4">
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Description</label>
+              <textarea
+                value={localDescription}
+                onChange={(e) => setLocalDescription(e.target.value)}
+                onBlur={() => save({ description: localDescription })}
+                rows={3}
+                placeholder="Add more detail..."
+                className="w-full rounded-lg border border-input bg-transparent p-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              />
+            </div>
 
-          <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <div className="space-y-1">
               <label className="text-xs text-muted-foreground">Status</label>
               <Select
@@ -278,9 +282,10 @@ export function TaskDetailDialog({
             <h3 className="mb-3 text-sm font-medium">Comments</h3>
             <CommentThread notes={notes} mentionableUsers={assignableUsers} onSubmit={handleCommentSubmit} />
           </div>
+        </div>
 
-          <div className="border-t pt-4">
-            <h3 className="mb-3 text-sm font-medium">Activity</h3>
+          <div className="w-80 shrink-0 overflow-y-auto border-l px-4 pb-4 lg:w-96">
+            <h3 className="sticky top-0 bg-popover pt-4 pb-3 text-sm font-medium">Activity</h3>
             <AuditLogPanel auditLog={auditLog} />
           </div>
         </div>
