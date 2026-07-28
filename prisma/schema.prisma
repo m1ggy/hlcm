@@ -34,6 +34,7 @@ enum TaskStatus {
   BLOCKED
   COMPLETED
   NA
+  CLOSED
 }
 
 enum GrantPermission {

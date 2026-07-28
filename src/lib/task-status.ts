@@ -1,4 +1,4 @@
-export const TASK_STATUSES = ["NOT_STARTED", "IN_PROGRESS", "BLOCKED", "COMPLETED", "NA"] as const;
+export const TASK_STATUSES = ["NOT_STARTED", "IN_PROGRESS", "BLOCKED", "COMPLETED", "NA", "CLOSED"] as const;
 
 export type TaskStatusValue = (typeof TASK_STATUSES)[number];
 
@@ -8,6 +8,7 @@ export const TASK_STATUS_LABELS: Record<TaskStatusValue, string> = {
   BLOCKED: "Blocked",
   COMPLETED: "Completed",
   NA: "N/A",
+  CLOSED: "Closed",
 };
 
 export const TASK_STATUS_BADGE_VARIANT: Record<
@@ -19,4 +20,9 @@ export const TASK_STATUS_BADGE_VARIANT: Record<
   BLOCKED: "destructive",
   COMPLETED: "default",
   NA: "outline",
+  CLOSED: "secondary",
 };
+
+// Terminal states — task is done and out of the active cycle. Used to keep
+// these off overdue/workload counts the same way COMPLETED/NA already are.
+export const TASK_CLOSED_STATUSES = ["COMPLETED", "NA", "CLOSED"] as const;

@@ -25,11 +25,9 @@ type Filter = "all" | "overdue" | TaskStatusValue;
 export function StandaloneTasksView({
   tasks,
   assignableUsers,
-  currentUserId,
 }: {
   tasks: StandaloneTask[];
   assignableUsers: Option[];
-  currentUserId: string;
 }) {
   const [filter, setFilter] = useState<Filter>("all");
 
@@ -78,7 +76,7 @@ export function StandaloneTasksView({
       </div>
       <div className="space-y-2">
         {filtered.map((task) => (
-          <StandaloneTaskRow key={task.id} task={task} assignableUsers={assignableUsers} currentUserId={currentUserId} />
+          <StandaloneTaskRow key={task.id} task={task} assignableUsers={assignableUsers} />
         ))}
         {filtered.length === 0 && <p className="text-sm text-muted-foreground">No tasks match this filter.</p>}
       </div>

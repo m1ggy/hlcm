@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Expand, Trash2, Loader2 } from "lucide-react";
+import { Expand, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -21,7 +21,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { CommentThread } from "@/components/comment-thread";
-import { updateTask, setTaskReviewer, deleteTask } from "@/lib/actions/tasks";
+import { AuditLogPanel } from "@/components/applications/audit-log-panel";
+import { updateTask, setTaskReviewer, getTaskAuditLog } from "@/lib/actions/tasks";
 import { listTaskNotes, addTaskNote } from "@/lib/actions/notes";
 import { TASK_STATUSES, TASK_STATUS_LABELS, TaskStatusValue } from "@/lib/task-status";
 import { Option } from "./task-types";
@@ -29,6 +30,15 @@ import { Option } from "./task-types";
 const NONE = "__none__";
 
 type Note = { id: string; body: string; createdAt: Date; author: { id: string; name: string } };
+type AuditEntry = {
+  id: string;
+  action: string;
+  field: string | null;
+  oldValue: string | null;
+  newValue: string | null;
+  createdAt: Date;
+  actor: { name: string };
+};
 
 function toDateInputValue(date: Date | null) {
   if (!date) return "";
@@ -46,8 +56,6 @@ export function TaskDetailDialog({
   reviewerId,
   hasReviewer,
   assignableUsers,
-  canDelete,
-  subtaskCount = 0,
 }: {
   taskId: string;
   label: string;
@@ -59,13 +67,10 @@ export function TaskDetailDialog({
   reviewerId: string | null;
   hasReviewer: boolean;
   assignableUsers: Option[];
-  canDelete: boolean;
-  subtaskCount?: number;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [isSaving, startTransition] = useTransition();
-  const [isDeleting, setIsDeleting] = useState(false);
 
   const [localLabel, setLocalLabel] = useState(label);
   const [localDescription, setLocalDescription] = useState(description ?? "");
@@ -77,6 +82,8 @@ export function TaskDetailDialog({
 
   const [notes, setNotes] = useState<Note[]>([]);
   const [notesLoaded, setNotesLoaded] = useState(false);
+  const [auditLog, setAuditLog] = useState<AuditEntry[]>([]);
+  const [auditLoaded, setAuditLoaded] = useState(false);
 
   useEffect(() => {
     if (!open || notesLoaded) return;
@@ -85,6 +92,14 @@ export function TaskDetailDialog({
       setNotesLoaded(true);
     });
   }, [open, notesLoaded, taskId]);
+
+  useEffect(() => {
+    if (!open || auditLoaded) return;
+    getTaskAuditLog(taskId).then((data) => {
+      setAuditLog(data);
+      setAuditLoaded(true);
+    });
+  }, [open, auditLoaded, taskId]);
 
   function save(overrides: Partial<{ label: string; description: string; status: string; assignedUserId: string; dueDate: string; blockedReason: string }>) {
     const formData = new FormData();
@@ -122,26 +137,6 @@ export function TaskDetailDialog({
     setNotes((prev) => [...prev, note]);
   }
 
-  function handleDelete() {
-    const message =
-      subtaskCount > 0
-        ? `This task has ${subtaskCount} subtask${subtaskCount === 1 ? "" : "s"} — deleting it deletes ${subtaskCount === 1 ? "that subtask" : "them"} too. This can't be undone.`
-        : "Delete this task? This can't be undone.";
-    if (!confirm(message)) return;
-
-    setIsDeleting(true);
-    startTransition(async () => {
-      try {
-        await deleteTask(taskId);
-        setOpen(false);
-        router.refresh();
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Failed to delete task");
-        setIsDeleting(false);
-      }
-    });
-  }
-
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger
@@ -164,11 +159,6 @@ export function TaskDetailDialog({
               <span className="flex shrink-0 items-center gap-1 text-xs font-normal text-muted-foreground">
                 <Loader2 className="size-3 animate-spin" /> Saving...
               </span>
-            )}
-            {canDelete && (
-              <Button variant="ghost" size="icon-sm" onClick={handleDelete} disabled={isDeleting} title="Delete task">
-                {isDeleting ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
-              </Button>
             )}
           </SheetTitle>
         </SheetHeader>
@@ -287,6 +277,11 @@ export function TaskDetailDialog({
           <div className="border-t pt-4">
             <h3 className="mb-3 text-sm font-medium">Comments</h3>
             <CommentThread notes={notes} mentionableUsers={assignableUsers} onSubmit={handleCommentSubmit} />
+          </div>
+
+          <div className="border-t pt-4">
+            <h3 className="mb-3 text-sm font-medium">Activity</h3>
+            <AuditLogPanel auditLog={auditLog} />
           </div>
         </div>
       </SheetContent>

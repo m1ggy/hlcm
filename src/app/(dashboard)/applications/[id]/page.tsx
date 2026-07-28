@@ -101,11 +101,11 @@ export default async function ApplicationDetailPage({
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-        <Card className="lg:col-span-3">
+        <Card className="min-w-0 lg:col-span-3">
           <CardHeader>
             <CardTitle>Checklist</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="min-w-0">
             <TaskBoard
               applicationId={id}
               phases={taskData.phases}
@@ -115,7 +115,6 @@ export default async function ApplicationDetailPage({
               }))}
               assignableUsers={assignableUsers}
               defaultAssignedUserId={application.assignedUserId}
-              currentUserId={session.user.id}
             />
           </CardContent>
         </Card>

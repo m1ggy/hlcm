@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { updateTask, deleteTask } from "@/lib/actions/tasks";
+import { updateTask } from "@/lib/actions/tasks";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -15,7 +15,6 @@ import {
 } from "@/components/ui/select";
 import { TASK_STATUSES, TASK_STATUS_LABELS, TASK_STATUS_BADGE_VARIANT } from "@/lib/task-status";
 import { TaskDetailDialog } from "./task-detail-dialog";
-import { TaskRowMenu } from "./task-row-menu";
 import { Option, TaskUserRef } from "./task-types";
 
 type StandaloneTask = {
@@ -39,14 +38,11 @@ function toDateInputValue(date: Date | null) {
 export function StandaloneTaskRow({
   task,
   assignableUsers,
-  currentUserId,
 }: {
   task: StandaloneTask;
   assignableUsers: Option[];
-  currentUserId: string;
 }) {
   const router = useRouter();
-  const [isDeleting, setIsDeleting] = useState(false);
   const [, startTransition] = useTransition();
   const [status, setStatus] = useState(task.status);
   const [assignedUserId, setAssignedUserId] = useState(task.assignedUser.id);
@@ -69,19 +65,6 @@ export function StandaloneTaskRow({
     });
   }
 
-  function handleDelete() {
-    setIsDeleting(true);
-    startTransition(async () => {
-      try {
-        await deleteTask(task.id);
-        router.refresh();
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Failed to delete task");
-        setIsDeleting(false);
-      }
-    });
-  }
-
   return (
     <div className="rounded-lg border p-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -98,12 +81,7 @@ export function StandaloneTaskRow({
           reviewerId={null}
           hasReviewer={false}
           assignableUsers={assignableUsers}
-          canDelete={task.createdById === currentUserId || task.assignedUser.id === currentUserId}
-          subtaskCount={task.subtasks.length}
         />
-        {(task.createdById === currentUserId || task.assignedUser.id === currentUserId) && (
-          <TaskRowMenu onDelete={handleDelete} isDeleting={isDeleting} subtaskCount={task.subtasks.length} />
-        )}
         <Select
           items={Object.fromEntries(TASK_STATUSES.map((s) => [s, TASK_STATUS_LABELS[s]]))}
           value={status}

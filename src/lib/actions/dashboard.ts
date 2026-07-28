@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { requireSession, applicationVisibilityFilter, AppRole } from "@/lib/rbac";
 import { APPLICATION_STATUSES } from "@/lib/status";
+import { TASK_CLOSED_STATUSES } from "@/lib/task-status";
 
 export async function getDashboardStats() {
   const session = await requireSession();
@@ -22,7 +23,7 @@ export async function getDashboardStats() {
 
   const overdueWhere = {
     dueDate: { lt: new Date() },
-    status: { notIn: ["COMPLETED" as const, "NA" as const] },
+    status: { notIn: [...TASK_CLOSED_STATUSES] },
     ...(isManagement ? {} : { assignedUserId: session.user.id }),
   };
   const overdueTasks = await prisma.task.findMany({
@@ -39,7 +40,7 @@ export async function getDashboardStats() {
   if (isManagement) {
     const grouped = await prisma.task.groupBy({
       by: ["assignedUserId"],
-      where: { status: { notIn: ["COMPLETED", "NA"] } },
+      where: { status: { notIn: [...TASK_CLOSED_STATUSES] } },
       _count: { assignedUserId: true },
     });
     const users = await prisma.user.findMany({

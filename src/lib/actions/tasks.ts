@@ -6,8 +6,9 @@ import { prisma } from "@/lib/prisma";
 import { requireRole, requireSession, assertApplicationAccess, ForbiddenError, AppRole } from "@/lib/rbac";
 import { recordFieldChanges, recordAudit } from "@/lib/audit";
 import { notify } from "@/lib/notifications";
+import { TASK_CLOSED_STATUSES } from "@/lib/task-status";
 
-const TASK_STATUSES = ["NOT_STARTED", "IN_PROGRESS", "BLOCKED", "COMPLETED", "NA"] as const;
+const TASK_STATUSES = ["NOT_STARTED", "IN_PROGRESS", "BLOCKED", "COMPLETED", "NA", "CLOSED"] as const;
 
 const taskInclude = {
   assignedUser: { select: { id: true, name: true } },
@@ -189,35 +190,23 @@ export async function reorderTasks(applicationId: string, orderedTaskIds: string
   revalidatePath(`/applications/${applicationId}`);
 }
 
-// The task's creator or the person it's assigned to (or ADMIN/MANAGER,
-// consistent with every other override in this file) can delete it — merely
-// having edit access to the Application isn't enough on its own.
-export async function deleteTask(taskId: string) {
+export async function getTaskAuditLog(taskId: string) {
   const session = await requireSession();
   const task = await prisma.task.findUniqueOrThrow({ where: { id: taskId } });
-
-  const role = session.user.role as AppRole;
-  const isCreator = task.createdById === session.user.id;
-  const isOwner = task.assignedUserId === session.user.id;
-  if (!(role === "ADMIN" || role === "MANAGER" || isCreator || isOwner)) {
-    throw new ForbiddenError("Only the task's creator or assignee can delete it");
+  if (task.applicationId) {
+    await assertApplicationAccess(session, task.applicationId, "view");
+  } else {
+    const role = session.user.role as AppRole;
+    if (!(role === "ADMIN" || role === "MANAGER" || task.assignedUserId === session.user.id)) {
+      throw new ForbiddenError("Not your task");
+    }
   }
 
-  // No onDelete cascade from parent -> subtasks in the schema, so clear
-  // those first or the delete hits a foreign key constraint.
-  await prisma.task.deleteMany({ where: { parentTaskId: taskId } });
-  await prisma.task.delete({ where: { id: taskId } });
-
-  await recordAudit({
-    entityType: "Task",
-    entityId: taskId,
-    action: "delete",
-    actorId: session.user.id,
-    oldValue: task.label,
+  return prisma.auditLog.findMany({
+    where: { entityType: "Task", entityId: taskId },
+    include: { actor: { select: { name: true } } },
+    orderBy: { createdAt: "desc" },
   });
-
-  if (task.applicationId) revalidatePath(`/applications/${task.applicationId}`);
-  else revalidatePath("/tasks");
 }
 
 export async function setTaskReviewer(taskId: string, reviewerUserId: string | null) {
@@ -271,7 +260,10 @@ export async function listStandaloneTasks() {
   const now = Date.now();
   return tasks.map((task) => ({
     ...task,
-    isOverdue: !!task.dueDate && task.dueDate.getTime() < now && task.status !== "COMPLETED" && task.status !== "NA",
+    isOverdue:
+      !!task.dueDate &&
+      task.dueDate.getTime() < now &&
+      !TASK_CLOSED_STATUSES.includes(task.status as (typeof TASK_CLOSED_STATUSES)[number]),
   }));
 }
 
