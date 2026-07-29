@@ -1,31 +1,64 @@
 name: Deploy
 
+# Env resolution:
+#   push to `dev`  -> dev
+#   push to `main` -> production
+#   workflow_dispatch -> pick any environment (e.g. a newly added one)
+#
+# Each environment name below must exist under Settings > Environments in
+# GitHub, with its own DROPLET_HOST / DROPLET_USER / DROPLET_SSH_KEY /
+# DROPLET_SSH_PORT / DROPLET_DEPLOY_PATH secrets. To add another environment
+# (e.g. "staging"): create the GitHub Environment + secrets, add its branch to
+# the `push.branches` list (it'll resolve to an environment of the same name
+# via the `else` branch below), and add it to workflow_dispatch's `options`
+# for manual triggering.
 on:
   push:
-    branches: [main]
-  workflow_dispatch: {}
+    branches: [main, dev]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to deploy
+        type: choice
+        required: true
+        options: [dev, production]
 
 permissions:
   contents: read
   packages: write
 
-env:
-  DEPLOY_PATH: ${{ secrets.DROPLET_DEPLOY_PATH || '/opt/hclm-app' }}
-
 jobs:
+  resolve-environment:
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.resolve.outputs.environment }}
+    steps:
+      - id: resolve
+        run: |
+          if [ -n "${{ inputs.environment }}" ]; then
+            echo "environment=${{ inputs.environment }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.ref_name }}" = "main" ]; then
+            echo "environment=production" >> "$GITHUB_OUTPUT"
+          else
+            echo "environment=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          fi
+
   build-and-push:
+    needs: resolve-environment
     runs-on: ubuntu-latest
     outputs:
       image_base: ${{ steps.vars.outputs.image_base }}
-      sha_tag: ${{ steps.vars.outputs.sha_tag }}
+      env_tag: ${{ steps.vars.outputs.env_tag }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Compute image tags
         id: vars
+        env:
+          ENVIRONMENT: ${{ needs.resolve-environment.outputs.environment }}
         run: |
           echo "image_base=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
-          echo "sha_tag=sha-$(echo '${{ github.sha }}' | cut -c1-12)" >> "$GITHUB_OUTPUT"
+          echo "env_tag=${ENVIRONMENT}-$(echo '${{ github.sha }}' | cut -c1-12)" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -43,8 +76,8 @@ jobs:
           target: runner
           push: true
           tags: |
-            ${{ steps.vars.outputs.image_base }}:latest
-            ${{ steps.vars.outputs.image_base }}:${{ steps.vars.outputs.sha_tag }}
+            ${{ steps.vars.outputs.image_base }}:${{ needs.resolve-environment.outputs.environment }}-latest
+            ${{ steps.vars.outputs.image_base }}:${{ steps.vars.outputs.env_tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -55,14 +88,17 @@ jobs:
           target: migrator
           push: true
           tags: |
-            ${{ steps.vars.outputs.image_base }}:migrate-latest
-            ${{ steps.vars.outputs.image_base }}:migrate-${{ steps.vars.outputs.sha_tag }}
+            ${{ steps.vars.outputs.image_base }}:migrate-${{ needs.resolve-environment.outputs.environment }}-latest
+            ${{ steps.vars.outputs.image_base }}:migrate-${{ steps.vars.outputs.env_tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
   deploy:
-    needs: build-and-push
+    needs: [resolve-environment, build-and-push]
     runs-on: ubuntu-latest
+    environment: ${{ needs.resolve-environment.outputs.environment }}
+    env:
+      DEPLOY_PATH: ${{ secrets.DROPLET_DEPLOY_PATH || '/opt/hclm-app' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -86,16 +122,17 @@ jobs:
       - name: Deploy on droplet
         env:
           IMAGE_BASE: ${{ needs.build-and-push.outputs.image_base }}
+          ENV_TAG: ${{ needs.resolve-environment.outputs.environment }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_ACTOR: ${{ github.actor }}
         run: |
           ssh -p "${{ secrets.DROPLET_SSH_PORT || 22 }}" "${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}" \
-            "IMAGE_BASE='$IMAGE_BASE' GH_TOKEN='$GH_TOKEN' GH_ACTOR='$GH_ACTOR' DEPLOY_PATH='${{ env.DEPLOY_PATH }}' bash -s" <<'REMOTE'
+            "IMAGE_BASE='$IMAGE_BASE' ENV_TAG='$ENV_TAG' GH_TOKEN='$GH_TOKEN' GH_ACTOR='$GH_ACTOR' DEPLOY_PATH='${{ env.DEPLOY_PATH }}' bash -s" <<'REMOTE'
           set -euo pipefail
           cd "$DEPLOY_PATH"
 
           touch .env
-          for kv in "APP_IMAGE=${IMAGE_BASE}:latest" "MIGRATOR_IMAGE=${IMAGE_BASE}:migrate-latest"; do
+          for kv in "APP_IMAGE=${IMAGE_BASE}:${ENV_TAG}-latest" "MIGRATOR_IMAGE=${IMAGE_BASE}:migrate-${ENV_TAG}-latest"; do
             key="${kv%%=*}"
             if grep -q "^${key}=" .env; then
               sed -i "s|^${key}=.*|${kv}|" .env

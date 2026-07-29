@@ -3,6 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { Bell } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -32,17 +33,23 @@ export function NotificationBell() {
   const [open, setOpen] = useState(false);
   const [, startTransition] = useTransition();
 
-  async function refresh() {
-    const res = await fetch("/api/notifications");
-    if (!res.ok) return;
-    const { count, notifications } = await res.json();
-    setUnread(count);
-    setNotifications(notifications);
+  async function refresh(options?: { silent?: boolean }) {
+    try {
+      const res = await fetch("/api/notifications");
+      if (!res.ok) throw new Error("Failed to load notifications");
+      const { count, notifications } = await res.json();
+      setUnread(count);
+      setNotifications(notifications);
+    } catch (error) {
+      if (!options?.silent) {
+        toast.error(error instanceof Error ? error.message : "Failed to load notifications");
+      }
+    }
   }
 
   useEffect(() => {
-    const initial = setTimeout(refresh, 0);
-    const interval = setInterval(refresh, 30000);
+    const initial = setTimeout(() => refresh({ silent: true }), 0);
+    const interval = setInterval(() => refresh({ silent: true }), 30000);
     return () => {
       clearTimeout(initial);
       clearInterval(interval);
@@ -56,15 +63,23 @@ export function NotificationBell() {
 
   function handleClickNotification(id: string) {
     startTransition(async () => {
-      await markNotificationRead(id);
-      refresh();
+      try {
+        await markNotificationRead(id);
+        refresh({ silent: true });
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Failed to mark notification read");
+      }
     });
   }
 
   function handleMarkAll() {
     startTransition(async () => {
-      await markAllNotificationsRead();
-      refresh();
+      try {
+        await markAllNotificationsRead();
+        refresh({ silent: true });
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Failed to mark all as read");
+      }
     });
   }
 

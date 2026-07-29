@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import {
   FolderKanban,
   Users,
@@ -55,8 +56,12 @@ export default function CommandPaletteContent({
         return;
       }
       startTransition(async () => {
-        const data = await searchAll(query);
-        setResults(data);
+        try {
+          const data = await searchAll(query);
+          setResults(data);
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : "Search failed");
+        }
       });
     }, 200);
     return () => clearTimeout(id);
