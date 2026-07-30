@@ -247,19 +247,23 @@ model AccessGrant {
   @@map("access_grants")
 }
 
-// One shared file pool per Application — every user with access to the
-// case sees the same files, rather than files being scoped to a single task.
+// Two pools: the shared Application pool (applicationId set, taskId null —
+// every user with case access sees these) and per-task attachments (taskId
+// set, scoped to that one task/subtask, including standalone tasks where
+// applicationId is null).
 model FileAsset {
-  id            String      @id @default(cuid())
-  application   Application @relation(fields: [applicationId], references: [id])
-  applicationId String
+  id            String       @id @default(cuid())
+  application   Application? @relation(fields: [applicationId], references: [id])
+  applicationId String?
+  task          Task?        @relation(fields: [taskId], references: [id])
+  taskId        String?
   fileName      String
   storageKey    String
   mimeType      String
   sizeBytes     Int
-  uploadedBy    User        @relation("FileUploadedBy", fields: [uploadedById], references: [id])
+  uploadedBy    User         @relation("FileUploadedBy", fields: [uploadedById], references: [id])
   uploadedById  String
-  createdAt     DateTime    @default(now())
+  createdAt     DateTime     @default(now())
 
   signatureEvents SignatureEvent[]
 
@@ -377,6 +381,7 @@ model Task {
   updatedAt   DateTime @updatedAt
 
   notes Note[]
+  files FileAsset[]
 
   @@map("tasks")
 }

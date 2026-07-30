@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/table";
 import { bulkUpdateApplications } from "@/lib/actions/applications";
 import { FavoriteStar } from "@/components/applications/favorite-star";
+import { TaskProgress } from "@/components/applications/task-progress";
 import { STATUS_BADGE_VARIANT, STATUS_LABELS, APPLICATION_STATUSES, ApplicationStatus } from "@/lib/status";
 
 type AppRow = {
@@ -32,6 +33,7 @@ type AppRow = {
   status: string;
   client: { name: string };
   assignedUser: { name: string };
+  taskProgress: { total: number; done: number };
 };
 
 const NONE = "__none__";
@@ -140,6 +142,7 @@ export function ApplicationsTable({
             <TableHead>Name</TableHead>
             <TableHead>Client</TableHead>
             <TableHead>Assigned To</TableHead>
+            <TableHead>Progress</TableHead>
             <TableHead>Status</TableHead>
           </TableRow>
         </TableHeader>
@@ -168,6 +171,9 @@ export function ApplicationsTable({
               <TableCell>{app.client.name}</TableCell>
               <TableCell>{app.assignedUser.name}</TableCell>
               <TableCell>
+                <TaskProgress total={app.taskProgress.total} done={app.taskProgress.done} />
+              </TableCell>
+              <TableCell>
                 <Badge variant={STATUS_BADGE_VARIANT[app.status as ApplicationStatus]}>
                   {STATUS_LABELS[app.status as ApplicationStatus]}
                 </Badge>
@@ -176,7 +182,7 @@ export function ApplicationsTable({
           ))}
           {applications.length === 0 && (
             <TableRow>
-              <TableCell colSpan={6} className="text-center text-muted-foreground">
+              <TableCell colSpan={7} className="text-center text-muted-foreground">
                 No applications yet.
               </TableCell>
             </TableRow>

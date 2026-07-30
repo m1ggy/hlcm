@@ -12,6 +12,7 @@ import {
 import { recordFieldChanges, recordAudit } from "@/lib/audit";
 import { cloneChecklistForApplication } from "@/lib/checklist-clone";
 import { notify } from "@/lib/notifications";
+import { TASK_CLOSED_STATUSES } from "@/lib/task-status";
 
 const APPLICATION_STATUSES = [
   "DRAFT",
@@ -36,11 +37,20 @@ const applicationSchema = z.object({
 
 export async function listApplications() {
   const session = await requireSession();
-  return prisma.application.findMany({
+  const applications = await prisma.application.findMany({
     where: applicationVisibilityFilter(session),
-    include: { client: true, assignedUser: true },
+    include: { client: true, assignedUser: true, tasks: { select: { status: true } } },
     orderBy: { createdAt: "desc" },
   });
+
+  return applications.map(({ tasks, ...app }) => ({
+    ...app,
+    taskProgress: {
+      total: tasks.length,
+      done: tasks.filter((t) => TASK_CLOSED_STATUSES.includes(t.status as (typeof TASK_CLOSED_STATUSES)[number]))
+        .length,
+    },
+  }));
 }
 
 async function assertCanEditApplication(

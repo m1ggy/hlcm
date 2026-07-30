@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireSession, assertApplicationAccess, UnauthorizedError, ForbiddenError } from "@/lib/rbac";
+import { requireSession, assertApplicationAccess, UnauthorizedError, ForbiddenError, AppRole } from "@/lib/rbac";
 import { readStoredFile } from "@/lib/storage";
 
 export async function GET(_req: NextRequest, ctx: RouteContext<"/api/files/[id]">) {
@@ -8,10 +8,24 @@ export async function GET(_req: NextRequest, ctx: RouteContext<"/api/files/[id]"
 
   try {
     const session = await requireSession();
-    const asset = await prisma.fileAsset.findUnique({ where: { id } });
+    const asset = await prisma.fileAsset.findUnique({ where: { id }, include: { task: true } });
     if (!asset) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-    await assertApplicationAccess(session, asset.applicationId, "view");
+    if (asset.applicationId) {
+      await assertApplicationAccess(session, asset.applicationId, "view");
+    } else if (asset.task) {
+      const task = asset.task;
+      if (task.applicationId) {
+        await assertApplicationAccess(session, task.applicationId, "view");
+      } else {
+        const role = session.user.role as AppRole;
+        if (!(role === "ADMIN" || role === "MANAGER" || task.assignedUserId === session.user.id || task.createdById === session.user.id)) {
+          throw new ForbiddenError("Not your task");
+        }
+      }
+    } else {
+      throw new ForbiddenError("Not accessible");
+    }
 
     const buffer = await readStoredFile(asset.storageKey);
     return new NextResponse(new Uint8Array(buffer), {

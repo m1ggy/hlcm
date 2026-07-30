@@ -22,8 +22,10 @@ import {
 } from "@/components/ui/select";
 import { CommentThread } from "@/components/comment-thread";
 import { AuditLogPanel } from "@/components/applications/audit-log-panel";
+import { TaskFilePool } from "@/components/tasks/task-file-pool";
 import { updateTask, setTaskReviewer, getTaskAuditLog } from "@/lib/actions/tasks";
 import { listTaskNotes, addTaskNote } from "@/lib/actions/notes";
+import { listTaskFiles } from "@/lib/actions/files";
 import { TASK_STATUSES, TASK_STATUS_LABELS, TaskStatusValue } from "@/lib/task-status";
 import { Option } from "./task-types";
 
@@ -38,6 +40,14 @@ type AuditEntry = {
   newValue: string | null;
   createdAt: Date;
   actor: { name: string };
+};
+type FileRow = {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  createdAt: Date;
+  uploadedBy: { name: string };
 };
 
 function toDateInputValue(date: Date | null) {
@@ -84,6 +94,8 @@ export function TaskDetailDialog({
   const [notesLoaded, setNotesLoaded] = useState(false);
   const [auditLog, setAuditLog] = useState<AuditEntry[]>([]);
   const [auditLoaded, setAuditLoaded] = useState(false);
+  const [files, setFiles] = useState<FileRow[]>([]);
+  const [filesLoaded, setFilesLoaded] = useState(false);
 
   useEffect(() => {
     if (!open || notesLoaded) return;
@@ -100,6 +112,14 @@ export function TaskDetailDialog({
       setAuditLoaded(true);
     });
   }, [open, auditLoaded, taskId]);
+
+  useEffect(() => {
+    if (!open || filesLoaded) return;
+    listTaskFiles(taskId).then((data) => {
+      setFiles(data);
+      setFilesLoaded(true);
+    });
+  }, [open, filesLoaded, taskId]);
 
   function save(overrides: Partial<{ label: string; description: string; status: string; assignedUserId: string; dueDate: string; blockedReason: string }>) {
     const formData = new FormData();
@@ -277,6 +297,11 @@ export function TaskDetailDialog({
               />
             </div>
           )}
+
+          <div className="border-t pt-4">
+            <h3 className="mb-3 text-sm font-medium">Files</h3>
+            <TaskFilePool taskId={taskId} files={files} onFilesChange={setFiles} />
+          </div>
 
           <div className="border-t pt-4">
             <h3 className="mb-3 text-sm font-medium">Comments</h3>
