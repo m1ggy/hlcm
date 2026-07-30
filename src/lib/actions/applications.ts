@@ -13,6 +13,7 @@ import { recordFieldChanges, recordAudit } from "@/lib/audit";
 import { cloneChecklistForApplication } from "@/lib/checklist-clone";
 import { notify } from "@/lib/notifications";
 import { TASK_CLOSED_STATUSES } from "@/lib/task-status";
+import { STALE_THRESHOLD_DAYS, computeReadyToSubmit, computeStaleDays } from "@/lib/application-flags";
 
 const APPLICATION_STATUSES = [
   "DRAFT",
@@ -43,14 +44,35 @@ export async function listApplications() {
     orderBy: { createdAt: "desc" },
   });
 
-  return applications.map(({ tasks, ...app }) => ({
-    ...app,
-    taskProgress: {
+  const staleCandidateIds = applications
+    .filter((a) => STALE_THRESHOLD_DAYS[a.status] !== undefined)
+    .map((a) => a.id);
+
+  const statusChangeLogs = staleCandidateIds.length
+    ? await prisma.auditLog.findMany({
+        where: { entityType: "Application", entityId: { in: staleCandidateIds }, field: "status" },
+        orderBy: { createdAt: "desc" },
+        select: { entityId: true, createdAt: true },
+      })
+    : [];
+  const statusSinceById = new Map<string, Date>();
+  for (const log of statusChangeLogs) {
+    if (!statusSinceById.has(log.entityId)) statusSinceById.set(log.entityId, log.createdAt);
+  }
+
+  return applications.map(({ tasks, ...app }) => {
+    const taskProgress = {
       total: tasks.length,
       done: tasks.filter((t) => TASK_CLOSED_STATUSES.includes(t.status as (typeof TASK_CLOSED_STATUSES)[number]))
         .length,
-    },
-  }));
+    };
+    return {
+      ...app,
+      taskProgress,
+      readyToSubmit: computeReadyToSubmit(app.status, taskProgress),
+      staleDays: computeStaleDays(app.status, statusSinceById.get(app.id) ?? app.createdAt),
+    };
+  });
 }
 
 async function assertCanEditApplication(

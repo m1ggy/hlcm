@@ -25,6 +25,7 @@ import {
 import { bulkUpdateApplications } from "@/lib/actions/applications";
 import { FavoriteStar } from "@/components/applications/favorite-star";
 import { TaskProgress } from "@/components/applications/task-progress";
+import { ApplicationFlags } from "@/components/applications/application-flags";
 import { STATUS_BADGE_VARIANT, STATUS_LABELS, APPLICATION_STATUSES, ApplicationStatus } from "@/lib/status";
 
 type AppRow = {
@@ -34,6 +35,8 @@ type AppRow = {
   client: { name: string };
   assignedUser: { name: string };
   taskProgress: { total: number; done: number };
+  readyToSubmit: boolean;
+  staleDays: number | null;
 };
 
 const NONE = "__none__";
@@ -174,9 +177,12 @@ export function ApplicationsTable({
                 <TaskProgress total={app.taskProgress.total} done={app.taskProgress.done} />
               </TableCell>
               <TableCell>
-                <Badge variant={STATUS_BADGE_VARIANT[app.status as ApplicationStatus]}>
-                  {STATUS_LABELS[app.status as ApplicationStatus]}
-                </Badge>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <Badge variant={STATUS_BADGE_VARIANT[app.status as ApplicationStatus]}>
+                    {STATUS_LABELS[app.status as ApplicationStatus]}
+                  </Badge>
+                  <ApplicationFlags readyToSubmit={app.readyToSubmit} staleDays={app.staleDays} />
+                </div>
               </TableCell>
             </TableRow>
           ))}

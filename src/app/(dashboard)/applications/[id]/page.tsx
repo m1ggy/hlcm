@@ -16,6 +16,9 @@ import { ApplicationPropertiesTable } from "@/components/applications/applicatio
 import { NotesPanel } from "@/components/applications/notes-panel";
 import { RecentApplicationTracker } from "@/components/applications/recent-application-tracker";
 import { FavoriteStar } from "@/components/applications/favorite-star";
+import { ApplicationFlags } from "@/components/applications/application-flags";
+import { computeReadyToSubmit, computeStaleDays } from "@/lib/application-flags";
+import { TASK_CLOSED_STATUSES } from "@/lib/task-status";
 import { AuditLogPanel } from "@/components/applications/audit-log-panel";
 import { FilePool } from "@/components/applications/file-pool";
 import { AccessGrantsPanel } from "@/components/applications/access-grants-panel";
@@ -82,6 +85,17 @@ export default async function ApplicationDetailPage({
   const clientLookup = Object.fromEntries(clients.map((c) => [c.id, c.name]));
   const userLookup = Object.fromEntries(assignableUsers.map((u) => [u.id, u.name]));
 
+  const allTaskStatuses = taskData.tasks.flatMap((t) => [t.status, ...t.subtasks.map((s) => s.status)]);
+  const taskProgress = {
+    total: allTaskStatuses.length,
+    done: allTaskStatuses.filter((s) =>
+      TASK_CLOSED_STATUSES.includes(s as (typeof TASK_CLOSED_STATUSES)[number])
+    ).length,
+  };
+  const statusSince = auditLog.find((entry) => entry.field === "status")?.createdAt ?? application.createdAt;
+  const readyToSubmit = computeReadyToSubmit(application.status, taskProgress);
+  const staleDays = computeStaleDays(application.status, statusSince);
+
   return (
     <div className="space-y-6">
       <RecentApplicationTracker id={id} name={application.name} />
@@ -97,7 +111,10 @@ export default async function ApplicationDetailPage({
             </BreadcrumbItem>
           </BreadcrumbList>
         </Breadcrumb>
-        <FavoriteStar applicationId={id} />
+        <div className="flex items-center gap-2">
+          <ApplicationFlags readyToSubmit={readyToSubmit} staleDays={staleDays} />
+          <FavoriteStar applicationId={id} />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">

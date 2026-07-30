@@ -15,6 +15,8 @@ type AppRow = {
   client: { name: string };
   assignedUser: { id: string; name: string };
   taskProgress: { total: number; done: number };
+  readyToSubmit: boolean;
+  staleDays: number | null;
 };
 
 const VIEW_KEY = "hclm:applications-view";

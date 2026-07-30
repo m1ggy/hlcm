@@ -20,6 +20,7 @@ import { AvatarInitials } from "@/components/ui/avatar-initials";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { TaskProgress } from "@/components/applications/task-progress";
+import { ApplicationFlags } from "@/components/applications/application-flags";
 
 type AppCard = {
   id: string;
@@ -28,6 +29,8 @@ type AppCard = {
   client: { name: string };
   assignedUser: { name: string };
   taskProgress: { total: number; done: number };
+  readyToSubmit: boolean;
+  staleDays: number | null;
 };
 
 function KanbanCard({ card }: { card: AppCard }) {
@@ -46,6 +49,7 @@ function KanbanCard({ card }: { card: AppCard }) {
         </Link>
         <p className="text-xs text-muted-foreground">{card.client.name}</p>
         <TaskProgress total={card.taskProgress.total} done={card.taskProgress.done} />
+        <ApplicationFlags readyToSubmit={card.readyToSubmit} staleDays={card.staleDays} />
         <div className="flex items-center gap-1.5 pt-1">
           <AvatarInitials name={card.assignedUser.name} className="size-5 text-[0.6rem]" />
           <span className="text-xs text-muted-foreground">{card.assignedUser.name}</span>
