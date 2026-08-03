@@ -9,7 +9,8 @@
     "lint": "eslint",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "tsx prisma/seed.ts",
-    "prisma:studio": "prisma studio"
+    "prisma:studio": "prisma studio",
+    "migrate:uploads-to-gcs": "tsx scripts/migrate-uploads-to-gcs.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -19,6 +20,7 @@
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
+    "@google-cloud/storage": "^7.21.0",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "bcryptjs": "^3.0.3",

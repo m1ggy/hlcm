@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/table";
 import { uploadFile, deleteFile } from "@/lib/actions/files";
 import { SignPdfDialog } from "@/components/applications/sign-pdf-dialog";
+import { FileVersionHistoryDialog } from "@/components/applications/file-version-history-dialog";
 
 type FileRow = {
   id: string;
@@ -23,6 +24,8 @@ type FileRow = {
   sizeBytes: number;
   createdAt: Date;
   uploadedBy: { name: string };
+  versionCount: number;
+  isSigned: boolean;
 };
 
 function formatBytes(bytes: number) {
@@ -133,6 +136,13 @@ export function FilePool({
                     >
                       <Download className="size-3.5" />
                     </Button>
+                    <FileVersionHistoryDialog
+                      fileId={file.id}
+                      fileName={file.fileName}
+                      canEdit={canEdit}
+                      isSigned={file.isSigned}
+                      onReverted={() => router.refresh()}
+                    />
                     {canEdit && file.mimeType === "application/pdf" && (
                       <SignPdfDialog
                         fileAssetId={file.id}

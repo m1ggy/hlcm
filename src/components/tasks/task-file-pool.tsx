@@ -12,7 +12,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { uploadTaskFile, deleteTaskFile } from "@/lib/actions/files";
+import { uploadTaskFile, deleteTaskFile, listTaskFiles } from "@/lib/actions/files";
+import { FileVersionHistoryDialog } from "@/components/applications/file-version-history-dialog";
 
 type FileRow = {
   id: string;
@@ -21,6 +22,8 @@ type FileRow = {
   sizeBytes: number;
   createdAt: Date;
   uploadedBy: { name: string };
+  versionCount: number;
+  isSigned: boolean;
 };
 
 function formatBytes(bytes: number) {
@@ -126,6 +129,15 @@ export function TaskFilePool({
                     >
                       <Download className="size-3.5" />
                     </Button>
+                    <FileVersionHistoryDialog
+                      fileId={file.id}
+                      fileName={file.fileName}
+                      canEdit
+                      isSigned={file.isSigned}
+                      onReverted={() => {
+                        listTaskFiles(taskId).then(onFilesChange);
+                      }}
+                    />
                     <Button
                       variant="ghost"
                       size="icon-sm"

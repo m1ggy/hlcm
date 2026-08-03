@@ -88,6 +88,7 @@ model User {
   accessGrantsReceived            AccessGrant[]            @relation("AccessGrantUser")
   accessGrantsGiven               AccessGrant[]            @relation("AccessGrantGrantedBy")
   filesUploaded                   FileAsset[]              @relation("FileUploadedBy")
+  fileVersionsUploaded             FileVersion[]            @relation("FileVersionUploadedBy")
   documentTemplatesCreated         DocumentTemplate[]       @relation("DocumentTemplateCreatedBy")
   documentsGenerated               GeneratedDocument[]      @relation("GeneratedDocumentGeneratedBy")
   signatureProfile                 SignatureProfile?
@@ -251,6 +252,8 @@ model AccessGrant {
 // every user with case access sees these) and per-task attachments (taskId
 // set, scoped to that one task/subtask, including standalone tasks where
 // applicationId is null).
+// fileName/mimeType/sizeBytes mirror the latest FileVersion so list queries
+// don't need to join versions just to show current metadata.
 model FileAsset {
   id            String       @id @default(cuid())
   application   Application? @relation(fields: [applicationId], references: [id])
@@ -265,9 +268,33 @@ model FileAsset {
   uploadedById  String
   createdAt     DateTime     @default(now())
 
+  versions        FileVersion[]
   signatureEvents SignatureEvent[]
 
   @@map("file_assets")
+}
+
+// One GCS generation of a FileAsset's object (same storageKey, overwritten
+// in place — the bucket has Object Versioning on, so every generation is
+// still retrievable). Uploading a new version or reverting both append a
+// new row here rather than deleting anything, so history never shrinks.
+// Files with any SignatureEvent are excluded from new versions/reverts
+// (see assertNotSigned in files.ts) — a signed PDF's bytes must stay fixed.
+model FileVersion {
+  id           String   @id @default(cuid())
+  fileAsset    FileAsset @relation(fields: [fileAssetId], references: [id], onDelete: Cascade)
+  fileAssetId  String
+  version      Int
+  generation   BigInt
+  fileName     String
+  mimeType     String
+  sizeBytes    Int
+  uploadedBy   User     @relation("FileVersionUploadedBy", fields: [uploadedById], references: [id])
+  uploadedById String
+  createdAt    DateTime @default(now())
+
+  @@unique([fileAssetId, version])
+  @@map("file_versions")
 }
 
 // An uploaded merge-tag .docx (handbook, policy, etc.) admins manage. Scoped
