@@ -5,7 +5,7 @@
 // into the new bucket under the same key (so DB rows keep working
 // unchanged). Safe to re-run — skips keys that already exist in the bucket.
 //
-// Usage: UPLOAD_DIR=/path/to/old/uploads GCS_BUCKET=... GCS_CREDENTIALS_JSON=... npx tsx scripts/migrate-uploads-to-gcs.ts
+// Usage: UPLOAD_DIR=/path/to/old/uploads GCS_BUCKET=... GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json npx tsx scripts/migrate-uploads-to-gcs.ts
 import path from "path";
 import { readFile } from "fs/promises";
 import { Storage } from "@google-cloud/storage";
@@ -20,10 +20,7 @@ async function main() {
   if (!uploadDir) throw new Error("UPLOAD_DIR must point at the old local uploads directory");
   if (!bucketName) throw new Error("GCS_BUCKET env var is required");
 
-  const storage = new Storage(
-    process.env.GCS_CREDENTIALS_JSON ? { credentials: JSON.parse(process.env.GCS_CREDENTIALS_JSON) } : undefined
-  );
-  const bucket = storage.bucket(bucketName);
+  const bucket = new Storage().bucket(bucketName);
 
   const assets = await prisma.fileAsset.findMany({ select: { storageKey: true } });
   console.log(`${assets.length} file assets to check`);

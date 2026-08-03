@@ -4,22 +4,21 @@ import { Storage } from "@google-cloud/storage";
 import { scanForViruses } from "@/lib/clamav";
 
 // GCS-backed file pool. `storageKey` is an object name inside the bucket.
-// Auth: GCS_CREDENTIALS_JSON holds the full service-account key as a JSON
-// string (env var, not a mounted file — keeps the container image/volume
-// free of secrets). Falls back to Application Default Credentials if unset
-// (e.g. local dev with `gcloud auth application-default login`).
+// Auth: relies on Application Default Credentials — `new Storage()` with no
+// options reads GOOGLE_APPLICATION_CREDENTIALS (a file path to the
+// service-account key, mounted into the container — see docker-compose.yml)
+// automatically. Never pass key material through an env var directly: it
+// ends up readable via `docker inspect`/`docker compose config`, shell
+// history, and crash logs. Local dev: point GOOGLE_APPLICATION_CREDENTIALS
+// at a downloaded key file, or skip it and run
+// `gcloud auth application-default login` once instead.
 let bucket: ReturnType<Storage["bucket"]> | null = null;
 
 function getBucket() {
   if (bucket) return bucket;
   const bucketName = process.env.GCS_BUCKET;
   if (!bucketName) throw new Error("GCS_BUCKET env var is required");
-  const storage = new Storage(
-    process.env.GCS_CREDENTIALS_JSON
-      ? { credentials: JSON.parse(process.env.GCS_CREDENTIALS_JSON) }
-      : undefined
-  );
-  bucket = storage.bucket(bucketName);
+  bucket = new Storage().bucket(bucketName);
   return bucket;
 }
 

@@ -6,14 +6,21 @@
 # operator can still `docker compose build` directly on the server if needed.
 #
 # File uploads live in Google Cloud Storage, not on this box (see
-# src/lib/storage.ts) — .env.production must set GCS_BUCKET and
-# GCS_CREDENTIALS_JSON (the service-account key, as a JSON string). The
-# bucket must have Object Versioning ON (`gcloud storage buckets update
+# src/lib/storage.ts) — .env.production must set GCS_BUCKET. Auth is via a
+# service-account key file, NOT an env var (env vars leak through `docker
+# inspect`/`docker compose config`/shell history — a key file mounted
+# read-only doesn't). Steps once per droplet:
+#   1. Drop the downloaded key JSON at ./secrets/gcs-key.json next to this
+#      file (chmod 600; never commit it — it lives only on the droplet).
+#   2. Nothing else — GOOGLE_APPLICATION_CREDENTIALS below already points at
+#      where it gets mounted.
+# The bucket must have Object Versioning ON (`gcloud storage buckets update
 # gs://<bucket> --versioning`) — version history/revert (src/lib/actions/
 # files.ts) overwrites the same object name and relies on GCS keeping every
-# prior generation. The
-# hclm_uploads volume below only holds files from before that switch. One
-# time, before dropping the volume: temporarily add
+# prior generation.
+#
+# The hclm_uploads volume below only holds files from before the GCS switch.
+# One time, before dropping the volume: temporarily add
 # `volumes: [hclm_uploads:/app/storage/uploads]` to the `migrate` service
 # (it has the full node_modules incl. tsx, unlike the slim `app` image),
 # then run:
@@ -30,6 +37,8 @@ services:
     restart: unless-stopped
     env_file:
       - .env.production
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/gcs-key.json
     depends_on:
       - postgres
       - clamav
@@ -37,6 +46,7 @@ services:
       - "3000"
     volumes:
       - hclm_uploads:/app/storage/uploads
+      - ./secrets/gcs-key.json:/run/secrets/gcs-key.json:ro
 
   # One-off migration runner — never started by `up`. Deploy invokes it
   # explicitly: `docker compose --profile tools run --rm migrate`.
@@ -48,10 +58,14 @@ services:
       target: migrator
     env_file:
       - .env.production
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/gcs-key.json
     depends_on:
       - postgres
     profiles:
       - tools
+    volumes:
+      - ./secrets/gcs-key.json:/run/secrets/gcs-key.json:ro
 
   postgres:
     image: postgres:16-alpine
