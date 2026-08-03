@@ -5,12 +5,14 @@ import Link from "next/link";
 import { toast } from "sonner";
 import {
   DndContext,
+  DragOverlay,
   closestCorners,
   PointerSensor,
   useSensor,
   useSensors,
   useDroppable,
   type DragEndEvent,
+  type DragStartEvent,
 } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -33,28 +35,39 @@ type AppCard = {
   staleDays: number | null;
 };
 
+function KanbanCardBody({ card, dragging = false }: { card: AppCard; dragging?: boolean }) {
+  return (
+    <Card className={`gap-2 p-3 ${dragging ? "cursor-grabbing shadow-lg" : "cursor-grab"}`}>
+      <Link href={`/applications/${card.id}`} className="font-medium hover:underline" onClick={(e) => dragging && e.preventDefault()}>
+        {card.name}
+      </Link>
+      <p className="text-xs text-muted-foreground">{card.client.name}</p>
+      <TaskProgress total={card.taskProgress.total} done={card.taskProgress.done} />
+      <ApplicationFlags readyToSubmit={card.readyToSubmit} staleDays={card.staleDays} />
+      <div className="flex items-center gap-1.5 pt-1">
+        <AvatarInitials name={card.assignedUser.name} className="size-5 text-[0.6rem]" />
+        <span className="text-xs text-muted-foreground">{card.assignedUser.name}</span>
+      </div>
+    </Card>
+  );
+}
+
+// The sortable item stays put (as a faded placeholder) while it's the
+// active drag — a DragOverlay clone (below) is what actually renders at the
+// pointer. Without the overlay, dnd-kit's sortable transform only repositions
+// the item within its own column's layout, so it visually stalls the moment
+// the pointer crosses into a different column.
 function KanbanCard({ card }: { card: AppCard }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: card.id });
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.5 : undefined,
+    opacity: isDragging ? 0 : undefined,
   };
 
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <Card className="cursor-grab gap-2 p-3 active:cursor-grabbing">
-        <Link href={`/applications/${card.id}`} className="font-medium hover:underline" onClick={(e) => isDragging && e.preventDefault()}>
-          {card.name}
-        </Link>
-        <p className="text-xs text-muted-foreground">{card.client.name}</p>
-        <TaskProgress total={card.taskProgress.total} done={card.taskProgress.done} />
-        <ApplicationFlags readyToSubmit={card.readyToSubmit} staleDays={card.staleDays} />
-        <div className="flex items-center gap-1.5 pt-1">
-          <AvatarInitials name={card.assignedUser.name} className="size-5 text-[0.6rem]" />
-          <span className="text-xs text-muted-foreground">{card.assignedUser.name}</span>
-        </div>
-      </Card>
+      <KanbanCardBody card={card} />
     </div>
   );
 }
@@ -81,12 +94,14 @@ function KanbanColumn({ status, cards }: { status: ApplicationStatus; cards: App
 
 export function ApplicationsBoard({ applications }: { applications: AppCard[] }) {
   const [items, setItems] = useState(applications);
+  const [activeId, setActiveId] = useState<string | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
   const columns = APPLICATION_STATUSES.map((status) => ({
     status,
     cards: items.filter((a) => a.status === status),
   }));
+  const activeCard = activeId ? items.find((a) => a.id === activeId) ?? null : null;
 
   function resolveTargetStatus(overId: string): ApplicationStatus | null {
     if (overId.startsWith("column:")) return overId.replace("column:", "") as ApplicationStatus;
@@ -94,7 +109,12 @@ export function ApplicationsBoard({ applications }: { applications: AppCard[] })
     return (overCard?.status as ApplicationStatus) ?? null;
   }
 
+  function handleDragStart(event: DragStartEvent) {
+    setActiveId(String(event.active.id));
+  }
+
   function handleDragEnd(event: DragEndEvent) {
+    setActiveId(null);
     const { active, over } = event;
     if (!over) return;
 
@@ -114,12 +134,19 @@ export function ApplicationsBoard({ applications }: { applications: AppCard[] })
   }
 
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={handleDragEnd}>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCorners}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onDragCancel={() => setActiveId(null)}
+    >
       <div className="flex gap-4 overflow-x-auto pb-4">
         {columns.map((col) => (
           <KanbanColumn key={col.status} status={col.status} cards={col.cards} />
         ))}
       </div>
+      <DragOverlay>{activeCard && <KanbanCardBody card={activeCard} dragging />}</DragOverlay>
     </DndContext>
   );
 }
