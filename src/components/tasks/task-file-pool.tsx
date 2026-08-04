@@ -2,7 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Download, Trash2, Upload } from "lucide-react";
+import { Download, Loader2, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -44,6 +44,7 @@ export function TaskFilePool({
   const formRef = useRef<HTMLFormElement>(null);
   const [isPending, startTransition] = useTransition();
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -53,6 +54,7 @@ export function TaskFilePool({
       toast.error("Choose a file to upload");
       return;
     }
+    setIsUploading(true);
     startTransition(async () => {
       try {
         const asset = await uploadTaskFile(taskId, formData);
@@ -60,6 +62,8 @@ export function TaskFilePool({
         formRef.current?.reset();
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Upload failed");
+      } finally {
+        setIsUploading(false);
       }
     });
   }
@@ -87,8 +91,16 @@ export function TaskFilePool({
           required
           className="h-8 flex-1 rounded-lg border border-input bg-transparent text-sm file:mr-2 file:h-8 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground"
         />
-        <Button type="submit" size="sm" disabled={isPending}>
-          <Upload className="size-3.5" /> Upload
+        <Button type="submit" size="sm" disabled={isUploading}>
+          {isUploading ? (
+            <>
+              <Loader2 className="size-3.5 animate-spin" /> Uploading...
+            </>
+          ) : (
+            <>
+              <Upload className="size-3.5" /> Upload
+            </>
+          )}
         </Button>
       </form>
 
@@ -144,7 +156,11 @@ export function TaskFilePool({
                       disabled={isPending && deletingId === file.id}
                       onClick={() => handleDelete(file.id)}
                     >
-                      <Trash2 className="size-3.5" />
+                      {isPending && deletingId === file.id ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="size-3.5" />
+                      )}
                     </Button>
                   </div>
                 </TableCell>

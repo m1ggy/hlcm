@@ -2,7 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { History, Download, RotateCcw, Upload } from "lucide-react";
+import { History, Download, Loader2, RotateCcw, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -40,6 +40,7 @@ export function FileVersionHistoryDialog({
   const [versions, setVersions] = useState<VersionRow[] | null>(null);
   const [isPending, startTransition] = useTransition();
   const [revertingId, setRevertingId] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
 
   function handleOpenChange(next: boolean) {
@@ -59,6 +60,7 @@ export function FileVersionHistoryDialog({
       toast.error("Choose a file to upload");
       return;
     }
+    setIsUploading(true);
     startTransition(async () => {
       try {
         await uploadNewFileVersion(fileId, formData);
@@ -69,6 +71,8 @@ export function FileVersionHistoryDialog({
         toast.success("New version uploaded");
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Upload failed");
+      } finally {
+        setIsUploading(false);
       }
     });
   }
@@ -118,8 +122,16 @@ export function FileVersionHistoryDialog({
               required
               className="h-8 flex-1 rounded-lg border border-input bg-transparent text-sm file:mr-2 file:h-8 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground"
             />
-            <Button type="submit" size="sm" disabled={isPending}>
-              <Upload className="size-3.5" /> New version
+            <Button type="submit" size="sm" disabled={isUploading}>
+              {isUploading ? (
+                <>
+                  <Loader2 className="size-3.5 animate-spin" /> Uploading...
+                </>
+              ) : (
+                <>
+                  <Upload className="size-3.5" /> New version
+                </>
+              )}
             </Button>
           </form>
         )}
@@ -160,7 +172,11 @@ export function FileVersionHistoryDialog({
                     disabled={isPending && revertingId === v.id}
                     onClick={() => handleRevert(v.id)}
                   >
-                    <RotateCcw className="size-3.5" />
+                    {isPending && revertingId === v.id ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <RotateCcw className="size-3.5" />
+                    )}
                   </Button>
                 )}
               </div>
