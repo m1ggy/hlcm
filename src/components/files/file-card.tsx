@@ -10,7 +10,7 @@ import type { FileRow } from "./types";
 
 export function FileCard({ file, onInfo }: { file: FileRow; onInfo: () => void }) {
   return (
-    <Card className="relative gap-2 p-3">
+    <Card className="relative min-w-0 gap-2 p-3">
       <Button
         variant="ghost"
         size="icon-sm"
@@ -21,11 +21,11 @@ export function FileCard({ file, onInfo }: { file: FileRow; onInfo: () => void }
         <Info className="size-3.5" />
       </Button>
 
-      <div className="flex items-start gap-2.5 pr-7">
+      <div className="flex min-w-0 items-start gap-2.5 pr-7">
         <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
           <FileTypeIcon mimeType={file.mimeType} className="size-4" />
         </div>
-        <div className="min-w-0 space-y-0.5">
+        <div className="min-w-0 flex-1 space-y-0.5">
           <p className="truncate text-sm font-medium" title={file.fileName}>
             {file.fileName}
           </p>
