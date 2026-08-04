@@ -37,8 +37,8 @@ export function SignPdfDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger
         render={
-          <Button variant="ghost" size="icon-sm" title="Sign">
-            <PenLine className="size-3.5" />
+          <Button variant="outline" size="sm" title="Sign">
+            <PenLine className="size-3.5" /> Sign
           </Button>
         }
       />

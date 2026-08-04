@@ -28,6 +28,7 @@ import { listTaskNotes, addTaskNote } from "@/lib/actions/notes";
 import { listTaskFiles } from "@/lib/actions/files";
 import { TASK_STATUSES, TASK_STATUS_LABELS, TaskStatusValue } from "@/lib/task-status";
 import { Option } from "./task-types";
+import type { FileRow } from "@/components/files/types";
 
 const NONE = "__none__";
 
@@ -40,16 +41,6 @@ type AuditEntry = {
   newValue: string | null;
   createdAt: Date;
   actor: { name: string };
-};
-type FileRow = {
-  id: string;
-  fileName: string;
-  mimeType: string;
-  sizeBytes: number;
-  createdAt: Date;
-  uploadedBy: { name: string };
-  versionCount: number;
-  isSigned: boolean;
 };
 
 function toDateInputValue(date: Date | null) {
