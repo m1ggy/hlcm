@@ -117,7 +117,7 @@ export default async function ApplicationDetailPage({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-5">
         <Card className="min-w-0 lg:col-span-3">
           <CardHeader>
             <CardTitle>Checklist</CardTitle>
@@ -187,7 +187,9 @@ export default async function ApplicationDetailPage({
                 />
               </TabsContent>
               <TabsContent value="audit">
-                <AuditLogPanel auditLog={auditLog} clients={clientLookup} users={userLookup} />
+                <div className="max-h-[32rem] overflow-y-auto pr-1">
+                  <AuditLogPanel auditLog={auditLog} clients={clientLookup} users={userLookup} />
+                </div>
               </TabsContent>
             </Tabs>
           </CardContent>
