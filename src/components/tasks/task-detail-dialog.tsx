@@ -188,8 +188,8 @@ export function TaskDetailDialog({
           </SheetTitle>
         </SheetHeader>
 
-        <div className="flex min-h-0 flex-1">
-          <div className="min-w-0 flex-1 space-y-4 overflow-y-auto px-4 pb-4">
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          <div className="min-h-0 min-w-0 flex-1 overflow-y-auto px-4 pb-4 space-y-4">
             <div className="space-y-1">
               <label className="text-xs text-muted-foreground">Description</label>
               <textarea
@@ -311,7 +311,7 @@ export function TaskDetailDialog({
           </div>
         </div>
 
-          <div className="w-80 shrink-0 overflow-y-auto border-l px-4 pb-4 lg:w-96">
+          <div className="min-h-0 w-80 shrink-0 overflow-y-auto border-l px-4 pb-4 lg:w-96">
             <h3 className="sticky top-0 bg-popover pt-4 pb-3 text-sm font-medium">Activity</h3>
             <AuditLogPanel auditLog={auditLog} />
           </div>
