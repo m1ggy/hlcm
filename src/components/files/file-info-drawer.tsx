@@ -123,7 +123,14 @@ export function FileInfoDrawer({
               </Button>
               {signAction}
               {canEdit && (
-                <Button variant="destructive" size="sm" disabled={isDeleting} onClick={onDelete}>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  disabled={isDeleting}
+                  onClick={() => {
+                    if (confirm(`Delete "${file.fileName}"? This can't be undone.`)) onDelete();
+                  }}
+                >
                   {isDeleting ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
                   Delete
                 </Button>
