@@ -5,6 +5,16 @@ import { StandaloneTaskRow } from "@/components/tasks/standalone-task-row";
 import { TASK_STATUSES, TASK_STATUS_LABELS, TaskStatusValue } from "@/lib/task-status";
 import { Option, TaskUserRef } from "@/components/tasks/task-types";
 
+type Subtask = {
+  id: string;
+  label: string;
+  description: string | null;
+  status: TaskStatusValue;
+  dueDate: Date | null;
+  blockedReason: string | null;
+  assignedUser: TaskUserRef;
+};
+
 type StandaloneTask = {
   id: string;
   label: string;
@@ -15,7 +25,7 @@ type StandaloneTask = {
   recurrenceRule: string | null;
   createdById: string;
   assignedUser: TaskUserRef;
-  subtasks: { id: string }[];
+  subtasks: Subtask[];
   isOverdue: boolean;
 };
 

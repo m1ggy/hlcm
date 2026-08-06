@@ -273,6 +273,7 @@ const standaloneTaskSchema = z.object({
   assignedUserId: z.string().min(1),
   dueDate: z.string().optional(),
   recurrenceRule: z.string().optional(),
+  parentTaskId: z.string().optional(),
 });
 
 export async function createStandaloneTask(formData: FormData) {
@@ -283,7 +284,13 @@ export async function createStandaloneTask(formData: FormData) {
     assignedUserId: formData.get("assignedUserId") || session.user.id,
     dueDate: formData.get("dueDate") || undefined,
     recurrenceRule: formData.get("recurrenceRule") || undefined,
+    parentTaskId: formData.get("parentTaskId") || undefined,
   });
+
+  if (parsed.parentTaskId) {
+    const parent = await prisma.task.findUniqueOrThrow({ where: { id: parsed.parentTaskId } });
+    await assertCanEditTask(session, { applicationId: parent.applicationId, assignedUserId: parent.assignedUserId });
+  }
 
   const task = await prisma.task.create({
     data: {
@@ -291,7 +298,8 @@ export async function createStandaloneTask(formData: FormData) {
       description: parsed.description,
       assignedUserId: parsed.assignedUserId,
       dueDate: parsed.dueDate ? new Date(parsed.dueDate) : undefined,
-      recurrenceRule: parsed.recurrenceRule,
+      recurrenceRule: parsed.parentTaskId ? undefined : parsed.recurrenceRule,
+      parentTaskId: parsed.parentTaskId,
       createdById: session.user.id,
     },
   });
@@ -299,7 +307,7 @@ export async function createStandaloneTask(formData: FormData) {
   await recordAudit({
     entityType: "Task",
     entityId: task.id,
-    action: "create_standalone",
+    action: parsed.parentTaskId ? "create_subtask" : "create_standalone",
     actorId: session.user.id,
   });
 
