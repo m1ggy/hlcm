@@ -13,7 +13,12 @@ type AuditEntry = {
 
 function stringify(value: unknown): string | undefined {
   if (value === undefined || value === null) return undefined;
-  return typeof value === "string" ? value : JSON.stringify(value);
+  if (typeof value === "string") return value;
+  // Store dates as plain ISO strings, not JSON.stringify's quoted form —
+  // formatAuditValue parses this back with `new Date(value)`, which chokes
+  // on a leading/trailing quote character.
+  if (value instanceof Date) return value.toISOString();
+  return JSON.stringify(value);
 }
 
 /**

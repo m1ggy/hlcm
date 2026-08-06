@@ -16,6 +16,7 @@ import { markNotificationRead, markAllNotificationsRead } from "@/lib/actions/no
 const ENTITY_LINK: Record<string, (id: string) => string> = {
   Task: () => "/tasks",
   Application: (id) => `/applications/${id}`,
+  Client: (id) => `/clients/${id}`,
 };
 
 type NotificationRow = {

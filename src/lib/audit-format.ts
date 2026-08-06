@@ -14,6 +14,15 @@ const FIELD_LABELS: Record<string, string> = {
   reviewerUserId: "Reviewer",
   mfaEnabled: "MFA",
   active: "Active",
+  contactInfo: "Contact info",
+  address: "Address",
+  businessName: "Business name",
+  businessPhone: "Business phone",
+  businessEmail: "Business email",
+  ownerName: "Owner name",
+  ownerEmail: "Owner email",
+  ownerPhone: "Owner phone",
+  ownerDateOfBirth: "Owner date of birth",
 };
 
 const ACTION_VERBS: Record<string, string> = {
@@ -119,7 +128,7 @@ export function formatAuditValue(
   }
   if (field === "clientId") return lookups.clients?.[value] ?? value;
   if (field === "assignedUserId" || field === "reviewerUserId") return lookups.users?.[value] ?? value;
-  if (field === "dueDate" || field === "createdAt" || field === "updatedAt") {
+  if (field === "dueDate" || field === "createdAt" || field === "updatedAt" || field === "ownerDateOfBirth") {
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString();
   }

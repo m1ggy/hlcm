@@ -124,12 +124,27 @@ model Client {
   name        String
   contactInfo String?
   address     String?
+
+  // Business details — the licensed entity itself.
+  businessName  String?
+  businessPhone String?
+  businessEmail String?
+
+  // Owner details — the individual who owns/operates the business. DOB
+  // matters here (not on the business) since licensing bodies run
+  // background checks against the owner, not the entity.
+  ownerName        String?
+  ownerEmail       String?
+  ownerPhone       String?
+  ownerDateOfBirth DateTime?
+
   createdBy   User     @relation("ClientCreatedBy", fields: [createdById], references: [id])
   createdById String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   applications Application[]
+  notes        Note[]
 
   @@map("clients")
 }
@@ -487,15 +502,18 @@ model Notification {
 // discussing a case. @mentions are resolved client-side into explicit user
 // ids (not parsed from text server-side) so notification delivery never
 // depends on exact name matching.
-// Either applicationId or taskId is set (not both) — Application comments
-// are the case-level discussion thread, Task comments are notes on one
-// checklist item or standalone task specifically.
+// Exactly one of applicationId/taskId/clientId is set — Application
+// comments are the case-level discussion thread, Task comments are notes on
+// one checklist item or standalone task, Client comments are general notes
+// on that client (not tied to any one case).
 model Note {
   id            String       @id @default(cuid())
   application   Application? @relation(fields: [applicationId], references: [id])
   applicationId String?
   task          Task?        @relation(fields: [taskId], references: [id])
   taskId        String?
+  client        Client?      @relation(fields: [clientId], references: [id])
+  clientId      String?
   body          String
   author        User         @relation("NoteAuthor", fields: [authorId], references: [id])
   authorId      String

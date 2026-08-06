@@ -6,12 +6,40 @@ import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/rbac";
 import { recordAudit, recordFieldChanges } from "@/lib/audit";
 
-const clientSchema = z.object({
-  projectId: z.string().min(1, "Project is required"),
+const clientDetailFields = {
   name: z.string().min(1, "Name is required"),
   contactInfo: z.string().optional(),
   address: z.string().optional(),
+  businessName: z.string().optional(),
+  businessPhone: z.string().optional(),
+  businessEmail: z.string().optional(),
+  ownerName: z.string().optional(),
+  ownerEmail: z.string().optional(),
+  ownerPhone: z.string().optional(),
+  ownerDateOfBirth: z.string().optional(),
+};
+
+const createClientSchema = z.object({
+  projectId: z.string().min(1, "Project is required"),
+  ...clientDetailFields,
 });
+
+const updateClientSchema = z.object(clientDetailFields);
+
+function readClientFields(formData: FormData) {
+  return {
+    name: formData.get("name"),
+    contactInfo: formData.get("contactInfo") || undefined,
+    address: formData.get("address") || undefined,
+    businessName: formData.get("businessName") || undefined,
+    businessPhone: formData.get("businessPhone") || undefined,
+    businessEmail: formData.get("businessEmail") || undefined,
+    ownerName: formData.get("ownerName") || undefined,
+    ownerEmail: formData.get("ownerEmail") || undefined,
+    ownerPhone: formData.get("ownerPhone") || undefined,
+    ownerDateOfBirth: formData.get("ownerDateOfBirth") || undefined,
+  };
+}
 
 // Client records aren't owned/scoped — every internal role needs to find a
 // client to open a new Application against them. Only the external CLIENT
@@ -23,20 +51,41 @@ export async function listClients() {
 
 export async function getClient(id: string) {
   await requireRole(["ADMIN", "MANAGER", "STAFF"]);
-  return prisma.client.findUnique({ where: { id } });
+  return prisma.client.findUniqueOrThrow({
+    where: { id },
+    include: {
+      project: true,
+      applications: {
+        select: { id: true, name: true, status: true },
+        orderBy: { createdAt: "desc" },
+      },
+    },
+  });
+}
+
+export async function getClientAuditLog(clientId: string) {
+  await requireRole(["ADMIN", "MANAGER", "STAFF"]);
+  return prisma.auditLog.findMany({
+    where: { entityType: "Client", entityId: clientId },
+    include: { actor: { select: { name: true, email: true } } },
+    orderBy: { createdAt: "desc" },
+  });
 }
 
 export async function createClient(formData: FormData) {
   const session = await requireRole(["ADMIN", "MANAGER", "STAFF"]);
-  const parsed = clientSchema.parse({
+  const parsed = createClientSchema.parse({
     projectId: formData.get("projectId"),
-    name: formData.get("name"),
-    contactInfo: formData.get("contactInfo") || undefined,
-    address: formData.get("address") || undefined,
+    ...readClientFields(formData),
   });
+  const { ownerDateOfBirth, ...rest } = parsed;
 
   const client = await prisma.client.create({
-    data: { ...parsed, createdById: session.user.id },
+    data: {
+      ...rest,
+      ownerDateOfBirth: ownerDateOfBirth ? new Date(ownerDateOfBirth) : undefined,
+      createdById: session.user.id,
+    },
   });
 
   await recordAudit({
@@ -53,14 +102,17 @@ export async function createClient(formData: FormData) {
 
 export async function updateClient(id: string, formData: FormData) {
   const session = await requireRole(["ADMIN", "MANAGER", "STAFF"]);
-  const parsed = clientSchema.parse({
-    name: formData.get("name"),
-    contactInfo: formData.get("contactInfo") || undefined,
-    address: formData.get("address") || undefined,
-  });
+  const parsed = updateClientSchema.parse(readClientFields(formData));
+  const { ownerDateOfBirth, ...rest } = parsed;
 
   const before = await prisma.client.findUniqueOrThrow({ where: { id } });
-  const client = await prisma.client.update({ where: { id }, data: parsed });
+  const client = await prisma.client.update({
+    where: { id },
+    data: {
+      ...rest,
+      ownerDateOfBirth: ownerDateOfBirth ? new Date(ownerDateOfBirth) : null,
+    },
+  });
 
   await recordFieldChanges({
     entityType: "Client",
@@ -72,5 +124,6 @@ export async function updateClient(id: string, formData: FormData) {
   });
 
   revalidatePath("/clients");
+  revalidatePath(`/clients/${id}`);
   return client;
 }
