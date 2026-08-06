@@ -87,7 +87,7 @@ export function NotificationBell() {
     <DropdownMenu open={open} onOpenChange={handleOpenChange}>
       <DropdownMenuTrigger
         render={
-          <Button variant="ghost" size="icon-sm" className="relative">
+          <Button variant="ghost" size="icon-sm" className="relative" data-tour="notifications">
             <Bell className="size-4" />
             {unread > 0 && (
               <Badge variant="destructive" className="absolute -top-1 -right-1 h-4 min-w-4 px-1">

@@ -86,7 +86,7 @@ export function ApplicationsViewSwitcher({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-1 rounded-lg bg-muted p-1 text-xs w-fit">
+        <div className="flex items-center gap-1 rounded-lg bg-muted p-1 text-xs w-fit" data-tour="view-switcher">
           <Button variant={view === "table" ? "default" : "ghost"} size="xs" onClick={() => changeView("table")}>
             <List className="size-3.5" /> Table
           </Button>
@@ -99,7 +99,7 @@ export function ApplicationsViewSwitcher({
         </span>
       </div>
 
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap gap-1.5" data-tour="filter-chips">
         {chips.map((chip) => (
           <button
             key={chip.key}

@@ -33,6 +33,7 @@ export function SearchBox() {
         if (q) router.push(`/search?q=${encodeURIComponent(q.toString())}`);
       }}
       className="relative w-full max-w-xs"
+      data-tour="search"
     >
       <Search className="absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
       <Input ref={inputRef} name="q" placeholder="Search... (/)" className="h-8 pl-7" />

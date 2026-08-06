@@ -63,7 +63,7 @@ export function NewApplicationDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button>New Application</Button>} />
+      <DialogTrigger render={<Button data-tour="new-application">New Application</Button>} />
       <DialogContent>
         <DialogHeader>
           <DialogTitle>New Application</DialogTitle>

@@ -128,3 +128,66 @@
     @apply font-sans;
   }
 }
+
+/* Guided product tour (driver.js) — themed to match the app's own popover
+   tokens instead of the library's default light-only styling, so it looks
+   native in both themes without a separate light/dark block here. */
+.hclm-tour-popover.driver-popover {
+  background-color: var(--popover);
+  color: var(--popover-foreground);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 12px 32px -8px rgb(0 0 0 / 0.25);
+  padding: 16px;
+  max-width: 320px;
+  font-family: var(--font-sans);
+}
+.hclm-tour-popover .driver-popover-title {
+  font-family: var(--font-heading);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--popover-foreground);
+}
+.hclm-tour-popover .driver-popover-description {
+  color: var(--muted-foreground);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+.hclm-tour-popover .driver-popover-progress-text {
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+}
+.hclm-tour-popover .driver-popover-close-btn {
+  color: var(--muted-foreground);
+}
+.hclm-tour-popover .driver-popover-close-btn:hover {
+  color: var(--popover-foreground);
+}
+.hclm-tour-popover .driver-popover-footer-btn {
+  background-color: var(--secondary);
+  color: var(--secondary-foreground);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+.hclm-tour-popover .driver-popover-footer-btn:hover {
+  background-color: var(--accent);
+  color: var(--accent-foreground);
+}
+.hclm-tour-popover .driver-popover-next-btn,
+.hclm-tour-popover .driver-popover-done-btn {
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+  border-color: var(--primary);
+}
+.hclm-tour-popover .driver-popover-next-btn:hover,
+.hclm-tour-popover .driver-popover-done-btn:hover {
+  background-color: var(--primary);
+  opacity: 0.9;
+}
+.hclm-tour-popover .driver-popover-arrow-side-left { border-right-color: var(--popover); }
+.hclm-tour-popover .driver-popover-arrow-side-right { border-left-color: var(--popover); }
+.hclm-tour-popover .driver-popover-arrow-side-top { border-bottom-color: var(--popover); }
+.hclm-tour-popover .driver-popover-arrow-side-bottom { border-top-color: var(--popover); }
