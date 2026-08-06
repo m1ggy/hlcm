@@ -59,7 +59,7 @@ async function main() {
     name: string;
     clientIdx: number;
     status: "DRAFT" | "INFO_GATHERING" | "SUBMITTED" | "UNDER_AGENCY_REVIEW" | "NEEDS_REVISION" | "APPROVED";
-    assignee: string;
+    assignee: "admin" | "maria" | "james";
   }[] = [
     { name: "Riverbend House 3 — CILA Renewal", clientIdx: 0, status: "UNDER_AGENCY_REVIEW", assignee: "maria" },
     { name: "Riverbend House 5 — CILA Renewal", clientIdx: 0, status: "INFO_GATHERING", assignee: "maria" },
