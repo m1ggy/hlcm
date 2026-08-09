@@ -9,8 +9,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-export async function MyTimeLog() {
-  const entries = await listMyTimeEntries(10);
+export async function MyTimeLog({ limit = 25 }: { limit?: number }) {
+  const entries = await listMyTimeEntries(limit);
 
   return (
     <Table>

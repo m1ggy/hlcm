@@ -1,10 +1,10 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
+import { ArrowUpRight } from "lucide-react";
 import { listUsers } from "@/lib/actions/users";
 import { NewUserDialog } from "@/components/admin/new-user-dialog";
 import { RateCell } from "@/components/admin/rate-cell";
-import { TimesheetReport } from "@/components/admin/timesheet-report";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ForbiddenError } from "@/lib/rbac";
 import {
   Table,
@@ -27,7 +27,16 @@ export default async function UsersPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Users</h1>
+        <div>
+          <h1 className="text-2xl font-semibold">Users</h1>
+          <p className="text-muted-foreground">
+            Set hourly rates here — for timesheets and payroll exports, see{" "}
+            <Link href="/time" className="inline-flex items-center gap-0.5 underline">
+              Time <ArrowUpRight className="size-3" />
+            </Link>
+            .
+          </p>
+        </div>
         <NewUserDialog />
       </div>
       <Table>
@@ -58,15 +67,6 @@ export default async function UsersPage() {
           ))}
         </TableBody>
       </Table>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Timesheet report</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <TimesheetReport users={users.map((u) => ({ id: u.id, name: u.name }))} />
-        </CardContent>
-      </Card>
     </div>
   );
 }
