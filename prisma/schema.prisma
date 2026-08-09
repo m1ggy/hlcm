@@ -71,6 +71,7 @@ model User {
   mfaSecret    String?
   mfaEnabled   Boolean  @default(false)
   active       Boolean  @default(true)
+  hourlyRate   Float?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -95,8 +96,25 @@ model User {
   signatureEvents                  SignatureEvent[]         @relation("SignatureEventSignedBy")
   notifications                    Notification[]
   notesAuthored                    Note[]                   @relation("NoteAuthor")
+  timeEntries                      TimeEntry[]
 
   @@map("users")
+}
+
+// One row per clock-in/clock-out session. `clockOut` stays null while the
+// user is on the clock — that's how we find "currently active" sessions and
+// how we stop a second clock-in from stacking on top of an open one.
+model TimeEntry {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  clockIn   DateTime
+  clockOut  DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([userId, clockIn])
+  @@map("time_entries")
 }
 
 // A Project is an internal engagement/case grouping — independent of which

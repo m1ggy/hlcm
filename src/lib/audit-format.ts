@@ -23,6 +23,7 @@ const FIELD_LABELS: Record<string, string> = {
   ownerEmail: "Owner email",
   ownerPhone: "Owner phone",
   ownerDateOfBirth: "Owner date of birth",
+  hourlyRate: "Hourly rate",
 };
 
 const ACTION_VERBS: Record<string, string> = {
@@ -32,6 +33,9 @@ const ACTION_VERBS: Record<string, string> = {
   update: "Updated",
   delete: "Deleted",
   deactivate: "Deactivated",
+  set_rate: "Set hourly rate",
+  clock_in: "Clocked in",
+  clock_out: "Clocked out",
   change_password: "Changed password",
   enable_mfa: "Enabled MFA",
   disable_mfa: "Disabled MFA",
@@ -131,6 +135,10 @@ export function formatAuditValue(
   if (field === "dueDate" || field === "createdAt" || field === "updatedAt" || field === "ownerDateOfBirth") {
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString();
+  }
+  if (field === "hourlyRate") {
+    const rate = Number(value);
+    return Number.isNaN(rate) ? value : `$${rate.toFixed(2)}/hr`;
   }
   return value;
 }

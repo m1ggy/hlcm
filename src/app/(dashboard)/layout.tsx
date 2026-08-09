@@ -6,9 +6,11 @@ import { SearchBox } from "@/components/search-box";
 import { CommandPalette } from "@/components/command-palette";
 import { GlobalShortcuts } from "@/components/global-shortcuts";
 import { ProductTour } from "@/components/tour/product-tour";
+import { TimeClockWidget } from "@/components/time-clock/time-clock-widget";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { BookOpen } from "lucide-react";
+import { getMyActiveEntry } from "@/lib/actions/time-entries";
 
 export default async function DashboardLayout({
   children,
@@ -17,6 +19,7 @@ export default async function DashboardLayout({
 }) {
   const session = await auth();
   if (session?.user?.role === "CLIENT") redirect("/portal");
+  const activeEntry = await getMyActiveEntry();
 
   return (
     <SidebarProvider>
@@ -28,6 +31,7 @@ export default async function DashboardLayout({
             <SearchBox />
           </div>
           <div className="flex items-center gap-1">
+            <TimeClockWidget initialClockIn={activeEntry ? activeEntry.clockIn.toISOString() : null} />
             <Button variant="ghost" size="sm" nativeButton={false} render={<a href="/handbook" target="_blank" rel="noopener noreferrer" />}>
               <BookOpen className="size-3.5" /> Handbook
             </Button>

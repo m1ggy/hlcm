@@ -1,7 +1,10 @@
 import { notFound } from "next/navigation";
 import { listUsers } from "@/lib/actions/users";
 import { NewUserDialog } from "@/components/admin/new-user-dialog";
+import { RateCell } from "@/components/admin/rate-cell";
+import { TimesheetReport } from "@/components/admin/timesheet-report";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ForbiddenError } from "@/lib/rbac";
 import {
   Table,
@@ -34,6 +37,7 @@ export default async function UsersPage() {
             <TableHead>Email</TableHead>
             <TableHead>Role</TableHead>
             <TableHead>Status</TableHead>
+            <TableHead>Rate</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -47,10 +51,22 @@ export default async function UsersPage() {
                   {user.active ? "Active" : "Deactivated"}
                 </Badge>
               </TableCell>
+              <TableCell>
+                <RateCell userId={user.id} initialRate={user.hourlyRate} />
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>
       </Table>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Timesheet report</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <TimesheetReport users={users.map((u) => ({ id: u.id, name: u.name }))} />
+        </CardContent>
+      </Card>
     </div>
   );
 }

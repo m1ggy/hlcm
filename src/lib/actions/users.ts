@@ -20,8 +20,40 @@ export async function listUsers() {
   await requireRole(["ADMIN"]);
   return prisma.user.findMany({
     orderBy: { name: "asc" },
-    select: { id: true, name: true, email: true, role: true, active: true, mfaEnabled: true },
+    select: { id: true, name: true, email: true, role: true, active: true, mfaEnabled: true, hourlyRate: true },
   });
+}
+
+const rateSchema = z.object({
+  userId: z.string().min(1),
+  hourlyRate: z.coerce.number().min(0).max(1000).nullable(),
+});
+
+export async function setHourlyRate(input: { userId: string; hourlyRate: number | null }) {
+  const session = await requireRole(["ADMIN"]);
+  const parsed = rateSchema.parse(input);
+
+  const before = await prisma.user.findUniqueOrThrow({
+    where: { id: parsed.userId },
+    select: { hourlyRate: true },
+  });
+  const user = await prisma.user.update({
+    where: { id: parsed.userId },
+    data: { hourlyRate: parsed.hourlyRate },
+  });
+
+  await recordAudit({
+    entityType: "User",
+    entityId: parsed.userId,
+    action: "set_rate",
+    actorId: session.user.id,
+    field: "hourlyRate",
+    oldValue: before.hourlyRate,
+    newValue: parsed.hourlyRate,
+  });
+
+  revalidatePath("/admin/users");
+  return user;
 }
 
 export async function createUser(formData: FormData) {
