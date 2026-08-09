@@ -13,6 +13,7 @@ import { listApplicableTemplates, listGeneratedDocuments } from "@/lib/actions/g
 import { getMySignatureProfile } from "@/lib/actions/signatures";
 import { listNotes } from "@/lib/actions/notes";
 import { ApplicationPropertiesTable } from "@/components/applications/application-properties-table";
+import { ClientSummaryCard } from "@/components/applications/client-summary-card";
 import { NotesPanel } from "@/components/applications/notes-panel";
 import { RecentApplicationTracker } from "@/components/applications/recent-application-tracker";
 import { FavoriteStar } from "@/components/applications/favorite-star";
@@ -136,7 +137,9 @@ export default async function ApplicationDetailPage({
           </CardContent>
         </Card>
 
-        <Card className="lg:col-span-2 min-w-0">
+        <div className="min-w-0 space-y-6 lg:col-span-2">
+        <ClientSummaryCard client={application.client} />
+        <Card className="min-w-0">
           <CardContent className="min-w-0">
             <Tabs defaultValue="details" orientation="horizontal" className="w-full">
               <TabsList className="w-full">
@@ -194,6 +197,7 @@ export default async function ApplicationDetailPage({
             </Tabs>
           </CardContent>
         </Card>
+        </div>
       </div>
     </div>
   );
