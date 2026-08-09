@@ -24,6 +24,8 @@ const FIELD_LABELS: Record<string, string> = {
   ownerPhone: "Owner phone",
   ownerDateOfBirth: "Owner date of birth",
   hourlyRate: "Hourly rate",
+  email: "Email",
+  role: "Role",
 };
 
 const ACTION_VERBS: Record<string, string> = {

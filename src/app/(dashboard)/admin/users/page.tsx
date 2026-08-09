@@ -1,8 +1,10 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
+import { auth } from "@/auth";
 import { listUsers } from "@/lib/actions/users";
 import { NewUserDialog } from "@/components/admin/new-user-dialog";
+import { EditUserDialog } from "@/components/admin/edit-user-dialog";
 import { RateCell } from "@/components/admin/rate-cell";
 import { Badge } from "@/components/ui/badge";
 import { ForbiddenError } from "@/lib/rbac";
@@ -16,6 +18,7 @@ import {
 } from "@/components/ui/table";
 
 export default async function UsersPage() {
+  const session = await auth();
   let users;
   try {
     users = await listUsers();
@@ -47,6 +50,7 @@ export default async function UsersPage() {
             <TableHead>Role</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Rate</TableHead>
+            <TableHead />
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -62,6 +66,9 @@ export default async function UsersPage() {
               </TableCell>
               <TableCell>
                 <RateCell userId={user.id} initialRate={user.hourlyRate} />
+              </TableCell>
+              <TableCell>
+                <EditUserDialog user={user} isSelf={user.id === session?.user?.id} />
               </TableCell>
             </TableRow>
           ))}
