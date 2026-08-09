@@ -22,6 +22,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { getTimesheetTotals } from "@/lib/actions/time-entries";
+import { payUserViaWise } from "@/lib/actions/wise";
 import { formatDuration, formatMoney, type TimesheetTotal } from "@/lib/time-entries";
 
 function startOfMonth() {
@@ -32,12 +33,33 @@ function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
-export function TimesheetReport({ users }: { users: { id: string; name: string }[] }) {
+export function TimesheetReport({ users, canPay = false }: { users: { id: string; name: string }[]; canPay?: boolean }) {
   const [userId, setUserId] = useState("all");
   const [from, setFrom] = useState(startOfMonth());
   const [to, setTo] = useState(today());
   const [totals, setTotals] = useState<TimesheetTotal[] | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [payStatus, setPayStatus] = useState<Record<string, "paying" | "paid">>({});
+  const [, startPaying] = useTransition();
+
+  function handlePay(payUserId: string) {
+    setPayStatus((s) => ({ ...s, [payUserId]: "paying" }));
+    startPaying(async () => {
+      try {
+        const toEnd = new Date(`${to}T23:59:59.999`);
+        await payUserViaWise({ userId: payUserId, from: new Date(`${from}T00:00:00`), to: toEnd });
+        setPayStatus((s) => ({ ...s, [payUserId]: "paid" }));
+        toast.success("Payout sent via Wise");
+      } catch (error) {
+        setPayStatus((s) => {
+          const next = { ...s };
+          delete next[payUserId];
+          return next;
+        });
+        toast.error(error instanceof Error ? error.message : "Payout failed");
+      }
+    });
+  }
 
   function pdfUrl() {
     const params = new URLSearchParams({ from, to });
@@ -115,6 +137,7 @@ export function TimesheetReport({ users }: { users: { id: string; name: string }
               <TableHead>Rate</TableHead>
               <TableHead>Hours</TableHead>
               <TableHead>Total pay</TableHead>
+              {canPay && <TableHead>Payout</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -129,11 +152,31 @@ export function TimesheetReport({ users }: { users: { id: string; name: string }
                 <TableCell>{t.hourlyRate != null ? `${formatMoney(t.hourlyRate)}/hr` : "—"}</TableCell>
                 <TableCell>{formatDuration(t.hours)}</TableCell>
                 <TableCell>{t.pay != null ? formatMoney(t.pay) : "—"}</TableCell>
+                {canPay && (
+                  <TableCell>
+                    {payStatus[t.userId] === "paid" ? (
+                      <span className="text-xs text-muted-foreground">Sent</span>
+                    ) : (
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        disabled={!t.pay || t.hours <= 0 || payStatus[t.userId] === "paying"}
+                        onClick={() => handlePay(t.userId)}
+                      >
+                        {payStatus[t.userId] === "paying" ? (
+                          <Loader2 className="size-3 animate-spin" />
+                        ) : (
+                          "Pay via Wise"
+                        )}
+                      </Button>
+                    )}
+                  </TableCell>
+                )}
               </TableRow>
             ))}
             {totals.length === 0 && (
               <TableRow>
-                <TableCell colSpan={4} className="text-center text-muted-foreground">
+                <TableCell colSpan={canPay ? 5 : 4} className="text-center text-muted-foreground">
                   No sessions in this range.
                 </TableCell>
               </TableRow>
@@ -144,6 +187,7 @@ export function TimesheetReport({ users }: { users: { id: string; name: string }
                 <TableCell />
                 <TableCell className="font-medium">{formatDuration(grandHours)}</TableCell>
                 <TableCell className="font-medium">{formatMoney(grandPay)}</TableCell>
+                {canPay && <TableCell />}
               </TableRow>
             )}
           </TableBody>

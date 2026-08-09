@@ -97,8 +97,60 @@ model User {
   notifications                    Notification[]
   notesAuthored                    Note[]                   @relation("NoteAuthor")
   timeEntries                      TimeEntry[]
+  wiseRecipient                    WiseRecipient?
+  wisePayoutsReceived              WiseTransaction[]        @relation("WiseTransactionPayee")
+  wisePayoutsInitiated             WiseTransaction[]        @relation("WiseTransactionInitiatedBy")
 
   @@map("users")
+}
+
+// A user's saved Wise payout account. `fields` holds whatever Wise's
+// dynamic /account-requirements schema asked for that currency (routing +
+// account number for USD, IFSC for INR, IBAN for PKR, etc.) — we don't
+// hardcode a field set per country since Wise's own requirements are the
+// source of truth and shift over time. `wiseAccountId` is the recipient
+// account id Wise returned when we registered it; transfers are created
+// against that id, not the raw fields, so this stays a thin cache.
+model WiseRecipient {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id])
+  currency          String
+  accountHolderName String
+  legalType         String
+  wiseAccountId     String
+  fields            Json
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("wise_recipients")
+}
+
+// One row per payout attempt through Wise — kept even when a transfer fails
+// partway (status reflects how far it got) so a re-pay attempt for the same
+// period is a deliberate admin action, not something that silently double-pays.
+model WiseTransaction {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation("WiseTransactionPayee", fields: [userId], references: [id])
+  initiatedById   String
+  initiatedBy     User     @relation("WiseTransactionInitiatedBy", fields: [initiatedById], references: [id])
+  periodFrom      DateTime
+  periodTo        DateTime
+  hours           Float
+  sourceCurrency  String
+  sourceAmount    Float
+  targetCurrency  String
+  targetAmount    Float
+  wiseQuoteId     String
+  wiseTransferId  String?
+  status          String
+  failureReason   String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([userId])
+  @@map("wise_transactions")
 }
 
 // One row per clock-in/clock-out session. `clockOut` stays null while the

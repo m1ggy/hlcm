@@ -36,6 +36,8 @@ const ACTION_VERBS: Record<string, string> = {
   set_rate: "Set hourly rate",
   clock_in: "Clocked in",
   clock_out: "Clocked out",
+  save: "Saved",
+  pay: "Paid via Wise",
   change_password: "Changed password",
   enable_mfa: "Enabled MFA",
   disable_mfa: "Disabled MFA",

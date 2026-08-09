@@ -2,12 +2,14 @@ import { auth } from "@/auth";
 import { listAssignableUsers } from "@/lib/actions/applications";
 import { MyTimeLog } from "@/components/time-clock/my-time-log";
 import { TimesheetReport } from "@/components/time-clock/timesheet-report";
+import { RecentPayouts } from "@/components/wise/recent-payouts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default async function TimePage() {
   const session = await auth();
   const role = session?.user?.role;
   const canSeeAllUsers = role === "ADMIN" || role === "MANAGER";
+  const canPay = role === "ADMIN";
 
   const users = canSeeAllUsers ? await listAssignableUsers() : [];
 
@@ -33,7 +35,18 @@ export default async function TimePage() {
             <CardTitle>All users</CardTitle>
           </CardHeader>
           <CardContent>
-            <TimesheetReport users={users.map((u) => ({ id: u.id, name: u.name }))} />
+            <TimesheetReport users={users.map((u) => ({ id: u.id, name: u.name }))} canPay={canPay} />
+          </CardContent>
+        </Card>
+      )}
+
+      {canPay && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Recent payouts</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <RecentPayouts />
           </CardContent>
         </Card>
       )}
