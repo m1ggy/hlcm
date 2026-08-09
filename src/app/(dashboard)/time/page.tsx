@@ -20,7 +20,7 @@ export default async function TimePage() {
         <p className="text-muted-foreground">Clock in and out from the header — sessions land here.</p>
       </div>
 
-      <Card>
+      <Card data-tour="my-time">
         <CardHeader>
           <CardTitle>My Time</CardTitle>
         </CardHeader>
@@ -30,7 +30,7 @@ export default async function TimePage() {
       </Card>
 
       {canSeeAllUsers && (
-        <Card>
+        <Card data-tour="all-users-time">
           <CardHeader>
             <CardTitle>All users</CardTitle>
           </CardHeader>
@@ -41,7 +41,7 @@ export default async function TimePage() {
       )}
 
       {canPay && (
-        <Card>
+        <Card data-tour="recent-payouts">
           <CardHeader>
             <CardTitle>Recent payouts</CardTitle>
           </CardHeader>

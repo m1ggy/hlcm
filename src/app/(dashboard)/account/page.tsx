@@ -50,7 +50,7 @@ export default async function AccountPage() {
       </Card>
       </div>
 
-      <Card>
+      <Card data-tour="payout-details">
         <CardHeader>
           <CardTitle>Payout details</CardTitle>
         </CardHeader>

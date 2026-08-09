@@ -32,10 +32,16 @@ export default async function DashboardLayout({
           </div>
           <div className="flex items-center gap-1">
             <TimeClockWidget initialClockIn={activeEntry ? activeEntry.clockIn.toISOString() : null} />
-            <Button variant="ghost" size="sm" nativeButton={false} render={<a href="/handbook" target="_blank" rel="noopener noreferrer" />}>
+            <Button
+              variant="ghost"
+              size="sm"
+              nativeButton={false}
+              data-tour="handbook-link"
+              render={<a href="/handbook" target="_blank" rel="noopener noreferrer" />}
+            >
               <BookOpen className="size-3.5" /> Handbook
             </Button>
-            <ProductTour />
+            <ProductTour role={session?.user?.role} />
             <NotificationBell />
           </div>
         </header>
