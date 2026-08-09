@@ -120,7 +120,7 @@ export function NewDocumentTemplateDialog({ licenseTypes }: { licenseTypes: Lice
         if (!next) reset();
       }}
     >
-      <DialogTrigger render={<Button>New Document Template</Button>} />
+      <DialogTrigger render={<Button data-tour="new-document-template">New Document Template</Button>} />
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>New Document Template</DialogTitle>

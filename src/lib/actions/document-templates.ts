@@ -14,7 +14,11 @@ export async function listDocumentTemplates() {
   await requireRole(["ADMIN", "MANAGER", "STAFF"]);
   return prisma.documentTemplate.findMany({
     where: { active: true },
-    include: { licenseTypeTemplate: { select: { name: true } }, fields: true },
+    include: {
+      licenseTypeTemplate: { select: { name: true } },
+      fields: { orderBy: { sortOrder: "asc" } },
+      _count: { select: { generatedDocuments: true } },
+    },
     orderBy: { name: "asc" },
   });
 }

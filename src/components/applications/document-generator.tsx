@@ -63,7 +63,17 @@ export function DocumentGenerator({
   return (
     <div className="space-y-3 rounded-lg border p-3">
       <div className="space-y-1">
-        <Label>Template</Label>
+        <div className="flex items-center justify-between">
+          <Label>Template</Label>
+          {template && (
+            <a
+              href={`/api/document-templates/${template.id}`}
+              className="text-xs text-muted-foreground hover:text-foreground hover:underline"
+            >
+              View original
+            </a>
+          )}
+        </div>
         <Select
           items={Object.fromEntries(templates.map((t) => [t.id, t.name]))}
           value={templateId}

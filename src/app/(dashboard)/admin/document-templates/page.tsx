@@ -1,7 +1,10 @@
 import { notFound } from "next/navigation";
+import { auth } from "@/auth";
 import { listDocumentTemplates } from "@/lib/actions/document-templates";
 import { listLicenseTypes } from "@/lib/actions/license-types";
 import { NewDocumentTemplateDialog } from "@/components/admin/new-document-template-dialog";
+import { DocumentTemplateRowActions } from "@/components/admin/document-template-row-actions";
+import { Badge } from "@/components/ui/badge";
 import { ForbiddenError } from "@/lib/rbac";
 import {
   Table,
@@ -13,6 +16,9 @@ import {
 } from "@/components/ui/table";
 
 export default async function DocumentTemplatesPage() {
+  const session = await auth();
+  const canManage = session?.user?.role === "ADMIN";
+
   let templates, licenseTypes;
   try {
     [templates, licenseTypes] = await Promise.all([listDocumentTemplates(), listLicenseTypes()]);
@@ -24,7 +30,13 @@ export default async function DocumentTemplatesPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Document Templates</h1>
+        <div>
+          <h1 className="text-2xl font-semibold">Document Templates</h1>
+          <p className="text-muted-foreground">
+            Upload a .docx with {"{merge_tags}"} — staff fill in the rest and generate it from an
+            Application&apos;s Documents tab.
+          </p>
+        </div>
         <NewDocumentTemplateDialog licenseTypes={licenseTypes} />
       </div>
       <Table>
@@ -33,22 +45,44 @@ export default async function DocumentTemplatesPage() {
             <TableHead>Name</TableHead>
             <TableHead>Applies To</TableHead>
             <TableHead>Fields</TableHead>
-            <TableHead>File</TableHead>
+            <TableHead>Used</TableHead>
+            <TableHead />
           </TableRow>
         </TableHeader>
         <TableBody>
           {templates.map((t) => (
             <TableRow key={t.id}>
-              <TableCell className="font-medium">{t.name}</TableCell>
-              <TableCell>{t.licenseTypeTemplate?.name ?? "Any license type"}</TableCell>
-              <TableCell className="text-muted-foreground">{t.fields.length}</TableCell>
-              <TableCell className="text-muted-foreground">{t.fileName}</TableCell>
+              <TableCell>
+                <div className="font-medium">{t.name}</div>
+                {t.description && <div className="text-xs text-muted-foreground">{t.description}</div>}
+              </TableCell>
+              <TableCell>
+                {t.licenseTypeTemplate ? (
+                  <Badge variant="outline">{t.licenseTypeTemplate.name}</Badge>
+                ) : (
+                  <span className="text-muted-foreground">Any license type</span>
+                )}
+              </TableCell>
+              <TableCell className="text-muted-foreground">
+                {t.fields.length} field{t.fields.length === 1 ? "" : "s"}
+              </TableCell>
+              <TableCell className="text-muted-foreground">
+                {t._count.generatedDocuments} time{t._count.generatedDocuments === 1 ? "" : "s"}
+              </TableCell>
+              <TableCell>
+                <DocumentTemplateRowActions
+                  templateId={t.id}
+                  templateName={t.name}
+                  fields={t.fields}
+                  canManage={canManage}
+                />
+              </TableCell>
             </TableRow>
           ))}
           {templates.length === 0 && (
             <TableRow>
-              <TableCell colSpan={4} className="text-center text-muted-foreground">
-                No document templates yet.
+              <TableCell colSpan={5} className="text-center text-muted-foreground">
+                No document templates yet — upload one to get started.
               </TableCell>
             </TableRow>
           )}
