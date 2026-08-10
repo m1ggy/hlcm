@@ -147,5 +147,9 @@ jobs:
           docker compose --profile tools pull migrate
           docker compose --profile tools run --rm -T migrate < /dev/null
           docker compose up -d app caddy postgres
-          docker image prune -f
+          # -a also clears out the previous deploy's now-unused tagged
+          # images (each deploy tags a fresh -latest and a per-commit sha
+          # for both app and migrator), not just dangling/untagged ones —
+          # without it the droplet's disk fills up over enough deploys.
+          docker image prune -af
           REMOTE
