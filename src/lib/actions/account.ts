@@ -12,7 +12,22 @@ export async function getAccount() {
   const session = await requireSession();
   return prisma.user.findUniqueOrThrow({
     where: { id: session.user.id },
-    select: { id: true, name: true, email: true, mfaEnabled: true },
+    select: { id: true, name: true, email: true, mfaEnabled: true, emailNotificationsEnabled: true },
+  });
+}
+
+export async function updateEmailNotifications(enabled: boolean) {
+  const session = await requireSession();
+  await prisma.user.update({
+    where: { id: session.user.id },
+    data: { emailNotificationsEnabled: enabled },
+  });
+
+  await recordAudit({
+    entityType: "User",
+    entityId: session.user.id,
+    action: "update_email_notifications",
+    actorId: session.user.id,
   });
 }
 

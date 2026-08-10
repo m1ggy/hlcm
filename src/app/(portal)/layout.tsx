@@ -1,8 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth, signOut } from "@/auth";
+import { getAccount } from "@/lib/actions/account";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { NotificationBell } from "@/components/notifications/notification-bell";
+import { EmailNotificationsToggle } from "@/components/account/email-notifications-toggle";
 
 export default async function PortalLayout({
   children,
@@ -13,6 +16,8 @@ export default async function PortalLayout({
   if (!session?.user) redirect("/login");
   if (session.user.role !== "CLIENT") redirect("/");
 
+  const account = await getAccount();
+
   return (
     <div className="flex min-h-screen flex-col">
       <header className="flex items-center justify-between border-b px-4 py-3 md:px-6">
@@ -20,7 +25,9 @@ export default async function PortalLayout({
           HCLM Client Portal
         </Link>
         <div className="flex items-center gap-3">
+          <EmailNotificationsToggle initialEnabled={account.emailNotificationsEnabled} />
           <span className="text-sm text-muted-foreground">{session.user.email}</span>
+          <NotificationBell variant="portal" />
           <ThemeToggle />
           <form
             action={async () => {

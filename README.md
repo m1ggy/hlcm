@@ -30,7 +30,10 @@ Every push to `main` builds a Docker image, pushes it to GHCR, and deploys it to
    POSTGRES_DB=hclm
    AUTH_SECRET=<generate with `openssl rand -base64 32`>
    HCLM_DOMAIN=your-domain.example
+   RESEND_API_KEY=<from resend.com — powers status-change/task/digest emails>
+   EMAIL_FROM=HCLM <notifications@your-domain.example>
    ```
+   `RESEND_API_KEY`/`EMAIL_FROM` are optional — without them the app still works, it just logs a warning and skips email (in-app notifications still work). `HCLM_DOMAIN` (already required above for Caddy) doubles as the base URL for links inside notification emails.
    This file is never touched by CI/CD — it's the one thing that lives only on the server.
 3. Open ports 80/443 (and the SSH port) in the droplet's firewall.
 

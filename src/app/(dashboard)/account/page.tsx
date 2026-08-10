@@ -4,6 +4,7 @@ import { getMyWiseRecipient } from "@/lib/actions/wise";
 import { PasswordChangeForm } from "@/components/account/password-change-form";
 import { MfaSection } from "@/components/account/mfa-section";
 import { SignaturePadSection } from "@/components/account/signature-pad-section";
+import { EmailNotificationsToggle } from "@/components/account/email-notifications-toggle";
 import { PayoutDetailsForm } from "@/components/wise/payout-details-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -46,6 +47,15 @@ export default async function AccountPage() {
         </CardHeader>
         <CardContent>
           <SignaturePadSection initialImageUrl={signatureProfile ? "/api/signatures/profile" : null} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Notifications</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <EmailNotificationsToggle initialEnabled={account.emailNotificationsEnabled} />
         </CardContent>
       </Card>
       </div>

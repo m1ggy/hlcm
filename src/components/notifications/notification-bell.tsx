@@ -12,12 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { markNotificationRead, markAllNotificationsRead } from "@/lib/actions/notifications";
-
-const ENTITY_LINK: Record<string, (id: string) => string> = {
-  Task: () => "/tasks",
-  Application: (id) => `/applications/${id}`,
-  Client: (id) => `/clients/${id}`,
-};
+import { ENTITY_LINKS, type EntityLinkVariant } from "@/lib/entity-links";
 
 type NotificationRow = {
   id: string;
@@ -28,7 +23,8 @@ type NotificationRow = {
   createdAt: Date;
 };
 
-export function NotificationBell() {
+export function NotificationBell({ variant = "staff" }: { variant?: EntityLinkVariant }) {
+  const entityLinks = ENTITY_LINKS[variant];
   const [unread, setUnread] = useState(0);
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
   const [open, setOpen] = useState(false);
@@ -114,7 +110,7 @@ export function NotificationBell() {
           {notifications.map((n) => (
             <Link
               key={n.id}
-              href={ENTITY_LINK[n.entityType]?.(n.entityId) ?? "/"}
+              href={entityLinks[n.entityType]?.(n.entityId) ?? "/"}
               onClick={() => handleClickNotification(n.id)}
               className={`block border-b px-3 py-2 text-sm last:border-b-0 hover:bg-muted ${n.read ? "text-muted-foreground" : "font-medium"}`}
             >

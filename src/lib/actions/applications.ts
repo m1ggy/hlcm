@@ -75,6 +75,34 @@ export async function listApplications() {
   });
 }
 
+// Status changes notify the owner plus everyone with an AccessGrant on the
+// application — that includes CLIENT-role portal users and staff colleagues
+// with shared VIEW/EDIT access, neither of whom heard about status changes
+// before this. `notify()` already no-ops for the actor notifying themselves.
+async function notifyApplicationStakeholders(
+  applicationId: string,
+  application: { name: string; status: string; assignedUserId: string },
+  actorId: string
+) {
+  const grantees = await prisma.accessGrant.findMany({
+    where: { applicationId },
+    select: { userId: true },
+  });
+  const recipients = new Set([application.assignedUserId, ...grantees.map((g) => g.userId)]);
+  for (const userId of recipients) {
+    await notify(
+      {
+        userId,
+        type: "APPLICATION_STATUS_CHANGED",
+        message: `"${application.name}" status changed to ${application.status}`,
+        entityType: "Application",
+        entityId: applicationId,
+      },
+      actorId
+    );
+  }
+}
+
 async function assertCanEditApplication(
   session: Awaited<ReturnType<typeof requireSession>>,
   applicationId: string
@@ -186,16 +214,7 @@ export async function updateApplication(id: string, formData: FormData) {
   });
 
   if (before.status !== application.status) {
-    await notify(
-      {
-        userId: application.assignedUserId,
-        type: "APPLICATION_STATUS_CHANGED",
-        message: `"${application.name}" status changed to ${application.status}`,
-        entityType: "Application",
-        entityId: id,
-      },
-      session.user.id
-    );
+    await notifyApplicationStakeholders(id, application, session.user.id);
   }
 
   revalidatePath("/applications");
@@ -223,16 +242,7 @@ export async function updateApplicationStatus(id: string, status: (typeof APPLIC
   });
 
   if (before.status !== application.status) {
-    await notify(
-      {
-        userId: application.assignedUserId,
-        type: "APPLICATION_STATUS_CHANGED",
-        message: `"${application.name}" status changed to ${application.status}`,
-        entityType: "Application",
-        entityId: id,
-      },
-      session.user.id
-    );
+    await notifyApplicationStakeholders(id, application, session.user.id);
   }
 
   revalidatePath("/applications");
@@ -275,16 +285,7 @@ export async function bulkUpdateApplications(input: z.infer<typeof bulkUpdateSch
     });
 
     if (parsed.status && before.status !== application.status) {
-      await notify(
-        {
-          userId: application.assignedUserId,
-          type: "APPLICATION_STATUS_CHANGED",
-          message: `"${application.name}" status changed to ${application.status}`,
-          entityType: "Application",
-          entityId: id,
-        },
-        session.user.id
-      );
+      await notifyApplicationStakeholders(id, application, session.user.id);
     }
   }
 
