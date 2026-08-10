@@ -68,8 +68,8 @@ export function TimeClockWidget({ initialClockIn }: { initialClockIn: string | n
   }
 
   return (
-    <Button variant="ghost" size="sm" onClick={handleClockIn} disabled={isPending} data-tour="time-clock">
-      <Clock className="size-3.5" /> Clock in
+    <Button variant="default" size="sm" onClick={handleClockIn} disabled={isPending} data-tour="time-clock">
+      <Clock className="size-3.5" /> {isPending ? "Clocking in..." : "Clock in"}
     </Button>
   );
 }
