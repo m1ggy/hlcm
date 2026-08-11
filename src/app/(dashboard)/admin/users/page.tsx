@@ -6,6 +6,7 @@ import { listUsers } from "@/lib/actions/users";
 import { NewUserDialog } from "@/components/admin/new-user-dialog";
 import { EditUserDialog } from "@/components/admin/edit-user-dialog";
 import { RateCell } from "@/components/admin/rate-cell";
+import { PageInfoButton } from "@/components/shared/page-info-button";
 import { Badge } from "@/components/ui/badge";
 import { ForbiddenError } from "@/lib/rbac";
 import {
@@ -30,15 +31,19 @@ export default async function UsersPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
+        <div className="flex items-center gap-1.5">
           <h1 className="text-2xl font-semibold">Users</h1>
-          <p className="text-muted-foreground">
-            Set hourly rates here — for timesheets and payroll exports, see{" "}
-            <Link href="/time" className="inline-flex items-center gap-0.5 underline">
-              Time <ArrowUpRight className="size-3" />
-            </Link>
-            .
-          </p>
+          <PageInfoButton title="Users">
+            <p>Manage everyone on staff — their name, email, login, role, and whether their account is active.</p>
+            <p>
+              Set each person&apos;s hourly pay rate here too — it&apos;s what turns their logged hours into a
+              paycheck total on the{" "}
+              <Link href="/time" className="inline-flex items-center gap-0.5 underline">
+                Time <ArrowUpRight className="size-3" />
+              </Link>{" "}
+              page.
+            </p>
+          </PageInfoButton>
         </div>
         <NewUserDialog />
       </div>

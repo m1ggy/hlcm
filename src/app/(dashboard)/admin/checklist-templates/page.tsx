@@ -3,6 +3,7 @@ import { listLicenseTypes } from "@/lib/actions/license-types";
 import { listCaseTypes } from "@/lib/actions/case-types";
 import { NewChecklistItemDialog } from "@/components/admin/new-checklist-item-dialog";
 import { DeleteChecklistItemButton } from "@/components/admin/delete-checklist-item-button";
+import { PageInfoButton } from "@/components/shared/page-info-button";
 import {
   Table,
   TableBody,
@@ -22,12 +23,18 @@ export default async function ChecklistTemplatesPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
+        <div className="flex items-center gap-1.5">
           <h1 className="text-2xl font-semibold">Checklist Templates</h1>
-          <p className="text-muted-foreground">
-            These items get cloned onto a new Application when it&apos;s created with a matching license type + case
-            type combo.
-          </p>
+          <PageInfoButton title="Checklist Templates">
+            <p>
+              The standard steps every case of a given type should follow — set them up once per license type and
+              case type.
+            </p>
+            <p>
+              From then on, any new case that matches gets that checklist automatically, ready for staff to work
+              through.
+            </p>
+          </PageInfoButton>
         </div>
         <NewChecklistItemDialog licenseTypes={licenseTypes} caseTypes={caseTypes} />
       </div>

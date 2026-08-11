@@ -4,6 +4,7 @@ import { listDocumentTemplates } from "@/lib/actions/document-templates";
 import { listLicenseTypes } from "@/lib/actions/license-types";
 import { NewDocumentTemplateDialog } from "@/components/admin/new-document-template-dialog";
 import { DocumentTemplateRowActions } from "@/components/admin/document-template-row-actions";
+import { PageInfoButton } from "@/components/shared/page-info-button";
 import { Badge } from "@/components/ui/badge";
 import { ForbiddenError } from "@/lib/rbac";
 import {
@@ -30,12 +31,18 @@ export default async function DocumentTemplatesPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
+        <div className="flex items-center gap-1.5">
           <h1 className="text-2xl font-semibold">Document Templates</h1>
-          <p className="text-muted-foreground">
-            Upload a .docx with {"{merge_tags}"} — staff fill in the rest and generate it from an
-            Application&apos;s Documents tab.
-          </p>
+          <PageInfoButton title="Document Templates">
+            <p>
+              Master copies of the letters and notices you send clients — a renewal notice, a welcome packet,
+              anything reused across cases.
+            </p>
+            <p>
+              Upload the file once and mark which details should fill in automatically. Staff can then generate a
+              finished, filled-in copy for any matching case from that case&apos;s Documents tab.
+            </p>
+          </PageInfoButton>
         </div>
         <NewDocumentTemplateDialog licenseTypes={licenseTypes} />
       </div>

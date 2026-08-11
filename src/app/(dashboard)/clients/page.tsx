@@ -2,6 +2,7 @@ import Link from "next/link";
 import { auth } from "@/auth";
 import { listClients, archiveClient, restoreClient } from "@/lib/actions/clients";
 import { ArchiveButton } from "@/components/shared/archive-button";
+import { PageInfoButton } from "@/components/shared/page-info-button";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -27,22 +28,25 @@ export default async function ClientsPage({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">{showArchived ? "Archived Clients" : "Clients"}</h1>
-        <p className="text-muted-foreground">
-          {showArchived ? (
-            <Link href="/clients" className="underline">
-              ← Back to active clients
-            </Link>
-          ) : (
-            <>
-              Clients are added from within a{" "}
-              <Link href="/projects" className="underline">
-                Project
-              </Link>
-              . <Link href="/clients?archived=1" className="underline">View archived clients</Link>
-            </>
-          )}
-        </p>
+        <div className="flex items-center gap-1.5">
+          <h1 className="text-2xl font-semibold">{showArchived ? "Archived Clients" : "Clients"}</h1>
+          <PageInfoButton title="Clients">
+            <p>
+              A client is the facility or business you&apos;re helping get licensed — its contact info, business
+              details, and every case you&apos;ve filed for them.
+            </p>
+            <p>
+              Each client belongs to a Project, so they&apos;re added from there rather than from this page — open
+              the Project and add the client to it.
+            </p>
+          </PageInfoButton>
+        </div>
+        <Link
+          href={showArchived ? "/clients" : "/clients?archived=1"}
+          className="text-sm text-muted-foreground hover:underline"
+        >
+          {showArchived ? "← Back to active clients" : "View archived clients"}
+        </Link>
       </div>
       <Table>
         <TableHeader>

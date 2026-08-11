@@ -3,6 +3,7 @@ import { listAssignableUsers } from "@/lib/actions/applications";
 import { MyTimeLog } from "@/components/time-clock/my-time-log";
 import { TimesheetReport } from "@/components/time-clock/timesheet-report";
 import { RecentPayouts } from "@/components/wise/recent-payouts";
+import { PageInfoButton } from "@/components/shared/page-info-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default async function TimePage() {
@@ -15,9 +16,17 @@ export default async function TimePage() {
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="flex items-center gap-1.5">
         <h1 className="text-2xl font-semibold">Time</h1>
-        <p className="text-muted-foreground">Clock in and out from the header — sessions land here.</p>
+        <PageInfoButton title="Time">
+          <p>
+            Track hours worked. Use the clock-in button at the top of the page when your shift starts and clock
+            out when it ends — every session you log shows up here.
+          </p>
+          {canSeeAllUsers && (
+            <p>As an admin or manager, you can also review everyone&apos;s hours and process pay from here.</p>
+          )}
+        </PageInfoButton>
       </div>
 
       <Card data-tour="my-time">
