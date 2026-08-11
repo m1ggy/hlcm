@@ -4,6 +4,8 @@ import {
   getApplication,
   getApplicationAuditLog,
   listAssignableUsers,
+  archiveApplication,
+  restoreApplication,
 } from "@/lib/actions/applications";
 import { listClients } from "@/lib/actions/clients";
 import { listTasksForApplication } from "@/lib/actions/tasks";
@@ -18,6 +20,8 @@ import { NotesPanel } from "@/components/applications/notes-panel";
 import { RecentApplicationTracker } from "@/components/applications/recent-application-tracker";
 import { FavoriteStar } from "@/components/applications/favorite-star";
 import { ApplicationFlags } from "@/components/applications/application-flags";
+import { ArchiveButton } from "@/components/shared/archive-button";
+import { Badge } from "@/components/ui/badge";
 import { computeReadyToSubmit, computeStaleDays } from "@/lib/application-flags";
 import { TASK_CLOSED_STATUSES } from "@/lib/task-status";
 import { AuditLogPanel } from "@/components/applications/audit-log-panel";
@@ -57,6 +61,7 @@ export default async function ApplicationDetailPage({
   const session = await requireSession();
   const accessLevel = await getApplicationAccessLevel(session, id);
   const canEdit = accessLevel === "edit";
+  const canArchive = session.user.role === "ADMIN" || session.user.role === "MANAGER";
   const grantableUsers = canEdit ? await listGrantableUsers(id) : [];
 
   const [
@@ -71,7 +76,7 @@ export default async function ApplicationDetailPage({
     signatureProfile,
     notes,
   ] = await Promise.all([
-    listClients(),
+    listClients({ filter: "all" }),
     listAssignableUsers(),
     getApplicationAuditLog(id),
     listTasksForApplication(id),
@@ -113,8 +118,19 @@ export default async function ApplicationDetailPage({
           </BreadcrumbList>
         </Breadcrumb>
         <div className="flex items-center gap-2">
+          {!application.active && <Badge variant="outline">Archived</Badge>}
           <ApplicationFlags readyToSubmit={readyToSubmit} staleDays={staleDays} />
           <FavoriteStar applicationId={id} />
+          {canArchive && (
+            <ArchiveButton
+              id={id}
+              label={application.name}
+              archived={!application.active}
+              archiveAction={archiveApplication}
+              restoreAction={restoreApplication}
+              variant="full"
+            />
+          )}
         </div>
       </div>
 

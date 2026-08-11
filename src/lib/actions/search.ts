@@ -13,6 +13,7 @@ export async function searchAll(query: string) {
     where: {
       AND: [
         applicationVisibilityFilter(session),
+        { active: true },
         { OR: [{ name: { contains: q, mode: "insensitive" } }, { description: { contains: q, mode: "insensitive" } }] },
       ],
     },
@@ -23,7 +24,7 @@ export async function searchAll(query: string) {
   const clients =
     role === "ADMIN" || role === "MANAGER" || role === "STAFF"
       ? await prisma.client.findMany({
-          where: { name: { contains: q, mode: "insensitive" } },
+          where: { name: { contains: q, mode: "insensitive" }, active: true },
           take: 10,
         })
       : [];

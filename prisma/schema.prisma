@@ -195,6 +195,7 @@ model Client {
   name        String
   contactInfo String?
   address     String?
+  active      Boolean  @default(true)
 
   // Business details — the licensed entity itself.
   businessName  String?
@@ -292,6 +293,7 @@ model Application {
   name        String
   description String?
   status      ApplicationStatus @default(DRAFT)
+  active      Boolean           @default(true)
 
   licenseTypeTemplate   LicenseTypeTemplate? @relation(fields: [licenseTypeTemplateId], references: [id])
   licenseTypeTemplateId String?

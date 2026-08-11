@@ -9,7 +9,7 @@ export async function getDashboardStats() {
   const session = await requireSession();
   const role = session.user.role as AppRole;
   const isManagement = role === "ADMIN" || role === "MANAGER";
-  const appFilter = applicationVisibilityFilter(session);
+  const appFilter = { ...applicationVisibilityFilter(session), active: true };
 
   const statusCounts = await prisma.application.groupBy({
     by: ["status"],
@@ -24,6 +24,7 @@ export async function getDashboardStats() {
   const overdueWhere = {
     dueDate: { lt: new Date() },
     status: { notIn: [...TASK_CLOSED_STATUSES] },
+    OR: [{ applicationId: null }, { application: { active: true } }],
     ...(isManagement ? {} : { assignedUserId: session.user.id }),
   };
   const overdueTasks = await prisma.task.findMany({

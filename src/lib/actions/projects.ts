@@ -14,10 +14,10 @@ const projectSchema = z.object({
 // Same visibility as Clients — every internal role can see all Projects to
 // find where to file a new client. Access Grant-style per-project scoping
 // isn't needed yet; revisit if that changes.
-export async function listProjects() {
+export async function listProjects(opts: { archived?: boolean } = {}) {
   await requireRole(["ADMIN", "MANAGER", "STAFF"]);
   return prisma.project.findMany({
-    where: { active: true },
+    where: { active: !opts.archived },
     orderBy: { name: "asc" },
     include: { _count: { select: { clients: true } } },
   });
@@ -27,8 +27,28 @@ export async function getProject(id: string) {
   await requireRole(["ADMIN", "MANAGER", "STAFF"]);
   return prisma.project.findUniqueOrThrow({
     where: { id },
-    include: { clients: { orderBy: { name: "asc" } } },
+    include: { clients: { where: { active: true }, orderBy: { name: "asc" } } },
   });
+}
+
+export async function archiveProject(id: string) {
+  const session = await requireRole(["ADMIN", "MANAGER"]);
+  await prisma.project.update({ where: { id }, data: { active: false } });
+
+  await recordAudit({ entityType: "Project", entityId: id, action: "archive", actorId: session.user.id });
+
+  revalidatePath("/projects");
+  revalidatePath(`/projects/${id}`);
+}
+
+export async function restoreProject(id: string) {
+  const session = await requireRole(["ADMIN", "MANAGER"]);
+  await prisma.project.update({ where: { id }, data: { active: true } });
+
+  await recordAudit({ entityType: "Project", entityId: id, action: "restore", actorId: session.user.id });
+
+  revalidatePath("/projects");
+  revalidatePath(`/projects/${id}`);
 }
 
 export async function createProject(formData: FormData) {

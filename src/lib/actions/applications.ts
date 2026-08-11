@@ -36,10 +36,10 @@ const applicationSchema = z.object({
   caseTypeId: z.string().optional(),
 });
 
-export async function listApplications() {
+export async function listApplications(opts: { archived?: boolean } = {}) {
   const session = await requireSession();
   const applications = await prisma.application.findMany({
-    where: applicationVisibilityFilter(session),
+    where: { ...applicationVisibilityFilter(session), active: !opts.archived },
     include: { client: true, assignedUser: true, tasks: { select: { status: true } } },
     orderBy: { createdAt: "desc" },
   });
@@ -291,4 +291,24 @@ export async function bulkUpdateApplications(input: z.infer<typeof bulkUpdateSch
 
   revalidatePath("/applications");
   return { count: parsed.ids.length };
+}
+
+export async function archiveApplication(id: string) {
+  const session = await requireRole(["ADMIN", "MANAGER"]);
+  await prisma.application.update({ where: { id }, data: { active: false } });
+
+  await recordAudit({ entityType: "Application", entityId: id, action: "archive", actorId: session.user.id });
+
+  revalidatePath("/applications");
+  revalidatePath(`/applications/${id}`);
+}
+
+export async function restoreApplication(id: string) {
+  const session = await requireRole(["ADMIN", "MANAGER"]);
+  await prisma.application.update({ where: { id }, data: { active: true } });
+
+  await recordAudit({ entityType: "Application", entityId: id, action: "restore", actorId: session.user.id });
+
+  revalidatePath("/applications");
+  revalidatePath(`/applications/${id}`);
 }

@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getClient, getClientAuditLog } from "@/lib/actions/clients";
+import { auth } from "@/auth";
+import { getClient, getClientAuditLog, archiveClient, restoreClient } from "@/lib/actions/clients";
 import { listAssignableUsers } from "@/lib/actions/applications";
 import { listClientNotes } from "@/lib/actions/notes";
 import { ClientDetailsForm } from "@/components/clients/client-details-form";
 import { ClientNotesPanel } from "@/components/clients/client-notes-panel";
 import { AuditLogPanel } from "@/components/applications/audit-log-panel";
+import { ArchiveButton } from "@/components/shared/archive-button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -41,11 +43,13 @@ export default async function ClientDetailPage({
     notFound();
   }
 
-  const [assignableUsers, notes, auditLog] = await Promise.all([
+  const [assignableUsers, notes, auditLog, session] = await Promise.all([
     listAssignableUsers(),
     listClientNotes(id),
     getClientAuditLog(id),
+    auth(),
   ]);
+  const canArchive = session?.user?.role === "ADMIN" || session?.user?.role === "MANAGER";
 
   return (
     <div className="space-y-6">
@@ -61,14 +65,33 @@ export default async function ClientDetailPage({
         </BreadcrumbList>
       </Breadcrumb>
 
-      <div>
-        <h1 className="text-2xl font-semibold">{client.name}</h1>
-        <p className="text-muted-foreground">
-          Part of{" "}
-          <Link href={`/projects/${client.projectId}`} className="hover:underline">
-            {client.project.name}
-          </Link>
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">
+            {client.name}
+            {!client.active && (
+              <Badge variant="outline" className="ml-2 align-middle">
+                Archived
+              </Badge>
+            )}
+          </h1>
+          <p className="text-muted-foreground">
+            Part of{" "}
+            <Link href={`/projects/${client.projectId}`} className="hover:underline">
+              {client.project.name}
+            </Link>
+          </p>
+        </div>
+        {canArchive && (
+          <ArchiveButton
+            id={client.id}
+            label={client.name}
+            archived={!client.active}
+            archiveAction={archiveClient}
+            restoreAction={restoreClient}
+            variant="full"
+          />
+        )}
       </div>
 
       <ClientDetailsForm

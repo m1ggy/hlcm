@@ -1,6 +1,9 @@
 import Link from "next/link";
-import { getProject } from "@/lib/actions/projects";
+import { auth } from "@/auth";
+import { getProject, archiveProject, restoreProject } from "@/lib/actions/projects";
 import { NewClientDialog } from "@/components/clients/new-client-dialog";
+import { ArchiveButton } from "@/components/shared/archive-button";
+import { Badge } from "@/components/ui/badge";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -25,6 +28,8 @@ export default async function ProjectDetailPage({
 }) {
   const { id } = await params;
   const project = await getProject(id);
+  const session = await auth();
+  const canArchive = session?.user?.role === "ADMIN" || session?.user?.role === "MANAGER";
 
   return (
     <div className="space-y-6">
@@ -40,10 +45,29 @@ export default async function ProjectDetailPage({
         </BreadcrumbList>
       </Breadcrumb>
 
-      <div>
-        <h1 className="text-2xl font-semibold">{project.name}</h1>
-        {project.description && (
-          <p className="text-muted-foreground">{project.description}</p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">
+            {project.name}
+            {!project.active && (
+              <Badge variant="outline" className="ml-2 align-middle">
+                Archived
+              </Badge>
+            )}
+          </h1>
+          {project.description && (
+            <p className="text-muted-foreground">{project.description}</p>
+          )}
+        </div>
+        {canArchive && (
+          <ArchiveButton
+            id={project.id}
+            label={project.name}
+            archived={!project.active}
+            archiveAction={archiveProject}
+            restoreAction={restoreProject}
+            variant="full"
+          />
         )}
       </div>
 

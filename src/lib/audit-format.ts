@@ -35,6 +35,8 @@ const ACTION_VERBS: Record<string, string> = {
   update: "Updated",
   delete: "Deleted",
   deactivate: "Deactivated",
+  archive: "Archived",
+  restore: "Restored",
   set_rate: "Set hourly rate",
   clock_in: "Clocked in",
   clock_out: "Clocked out",

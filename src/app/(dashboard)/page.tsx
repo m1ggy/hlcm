@@ -32,8 +32,8 @@ export default async function HomePage() {
 
   const [projectCount, clientCount, applicationCount, stats] = await Promise.all([
     prisma.project.count({ where: { active: true } }),
-    prisma.client.count(),
-    prisma.application.count({ where: applicationVisibilityFilter(session) }),
+    prisma.client.count({ where: { active: true } }),
+    prisma.application.count({ where: { ...applicationVisibilityFilter(session), active: true } }),
     getDashboardStats(),
   ]);
 

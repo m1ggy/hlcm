@@ -44,9 +44,17 @@ function readClientFields(formData: FormData) {
 // Client records aren't owned/scoped — every internal role needs to find a
 // client to open a new Application against them. Only the external CLIENT
 // portal role (Phase 5) is excluded.
-export async function listClients() {
+// `filter: "all"` includes archived clients too — used where an already-set
+// value (e.g. an Application's client dropdown) needs to keep showing even
+// after that client was archived, not just when picking a new one.
+export async function listClients(opts: { filter?: "active" | "archived" | "all" } = {}) {
   await requireRole(["ADMIN", "MANAGER", "STAFF"]);
-  return prisma.client.findMany({ orderBy: { name: "asc" }, include: { project: true } });
+  const filter = opts.filter ?? "active";
+  return prisma.client.findMany({
+    where: filter === "all" ? {} : { active: filter === "active" },
+    orderBy: { name: "asc" },
+    include: { project: true },
+  });
 }
 
 export async function getClient(id: string) {
@@ -126,4 +134,24 @@ export async function updateClient(id: string, formData: FormData) {
   revalidatePath("/clients");
   revalidatePath(`/clients/${id}`);
   return client;
+}
+
+export async function archiveClient(id: string) {
+  const session = await requireRole(["ADMIN", "MANAGER"]);
+  await prisma.client.update({ where: { id }, data: { active: false } });
+
+  await recordAudit({ entityType: "Client", entityId: id, action: "archive", actorId: session.user.id });
+
+  revalidatePath("/clients");
+  revalidatePath(`/clients/${id}`);
+}
+
+export async function restoreClient(id: string) {
+  const session = await requireRole(["ADMIN", "MANAGER"]);
+  await prisma.client.update({ where: { id }, data: { active: true } });
+
+  await recordAudit({ entityType: "Client", entityId: id, action: "restore", actorId: session.user.id });
+
+  revalidatePath("/clients");
+  revalidatePath(`/clients/${id}`);
 }
