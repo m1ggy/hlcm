@@ -53,7 +53,7 @@ export async function listClients(opts: { filter?: "active" | "archived" | "all"
   return prisma.client.findMany({
     where: filter === "all" ? {} : { active: filter === "active" },
     orderBy: { name: "asc" },
-    include: { project: true },
+    include: { projects: true },
   });
 }
 
@@ -62,7 +62,7 @@ export async function getClient(id: string) {
   return prisma.client.findUniqueOrThrow({
     where: { id },
     include: {
-      project: true,
+      projects: { orderBy: { name: "asc" } },
       applications: {
         select: { id: true, name: true, status: true },
         orderBy: { createdAt: "desc" },
@@ -86,13 +86,14 @@ export async function createClient(formData: FormData) {
     projectId: formData.get("projectId"),
     ...readClientFields(formData),
   });
-  const { ownerDateOfBirth, ...rest } = parsed;
+  const { ownerDateOfBirth, projectId, ...rest } = parsed;
 
   const client = await prisma.client.create({
     data: {
       ...rest,
       ownerDateOfBirth: ownerDateOfBirth ? new Date(ownerDateOfBirth) : undefined,
       createdById: session.user.id,
+      projects: { connect: { id: projectId } },
     },
   });
 
@@ -154,4 +155,60 @@ export async function restoreClient(id: string) {
 
   revalidatePath("/clients");
   revalidatePath(`/clients/${id}`);
+}
+
+// Links an existing client into another project instead of re-entering the
+// same business's details — the whole point of the many-to-many relation.
+export async function importClientToProject(clientId: string, projectId: string) {
+  const session = await requireRole(["ADMIN", "MANAGER", "STAFF"]);
+  const project = await prisma.project.findUniqueOrThrow({ where: { id: projectId } });
+
+  await prisma.client.update({
+    where: { id: clientId },
+    data: { projects: { connect: { id: projectId } } },
+  });
+
+  await recordAudit({
+    entityType: "Client",
+    entityId: clientId,
+    action: "link_project",
+    actorId: session.user.id,
+    newValue: project.name,
+  });
+
+  revalidatePath("/clients");
+  revalidatePath(`/clients/${clientId}`);
+  revalidatePath(`/projects/${projectId}`);
+}
+
+// Undoes an import (or a client added to the wrong project). A client
+// always needs at least one project, so removing its last one is refused —
+// archive the client instead if it shouldn't be active anywhere anymore.
+export async function removeClientFromProject(clientId: string, projectId: string) {
+  const session = await requireRole(["ADMIN", "MANAGER"]);
+  const client = await prisma.client.findUniqueOrThrow({
+    where: { id: clientId },
+    include: { projects: { select: { id: true, name: true } } },
+  });
+  if (client.projects.length <= 1) {
+    throw new Error("A client needs at least one project — archive it instead if it's no longer active anywhere.");
+  }
+  const project = client.projects.find((p) => p.id === projectId);
+
+  await prisma.client.update({
+    where: { id: clientId },
+    data: { projects: { disconnect: { id: projectId } } },
+  });
+
+  await recordAudit({
+    entityType: "Client",
+    entityId: clientId,
+    action: "unlink_project",
+    actorId: session.user.id,
+    oldValue: project?.name,
+  });
+
+  revalidatePath("/clients");
+  revalidatePath(`/clients/${clientId}`);
+  revalidatePath(`/projects/${projectId}`);
 }

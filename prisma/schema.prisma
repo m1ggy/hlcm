@@ -190,8 +190,11 @@ model Project {
 
 model Client {
   id          String   @id @default(cuid())
-  project     Project  @relation(fields: [projectId], references: [id])
-  projectId   String
+  // A client can be worked under more than one project (e.g. a facility
+  // that comes back for a new batch of renewals next year) — many-to-many
+  // rather than a single owning project, so it's added once and linked
+  // wherever it's relevant instead of duplicated.
+  projects    Project[]
   name        String
   contactInfo String?
   address     String?

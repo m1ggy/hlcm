@@ -36,8 +36,8 @@ export default async function ClientsPage({
               details, and every case you&apos;ve filed for them.
             </p>
             <p>
-              Each client belongs to a Project, so they&apos;re added from there rather than from this page — open
-              the Project and add the client to it.
+              A client is added from inside a Project, and can belong to more than one — if the same client comes
+              back for another project, import it there instead of re-entering it.
             </p>
           </PageInfoButton>
         </div>
@@ -52,7 +52,7 @@ export default async function ClientsPage({
         <TableHeader>
           <TableRow>
             <TableHead>Name</TableHead>
-            <TableHead>Project</TableHead>
+            <TableHead>Projects</TableHead>
             <TableHead>Contact Info</TableHead>
             <TableHead>Address</TableHead>
             {canArchive && <TableHead className="w-10" />}
@@ -72,9 +72,15 @@ export default async function ClientsPage({
                 )}
               </TableCell>
               <TableCell>
-                <Link href={`/projects/${client.projectId}`} className="hover:underline">
-                  {client.project.name}
-                </Link>
+                <div className="flex flex-wrap gap-1">
+                  {client.projects.map((project) => (
+                    <Link key={project.id} href={`/projects/${project.id}`}>
+                      <Badge variant="outline" className="hover:bg-accent">
+                        {project.name}
+                      </Badge>
+                    </Link>
+                  ))}
+                </div>
               </TableCell>
               <TableCell>{client.contactInfo ?? "—"}</TableCell>
               <TableCell>{client.address ?? "—"}</TableCell>

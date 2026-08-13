@@ -75,12 +75,16 @@ export default async function ClientDetailPage({
               </Badge>
             )}
           </h1>
-          <p className="text-muted-foreground">
-            Part of{" "}
-            <Link href={`/projects/${client.projectId}`} className="hover:underline">
-              {client.project.name}
-            </Link>
-          </p>
+          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-muted-foreground">
+            <span className="text-sm">Part of</span>
+            {client.projects.map((project) => (
+              <Link key={project.id} href={`/projects/${project.id}`}>
+                <Badge variant="outline" className="hover:bg-accent">
+                  {project.name}
+                </Badge>
+              </Link>
+            ))}
+          </div>
         </div>
         {canArchive && (
           <ArchiveButton

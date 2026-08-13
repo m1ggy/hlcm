@@ -47,7 +47,7 @@ async function main() {
       await prisma.client.create({
         data: {
           name,
-          projectId: project.id,
+          projects: { connect: { id: project.id } },
           contactInfo: "intake@example.com",
           createdById: admin.id,
         },

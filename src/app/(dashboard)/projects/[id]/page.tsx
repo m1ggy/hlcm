@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { auth } from "@/auth";
 import { getProject, archiveProject, restoreProject } from "@/lib/actions/projects";
+import { listClients } from "@/lib/actions/clients";
 import { NewClientDialog } from "@/components/clients/new-client-dialog";
+import { ImportClientDialog } from "@/components/clients/import-client-dialog";
+import { RemoveFromProjectButton } from "@/components/clients/remove-from-project-button";
 import { ArchiveButton } from "@/components/shared/archive-button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -27,9 +30,13 @@ export default async function ProjectDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const project = await getProject(id);
-  const session = await auth();
+  const [project, allClients, session] = await Promise.all([getProject(id), listClients(), auth()]);
   const canArchive = session?.user?.role === "ADMIN" || session?.user?.role === "MANAGER";
+  const importableClients = allClients.map((client) => ({
+    id: client.id,
+    name: client.name,
+    projectIds: client.projects.map((p) => p.id),
+  }));
 
   return (
     <div className="space-y-6">
@@ -73,7 +80,10 @@ export default async function ProjectDetailPage({
 
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-medium">Clients</h2>
-        <NewClientDialog projectId={project.id} />
+        <div className="flex items-center gap-2">
+          <ImportClientDialog projectId={project.id} clients={importableClients} />
+          <NewClientDialog projectId={project.id} />
+        </div>
       </div>
       <Table>
         <TableHeader>
@@ -81,23 +91,29 @@ export default async function ProjectDetailPage({
             <TableHead>Name</TableHead>
             <TableHead>Contact Info</TableHead>
             <TableHead>Address</TableHead>
+            {canArchive && <TableHead className="w-10" />}
           </TableRow>
         </TableHeader>
         <TableBody>
           {project.clients.map((client) => (
             <TableRow key={client.id}>
               <TableCell className="font-medium">
-                <Link href={`/clients`} className="hover:underline">
+                <Link href={`/clients/${client.id}`} className="hover:underline">
                   {client.name}
                 </Link>
               </TableCell>
               <TableCell>{client.contactInfo ?? "—"}</TableCell>
               <TableCell>{client.address ?? "—"}</TableCell>
+              {canArchive && (
+                <TableCell className="text-right">
+                  <RemoveFromProjectButton clientId={client.id} clientName={client.name} projectId={project.id} />
+                </TableCell>
+              )}
             </TableRow>
           ))}
           {project.clients.length === 0 && (
             <TableRow>
-              <TableCell colSpan={3} className="text-center text-muted-foreground">
+              <TableCell colSpan={canArchive ? 4 : 3} className="text-center text-muted-foreground">
                 No clients in this project yet.
               </TableCell>
             </TableRow>
