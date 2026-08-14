@@ -137,9 +137,18 @@ yet, so no backfill risk there.
       pre-Phase-4 client and `prisma.mcoCredential` came back `undefined` even though
       `prisma generate` had already run. Full dev-server restart fixed it — worth remembering
       for the remaining phases, a plain file edit won't pick up a new model.
-- [ ] **Phase 5 — Service/project colors.** `ServiceType` lookup (mirrors
+- [x] **Phase 5 — Service/project colors.** `ServiceType` lookup (mirrors
       `LicenseTypeTemplate`/`CaseType` admin pattern), hex + text color, nullable FK on
       `Project`, neutral `#ECEFF1` fallback when unset. Feeds Clients-list project badges.
+      Shipped: migration `20260815013005_service_type_colors`, `scripts/seed-service-types.ts`
+      (6 rows, idempotent — "Unmapped project (default)" deliberately not seeded, it's a UI
+      fallback constant in `src/lib/service-type.ts`, not a selectable row). New
+      `ServicePill` component (shared, colors any project pill from real hex/textColor data)
+      wired into both the Clients list and Client detail "Part of" badges. `ServiceTypeSelect`
+      on the Project detail page for admins to assign the color.
+      Verified live: assigned CILA to a real project through the UI, confirmed the pill on
+      all 3 of that project's clients rendered with the exact seeded hex (`#1565C0`/white
+      text, checked via computed inline style, not just visual guess), then reverted.
 - [ ] **Phase 6 — Aging alerts, no scheduler.** Compute on read from `StageHistory` +
       deficiency dates (matches existing pull-based `Notification` pattern) — dashboard
       panel + per-case flag. 6 rules from the spec (SVR>3d, WCD>14d, COR due-in-7d, Hold

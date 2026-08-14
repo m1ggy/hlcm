@@ -12,6 +12,7 @@ import { AuditLogPanel } from "@/components/applications/audit-log-panel";
 import { ArchiveButton } from "@/components/shared/archive-button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { ServicePill } from "@/components/shared/service-pill";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
@@ -81,10 +82,8 @@ export default async function ClientDetailPage({
           <div className="mt-1 flex flex-wrap items-center gap-1.5 text-muted-foreground">
             <span className="text-sm">Part of</span>
             {client.projects.map((project) => (
-              <Link key={project.id} href={`/projects/${project.id}`}>
-                <Badge variant="outline" className="hover:bg-accent">
-                  {project.name}
-                </Badge>
+              <Link key={project.id} href={`/projects/${project.id}`} className="transition-opacity hover:opacity-80">
+                <ServicePill label={project.name} service={project.serviceType} />
               </Link>
             ))}
           </div>

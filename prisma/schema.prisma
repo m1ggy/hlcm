@@ -124,6 +124,7 @@ model User {
   licenseTypeTemplatesCreated   LicenseTypeTemplate[]    @relation("LicenseTypeTemplateCreatedBy")
   caseTypesCreated               CaseType[]               @relation("CaseTypeCreatedBy")
   pipelineStagesCreated           PipelineStage[]          @relation("PipelineStageCreatedBy")
+  serviceTypesCreated              ServiceType[]            @relation("ServiceTypeCreatedBy")
   stageHistoryActed               StageHistory[]           @relation("StageHistoryActor")
   checklistItemTemplatesCreated ChecklistItemTemplate[]  @relation("ChecklistItemTemplateCreatedBy")
   tasksAssigned                  Task[]                   @relation("TaskAssignee")
@@ -226,9 +227,35 @@ model Project {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  // Fills the project tag pill on the Clients list (docs/pipeline-stage-plan.md).
+  // Nullable — unmapped projects fall back to a neutral default in the UI
+  // rather than a hardcoded color per project.
+  serviceType   ServiceType? @relation(fields: [serviceTypeId], references: [id])
+  serviceTypeId String?
+
   clients Client[]
 
   @@map("projects")
+}
+
+// Admin-managed lookup for the Clients-list project pill color (same pattern
+// as LicenseTypeTemplate/CaseType). `textColor` pairs with `hex` since some
+// service colors need dark text (Ace Home Care Franchise's yellow) and
+// others need white — never assumed from the background alone.
+model ServiceType {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  hex         String
+  textColor   String
+  active      Boolean  @default(true)
+  createdBy   User     @relation("ServiceTypeCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  projects Project[]
+
+  @@map("service_types")
 }
 
 model Client {

@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { listClients, archiveClient, restoreClient } from "@/lib/actions/clients";
 import { ArchiveButton } from "@/components/shared/archive-button";
 import { PageInfoButton } from "@/components/shared/page-info-button";
+import { ServicePill } from "@/components/shared/service-pill";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -74,10 +75,8 @@ export default async function ClientsPage({
               <TableCell>
                 <div className="flex flex-wrap gap-1">
                   {client.projects.map((project) => (
-                    <Link key={project.id} href={`/projects/${project.id}`}>
-                      <Badge variant="outline" className="hover:bg-accent">
-                        {project.name}
-                      </Badge>
+                    <Link key={project.id} href={`/projects/${project.id}`} className="transition-opacity hover:opacity-80">
+                      <ServicePill label={project.name} service={project.serviceType} />
                     </Link>
                   ))}
                 </div>

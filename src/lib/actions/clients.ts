@@ -53,7 +53,7 @@ export async function listClients(opts: { filter?: "active" | "archived" | "all"
   return prisma.client.findMany({
     where: filter === "all" ? {} : { active: filter === "active" },
     orderBy: { name: "asc" },
-    include: { projects: true },
+    include: { projects: { include: { serviceType: true } } },
   });
 }
 
@@ -62,7 +62,7 @@ export async function getClient(id: string) {
   return prisma.client.findUniqueOrThrow({
     where: { id },
     include: {
-      projects: { orderBy: { name: "asc" } },
+      projects: { orderBy: { name: "asc" }, include: { serviceType: true } },
       applications: {
         select: { id: true, name: true, status: true },
         orderBy: { createdAt: "desc" },

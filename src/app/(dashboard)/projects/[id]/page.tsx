@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { auth } from "@/auth";
-import { getProject, archiveProject, restoreProject } from "@/lib/actions/projects";
+import { getProject, archiveProject, restoreProject, listServiceTypes } from "@/lib/actions/projects";
 import { listClients } from "@/lib/actions/clients";
 import { NewClientDialog } from "@/components/clients/new-client-dialog";
 import { ImportClientDialog } from "@/components/clients/import-client-dialog";
 import { RemoveFromProjectButton } from "@/components/clients/remove-from-project-button";
+import { ServiceTypeSelect } from "@/components/projects/service-type-select";
 import { ArchiveButton } from "@/components/shared/archive-button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -30,7 +31,12 @@ export default async function ProjectDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [project, allClients, session] = await Promise.all([getProject(id), listClients(), auth()]);
+  const [project, allClients, session, serviceTypes] = await Promise.all([
+    getProject(id),
+    listClients(),
+    auth(),
+    listServiceTypes(),
+  ]);
   const canArchive = session?.user?.role === "ADMIN" || session?.user?.role === "MANAGER";
   const importableClients = allClients.map((client) => ({
     id: client.id,
@@ -65,6 +71,13 @@ export default async function ProjectDetailPage({
           {project.description && (
             <p className="text-muted-foreground">{project.description}</p>
           )}
+          <div className="mt-2">
+            <ServiceTypeSelect
+              projectId={project.id}
+              serviceTypeId={project.serviceTypeId}
+              serviceTypes={serviceTypes}
+            />
+          </div>
         </div>
         {canArchive && (
           <ArchiveButton

@@ -27,7 +27,10 @@ export async function getProject(id: string) {
   await requireRole(["ADMIN", "MANAGER", "STAFF"]);
   return prisma.project.findUniqueOrThrow({
     where: { id },
-    include: { clients: { where: { active: true }, orderBy: { name: "asc" } } },
+    include: {
+      clients: { where: { active: true }, orderBy: { name: "asc" } },
+      serviceType: true,
+    },
   });
 }
 
@@ -49,6 +52,37 @@ export async function restoreProject(id: string) {
 
   revalidatePath("/projects");
   revalidatePath(`/projects/${id}`);
+}
+
+export async function listServiceTypes() {
+  await requireRole(["ADMIN", "MANAGER", "STAFF"]);
+  return prisma.serviceType.findMany({ where: { active: true }, orderBy: { name: "asc" } });
+}
+
+// Empty string clears the color back to the neutral default — distinct from
+// not sending the field at all, same convention as the case-fields update.
+export async function updateProjectServiceType(id: string, serviceTypeId: string) {
+  const session = await requireRole(["ADMIN", "MANAGER", "STAFF"]);
+  const before = await prisma.project.findUniqueOrThrow({ where: { id } });
+  const project = await prisma.project.update({
+    where: { id },
+    data: { serviceTypeId: serviceTypeId === "" ? null : serviceTypeId },
+  });
+
+  await recordAudit({
+    entityType: "Project",
+    entityId: id,
+    action: "update",
+    field: "serviceTypeId",
+    oldValue: before.serviceTypeId,
+    newValue: project.serviceTypeId,
+    actorId: session.user.id,
+  });
+
+  revalidatePath("/projects");
+  revalidatePath(`/projects/${id}`);
+  revalidatePath("/clients");
+  return project;
 }
 
 export async function createProject(formData: FormData) {
