@@ -149,10 +149,22 @@ yet, so no backfill risk there.
       Verified live: assigned CILA to a real project through the UI, confirmed the pill on
       all 3 of that project's clients rendered with the exact seeded hex (`#1565C0`/white
       text, checked via computed inline style, not just visual guess), then reverted.
-- [ ] **Phase 6 — Aging alerts, no scheduler.** Compute on read from `StageHistory` +
+- [x] **Phase 6 — Aging alerts, no scheduler.** Compute on read from `StageHistory` +
       deficiency dates (matches existing pull-based `Notification` pattern) — dashboard
       panel + per-case flag. 6 rules from the spec (SVR>3d, WCD>14d, COR due-in-7d, Hold
       past follow-up, MCO CIR>90d, MCO recred-due-in-120d).
+      Shipped: `src/lib/aging-alerts.ts` (pure, DB-free — stage matching by abbrev *suffix*
+      so one check covers all 3 pipelines' "SVR"/"WCD"/"COR" variants instead of 3 parallel
+      lists that could drift). `src/lib/actions/alerts.ts` queries Applications and
+      McoCredentials with their latest `StageHistory` row, computes days-in-stage, calls the
+      pure function. New "Pipeline Alerts" card on the dashboard, warning/critical severity
+      styling, links straight to the case/client.
+      Verified with 15 unit cases covering every rule (including "not yet over threshold"
+      and "already submitted, stop flagging" edges), then live: backdated one real case's
+      `StageHistory.enteredAt` 20 days and set a 3-day-out deficiency due date on another,
+      confirmed both alerts rendered correctly on the actual dashboard, reverted both (the
+      backdate restored to match the original backfill's own convention —
+      `enteredAt: app.updatedAt` — not just any placeholder timestamp).
 - [ ] **Phase 7 — Stage picker UX.** cmdk type-to-search combobox (abbrev or name,
       case-insensitive, Enter to select), inline rejection message on a disallowed move.
 - [ ] **Phase 8 — Login credentials section.** Dedicated block on client/case page, separate
