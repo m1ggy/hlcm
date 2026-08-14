@@ -15,36 +15,10 @@
 import "dotenv/config";
 import { PrismaClient, Pipeline } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { pipelineForLicenseType } from "../src/lib/pipeline";
+import { pipelineForLicenseType, STATUS_TO_STAGE } from "../src/lib/pipeline";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
-
-// status -> target stage abbrev, per pipeline. `null` means "ambiguous, do
-// not auto-map" — reported instead of applied.
-const STATUS_TO_STAGE: Record<Pipeline, Partial<Record<string, string | null>>> = {
-  HOME_CARE: {
-    DRAFT: "WCD",
-    INFO_GATHERING: "CAP",
-    SUBMITTED: "SUB",
-    UNDER_AGENCY_REVIEW: "SUB",
-    NEEDS_REVISION: "COR",
-    APPROVED: "LRD",
-    DENIED: "WDN",
-    CLOSED: "WDN",
-  },
-  CILA_GROUP_HOME: {
-    DRAFT: "S1 WCD",
-    INFO_GATHERING: "S1 CAP",
-    SUBMITTED: "S1 SUB",
-    UNDER_AGENCY_REVIEW: "S1 SUB",
-    NEEDS_REVISION: "S1 COR",
-    APPROVED: "S1 APM", // confirmed by CTK — approved, awaiting mock
-    DENIED: "WDN",
-    CLOSED: "WDN",
-  },
-  MCO: {},
-};
 
 async function main() {
   const apps = await prisma.application.findMany({
