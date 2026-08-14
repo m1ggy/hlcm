@@ -165,8 +165,22 @@ yet, so no backfill risk there.
       confirmed both alerts rendered correctly on the actual dashboard, reverted both (the
       backdate restored to match the original backfill's own convention —
       `enteredAt: app.updatedAt` — not just any placeholder timestamp).
-- [ ] **Phase 7 — Stage picker UX.** cmdk type-to-search combobox (abbrev or name,
+- [x] **Phase 7 — Stage picker UX.** cmdk type-to-search combobox (abbrev or name,
       case-insensitive, Enter to select), inline rejection message on a disallowed move.
+      Shipped: `src/components/shared/stage-picker.tsx` — every stage in the pipeline is
+      listed and selectable (rule 7: a disallowed move is *rejected with a message, not
+      silently accepted or hidden*), non-reachable ones just dimmed as a hint. Selecting a
+      stage that `requiresReason`/`requiresFollowUpDate` switches to an inline confirm view
+      instead of firing immediately. Thin wrappers (`ApplicationStagePicker`,
+      `McoStagePicker`) bind it to `changeApplicationStage`/`changeMcoStage`. Wired into the
+      Application properties table (new "Pipeline Stage" row, additive — old Status field
+      untouched) and the MCO card (replaces the static read-only chip from Phase 4 with the
+      real picker).
+      Verified live end-to-end on a real case: attempted a disallowed backward move (S1 COR
+      → S1 WCD), confirmed the exact rejection message rendered and the dialog stayed open;
+      then a whitelisted backward move (S1 COR → S1 SUB) succeeded; then restored the case to
+      its original stage and cleaned up the extra StageHistory/audit rows the test added —
+      confirmed back to a single original history entry before moving on.
 - [ ] **Phase 8 — Login credentials section.** Dedicated block on client/case page, separate
       from Notes — one row per portal (label, username, password, URL, last updated).
 

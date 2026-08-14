@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requireRole, requireSession } from "@/lib/rbac";
 import { recordAudit, recordFieldChanges } from "@/lib/audit";
 import { getInitialStage } from "@/lib/pipeline";
-import { resolveStageChange } from "@/lib/stage-transitions";
+import { resolveStageChange, isStructurallyReachable } from "@/lib/stage-transitions";
 
 const MCO_NAMES = ["AETNA", "BCBS_IL", "COUNTY_CARE", "HUMANA", "MERIDIAN", "MOLINA", "OTHER"] as const;
 
@@ -103,6 +103,28 @@ export async function changeMcoStage(
 
   revalidatePath(`/clients/${credential.clientId}`);
   return updated;
+}
+
+// Same idea as listReachableStages for Applications (src/lib/actions/stage.ts)
+// — lets the picker grey out disallowed targets instead of letting someone
+// pick one and then get rejected.
+export async function listReachableMcoStages(mcoCredentialId: string) {
+  await requireRole(["ADMIN", "MANAGER", "STAFF"]);
+
+  const credential = await prisma.mcoCredential.findUniqueOrThrow({
+    where: { id: mcoCredentialId },
+    include: { stage: true },
+  });
+  if (!credential.stage) return [];
+
+  const allStages = await prisma.pipelineStage.findMany({
+    where: { pipeline: "MCO", active: true },
+    orderBy: { sortOrder: "asc" },
+  });
+
+  return allStages
+    .filter((s) => s.id !== credential.stage!.id)
+    .map((s) => ({ ...s, reachable: isStructurallyReachable(credential.stage!, s) }));
 }
 
 function parseNullableDate(raw: FormDataEntryValue | null): Date | null | undefined {

@@ -4,7 +4,7 @@ import { auth } from "@/auth";
 import { getClient, getClientAuditLog, archiveClient, restoreClient } from "@/lib/actions/clients";
 import { listAssignableUsers } from "@/lib/actions/applications";
 import { listClientNotes } from "@/lib/actions/notes";
-import { listMcoCredentialsForClient } from "@/lib/actions/mco";
+import { listMcoCredentialsForClient, listReachableMcoStages } from "@/lib/actions/mco";
 import { ClientDetailsForm } from "@/components/clients/client-details-form";
 import { ClientNotesPanel } from "@/components/clients/client-notes-panel";
 import { McoCredentialsCard } from "@/components/clients/mco-credentials-card";
@@ -54,6 +54,9 @@ export default async function ClientDetailPage({
     listMcoCredentialsForClient(id),
   ]);
   const canArchive = session?.user?.role === "ADMIN" || session?.user?.role === "MANAGER";
+  const mcoCredentialsWithStages = await Promise.all(
+    mcoCredentials.map(async (c) => ({ ...c, reachableStages: await listReachableMcoStages(c.id) }))
+  );
 
   return (
     <div className="space-y-6">
@@ -153,7 +156,7 @@ export default async function ClientDetailPage({
         </CardContent>
       </Card>
 
-      <McoCredentialsCard clientId={id} credentials={mcoCredentials} />
+      <McoCredentialsCard clientId={id} credentials={mcoCredentialsWithStages} />
 
       <Card>
         <CardContent>

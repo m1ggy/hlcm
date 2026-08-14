@@ -14,6 +14,7 @@ import { listAccessGrants, listGrantableUsers } from "@/lib/actions/access-grant
 import { listApplicableTemplates, listGeneratedDocuments } from "@/lib/actions/generated-documents";
 import { getMySignatureProfile } from "@/lib/actions/signatures";
 import { listNotes } from "@/lib/actions/notes";
+import { listReachableStages } from "@/lib/actions/stage";
 import { ApplicationPropertiesTable } from "@/components/applications/application-properties-table";
 import { ClientSummaryCard } from "@/components/applications/client-summary-card";
 import { NotesPanel } from "@/components/applications/notes-panel";
@@ -75,6 +76,7 @@ export default async function ApplicationDetailPage({
     generatedDocuments,
     signatureProfile,
     notes,
+    reachableStages,
   ] = await Promise.all([
     listClients({ filter: "all" }),
     listAssignableUsers(),
@@ -86,6 +88,7 @@ export default async function ApplicationDetailPage({
     listGeneratedDocuments(id),
     getMySignatureProfile(),
     listNotes(id),
+    listReachableStages(id),
   ]);
 
   const clientLookup = Object.fromEntries(clients.map((c) => [c.id, c.name]));
@@ -173,6 +176,8 @@ export default async function ApplicationDetailPage({
                   assignableUsers={assignableUsers}
                   licenseTypeName={application.licenseTypeTemplate?.name ?? null}
                   caseTypeName={application.caseType?.name ?? null}
+                  stage={application.stage}
+                  reachableStages={reachableStages}
                   defaultValues={{
                     clientId: application.clientId,
                     name: application.name,

@@ -3,6 +3,8 @@
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { createMcoCredential } from "@/lib/actions/mco";
+import { McoStagePicker } from "@/components/clients/mco-stage-picker";
+import type { PickerStage } from "@/components/shared/stage-picker";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -39,22 +41,8 @@ type Credential = {
   effectiveDate: Date | null;
   recredentialingDueDate: Date | null;
   stage: Stage | null;
+  reachableStages: PickerStage[];
 };
-
-function StageBadge({ stage }: { stage: Stage | null }) {
-  if (!stage) {
-    return <span className="text-sm text-muted-foreground">No stage set</span>;
-  }
-  return (
-    <span
-      className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
-      style={{ backgroundColor: `${stage.hex}22`, color: stage.hex }}
-      title={stage.name}
-    >
-      {stage.abbrev}
-    </span>
-  );
-}
 
 function NewMcoCredentialDialog({ clientId, existing }: { clientId: string; existing: string[] }) {
   const [open, setOpen] = useState(false);
@@ -130,7 +118,7 @@ export function McoCredentialsCard({ clientId, credentials }: { clientId: string
               <div key={c.id} className="rounded-lg border p-3">
                 <div className="flex items-center justify-between">
                   <span className="font-medium">{MCO_LABELS[c.mcoName] ?? c.mcoName}</span>
-                  <StageBadge stage={c.stage} />
+                  <McoStagePicker mcoCredentialId={c.id} currentStage={c.stage} stages={c.reachableStages} />
                 </div>
                 <div className="mt-2 space-y-0.5 text-sm text-muted-foreground">
                   <div>NPI: {c.npi ?? "—"}</div>

@@ -4,6 +4,8 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { updateApplication, updateApplicationCaseFields } from "@/lib/actions/applications";
+import { ApplicationStagePicker } from "@/components/applications/application-stage-picker";
+import type { PickerStage } from "@/components/shared/stage-picker";
 import { Input } from "@/components/ui/input";
 import {
   Table,
@@ -38,6 +40,8 @@ export function ApplicationPropertiesTable({
   assignableUsers,
   licenseTypeName,
   caseTypeName,
+  stage,
+  reachableStages,
 }: {
   applicationId: string;
   defaultValues: {
@@ -58,6 +62,10 @@ export function ApplicationPropertiesTable({
   assignableUsers: Option[];
   licenseTypeName: string | null;
   caseTypeName: string | null;
+  // Both null when the case predates the pipeline rollout and hasn't been
+  // backfilled yet, or its license type doesn't map to a pipeline.
+  stage: { abbrev: string; name: string; hex: string } | null;
+  reachableStages: PickerStage[];
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -250,6 +258,18 @@ export function ApplicationPropertiesTable({
                 ))}
               </SelectContent>
             </Select>
+          </TableCell>
+        </TableRow>
+        <TableRow>
+          <TableCell className="text-muted-foreground">Pipeline Stage</TableCell>
+          <TableCell>
+            {stage ? (
+              <ApplicationStagePicker applicationId={applicationId} currentStage={stage} stages={reachableStages} />
+            ) : (
+              <span className="text-sm text-muted-foreground">
+                Not on a pipeline yet — set a license type to enable stage tracking.
+              </span>
+            )}
           </TableCell>
         </TableRow>
         <TableRow>
