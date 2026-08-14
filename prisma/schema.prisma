@@ -92,6 +92,7 @@ model User {
   licenseTypeTemplatesCreated   LicenseTypeTemplate[]    @relation("LicenseTypeTemplateCreatedBy")
   caseTypesCreated               CaseType[]               @relation("CaseTypeCreatedBy")
   pipelineStagesCreated           PipelineStage[]          @relation("PipelineStageCreatedBy")
+  stageHistoryActed               StageHistory[]           @relation("StageHistoryActor")
   checklistItemTemplatesCreated ChecklistItemTemplate[]  @relation("ChecklistItemTemplateCreatedBy")
   tasksAssigned                  Task[]                   @relation("TaskAssignee")
   tasksReviewing                  Task[]                   @relation("TaskReviewer")
@@ -325,6 +326,9 @@ model PipelineStage {
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
 
+  applications  Application[]
+  stageHistory  StageHistory[]
+
   @@unique([pipeline, abbrev])
   @@index([pipeline, sortOrder])
   @@map("pipeline_stages")
@@ -339,8 +343,17 @@ model Application {
   clientId    String
   name        String
   description String?
+  // Superseded by pipeline/stageId (docs/pipeline-stage-plan.md) — kept
+  // read-only for one release after the backfill so nothing that still
+  // references it breaks mid-rollout, then dropped.
   status      ApplicationStatus @default(DRAFT)
   active      Boolean           @default(true)
+
+  // Which stage list this case moves through and where it currently sits.
+  // Nullable until the backfill script runs; required after.
+  pipeline   Pipeline?
+  stage      PipelineStage? @relation(fields: [stageId], references: [id])
+  stageId    String?
 
   licenseTypeTemplate   LicenseTypeTemplate? @relation(fields: [licenseTypeTemplateId], references: [id])
   licenseTypeTemplateId String?
@@ -361,8 +374,27 @@ model Application {
   files             FileAsset[]
   generatedDocuments GeneratedDocument[]
   notes             Note[]
+  stageHistory      StageHistory[]
 
   @@map("applications")
+}
+
+// One row per stage change on an Application — the source of truth for
+// "days in current stage" (now - latest row's enteredAt) and per-stage
+// duration reporting. Never updated or deleted, only appended to, so history
+// never shrinks even as a case moves back and forth.
+model StageHistory {
+  id            String        @id @default(cuid())
+  application   Application   @relation(fields: [applicationId], references: [id])
+  applicationId String
+  stage         PipelineStage @relation(fields: [stageId], references: [id])
+  stageId       String
+  enteredAt     DateTime      @default(now())
+  actor         User          @relation("StageHistoryActor", fields: [actorId], references: [id])
+  actorId       String
+
+  @@index([applicationId, enteredAt])
+  @@map("stage_history")
 }
 
 // Shares an Application with a user beyond its owner/assignee — e.g. a

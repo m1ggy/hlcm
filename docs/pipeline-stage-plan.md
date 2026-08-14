@@ -60,6 +60,15 @@ yet, so no backfill risk there.
       `pipeline`/`stageId` (nullable), backfill per mapping above, make required, drop old
       enum. Rewrite kanban board, table filters, badge→hex chip, dashboard counts, PDF/CSV
       export, portal view, audit-format labels.
+      Shipped so far: migration `20260814235601_application_pipeline_stage` (adds
+      `pipeline`/`stageId` to Application + `StageHistory` model, both additive/nullable),
+      `scripts/backfill-application-stages.ts` (5 of 6 real Applications backfilled; 1
+      flagged — see below). Still open: make the columns required + drop `status`, and the
+      24-file UI rewiring (kanban, table, badges, exports, portal, audit log).
+      **Blocked on:** confirming the flagged row before it can go to prod —
+      "Prairie Path Unit 2 — CILA Renewal" is `APPROVED`, ambiguous across the 24-stage CILA
+      pipeline (could be freshly approved, or already past mock/oral/hearing). Script leaves
+      it unset rather than guess; tell me where it actually is and I'll set it directly.
 - [ ] **Phase 2 — Stage-change engine.** Server action: forward moves (higher sortOrder,
       same pipeline) always allowed, whitelisted backward moves allowed, exit statuses
       allowed from anywhere, else rejected with a message. On Hold requires reason +
