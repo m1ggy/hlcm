@@ -10,7 +10,7 @@ function csvEscape(value: string) {
 export async function GET() {
   try {
     const applications = await listApplications();
-    const header = ["Name", "Client", "Assigned To", "Status", "Created At"];
+    const header = ["Name", "Client", "Assigned VA", "Status", "Created At"];
     const rows = applications.map((app) => [
       app.name,
       app.client.name,

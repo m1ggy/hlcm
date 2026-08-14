@@ -116,7 +116,7 @@ export async function getApplication(id: string) {
   await assertApplicationAccess(session, id, "view");
   return prisma.application.findUniqueOrThrow({
     where: { id },
-    include: { client: true, assignedUser: true, licenseTypeTemplate: true, caseType: true },
+    include: { client: true, assignedUser: true, assignedManager: true, licenseTypeTemplate: true, caseType: true, stage: true },
   });
 }
 
@@ -238,6 +238,76 @@ export async function updateApplication(id: string, formData: FormData) {
   }
 
   revalidatePath("/applications");
+  revalidatePath(`/applications/${id}`);
+  return application;
+}
+
+const AGENCY_VALUES = ["IDPH", "IDOA", "IDHS", "OTHER"] as const;
+const BALL_WITH_VALUES = ["CTK", "CLIENT", "GOVERNMENT"] as const;
+
+// Empty string means "clear the field" (the properties table always sends
+// the full row on every save, not a partial patch) — distinct from an
+// absent key, which would mean "leave untouched". Unrecognized enum values
+// are treated the same as absent rather than silently coerced.
+function parseNullableEnum<T extends string>(raw: FormDataEntryValue | null, allowed: readonly T[]): T | null | undefined {
+  if (raw === null) return undefined;
+  const value = raw.toString();
+  if (value === "") return null;
+  return (allowed as readonly string[]).includes(value) ? (value as T) : undefined;
+}
+
+function parseNullableDate(raw: FormDataEntryValue | null): Date | null | undefined {
+  if (raw === null) return undefined;
+  const value = raw.toString();
+  if (value === "") return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+function parseNullableInt(raw: FormDataEntryValue | null): number | null | undefined {
+  if (raw === null) return undefined;
+  const value = raw.toString();
+  if (value === "") return null;
+  const n = Number.parseInt(value, 10);
+  return Number.isNaN(n) ? undefined : n;
+}
+
+// Separate from updateApplication — these fields evolve over the life of a
+// case rather than being set once, and aren't required for every pipeline
+// (MCO has no "Agency", for instance), so they get their own lean update
+// rather than being folded into the general form's required-field schema.
+export async function updateApplicationCaseFields(id: string, formData: FormData) {
+  const session = await requireSession();
+  await assertCanEditApplication(session, id);
+
+  const before = await prisma.application.findUniqueOrThrow({ where: { id } });
+  const application = await prisma.application.update({
+    where: { id },
+    data: {
+      agency: parseNullableEnum(formData.get("agency"), AGENCY_VALUES),
+      ballIsWith: parseNullableEnum(formData.get("ballIsWith"), BALL_WITH_VALUES),
+      correctionRound: parseNullableInt(formData.get("correctionRound")),
+      deficiencyReceivedDate: parseNullableDate(formData.get("deficiencyReceivedDate")),
+      deficiencyResponseDueDate: parseNullableDate(formData.get("deficiencyResponseDueDate")),
+      deficiencyResponseSubmittedDate: parseNullableDate(formData.get("deficiencyResponseSubmittedDate")),
+      assignedManagerId: (() => {
+        const raw = formData.get("assignedManagerId");
+        if (raw === null) return undefined;
+        const value = raw.toString();
+        return value === "" ? null : value;
+      })(),
+    },
+  });
+
+  await recordFieldChanges({
+    entityType: "Application",
+    entityId: id,
+    actorId: session.user.id,
+    action: "update",
+    before,
+    after: application,
+  });
+
   revalidatePath(`/applications/${id}`);
   return application;
 }

@@ -46,6 +46,24 @@ enum TaskStatus {
   CLOSED
 }
 
+// Which agency a Home Care case is filed with. Meaningful mainly for the
+// HOME_CARE pipeline (see docs/pipeline-stage-plan.md) — nullable everywhere
+// else.
+enum Agency {
+  IDPH
+  IDOA
+  IDHS
+  OTHER
+}
+
+// Whose court the ball is in right now — a quick glance answer to "who are
+// we waiting on".
+enum BallWith {
+  CTK
+  CLIENT
+  GOVERNMENT
+}
+
 enum GrantPermission {
   VIEW
   EDIT
@@ -88,6 +106,7 @@ model User {
   projectsCreated              Project[]                @relation("ProjectCreatedBy")
   clientsCreated                Client[]                @relation("ClientCreatedBy")
   applicationsOwned             Application[]            @relation("ApplicationOwner")
+  applicationsManaging          Application[]            @relation("ApplicationManager")
   applicationsCreated           Application[]            @relation("ApplicationCreatedBy")
   licenseTypeTemplatesCreated   LicenseTypeTemplate[]    @relation("LicenseTypeTemplateCreatedBy")
   caseTypesCreated               CaseType[]               @relation("CaseTypeCreatedBy")
@@ -360,8 +379,22 @@ model Application {
   caseType              CaseType?            @relation(fields: [caseTypeId], references: [id])
   caseTypeId            String?
 
+  // "Assigned VA" in the UI — the field/relation name predates the pipeline
+  // spec's terminology, left as-is rather than churning every call site for
+  // a label change.
   assignedUser   User   @relation("ApplicationOwner", fields: [assignedUserId], references: [id])
   assignedUserId String
+  assignedManager   User?   @relation("ApplicationManager", fields: [assignedManagerId], references: [id])
+  assignedManagerId String?
+
+  // Case-tracking fields from docs/pipeline-stage-plan.md — all optional,
+  // meaningful mainly for cases actively moving through a pipeline.
+  agency                          Agency?
+  ballIsWith                      BallWith?
+  correctionRound                 Int?
+  deficiencyReceivedDate          DateTime?
+  deficiencyResponseDueDate       DateTime?
+  deficiencyResponseSubmittedDate DateTime?
 
   createdBy   User     @relation("ApplicationCreatedBy", fields: [createdById], references: [id])
   createdById String

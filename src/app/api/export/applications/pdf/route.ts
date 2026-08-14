@@ -10,7 +10,7 @@ const ROW_HEIGHT = 20;
 const COLUMNS = [
   { label: "Name", width: 190 },
   { label: "Client", width: 120 },
-  { label: "Assigned To", width: 110 },
+  { label: "Assigned VA", width: 110 },
   { label: "Status", width: 80 },
   { label: "Created", width: 76 },
 ];

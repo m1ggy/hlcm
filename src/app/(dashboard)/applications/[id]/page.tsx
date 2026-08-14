@@ -178,7 +178,14 @@ export default async function ApplicationDetailPage({
                     name: application.name,
                     description: application.description,
                     assignedUserId: application.assignedUserId,
+                    assignedManagerId: application.assignedManagerId,
                     status: application.status as ApplicationStatus,
+                    agency: application.agency,
+                    ballIsWith: application.ballIsWith,
+                    correctionRound: application.correctionRound,
+                    deficiencyReceivedDate: application.deficiencyReceivedDate,
+                    deficiencyResponseDueDate: application.deficiencyResponseDueDate,
+                    deficiencyResponseSubmittedDate: application.deficiencyResponseSubmittedDate,
                   }}
                 />
               </TabsContent>

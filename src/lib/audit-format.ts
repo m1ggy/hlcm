@@ -5,8 +5,15 @@ const FIELD_LABELS: Record<string, string> = {
   name: "Name",
   description: "Description",
   clientId: "Client",
-  assignedUserId: "Assigned To",
+  assignedUserId: "Assigned VA",
+  assignedManagerId: "Assigned Manager",
   status: "Status",
+  agency: "Agency",
+  ballIsWith: "Ball is with",
+  correctionRound: "Correction round",
+  deficiencyReceivedDate: "Deficiency received",
+  deficiencyResponseDueDate: "Deficiency response due",
+  deficiencyResponseSubmittedDate: "Deficiency response submitted",
   licenseTypeTemplateId: "License Type",
   caseTypeId: "Case Type",
   blockedReason: "Blocked reason",
@@ -66,6 +73,9 @@ const DOCUMENT_STATUS_LABELS: Record<string, string> = {
   APPROVED: "Approved",
   SENT: "Sent",
 };
+
+const AGENCY_LABELS: Record<string, string> = { IDPH: "IDPH", IDOA: "IDoA", IDHS: "IDHS", OTHER: "Other" };
+const BALL_WITH_LABELS: Record<string, string> = { CTK: "CTK", CLIENT: "Client", GOVERNMENT: "Government" };
 
 // Actions whose old/new value is a one-off event payload (a filename, a
 // "userId:permission" pair) rather than a before/after property change —
@@ -148,11 +158,23 @@ export function formatAuditValue(
     return STATUS_LABELS[value as ApplicationStatus] ?? TASK_STATUS_LABELS[value as TaskStatusValue] ?? value;
   }
   if (field === "clientId") return lookups.clients?.[value] ?? value;
-  if (field === "assignedUserId" || field === "reviewerUserId") return lookups.users?.[value] ?? value;
-  if (field === "dueDate" || field === "createdAt" || field === "updatedAt" || field === "ownerDateOfBirth") {
+  if (field === "assignedUserId" || field === "reviewerUserId" || field === "assignedManagerId") {
+    return lookups.users?.[value] ?? value;
+  }
+  if (
+    field === "dueDate" ||
+    field === "createdAt" ||
+    field === "updatedAt" ||
+    field === "ownerDateOfBirth" ||
+    field === "deficiencyReceivedDate" ||
+    field === "deficiencyResponseDueDate" ||
+    field === "deficiencyResponseSubmittedDate"
+  ) {
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString();
   }
+  if (field === "agency") return AGENCY_LABELS[value] ?? value;
+  if (field === "ballIsWith") return BALL_WITH_LABELS[value] ?? value;
   if (field === "hourlyRate") {
     const rate = Number(value);
     return Number.isNaN(rate) ? value : `$${rate.toFixed(2)}/hr`;

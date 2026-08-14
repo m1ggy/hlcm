@@ -100,9 +100,20 @@ yet, so no backfill risk there.
       same-stage guards), all passing.
       **Not wired to any UI yet** — no picker exists (Phase 7), and the old status field/UI
       still runs everything staff currently touch. This is backend-only, ready for Phase 7.
-- [ ] **Phase 3 — New case fields.** `agency`, `ballIsWith`, `correctionRound`, 3 deficiency
+- [x] **Phase 3 — New case fields.** `agency`, `ballIsWith`, `correctionRound`, 3 deficiency
       dates, `assignedManagerId`. Relabel existing `assignedUserId` as "Assigned VA" in UI
       copy only.
+      Shipped: migration `20260815011826_application_case_fields` (all nullable, additive).
+      `updateApplicationCaseFields` action (separate from `updateApplication` — these fields
+      evolve over a case's life rather than being set once, and empty string means "clear",
+      distinct from an absent key meaning "leave untouched"). Wired into
+      `ApplicationPropertiesTable` — Assigned Manager (filtered to MANAGER/ADMIN),
+      Agency, Ball is with, Correction round, and the 3 deficiency dates. "Assigned VA"
+      relabel applied everywhere "Assigned To" appeared (table header, PDF/CSV export,
+      properties table) — audit log labels only, not a schema/relation rename.
+      Verified live: logged in, opened a real case, confirmed all 8 new/relabeled fields
+      render, edited Agency through the UI, confirmed it saved + audited correctly, then
+      reverted the test edit and its audit row.
 - [ ] **Phase 4 — MCO as its own model.** `McoCredential`: clientId, mcoName (dropdown),
       stageId (MCO stages only), NPI, providerId, effectiveDate, recredentialingDueDate — N
       rows per client, rendered side by side on the client page.

@@ -144,7 +144,7 @@ export function ApplicationsTable({
             <TableHead className="w-8" />
             <TableHead>Name</TableHead>
             <TableHead>Client</TableHead>
-            <TableHead>Assigned To</TableHead>
+            <TableHead>Assigned VA</TableHead>
             <TableHead>Progress</TableHead>
             <TableHead>Status</TableHead>
           </TableRow>
