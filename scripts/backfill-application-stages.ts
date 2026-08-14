@@ -7,26 +7,18 @@
 // Idempotent: only touches rows where stageId is still null, so re-running
 // after resolving a flagged row picks up just that row.
 //
-// Deliberately conservative: a status this script can't confidently map
-// (currently just APPROVED under CILA — ambiguous across a 24-stage
-// pipeline, see the plan doc) is left alone and reported, never guessed.
-// Application.pipeline/stageId stay nullable until every row is resolved.
+// Deliberately conservative: a status this script can't confidently map is
+// left alone and reported, never guessed. Application.pipeline/stageId stay
+// nullable until every row is resolved.
 //
 // Run: npx tsx scripts/backfill-application-stages.ts
 import "dotenv/config";
 import { PrismaClient, Pipeline } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+import { pipelineForLicenseType } from "../src/lib/pipeline";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
-
-// LicenseTypeTemplate name -> pipeline. Anything not listed here (or a null
-// license type) can't be placed in a pipeline automatically — flagged.
-const TEMPLATE_TO_PIPELINE: Record<string, Pipeline> = {
-  CILA: "CILA_GROUP_HOME",
-  IDPH: "HOME_CARE",
-  IDOA: "HOME_CARE",
-};
 
 // status -> target stage abbrev, per pipeline. `null` means "ambiguous, do
 // not auto-map" — reported instead of applied.
@@ -47,7 +39,7 @@ const STATUS_TO_STAGE: Record<Pipeline, Partial<Record<string, string | null>>> 
     SUBMITTED: "S1 SUB",
     UNDER_AGENCY_REVIEW: "S1 SUB",
     NEEDS_REVISION: "S1 COR",
-    APPROVED: null, // ambiguous — could be S1 APM, or already past mock/oral/hearing
+    APPROVED: "S1 APM", // confirmed by CTK — approved, awaiting mock
     DENIED: "WDN",
     CLOSED: "WDN",
   },
@@ -74,7 +66,7 @@ async function main() {
 
   for (const app of apps) {
     const templateName = app.licenseTypeTemplate?.name;
-    const pipeline = templateName ? TEMPLATE_TO_PIPELINE[templateName] : undefined;
+    const pipeline = pipelineForLicenseType(templateName);
     if (!pipeline) {
       flagged.push(`${app.id} "${app.name}" — no pipeline mapping for license type "${templateName ?? "none"}"`);
       continue;

@@ -41,7 +41,7 @@ and per-stage timing for aging alerts. Touches 24 files currently reading the ol
 | SUBMITTED | CILA / Renewal | Step I Submitted to IDHS (`S1 SUB`) | High |
 | UNDER_AGENCY_REVIEW | CILA / Renewal | Step I Submitted to IDHS (`S1 SUB`) | High |
 | NEEDS_REVISION | CILA / Renewal | Step I Corrections Received (`S1 COR`) | High |
-| APPROVED | CILA / Renewal | Step I Approved, Await Mock (`S1 APM`) | **Needs confirmation** — ambiguous across a 24-stage pipeline |
+| APPROVED | CILA / Renewal | Step I Approved, Await Mock (`S1 APM`) | Confirmed by CTK — approved, awaiting mock |
 
 `LicenseTypeTemplate` → `Pipeline`: CILA → `CILA_GROUP_HOME`; IDPH/IDOA → `HOME_CARE`
 (Agency dropdown covers IDPH/IDoA/IDHS/Other within that one pipeline). No MCO data exists
@@ -62,13 +62,19 @@ yet, so no backfill risk there.
       export, portal view, audit-format labels.
       Shipped so far: migration `20260814235601_application_pipeline_stage` (adds
       `pipeline`/`stageId` to Application + `StageHistory` model, both additive/nullable),
-      `scripts/backfill-application-stages.ts` (5 of 6 real Applications backfilled; 1
-      flagged — see below). Still open: make the columns required + drop `status`, and the
-      24-file UI rewiring (kanban, table, badges, exports, portal, audit log).
-      **Blocked on:** confirming the flagged row before it can go to prod —
-      "Prairie Path Unit 2 — CILA Renewal" is `APPROVED`, ambiguous across the 24-stage CILA
-      pipeline (could be freshly approved, or already past mock/oral/hearing). Script leaves
-      it unset rather than guess; tell me where it actually is and I'll set it directly.
+      `scripts/backfill-application-stages.ts` (all 6 real Applications backfilled — the
+      once-flagged "Prairie Path Unit 2" row is confirmed `S1 APM`, verified locally).
+      `src/lib/pipeline.ts` (shared `pipelineForLicenseType` + `getInitialStage`, single
+      source of truth for the script and the app) — `createApplication` now sets
+      pipeline/stageId + a StageHistory row on every new case going forward, not just
+      backfilled ones.
+      **Resequencing note:** the 24-file UI rewiring (kanban board, table, badges, exports,
+      portal, audit log) is deferred until after Phase 2 (the stage-change engine) ships —
+      cutting the old status editing UI over before there's any way to *change* a stage would
+      remove the only way staff have to move a case forward. Old `status` field and its
+      editing UI stay fully functional in the meantime; the new stage is tracked underneath
+      but not yet user-facing. Making pipeline/stageId required + dropping `status` happens
+      at the end, once the picker UI (Phase 7) replaces status-editing entirely.
 - [ ] **Phase 2 — Stage-change engine.** Server action: forward moves (higher sortOrder,
       same pipeline) always allowed, whitelisted backward moves allowed, exit statuses
       allowed from anywhere, else rejected with a message. On Hold requires reason +

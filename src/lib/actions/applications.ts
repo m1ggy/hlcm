@@ -14,6 +14,7 @@ import { cloneChecklistForApplication } from "@/lib/checklist-clone";
 import { notify } from "@/lib/notifications";
 import { TASK_CLOSED_STATUSES } from "@/lib/task-status";
 import { STALE_THRESHOLD_DAYS, computeReadyToSubmit, computeStaleDays } from "@/lib/application-flags";
+import { pipelineForLicenseType, getInitialStage } from "@/lib/pipeline";
 
 const APPLICATION_STATUSES = [
   "DRAFT",
@@ -149,6 +150,17 @@ export async function createApplication(formData: FormData) {
     caseTypeId: formData.get("caseTypeId") || undefined,
   });
 
+  // Which pipeline (and starting stage within it) this case enters, derived
+  // from the license type — see docs/pipeline-stage-plan.md. Stays null when
+  // the license type isn't mapped to a pipeline yet (e.g. Change of
+  // Ownership has no license type at all); pipeline/stageId are nullable for
+  // exactly this reason.
+  const licenseType = parsed.licenseTypeTemplateId
+    ? await prisma.licenseTypeTemplate.findUnique({ where: { id: parsed.licenseTypeTemplateId } })
+    : null;
+  const pipeline = pipelineForLicenseType(licenseType?.name);
+  const initialStage = pipeline ? await getInitialStage(pipeline) : null;
+
   const application = await prisma.application.create({
     data: {
       clientId: parsed.clientId,
@@ -158,8 +170,16 @@ export async function createApplication(formData: FormData) {
       licenseTypeTemplateId: parsed.licenseTypeTemplateId,
       caseTypeId: parsed.caseTypeId,
       createdById: session.user.id,
+      pipeline: pipeline ?? undefined,
+      stageId: initialStage?.id,
     },
   });
+
+  if (initialStage) {
+    await prisma.stageHistory.create({
+      data: { applicationId: application.id, stageId: initialStage.id, actorId: session.user.id },
+    });
+  }
 
   await recordAudit({
     entityType: "Application",
