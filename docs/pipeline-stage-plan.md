@@ -49,10 +49,13 @@ yet, so no backfill risk there.
 
 ## Phases
 
-- [ ] **Phase 0 — Stage catalog schema.** `Pipeline` enum, `PipelineStage` model (pipeline,
+- [x] **Phase 0 — Stage catalog schema.** `Pipeline` enum, `PipelineStage` model (pipeline,
       abbrev, name, sortOrder, hex, colorLabel, isExitStatus, requiresReason,
       requiresFollowUpDate, active, allowedBackwardStageIds). Seed from spec tables. Names
       locked after launch — rename is an explicit ADMIN action, not open edit like CaseType.
+      Shipped: migration `20260814232450_pipeline_stage_catalog`,
+      `scripts/seed-pipeline-stages.ts` (51 rows: 7 + 24 + 11 stages + 9 exit statuses,
+      idempotent, backward-move whitelist wired). Run once per environment after deploy.
 - [ ] **Phase 1 — Wire `Application` to real stages, retire the enum.** Add
       `pipeline`/`stageId` (nullable), backfill per mapping above, make required, drop old
       enum. Rewrite kanban board, table filters, badge→hex chip, dashboard counts, PDF/CSV

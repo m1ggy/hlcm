@@ -28,6 +28,15 @@ enum ApplicationStatus {
   CLOSED
 }
 
+// Which stage list an Application/McoCredential moves through. Home Care
+// covers IDPH/IDoA/IDHS/Other (the Agency field distinguishes those); CILA
+// covers CILA and other group-home licensing; MCO is payer credentialing.
+enum Pipeline {
+  HOME_CARE
+  CILA_GROUP_HOME
+  MCO
+}
+
 enum TaskStatus {
   NOT_STARTED
   IN_PROGRESS
@@ -82,6 +91,7 @@ model User {
   applicationsCreated           Application[]            @relation("ApplicationCreatedBy")
   licenseTypeTemplatesCreated   LicenseTypeTemplate[]    @relation("LicenseTypeTemplateCreatedBy")
   caseTypesCreated               CaseType[]               @relation("CaseTypeCreatedBy")
+  pipelineStagesCreated           PipelineStage[]          @relation("PipelineStageCreatedBy")
   checklistItemTemplatesCreated ChecklistItemTemplate[]  @relation("ChecklistItemTemplateCreatedBy")
   tasksAssigned                  Task[]                   @relation("TaskAssignee")
   tasksReviewing                  Task[]                   @relation("TaskReviewer")
@@ -284,6 +294,40 @@ model ChecklistItemTemplate {
   updatedAt             DateTime             @updatedAt
 
   @@map("checklist_item_templates")
+}
+
+// One stage in a pipeline's ordered stage list (see docs/pipeline-stage-plan.md).
+// `sortOrder` — not `abbrev` — drives display order everywhere; abbreviations
+// are unique only within a pipeline and would sort alphabetically on their
+// own, scrambling the real process sequence.
+// `isExitStatus` stages (On Hold, Withdrawn, Hearing Lost) are reachable from
+// any other stage in the same pipeline, bypassing the forward-only rule.
+// `allowedBackwardStageIds` is the explicit whitelist of stage ids this stage
+// may move backward to (e.g. Corrections Received -> Submitted) — every other
+// backward move is rejected. Names are locked after launch; renaming an
+// existing row (rather than adding a new one) orphans historical records, so
+// treat edits here as an admin-gated action, not a free-form CRUD form.
+model PipelineStage {
+  id                      String   @id @default(cuid())
+  pipeline                Pipeline
+  abbrev                  String
+  name                    String
+  sortOrder               Int
+  hex                     String
+  colorLabel              String
+  isExitStatus            Boolean  @default(false)
+  requiresReason          Boolean  @default(false)
+  requiresFollowUpDate    Boolean  @default(false)
+  allowedBackwardStageIds String[] @default([])
+  active                  Boolean  @default(true)
+  createdBy               User     @relation("PipelineStageCreatedBy", fields: [createdById], references: [id])
+  createdById             String
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@unique([pipeline, abbrev])
+  @@index([pipeline, sortOrder])
+  @@map("pipeline_stages")
 }
 
 // Phase 1 scope: bare case record. Phase 2 adds license/case type +
