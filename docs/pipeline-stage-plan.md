@@ -68,6 +68,11 @@ yet, so no backfill risk there.
       source of truth for the script and the app) — `createApplication` now sets
       pipeline/stageId + a StageHistory row on every new case going forward, not just
       backfilled ones.
+      Confirmed clean on prod: `seed-pipeline-stages.ts` + `backfill-application-stages.ts`
+      run, one legacy no-license-type row ("Ace Home Care Charlotte Inc") resolved via
+      `resolve-application-pipeline.ts` (HOME_CARE / WCD, derived from its existing status),
+      re-run of the backfill reports zero remaining. Every real Application now has a
+      pipeline + stage.
       **Resequencing note:** the 24-file UI rewiring (kanban board, table, badges, exports,
       portal, audit log) is deferred until after Phase 2 (the stage-change engine) ships —
       cutting the old status editing UI over before there's any way to *change* a stage would
@@ -75,11 +80,26 @@ yet, so no backfill risk there.
       editing UI stay fully functional in the meantime; the new stage is tracked underneath
       but not yet user-facing. Making pipeline/stageId required + dropping `status` happens
       at the end, once the picker UI (Phase 7) replaces status-editing entirely.
-- [ ] **Phase 2 — Stage-change engine.** Server action: forward moves (higher sortOrder,
+- [x] **Phase 2 — Stage-change engine.** Server action: forward moves (higher sortOrder,
       same pipeline) always allowed, whitelisted backward moves allowed, exit statuses
       allowed from anywhere, else rejected with a message. On Hold requires reason +
       follow-up date; Withdrawn requires reason. Every change writes a `StageHistory` row
       (stage, enteredAt, actor) — source of truth for "days in stage" and aging alerts.
+      Shipped: `src/lib/stage-transitions.ts` (pure rule logic, DB-free —
+      `isStructurallyReachable` for the forward/backward/exit check, `resolveStageChange`
+      layers the reason/follow-up-date requirement on top), `src/lib/actions/stage.ts`
+      (`changeApplicationStage` — auth, validates, transacts the Application update +
+      StageHistory row, audits, notifies stakeholders; `listReachableStages` — for Phase 7's
+      picker to grey out disallowed targets instead of letting someone pick one and get
+      rejected). Migration `20260815010314_stage_history_reason` adds `reason`/
+      `followUpDate` to StageHistory (per-transition, not per-case). Caught and fixed a real
+      bug in testing: naive sortOrder comparison would've blocked *resuming* from an exit
+      status (On Hold sorts last, so "resume" always looked backward) — exit statuses now
+      skip the forward/backward check as both source and target. Verified with 13 cases
+      against the real seeded catalog (every rule in the spec plus the cross-pipeline and
+      same-stage guards), all passing.
+      **Not wired to any UI yet** — no picker exists (Phase 7), and the old status field/UI
+      still runs everything staff currently touch. This is backend-only, ready for Phase 7.
 - [ ] **Phase 3 — New case fields.** `agency`, `ballIsWith`, `correctionRound`, 3 deficiency
       dates, `assignedManagerId`. Relabel existing `assignedUserId` as "Assigned VA" in UI
       copy only.

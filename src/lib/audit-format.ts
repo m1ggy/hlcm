@@ -39,6 +39,7 @@ const ACTION_VERBS: Record<string, string> = {
   restore: "Restored",
   link_project: "Added to a project",
   unlink_project: "Removed from a project",
+  change_stage: "Changed stage",
   set_rate: "Set hourly rate",
   clock_in: "Clocked in",
   clock_out: "Clocked out",
@@ -81,6 +82,7 @@ const EVENT_ACTIONS = new Set([
   "sign_document",
   "link_project",
   "unlink_project",
+  "change_stage",
 ]);
 
 export function isEventAction(action: string) {
@@ -115,6 +117,9 @@ export function formatEventDescription(
   if (action === "sign_document" && newValue) return `Signed and saved as "${newValue}"`;
   if (action === "link_project" && newValue) return `Added to project "${newValue}"`;
   if (action === "unlink_project" && oldValue) return `Removed from project "${oldValue}"`;
+  if (action === "change_stage" && newValue) {
+    return oldValue ? `Moved from "${oldValue}" to "${newValue}"` : `Set to "${newValue}"`;
+  }
   return formatActionVerb(action);
 }
 

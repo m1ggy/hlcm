@@ -389,6 +389,11 @@ model StageHistory {
   applicationId String
   stage         PipelineStage @relation(fields: [stageId], references: [id])
   stageId       String
+  // Set when the stage entered requires them (On Hold needs both, Withdrawn
+  // needs reason) — belongs to this specific transition, not the case as a
+  // whole, so it lives here rather than on Application.
+  reason        String?
+  followUpDate  DateTime?
   enteredAt     DateTime      @default(now())
   actor         User          @relation("StageHistoryActor", fields: [actorId], references: [id])
   actorId       String
