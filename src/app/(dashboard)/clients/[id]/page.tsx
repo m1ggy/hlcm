@@ -4,8 +4,10 @@ import { auth } from "@/auth";
 import { getClient, getClientAuditLog, archiveClient, restoreClient } from "@/lib/actions/clients";
 import { listAssignableUsers } from "@/lib/actions/applications";
 import { listClientNotes } from "@/lib/actions/notes";
+import { listMcoCredentialsForClient } from "@/lib/actions/mco";
 import { ClientDetailsForm } from "@/components/clients/client-details-form";
 import { ClientNotesPanel } from "@/components/clients/client-notes-panel";
+import { McoCredentialsCard } from "@/components/clients/mco-credentials-card";
 import { AuditLogPanel } from "@/components/applications/audit-log-panel";
 import { ArchiveButton } from "@/components/shared/archive-button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -43,11 +45,12 @@ export default async function ClientDetailPage({
     notFound();
   }
 
-  const [assignableUsers, notes, auditLog, session] = await Promise.all([
+  const [assignableUsers, notes, auditLog, session, mcoCredentials] = await Promise.all([
     listAssignableUsers(),
     listClientNotes(id),
     getClientAuditLog(id),
     auth(),
+    listMcoCredentialsForClient(id),
   ]);
   const canArchive = session?.user?.role === "ADMIN" || session?.user?.role === "MANAGER";
 
@@ -150,6 +153,8 @@ export default async function ClientDetailPage({
           </Table>
         </CardContent>
       </Card>
+
+      <McoCredentialsCard clientId={id} credentials={mcoCredentials} />
 
       <Card>
         <CardContent>

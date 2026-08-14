@@ -64,6 +64,16 @@ enum BallWith {
   GOVERNMENT
 }
 
+enum McoName {
+  AETNA
+  BCBS_IL
+  COUNTY_CARE
+  HUMANA
+  MERIDIAN
+  MOLINA
+  OTHER
+}
+
 enum GrantPermission {
   VIEW
   EDIT
@@ -107,6 +117,9 @@ model User {
   clientsCreated                Client[]                @relation("ClientCreatedBy")
   applicationsOwned             Application[]            @relation("ApplicationOwner")
   applicationsManaging          Application[]            @relation("ApplicationManager")
+  mcoCredentialsAssigned        McoCredential[]          @relation("McoCredentialAssignee")
+  mcoCredentialsManaging        McoCredential[]          @relation("McoCredentialManager")
+  mcoCredentialsCreated         McoCredential[]          @relation("McoCredentialCreatedBy")
   applicationsCreated           Application[]            @relation("ApplicationCreatedBy")
   licenseTypeTemplatesCreated   LicenseTypeTemplate[]    @relation("LicenseTypeTemplateCreatedBy")
   caseTypesCreated               CaseType[]               @relation("CaseTypeCreatedBy")
@@ -248,8 +261,9 @@ model Client {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  applications Application[]
-  notes        Note[]
+  applications    Application[]
+  notes           Note[]
+  mcoCredentials  McoCredential[]
 
   @@map("clients")
 }
@@ -345,8 +359,9 @@ model PipelineStage {
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
 
-  applications  Application[]
-  stageHistory  StageHistory[]
+  applications    Application[]
+  mcoCredentials  McoCredential[]
+  stageHistory    StageHistory[]
 
   @@unique([pipeline, abbrev])
   @@index([pipeline, sortOrder])
@@ -416,23 +431,69 @@ model Application {
 // "days in current stage" (now - latest row's enteredAt) and per-stage
 // duration reporting. Never updated or deleted, only appended to, so history
 // never shrinks even as a case moves back and forth.
+// Polymorphic the same way Note is (exactly one of applicationId/
+// mcoCredentialId set) — an MCO credential moves through the MCO pipeline
+// independently of any Application, but needs the exact same "timestamp
+// every stage change" history for its own days-in-stage/aging alerts.
 model StageHistory {
-  id            String        @id @default(cuid())
-  application   Application   @relation(fields: [applicationId], references: [id])
-  applicationId String
-  stage         PipelineStage @relation(fields: [stageId], references: [id])
-  stageId       String
+  id              String         @id @default(cuid())
+  application     Application?   @relation(fields: [applicationId], references: [id])
+  applicationId   String?
+  mcoCredential   McoCredential? @relation(fields: [mcoCredentialId], references: [id])
+  mcoCredentialId String?
+  stage           PipelineStage  @relation(fields: [stageId], references: [id])
+  stageId         String
   // Set when the stage entered requires them (On Hold needs both, Withdrawn
   // needs reason) — belongs to this specific transition, not the case as a
-  // whole, so it lives here rather than on Application.
-  reason        String?
-  followUpDate  DateTime?
-  enteredAt     DateTime      @default(now())
-  actor         User          @relation("StageHistoryActor", fields: [actorId], references: [id])
-  actorId       String
+  // whole, so it lives here rather than on Application/McoCredential.
+  reason          String?
+  followUpDate    DateTime?
+  enteredAt       DateTime       @default(now())
+  actor           User           @relation("StageHistoryActor", fields: [actorId], references: [id])
+  actorId         String
 
   @@index([applicationId, enteredAt])
+  @@index([mcoCredentialId, enteredAt])
   @@map("stage_history")
+}
+
+// One row per client per MCO — never one per client (a client credentialing
+// with five MCOs has five records, each moving through the MCO pipeline
+// independently). Client profile renders these side by side.
+model McoCredential {
+  id       String  @id @default(cuid())
+  client   Client  @relation(fields: [clientId], references: [id])
+  clientId String
+  mcoName  McoName
+
+  stage   PipelineStage? @relation(fields: [stageId], references: [id])
+  stageId String?
+
+  npi                    String?
+  providerId             String?
+  effectiveDate          DateTime?
+  recredentialingDueDate DateTime?
+
+  ballIsWith                       BallWith?
+  correctionRound                  Int?
+  deficiencyReceivedDate           DateTime?
+  deficiencyResponseDueDate        DateTime?
+  deficiencyResponseSubmittedDate  DateTime?
+
+  assignedUser      User?   @relation("McoCredentialAssignee", fields: [assignedUserId], references: [id])
+  assignedUserId     String?
+  assignedManager    User?   @relation("McoCredentialManager", fields: [assignedManagerId], references: [id])
+  assignedManagerId  String?
+
+  createdBy   User     @relation("McoCredentialCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  stageHistory StageHistory[]
+
+  @@unique([clientId, mcoName])
+  @@map("mco_credentials")
 }
 
 // Shares an Application with a user beyond its owner/assignee — e.g. a

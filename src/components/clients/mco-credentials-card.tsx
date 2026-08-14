@@ -1,0 +1,150 @@
+"use client";
+
+import { useState, useTransition } from "react";
+import { toast } from "sonner";
+import { createMcoCredential } from "@/lib/actions/mco";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+const MCO_LABELS: Record<string, string> = {
+  AETNA: "Aetna",
+  BCBS_IL: "BCBS IL",
+  COUNTY_CARE: "CountyCare",
+  HUMANA: "Humana",
+  MERIDIAN: "Meridian",
+  MOLINA: "Molina",
+  OTHER: "Other",
+};
+
+type Stage = { abbrev: string; name: string; hex: string };
+type Credential = {
+  id: string;
+  mcoName: string;
+  npi: string | null;
+  providerId: string | null;
+  effectiveDate: Date | null;
+  recredentialingDueDate: Date | null;
+  stage: Stage | null;
+};
+
+function StageBadge({ stage }: { stage: Stage | null }) {
+  if (!stage) {
+    return <span className="text-sm text-muted-foreground">No stage set</span>;
+  }
+  return (
+    <span
+      className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
+      style={{ backgroundColor: `${stage.hex}22`, color: stage.hex }}
+      title={stage.name}
+    >
+      {stage.abbrev}
+    </span>
+  );
+}
+
+function NewMcoCredentialDialog({ clientId, existing }: { clientId: string; existing: string[] }) {
+  const [open, setOpen] = useState(false);
+  const [mcoName, setMcoName] = useState<string>("");
+  const [isPending, startTransition] = useTransition();
+
+  const available = Object.entries(MCO_LABELS).filter(([value]) => !existing.includes(value));
+
+  function handleCreate() {
+    if (!mcoName) return;
+    startTransition(async () => {
+      try {
+        await createMcoCredential(clientId, mcoName as Parameters<typeof createMcoCredential>[1]);
+        toast.success("MCO credentialing record added");
+        setOpen(false);
+        setMcoName("");
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Failed to add MCO");
+      }
+    });
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger render={<Button variant="outline" size="sm">Add MCO</Button>} />
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Start credentialing with a new MCO</DialogTitle>
+        </DialogHeader>
+        {available.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Already credentialing with every MCO on the list.</p>
+        ) : (
+          <div className="space-y-4">
+            <Select items={Object.fromEntries(available)} value={mcoName} onValueChange={(v) => setMcoName(v ?? "")}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select an MCO" />
+              </SelectTrigger>
+              <SelectContent>
+                {available.map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button onClick={handleCreate} disabled={!mcoName || isPending} className="w-full">
+              Add
+            </Button>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Client profile renders every MCO credentialing record side by side — one
+// row per MCO, never one per client (docs/pipeline-stage-plan.md). Stage
+// color comes straight from the seeded PipelineStage catalog, not a
+// hardcoded badge variant.
+export function McoCredentialsCard({ clientId, credentials }: { clientId: string; credentials: Credential[] }) {
+  return (
+    <Card>
+      <CardContent>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-base font-medium">MCO Credentialing</h2>
+          <NewMcoCredentialDialog clientId={clientId} existing={credentials.map((c) => c.mcoName)} />
+        </div>
+        {credentials.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Not credentialing with any MCOs yet.</p>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {credentials.map((c) => (
+              <div key={c.id} className="rounded-lg border p-3">
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">{MCO_LABELS[c.mcoName] ?? c.mcoName}</span>
+                  <StageBadge stage={c.stage} />
+                </div>
+                <div className="mt-2 space-y-0.5 text-sm text-muted-foreground">
+                  <div>NPI: {c.npi ?? "—"}</div>
+                  <div>Provider ID: {c.providerId ?? "—"}</div>
+                  <div>
+                    Recredentialing due:{" "}
+                    {c.recredentialingDueDate ? new Date(c.recredentialingDueDate).toLocaleDateString() : "—"}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}

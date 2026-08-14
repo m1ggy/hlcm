@@ -114,9 +114,29 @@ yet, so no backfill risk there.
       Verified live: logged in, opened a real case, confirmed all 8 new/relabeled fields
       render, edited Agency through the UI, confirmed it saved + audited correctly, then
       reverted the test edit and its audit row.
-- [ ] **Phase 4 — MCO as its own model.** `McoCredential`: clientId, mcoName (dropdown),
+- [x] **Phase 4 — MCO as its own model.** `McoCredential`: clientId, mcoName (dropdown),
       stageId (MCO stages only), NPI, providerId, effectiveDate, recredentialingDueDate — N
       rows per client, rendered side by side on the client page.
+      Shipped: migration `20260815012525_mco_credentials`. `StageHistory` made polymorphic
+      (applicationId now nullable, `mcoCredentialId` added — same "exactly one set" pattern
+      already used by `Note`) so MCO credentials get the same per-transition history
+      Applications do. Unique on `(clientId, mcoName)` enforces the "never one row per
+      client" rule at the DB level, not just in the UI.
+      `src/lib/actions/mco.ts` — `listMcoCredentialsForClient`, `createMcoCredential` (sets
+      initial MCO-pipeline stage via the same `getInitialStage` Phase 1 built),
+      `changeMcoStage` (reuses `resolveStageChange` from Phase 2 — same engine, different
+      entity), `updateMcoCredential`. New `McoCredentialsCard` on the client page — first
+      real place a `PipelineStage`'s hex color renders in the actual app (a colored chip
+      instead of a hardcoded badge variant), plus an Add MCO dialog filtering out MCOs the
+      client already has.
+      Verified live: card renders, added a real Aetna credential through the UI, confirmed
+      it landed at the correct initial stage (`WCD`, colored), then deleted the test row +
+      its StageHistory/audit rows.
+      **Caught mid-verification:** the long-running dev server's `globalThis` Prisma
+      singleton survives Fast Refresh across schema regens, so it kept using the
+      pre-Phase-4 client and `prisma.mcoCredential` came back `undefined` even though
+      `prisma generate` had already run. Full dev-server restart fixed it — worth remembering
+      for the remaining phases, a plain file edit won't pick up a new model.
 - [ ] **Phase 5 — Service/project colors.** `ServiceType` lookup (mirrors
       `LicenseTypeTemplate`/`CaseType` admin pattern), hex + text color, nullable FK on
       `Project`, neutral `#ECEFF1` fallback when unset. Feeds Clients-list project badges.
