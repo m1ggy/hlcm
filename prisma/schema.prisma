@@ -91,6 +91,7 @@ enum GeneratedDocumentStatus {
 }
 
 enum NotificationType {
+  TASK_ASSIGNED
   TASK_REASSIGNED
   TASK_REVIEW_REQUESTED
   TASK_STATUS_CHANGED

@@ -95,6 +95,17 @@ export async function createTask(formData: FormData) {
     actorId: session.user.id,
   });
 
+  await notify(
+    {
+      userId: task.assignedUserId,
+      type: "TASK_ASSIGNED",
+      message: `You were assigned "${task.label}"`,
+      entityType: "Task",
+      entityId: task.id,
+    },
+    session.user.id
+  );
+
   revalidatePath(`/applications/${parsed.applicationId}`);
   return task;
 }
@@ -310,6 +321,17 @@ export async function createStandaloneTask(formData: FormData) {
     action: parsed.parentTaskId ? "create_subtask" : "create_standalone",
     actorId: session.user.id,
   });
+
+  await notify(
+    {
+      userId: task.assignedUserId,
+      type: "TASK_ASSIGNED",
+      message: `You were assigned "${task.label}"`,
+      entityType: "Task",
+      entityId: task.id,
+    },
+    session.user.id
+  );
 
   revalidatePath("/tasks");
   return task;
