@@ -13,10 +13,10 @@ import type { $Enums } from "@/generated/prisma/client";
 // can't collect the reason/follow-up-date those require (that's what the
 // StagePicker's confirm step is for), so they're deliberately not columns
 // here — reaching them still works via the picker on the case detail page.
-export async function listPipelineStages(pipeline: $Enums.Pipeline) {
+export async function listPipelineStages(pipeline: $Enums.Pipeline, opts: { includeExit?: boolean } = {}) {
   await requireRole(["ADMIN", "MANAGER", "STAFF"]);
   return prisma.pipelineStage.findMany({
-    where: { pipeline, isExitStatus: false, active: true },
+    where: { pipeline, active: true, ...(opts.includeExit ? {} : { isExitStatus: false }) },
     orderBy: { sortOrder: "asc" },
   });
 }

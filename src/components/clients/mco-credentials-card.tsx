@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { createMcoCredential } from "@/lib/actions/mco";
 import { McoStagePicker } from "@/components/clients/mco-stage-picker";
 import type { PickerStage } from "@/components/shared/stage-picker";
+import { PipelineDiagramDialog, type DiagramStage } from "@/components/shared/pipeline-diagram";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -103,13 +104,24 @@ function NewMcoCredentialDialog({ clientId, existing }: { clientId: string; exis
 // row per MCO, never one per client (docs/pipeline-stage-plan.md). Stage
 // color comes straight from the seeded PipelineStage catalog, not a
 // hardcoded badge variant.
-export function McoCredentialsCard({ clientId, credentials }: { clientId: string; credentials: Credential[] }) {
+export function McoCredentialsCard({
+  clientId,
+  credentials,
+  mcoStages,
+}: {
+  clientId: string;
+  credentials: Credential[];
+  mcoStages: DiagramStage[];
+}) {
   return (
     <Card>
       <CardContent>
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-base font-medium">MCO Credentialing</h2>
-          <NewMcoCredentialDialog clientId={clientId} existing={credentials.map((c) => c.mcoName)} />
+          <div className="flex items-center gap-2">
+            <PipelineDiagramDialog pipeline="MCO" pipelineLabel="MCO Credentialing" stages={mcoStages} />
+            <NewMcoCredentialDialog clientId={clientId} existing={credentials.map((c) => c.mcoName)} />
+          </div>
         </div>
         {credentials.length === 0 ? (
           <p className="text-sm text-muted-foreground">Not credentialing with any MCOs yet.</p>

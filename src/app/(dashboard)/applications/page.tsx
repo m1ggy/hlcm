@@ -31,7 +31,17 @@ export default async function ApplicationsPage({
   const showArchived = archived === "1";
   const canArchive = session.user.role === "ADMIN" || session.user.role === "MANAGER";
 
-  const [applications, clients, assignableUsers, licenseTypes, caseTypes, homeCareStages, cilaStages] = await Promise.all([
+  const [
+    applications,
+    clients,
+    assignableUsers,
+    licenseTypes,
+    caseTypes,
+    homeCareStages,
+    cilaStages,
+    homeCareStagesFull,
+    cilaStagesFull,
+  ] = await Promise.all([
     listApplications({ archived: showArchived }),
     listClients(),
     listAssignableUsers(),
@@ -39,6 +49,8 @@ export default async function ApplicationsPage({
     listCaseTypes(),
     listPipelineStages("HOME_CARE"),
     listPipelineStages("CILA_GROUP_HOME"),
+    listPipelineStages("HOME_CARE", { includeExit: true }),
+    listPipelineStages("CILA_GROUP_HOME", { includeExit: true }),
   ]);
 
   return (
@@ -119,6 +131,7 @@ export default async function ApplicationsPage({
           assignableUsers={assignableUsers}
           currentUserId={session.user.id}
           pipelineStages={{ HOME_CARE: homeCareStages, CILA_GROUP_HOME: cilaStages }}
+          pipelineStagesFull={{ HOME_CARE: homeCareStagesFull, CILA_GROUP_HOME: cilaStagesFull }}
         />
       )}
     </div>

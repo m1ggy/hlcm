@@ -6,6 +6,7 @@ import { listAssignableUsers } from "@/lib/actions/applications";
 import { listClientNotes } from "@/lib/actions/notes";
 import { listMcoCredentialsForClient, listReachableMcoStages } from "@/lib/actions/mco";
 import { listClientCredentials } from "@/lib/actions/client-credentials";
+import { listPipelineStages } from "@/lib/actions/stage";
 import { ClientDetailsForm } from "@/components/clients/client-details-form";
 import { ClientNotesPanel } from "@/components/clients/client-notes-panel";
 import { McoCredentialsCard } from "@/components/clients/mco-credentials-card";
@@ -48,13 +49,14 @@ export default async function ClientDetailPage({
     notFound();
   }
 
-  const [assignableUsers, notes, auditLog, session, mcoCredentials, credentials] = await Promise.all([
+  const [assignableUsers, notes, auditLog, session, mcoCredentials, credentials, mcoStages] = await Promise.all([
     listAssignableUsers(),
     listClientNotes(id),
     getClientAuditLog(id),
     auth(),
     listMcoCredentialsForClient(id),
     listClientCredentials(id),
+    listPipelineStages("MCO", { includeExit: true }),
   ]);
   const canArchive = session?.user?.role === "ADMIN" || session?.user?.role === "MANAGER";
   const mcoCredentialsWithStages = await Promise.all(
@@ -169,7 +171,7 @@ export default async function ClientDetailPage({
         </CardContent>
       </Card>
 
-      <McoCredentialsCard clientId={id} credentials={mcoCredentialsWithStages} />
+      <McoCredentialsCard clientId={id} credentials={mcoCredentialsWithStages} mcoStages={mcoStages} />
 
       <ClientCredentialsCard clientId={id} credentials={credentials} />
 

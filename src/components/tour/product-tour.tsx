@@ -130,7 +130,7 @@ function buildSteps(role: string | undefined): TourStep[] {
       element: '[data-tour="pipeline-tabs"]',
       popover: {
         title: "Pipeline tabs",
-        description: "Home Care and CILA / Group Home each run through their own licensing stages, so each gets its own tab and its own board — a case in Step I Supervisor Review and one in HC Corrections Received aren't on the same track. \"No Pipeline\" holds older cases that predate this and any case type without a mapped pipeline yet; those still use the plain status field.",
+        description: "Home Care and CILA / Group Home each run through their own licensing stages, so each gets its own tab and its own board — a case in Step I Supervisor Review and one in HC Corrections Received aren't on the same track. \"No Pipeline\" holds older cases that predate this and any case type without a mapped pipeline yet; those still use the plain status field. \"Pipeline map\" next to the view switcher shows the whole stage flow for whichever tab you're on — full names, colors, and which backward moves are allowed.",
         side: "bottom",
       },
     },

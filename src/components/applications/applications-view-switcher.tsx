@@ -9,6 +9,7 @@ import { PipelineApplicationsBoard, type BoardStage } from "@/components/applica
 import { getFavoriteApplicationIds } from "@/lib/favorite-applications";
 import { APPLICATION_STATUSES, STATUS_LABELS, ApplicationStatus } from "@/lib/status";
 import { PIPELINE_LABELS } from "@/lib/pipeline-labels";
+import { PipelineDiagramDialog, type DiagramStage } from "@/components/shared/pipeline-diagram";
 
 type Stage = { id: string; abbrev: string; name: string; hex: string };
 
@@ -39,6 +40,7 @@ export function ApplicationsViewSwitcher({
   assignableUsers,
   currentUserId,
   pipelineStages,
+  pipelineStagesFull,
 }: {
   applications: AppRow[];
   assignableUsers: { id: string; name: string }[];
@@ -47,6 +49,10 @@ export function ApplicationsViewSwitcher({
   // "MCO" (that's exclusively the McoCredential model's pipeline), so only
   // these two are needed for a Kanban board.
   pipelineStages: { HOME_CARE: BoardStage[]; CILA_GROUP_HOME: BoardStage[] };
+  // Same two pipelines, but including exit statuses — the Kanban board
+  // deliberately excludes those (see pipeline-applications-board.tsx), but
+  // the reference diagram shouldn't hide them.
+  pipelineStagesFull: { HOME_CARE: DiagramStage[]; CILA_GROUP_HOME: DiagramStage[] };
 }) {
   const [view, setView] = useState<"table" | "board">("table");
   const [filter, setFilter] = useState<Filter>("all");
@@ -137,9 +143,18 @@ export function ApplicationsViewSwitcher({
             <LayoutGrid className="size-3.5" /> Board
           </Button>
         </div>
-        <span className="text-xs text-muted-foreground">
-          {filtered.length} of {byTab.length}
-        </span>
+        <div className="flex items-center gap-2">
+          {tab !== "NO_PIPELINE" && (
+            <PipelineDiagramDialog
+              pipeline={tab}
+              pipelineLabel={PIPELINE_LABELS[tab]}
+              stages={pipelineStagesFull[tab]}
+            />
+          )}
+          <span className="text-xs text-muted-foreground">
+            {filtered.length} of {byTab.length}
+          </span>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-1.5" data-tour="filter-chips">
