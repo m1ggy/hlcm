@@ -127,7 +127,7 @@ export default async function HomePage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card data-tour="pipeline-alerts">
         <CardHeader>
           <CardTitle>Pipeline Alerts</CardTitle>
         </CardHeader>

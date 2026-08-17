@@ -117,7 +117,7 @@ export function ApplicationsViewSwitcher({
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-1 rounded-lg bg-muted p-1 text-xs w-fit">
+      <div className="flex flex-wrap items-center gap-1 rounded-lg bg-muted p-1 text-xs w-fit" data-tour="pipeline-tabs">
         {TABS.map((t) => (
           <Button key={t} variant={tab === t ? "default" : "ghost"} size="xs" onClick={() => changeTab(t)}>
             {t === "NO_PIPELINE" ? "No Pipeline" : PIPELINE_LABELS[t]}

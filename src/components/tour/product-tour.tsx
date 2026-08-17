@@ -21,6 +21,15 @@ function buildSteps(role: string | undefined): TourStep[] {
 
   const steps: TourStep[] = [
     {
+      data: { path: "/" },
+      element: '[data-tour="pipeline-alerts"]',
+      popover: {
+        title: "Pipeline Alerts",
+        description: "The first thing you'll see after signing in — cases and MCO credentials that need attention right now: stuck in Supervisor Review too long, a corrections deadline coming up, an MCO recredentialing due date approaching, that kind of thing. Computed fresh every time you load this page.",
+        side: "bottom",
+      },
+    },
+    {
       data: { path: "/applications" },
       element: '[data-tour="nav-projects"]',
       popover: {
@@ -111,9 +120,18 @@ function buildSteps(role: string | undefined): TourStep[] {
       element: '[data-tour="notifications"]',
       popover: {
         title: "Notifications",
-        description: "Reassignments, review requests, status changes, and new shares land here.",
+        description: "New task assignments, reassignments, review requests, status changes, and new shares land here.",
         side: "bottom",
         align: "end",
+      },
+    },
+    {
+      data: { path: "/applications" },
+      element: '[data-tour="pipeline-tabs"]',
+      popover: {
+        title: "Pipeline tabs",
+        description: "Home Care and CILA / Group Home each run through their own licensing stages, so each gets its own tab and its own board — a case in Step I Supervisor Review and one in HC Corrections Received aren't on the same track. \"No Pipeline\" holds older cases that predate this and any case type without a mapped pipeline yet; those still use the plain status field.",
+        side: "bottom",
       },
     },
     {
@@ -121,7 +139,7 @@ function buildSteps(role: string | undefined): TourStep[] {
       element: '[data-tour="view-switcher"]',
       popover: {
         title: "Table or board",
-        description: "Switch between a sortable table and a drag-and-drop status board — same cases, either way.",
+        description: "Switch between a sortable table and a drag-and-drop stage board — same cases, either way. Dragging a card checks the same move rules as the stage picker: a disallowed move snaps back with a message instead of silently landing.",
         side: "bottom",
       },
     },
@@ -130,7 +148,7 @@ function buildSteps(role: string | undefined): TourStep[] {
       element: '[data-tour="filter-chips"]',
       popover: {
         title: "Filters",
-        description: "Narrow the list down to your own cases, favorites, or a specific status.",
+        description: "Narrow the list down to your own cases or favorites. On the No Pipeline tab you can also filter by the old status field.",
         side: "bottom",
       },
     },
@@ -148,7 +166,7 @@ function buildSteps(role: string | undefined): TourStep[] {
       element: '[data-slot="table-container"]',
       popover: {
         title: "Open a case",
-        description: "Click any case for its checklist, files, generated documents, comments, sharing, and audit log — plus a client info panel with contact details for whoever you're licensing for.",
+        description: "Click any case for its checklist, files, generated documents, comments, sharing, and audit log — plus a client info panel with contact details for whoever you're licensing for. If it's on a pipeline, you'll also see its current stage (type to search, or pick from the list) and how many days it's been sitting there.",
         side: "top",
       },
     },
@@ -157,7 +175,7 @@ function buildSteps(role: string | undefined): TourStep[] {
       element: '[data-slot="table-container"]',
       popover: {
         title: "Client details",
-        description: "Click a client for business and owner contact info, a running notes thread, every case tied to them, and a full audit log.",
+        description: "Click a client for business and owner contact info, MCO credentialing (one row per MCO they're enrolling with), a separate login-credentials section for portal logins, a running notes thread, every case tied to them, and a full audit log.",
         side: "top",
       },
     },
