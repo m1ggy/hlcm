@@ -14,6 +14,10 @@ const FIELD_LABELS: Record<string, string> = {
   deficiencyReceivedDate: "Deficiency received",
   deficiencyResponseDueDate: "Deficiency response due",
   deficiencyResponseSubmittedDate: "Deficiency response submitted",
+  npi: "NPI",
+  providerId: "Provider ID",
+  effectiveDate: "Effective date",
+  recredentialingDueDate: "Recredentialing due",
   licenseTypeTemplateId: "License Type",
   caseTypeId: "Case Type",
   blockedReason: "Blocked reason",
@@ -47,6 +51,12 @@ const ACTION_VERBS: Record<string, string> = {
   link_project: "Added to a project",
   unlink_project: "Removed from a project",
   change_stage: "Changed stage",
+  add_mco: "Added MCO credential",
+  change_mco_stage: "Changed MCO stage",
+  update_mco: "Updated MCO credential",
+  add_credential: "Added login credential",
+  update_credential: "Updated login credential",
+  remove_credential: "Removed login credential",
   set_rate: "Set hourly rate",
   clock_in: "Clocked in",
   clock_out: "Clocked out",
@@ -76,6 +86,15 @@ const DOCUMENT_STATUS_LABELS: Record<string, string> = {
 
 const AGENCY_LABELS: Record<string, string> = { IDPH: "IDPH", IDOA: "IDoA", IDHS: "IDHS", OTHER: "Other" };
 const BALL_WITH_LABELS: Record<string, string> = { CTK: "CTK", CLIENT: "Client", GOVERNMENT: "Government" };
+const MCO_LABELS: Record<string, string> = {
+  AETNA: "Aetna",
+  BCBS_IL: "BCBS IL",
+  COUNTY_CARE: "CountyCare",
+  HUMANA: "Humana",
+  MERIDIAN: "Meridian",
+  MOLINA: "Molina",
+  OTHER: "Other",
+};
 
 // Actions whose old/new value is a one-off event payload (a filename, a
 // "userId:permission" pair) rather than a before/after property change —
@@ -93,6 +112,11 @@ const EVENT_ACTIONS = new Set([
   "link_project",
   "unlink_project",
   "change_stage",
+  "add_mco",
+  "change_mco_stage",
+  "add_credential",
+  "update_credential",
+  "remove_credential",
 ]);
 
 export function isEventAction(action: string) {
@@ -130,6 +154,20 @@ export function formatEventDescription(
   if (action === "change_stage" && newValue) {
     return oldValue ? `Moved from "${oldValue}" to "${newValue}"` : `Set to "${newValue}"`;
   }
+  if (action === "add_mco" && newValue) {
+    return `Started credentialing with ${MCO_LABELS[newValue] ?? newValue}`;
+  }
+  if (action === "change_mco_stage" && newValue) {
+    const [mco, newStage] = newValue.split(":");
+    const oldStage = oldValue?.split(":")[1];
+    const mcoLabel = MCO_LABELS[mco] ?? mco;
+    return oldStage
+      ? `${mcoLabel}: moved from "${oldStage}" to "${newStage}"`
+      : `${mcoLabel}: set to "${newStage}"`;
+  }
+  if (action === "add_credential" && newValue) return `Added login credential "${newValue}"`;
+  if (action === "update_credential" && newValue) return `Updated login credential "${newValue}"`;
+  if (action === "remove_credential" && oldValue) return `Removed login credential "${oldValue}"`;
   return formatActionVerb(action);
 }
 
@@ -168,7 +206,9 @@ export function formatAuditValue(
     field === "ownerDateOfBirth" ||
     field === "deficiencyReceivedDate" ||
     field === "deficiencyResponseDueDate" ||
-    field === "deficiencyResponseSubmittedDate"
+    field === "deficiencyResponseSubmittedDate" ||
+    field === "effectiveDate" ||
+    field === "recredentialingDueDate"
   ) {
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString();

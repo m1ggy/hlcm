@@ -181,8 +181,28 @@ yet, so no backfill risk there.
       then a whitelisted backward move (S1 COR → S1 SUB) succeeded; then restored the case to
       its original stage and cleaned up the extra StageHistory/audit rows the test added —
       confirmed back to a single original history entry before moving on.
-- [ ] **Phase 8 — Login credentials section.** Dedicated block on client/case page, separate
+- [x] **Phase 8 — Login credentials section.** Dedicated block on client/case page, separate
       from Notes — one row per portal (label, username, password, URL, last updated).
+      Shipped: `ClientCredential` model (plain fields, not encrypted at rest — confirmed
+      choice), `src/lib/actions/client-credentials.ts` (create/update/delete/list, all
+      role-gated ADMIN/MANAGER/STAFF same as the rest of a Client record). New
+      `ClientCredentialsCard` renders as its own card on the client page, above the
+      Notes/Audit tabs — never inside them, per the spec's explicit "won't get buried"
+      requirement. Password is masked by default with a client-side eye-toggle to reveal
+      (masking only, since storage itself is plain per the earlier confirmed decision).
+      Fixed a design gap caught while building this: MCO credential (Phase 4) and this new
+      Client credential's audit entries were being logged under their own `entityType`
+      (`"McoCredential"` / `"ClientCredential"`), which `getClientAuditLog` never queries —
+      making them permanently invisible in the UI. Re-targeted every call site to
+      `entityType: "Client"` with distinct event actions (`add_mco`, `change_mco_stage`,
+      `update_mco`, `add_credential`, `update_credential`, `remove_credential`) registered
+      in `audit-format.ts` with their own sentences, so they now show up in the Client's
+      existing Audit Log tab correctly.
+      Verified live: added a credential through the dialog, confirmed it rendered with
+      masked password, confirmed the eye-toggle revealed it, confirmed the edit dialog
+      prefilled correctly, confirmed the resulting audit row landed under
+      `entityType: "Client"` with the right label — then cleaned up the test credential
+      and its audit rows.
 
 ## Reference tables (from spec)
 

@@ -125,6 +125,7 @@ model User {
   caseTypesCreated               CaseType[]               @relation("CaseTypeCreatedBy")
   pipelineStagesCreated           PipelineStage[]          @relation("PipelineStageCreatedBy")
   serviceTypesCreated              ServiceType[]            @relation("ServiceTypeCreatedBy")
+  clientCredentialsCreated         ClientCredential[]       @relation("ClientCredentialCreatedBy")
   stageHistoryActed               StageHistory[]           @relation("StageHistoryActor")
   checklistItemTemplatesCreated ChecklistItemTemplate[]  @relation("ChecklistItemTemplateCreatedBy")
   tasksAssigned                  Task[]                   @relation("TaskAssignee")
@@ -291,6 +292,7 @@ model Client {
   applications    Application[]
   notes           Note[]
   mcoCredentials  McoCredential[]
+  credentials     ClientCredential[]
 
   @@map("clients")
 }
@@ -798,4 +800,27 @@ model Note {
   createdAt     DateTime     @default(now())
 
   @@map("notes")
+}
+
+// Portal/agency login credentials for a client, kept as their own structured
+// section rather than typed into the Notes thread — the whole point being
+// they don't get buried under a growing comment feed (per the spec: "so
+// that when the manager or VA adds notes, the login credentials ... will
+// not get buried or overlooked"). Stored as plain fields, same visibility
+// as the rest of a Client record — not encrypted at rest.
+model ClientCredential {
+  id          String   @id @default(cuid())
+  client      Client   @relation(fields: [clientId], references: [id])
+  clientId    String
+  label       String
+  username    String?
+  password    String?
+  url         String?
+  notes       String?
+  createdBy   User     @relation("ClientCredentialCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("client_credentials")
 }

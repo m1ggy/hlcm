@@ -42,10 +42,11 @@ export async function createMcoCredential(clientId: string, mcoName: (typeof MCO
   });
 
   await recordAudit({
-    entityType: "McoCredential",
-    entityId: credential.id,
-    action: "create",
+    entityType: "Client",
+    entityId: clientId,
+    action: "add_mco",
     actorId: session.user.id,
+    newValue: mcoName,
   });
 
   revalidatePath(`/clients/${clientId}`);
@@ -93,12 +94,12 @@ export async function changeMcoStage(
   ]);
 
   await recordAudit({
-    entityType: "McoCredential",
-    entityId: mcoCredentialId,
-    action: "change_stage",
+    entityType: "Client",
+    entityId: credential.clientId,
+    action: "change_mco_stage",
     actorId: session.user.id,
-    oldValue: credential.stage.name,
-    newValue: targetStage.name,
+    oldValue: `${credential.mcoName}:${credential.stage.name}`,
+    newValue: `${credential.mcoName}:${targetStage.name}`,
   });
 
   revalidatePath(`/clients/${credential.clientId}`);
@@ -153,10 +154,10 @@ export async function updateMcoCredential(id: string, formData: FormData) {
   });
 
   await recordFieldChanges({
-    entityType: "McoCredential",
-    entityId: id,
+    entityType: "Client",
+    entityId: credential.clientId,
     actorId: session.user.id,
-    action: "update",
+    action: "update_mco",
     before,
     after: credential,
   });

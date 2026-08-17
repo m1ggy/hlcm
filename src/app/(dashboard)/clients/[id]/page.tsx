@@ -5,9 +5,11 @@ import { getClient, getClientAuditLog, archiveClient, restoreClient } from "@/li
 import { listAssignableUsers } from "@/lib/actions/applications";
 import { listClientNotes } from "@/lib/actions/notes";
 import { listMcoCredentialsForClient, listReachableMcoStages } from "@/lib/actions/mco";
+import { listClientCredentials } from "@/lib/actions/client-credentials";
 import { ClientDetailsForm } from "@/components/clients/client-details-form";
 import { ClientNotesPanel } from "@/components/clients/client-notes-panel";
 import { McoCredentialsCard } from "@/components/clients/mco-credentials-card";
+import { ClientCredentialsCard } from "@/components/clients/client-credentials-card";
 import { AuditLogPanel } from "@/components/applications/audit-log-panel";
 import { ArchiveButton } from "@/components/shared/archive-button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -46,12 +48,13 @@ export default async function ClientDetailPage({
     notFound();
   }
 
-  const [assignableUsers, notes, auditLog, session, mcoCredentials] = await Promise.all([
+  const [assignableUsers, notes, auditLog, session, mcoCredentials, credentials] = await Promise.all([
     listAssignableUsers(),
     listClientNotes(id),
     getClientAuditLog(id),
     auth(),
     listMcoCredentialsForClient(id),
+    listClientCredentials(id),
   ]);
   const canArchive = session?.user?.role === "ADMIN" || session?.user?.role === "MANAGER";
   const mcoCredentialsWithStages = await Promise.all(
@@ -157,6 +160,8 @@ export default async function ClientDetailPage({
       </Card>
 
       <McoCredentialsCard clientId={id} credentials={mcoCredentialsWithStages} />
+
+      <ClientCredentialsCard clientId={id} credentials={credentials} />
 
       <Card>
         <CardContent>
