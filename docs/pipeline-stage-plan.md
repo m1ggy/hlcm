@@ -203,6 +203,17 @@ yet, so no backfill risk there.
       prefilled correctly, confirmed the resulting audit row landed under
       `entityType: "Client"` with the right label — then cleaned up the test credential
       and its audit rows.
+- [x] **Phase 9 — Days in current stage.** Spec field on every Client/MCO record, "auto
+      counted from the last stage change timestamp" — was only computed internally to
+      drive aging-alert thresholds, never surfaced as its own visible field. Added
+      `daysInStage()` (`src/lib/stage-transitions.ts`, pure) as the single source of
+      truth for the formula, replacing the inline calc duplicated twice in `alerts.ts`.
+      Wired into `getApplication` (new "Days in Current Stage" row on the Application
+      properties table, next to Pipeline Stage — only shown once a stage is set) and
+      `listMcoCredentialsForClient` (new "Days in stage" line on each MCO card row).
+      Verified live: a real Application showed "10 days" matching its actual
+      `StageHistory.enteredAt`; a temp MCO credential created fresh showed "Today" — both
+      cleaned up test data after.
 
 ## Reference tables (from spec)
 

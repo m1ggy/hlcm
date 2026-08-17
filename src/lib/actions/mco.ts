@@ -5,16 +5,26 @@ import { prisma } from "@/lib/prisma";
 import { requireRole, requireSession } from "@/lib/rbac";
 import { recordAudit, recordFieldChanges } from "@/lib/audit";
 import { getInitialStage } from "@/lib/pipeline";
-import { resolveStageChange, isStructurallyReachable } from "@/lib/stage-transitions";
+import { resolveStageChange, isStructurallyReachable, daysInStage } from "@/lib/stage-transitions";
 
 const MCO_NAMES = ["AETNA", "BCBS_IL", "COUNTY_CARE", "HUMANA", "MERIDIAN", "MOLINA", "OTHER"] as const;
 
 export async function listMcoCredentialsForClient(clientId: string) {
   await requireRole(["ADMIN", "MANAGER", "STAFF"]);
-  return prisma.mcoCredential.findMany({
+  const credentials = await prisma.mcoCredential.findMany({
     where: { clientId },
-    include: { stage: true, assignedUser: true, assignedManager: true },
+    include: {
+      stage: true,
+      assignedUser: true,
+      assignedManager: true,
+      stageHistory: { orderBy: { enteredAt: "desc" }, take: 1 },
+    },
     orderBy: { createdAt: "asc" },
+  });
+  // Spec field: "Days in current stage" — same rule as Applications.
+  return credentials.map((c) => {
+    const latest = c.stageHistory[0];
+    return { ...c, daysInStage: c.stage && latest ? daysInStage(latest.enteredAt) : null };
   });
 }
 

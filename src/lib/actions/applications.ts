@@ -15,6 +15,7 @@ import { notify } from "@/lib/notifications";
 import { TASK_CLOSED_STATUSES } from "@/lib/task-status";
 import { STALE_THRESHOLD_DAYS, computeReadyToSubmit, computeStaleDays } from "@/lib/application-flags";
 import { pipelineForLicenseType, getInitialStage } from "@/lib/pipeline";
+import { daysInStage } from "@/lib/stage-transitions";
 
 const APPLICATION_STATUSES = [
   "DRAFT",
@@ -114,10 +115,26 @@ async function assertCanEditApplication(
 export async function getApplication(id: string) {
   const session = await requireSession();
   await assertApplicationAccess(session, id, "view");
-  return prisma.application.findUniqueOrThrow({
+  const application = await prisma.application.findUniqueOrThrow({
     where: { id },
-    include: { client: true, assignedUser: true, assignedManager: true, licenseTypeTemplate: true, caseType: true, stage: true },
+    include: {
+      client: true,
+      assignedUser: true,
+      assignedManager: true,
+      licenseTypeTemplate: true,
+      caseType: true,
+      stage: true,
+      stageHistory: { orderBy: { enteredAt: "desc" }, take: 1 },
+    },
   });
+  const latest = application.stageHistory[0];
+  return {
+    ...application,
+    // Spec field: "Days in current stage, auto counted from the last stage
+    // change timestamp" — null when there's no stage set yet (old-status-only
+    // cases) or no history row.
+    daysInStage: application.stage && latest ? daysInStage(latest.enteredAt) : null,
+  };
 }
 
 export async function getApplicationAuditLog(applicationId: string) {

@@ -38,6 +38,14 @@ export function isStructurallyReachable(current: PipelineStage, target: Pipeline
   return movingFromExit || movingToExit || isForward || isWhitelistedBackward;
 }
 
+// Spec field ("Days in current stage: auto counted from the last stage
+// change timestamp") — same formula alerts.ts already used inline for its
+// threshold checks, pulled out here so the visible field and the alert
+// thresholds can't drift apart.
+export function daysInStage(enteredAt: Date, now: Date = new Date()): number {
+  return Math.floor((now.getTime() - enteredAt.getTime()) / 86_400_000);
+}
+
 export function resolveStageChange(
   current: PipelineStage,
   target: PipelineStage,

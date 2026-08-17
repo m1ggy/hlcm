@@ -42,6 +42,7 @@ export function ApplicationPropertiesTable({
   caseTypeName,
   stage,
   reachableStages,
+  daysInStage,
 }: {
   applicationId: string;
   defaultValues: {
@@ -66,6 +67,9 @@ export function ApplicationPropertiesTable({
   // backfilled yet, or its license type doesn't map to a pipeline.
   stage: { abbrev: string; name: string; hex: string } | null;
   reachableStages: PickerStage[];
+  // Auto-counted from the last StageHistory row's enteredAt — null until a
+  // stage is set (docs/pipeline-stage-plan.md spec field).
+  daysInStage: number | null;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -272,6 +276,14 @@ export function ApplicationPropertiesTable({
             )}
           </TableCell>
         </TableRow>
+        {stage && (
+          <TableRow>
+            <TableCell className="text-muted-foreground">Days in Current Stage</TableCell>
+            <TableCell className="text-muted-foreground">
+              {daysInStage === null ? "—" : daysInStage === 0 ? "Today" : `${daysInStage} day${daysInStage === 1 ? "" : "s"}`}
+            </TableCell>
+          </TableRow>
+        )}
         <TableRow>
           <TableCell className="text-muted-foreground">License Type</TableCell>
           <TableCell className="text-muted-foreground">{licenseTypeName ?? "—"}</TableCell>

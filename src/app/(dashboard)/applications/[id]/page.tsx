@@ -178,6 +178,7 @@ export default async function ApplicationDetailPage({
                   caseTypeName={application.caseType?.name ?? null}
                   stage={application.stage}
                   reachableStages={reachableStages}
+                  daysInStage={application.daysInStage}
                   defaultValues={{
                     clientId: application.clientId,
                     name: application.name,

@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/rbac";
 import { computeAgingAlerts, AgingAlert } from "@/lib/aging-alerts";
+import { daysInStage } from "@/lib/stage-transitions";
 
 export type ApplicationAlertGroup = {
   applicationId: string;
@@ -39,12 +40,11 @@ export async function listApplicationAlerts(): Promise<ApplicationAlertGroup[]> 
   const results: ApplicationAlertGroup[] = [];
   for (const app of apps) {
     const latest = app.stageHistory[0];
-    const daysInStage = latest ? Math.floor((now.getTime() - latest.enteredAt.getTime()) / 86_400_000) : null;
     const alerts = computeAgingAlerts(
       {
         entityType: "Application",
         stageAbbrev: app.stage?.abbrev ?? null,
-        daysInStage,
+        daysInStage: latest ? daysInStage(latest.enteredAt, now) : null,
         followUpDate: latest?.followUpDate ?? null,
         deficiencyResponseDueDate: app.deficiencyResponseDueDate,
         deficiencyResponseSubmittedDate: app.deficiencyResponseSubmittedDate,
@@ -73,12 +73,11 @@ export async function listMcoAlerts(): Promise<McoAlertGroup[]> {
   const results: McoAlertGroup[] = [];
   for (const c of credentials) {
     const latest = c.stageHistory[0];
-    const daysInStage = latest ? Math.floor((now.getTime() - latest.enteredAt.getTime()) / 86_400_000) : null;
     const alerts = computeAgingAlerts(
       {
         entityType: "McoCredential",
         stageAbbrev: c.stage?.abbrev ?? null,
-        daysInStage,
+        daysInStage: latest ? daysInStage(latest.enteredAt, now) : null,
         followUpDate: latest?.followUpDate ?? null,
         deficiencyResponseDueDate: c.deficiencyResponseDueDate,
         deficiencyResponseSubmittedDate: c.deficiencyResponseSubmittedDate,

@@ -42,6 +42,7 @@ type Credential = {
   recredentialingDueDate: Date | null;
   stage: Stage | null;
   reachableStages: PickerStage[];
+  daysInStage: number | null;
 };
 
 function NewMcoCredentialDialog({ clientId, existing }: { clientId: string; existing: string[] }) {
@@ -126,6 +127,14 @@ export function McoCredentialsCard({ clientId, credentials }: { clientId: string
                   <div>
                     Recredentialing due:{" "}
                     {c.recredentialingDueDate ? new Date(c.recredentialingDueDate).toLocaleDateString() : "—"}
+                  </div>
+                  <div>
+                    Days in stage:{" "}
+                    {c.daysInStage === null
+                      ? "—"
+                      : c.daysInStage === 0
+                        ? "Today"
+                        : `${c.daysInStage} day${c.daysInStage === 1 ? "" : "s"}`}
                   </div>
                 </div>
               </div>
