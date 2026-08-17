@@ -2,10 +2,24 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireSession, assertApplicationAccess } from "@/lib/rbac";
+import { requireSession, assertApplicationAccess, requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { notify } from "@/lib/notifications";
 import { resolveStageChange, isStructurallyReachable } from "@/lib/stage-transitions";
+import type { $Enums } from "@/generated/prisma/client";
+
+// Board columns for a pipeline — non-exit stages only. On Hold / Withdrawn /
+// Hearing Lost are reachable from any stage per the spec, but a Kanban drag
+// can't collect the reason/follow-up-date those require (that's what the
+// StagePicker's confirm step is for), so they're deliberately not columns
+// here — reaching them still works via the picker on the case detail page.
+export async function listPipelineStages(pipeline: $Enums.Pipeline) {
+  await requireRole(["ADMIN", "MANAGER", "STAFF"]);
+  return prisma.pipelineStage.findMany({
+    where: { pipeline, isExitStatus: false, active: true },
+    orderBy: { sortOrder: "asc" },
+  });
+}
 
 // Moves an Application to a different stage within its own pipeline —
 // forward moves and exit statuses (On Hold/Withdrawn/Hearing Lost) are

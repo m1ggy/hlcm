@@ -1,6 +1,8 @@
 import type { $Enums } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 
+export { PIPELINE_LABELS } from "@/lib/pipeline-labels";
+
 // LicenseTypeTemplate name -> pipeline (docs/pipeline-stage-plan.md). Single
 // source of truth — scripts/backfill-application-stages.ts mirrors this
 // exact mapping for the one-time historical backfill.

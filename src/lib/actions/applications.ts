@@ -42,7 +42,7 @@ export async function listApplications(opts: { archived?: boolean } = {}) {
   const session = await requireSession();
   const applications = await prisma.application.findMany({
     where: { ...applicationVisibilityFilter(session), active: !opts.archived },
-    include: { client: true, assignedUser: true, tasks: { select: { status: true } } },
+    include: { client: true, assignedUser: true, stage: true, tasks: { select: { status: true } } },
     orderBy: { createdAt: "desc" },
   });
 

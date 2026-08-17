@@ -22,9 +22,18 @@ export default async function PortalHomePage() {
               </CardHeader>
               <CardContent className="space-y-2">
                 <p className="text-sm text-muted-foreground">{app.client.name}</p>
-                <Badge variant={STATUS_BADGE_VARIANT[app.status as ApplicationStatus]}>
-                  {STATUS_LABELS[app.status as ApplicationStatus]}
-                </Badge>
+                {app.stage ? (
+                  <span
+                    className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
+                    style={{ backgroundColor: app.stage.hex, color: "#fff" }}
+                  >
+                    {app.stage.name}
+                  </span>
+                ) : (
+                  <Badge variant={STATUS_BADGE_VARIANT[app.status as ApplicationStatus]}>
+                    {STATUS_LABELS[app.status as ApplicationStatus]}
+                  </Badge>
+                )}
               </CardContent>
             </Card>
           </Link>

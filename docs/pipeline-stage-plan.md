@@ -214,6 +214,60 @@ yet, so no backfill risk there.
       Verified live: a real Application showed "10 days" matching its actual
       `StageHistory.enteredAt`; a temp MCO credential created fresh showed "Today" — both
       cleaned up test data after.
+- [x] **Phase 10 — Retire old status as the primary display, everywhere the new stage
+      system already covers it.** Was flagged as a known, deliberately-deferred gap
+      (24-file resequencing note) — not a spec line item itself, but the natural
+      follow-through once the stage engine + picker existed.
+      Scope decisions (confirmed with the user before building):
+      - Kanban board: **per-pipeline tabs**, not one shared board — Home Care / CILA /
+        No Pipeline. `Application.pipeline` is never `"MCO"` (that's exclusively the
+        McoCredential model), so only 2 real pipeline tabs plus a legacy fallback.
+      - Client portal: shows stage name + color to clients once a stage is set (matches
+        internal view), same source field, no separate wording layer.
+      New `PipelineApplicationsBoard` (`src/components/applications/
+      pipeline-applications-board.tsx`) — stage-driven Kanban, columns are that
+      pipeline's own non-exit stages sorted by sortOrder, drag calls
+      `changeApplicationStage` with the same optimistic-update-then-revert-on-reject
+      pattern the legacy status board already used. Exit statuses (On Hold/Withdrawn/
+      Hearing Lost) are deliberately **not** board columns — a drag can't collect the
+      reason/follow-up-date those require, so reaching them still goes through the
+      StagePicker's confirm step on the case detail page, not the board.
+      `ApplicationsViewSwitcher` gained a pipeline-tab layer above the existing
+      view/filter controls; the legacy `ApplicationsBoard` (old status, unmodified)
+      now only serves the "No Pipeline" tab, for cases with no stage at all
+      (no mapped license type). Table view, CSV/PDF export, the client's Cases list,
+      and both portal pages now show the stage chip/name when a stage is set, falling
+      back to the old status badge otherwise — same fallback rule used everywhere else
+      in this rollout.
+      New `listPipelineStages(pipeline)` action (board column source) and
+      `PIPELINE_LABELS` map. `PIPELINE_LABELS` had to be split into its own
+      `src/lib/pipeline-labels.ts` with zero imports — `pipeline.ts` imports `prisma`,
+      and importing it from the client-side view-switcher pulled the `pg` driver
+      (Node builtins: dns/fs/net/tls) into the browser bundle, breaking the page
+      entirely. Caught live during Playwright verification, not by typecheck.
+      **Deliberately left alone** (old status still authoritative there, on purpose):
+      - `ApplicationFlags` (readyToSubmit/staleDays) — computed from old status
+        transitions specifically, not stage sortOrder. Redefining these against stage
+        would be a separate, real design task, not a display swap.
+      - Table view's bulk "Set status..." dropdown — still sets old status only. A
+        bulk stage-set has no clean UX when the selection spans mixed pipelines/stages,
+        and nothing requested it.
+      - Dashboard's "By Status" breakdown widget — left as-is; the Pipeline Alerts
+        card (Phase 6) already covers the pipeline-facing dashboard view, and a
+        per-pipeline-per-stage breakdown (2 pipelines × up to 24 stages) isn't a
+        reasonable addition to that widget's format.
+      - Stage-rename admin-permission lock (spec developer rule) — no in-app rename
+        capability exists at all (only the seed script touches stage names), so the
+        constraint is trivially satisfied rather than actively built; adding a whole
+        rename feature wasn't requested by anything in scope.
+      Verified live: CILA tab shows all 6 real CILA applications with stage abbrevs in
+      the table; Board renders 24 stage columns without crashing; No Pipeline tab still
+      renders the untouched legacy status board; CSV export header includes "Pipeline
+      Stage"; Client Cases table and Application detail page show stage correctly. Real
+      mouse-simulated drag (dnd-kit needs actual pointer events, not
+      `page.dragAndDrop()`) moved a live CILA application from S1 WCD to S1 CAP,
+      confirmed in the DB, then reverted the stage/StageHistory/audit rows the test
+      created.
 
 ## Reference tables (from spec)
 

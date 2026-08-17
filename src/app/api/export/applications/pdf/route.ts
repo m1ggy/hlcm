@@ -8,11 +8,12 @@ const PAGE_SIZE: [number, number] = [612, 792];
 const MARGIN = 48;
 const ROW_HEIGHT = 20;
 const COLUMNS = [
-  { label: "Name", width: 190 },
-  { label: "Client", width: 120 },
-  { label: "Assigned VA", width: 110 },
-  { label: "Status", width: 80 },
-  { label: "Created", width: 76 },
+  { label: "Name", width: 150 },
+  { label: "Client", width: 95 },
+  { label: "Assigned VA", width: 85 },
+  { label: "Pipeline Stage", width: 75 },
+  { label: "Status", width: 65 },
+  { label: "Created", width: 55 },
 ];
 
 function truncate(text: string, maxChars: number) {
@@ -26,6 +27,7 @@ export async function GET() {
       app.name,
       app.client.name,
       app.assignedUser.name,
+      app.stage?.abbrev ?? "—",
       STATUS_LABELS[app.status as ApplicationStatus],
       new Date(app.createdAt).toLocaleDateString(),
     ]);

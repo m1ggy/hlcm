@@ -148,9 +148,19 @@ export default async function ClientDetailPage({
                     </Link>
                   </TableCell>
                   <TableCell>
-                    <Badge variant={STATUS_BADGE_VARIANT[app.status as ApplicationStatus]}>
-                      {STATUS_LABELS[app.status as ApplicationStatus]}
-                    </Badge>
+                    {app.stage ? (
+                      <span
+                        className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
+                        style={{ backgroundColor: app.stage.hex, color: "#fff" }}
+                        title={app.stage.name}
+                      >
+                        {app.stage.abbrev}
+                      </span>
+                    ) : (
+                      <Badge variant={STATUS_BADGE_VARIANT[app.status as ApplicationStatus]}>
+                        {STATUS_LABELS[app.status as ApplicationStatus]}
+                      </Badge>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}

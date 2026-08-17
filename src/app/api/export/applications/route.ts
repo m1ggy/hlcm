@@ -10,11 +10,12 @@ function csvEscape(value: string) {
 export async function GET() {
   try {
     const applications = await listApplications();
-    const header = ["Name", "Client", "Assigned VA", "Status", "Created At"];
+    const header = ["Name", "Client", "Assigned VA", "Pipeline Stage", "Status", "Created At"];
     const rows = applications.map((app) => [
       app.name,
       app.client.name,
       app.assignedUser.name,
+      app.stage?.name ?? "",
       STATUS_LABELS[app.status as ApplicationStatus],
       new Date(app.createdAt).toLocaleDateString(),
     ]);

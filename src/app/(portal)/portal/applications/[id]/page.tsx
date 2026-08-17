@@ -65,9 +65,18 @@ export default async function PortalApplicationDetailPage({
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <span>{application.name}</span>
-            <Badge variant={STATUS_BADGE_VARIANT[application.status as ApplicationStatus]}>
-              {STATUS_LABELS[application.status as ApplicationStatus]}
-            </Badge>
+            {application.stage ? (
+              <span
+                className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
+                style={{ backgroundColor: application.stage.hex, color: "#fff" }}
+              >
+                {application.stage.name}
+              </span>
+            ) : (
+              <Badge variant={STATUS_BADGE_VARIANT[application.status as ApplicationStatus]}>
+                {STATUS_LABELS[application.status as ApplicationStatus]}
+              </Badge>
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">

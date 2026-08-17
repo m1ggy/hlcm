@@ -64,7 +64,7 @@ export async function getClient(id: string) {
     include: {
       projects: { orderBy: { name: "asc" }, include: { serviceType: true } },
       applications: {
-        select: { id: true, name: true, status: true },
+        select: { id: true, name: true, status: true, stage: true },
         orderBy: { createdAt: "desc" },
       },
     },

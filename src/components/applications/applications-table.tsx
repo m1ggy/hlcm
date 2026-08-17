@@ -32,6 +32,7 @@ type AppRow = {
   id: string;
   name: string;
   status: string;
+  stage?: { abbrev: string; name: string; hex: string } | null;
   client: { name: string };
   assignedUser: { name: string };
   taskProgress: { total: number; done: number };
@@ -178,9 +179,19 @@ export function ApplicationsTable({
               </TableCell>
               <TableCell>
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <Badge variant={STATUS_BADGE_VARIANT[app.status as ApplicationStatus]}>
-                    {STATUS_LABELS[app.status as ApplicationStatus]}
-                  </Badge>
+                  {app.stage ? (
+                    <span
+                      className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
+                      style={{ backgroundColor: app.stage.hex, color: "#fff" }}
+                      title={app.stage.name}
+                    >
+                      {app.stage.abbrev}
+                    </span>
+                  ) : (
+                    <Badge variant={STATUS_BADGE_VARIANT[app.status as ApplicationStatus]}>
+                      {STATUS_LABELS[app.status as ApplicationStatus]}
+                    </Badge>
+                  )}
                   <ApplicationFlags readyToSubmit={app.readyToSubmit} staleDays={app.staleDays} />
                 </div>
               </TableCell>

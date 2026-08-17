@@ -5,6 +5,7 @@ import { listApplications, listAssignableUsers, archiveApplication, restoreAppli
 import { listClients } from "@/lib/actions/clients";
 import { listLicenseTypes } from "@/lib/actions/license-types";
 import { listCaseTypes } from "@/lib/actions/case-types";
+import { listPipelineStages } from "@/lib/actions/stage";
 import { NewApplicationDialog } from "@/components/applications/new-application-dialog";
 import { ApplicationsViewSwitcher } from "@/components/applications/applications-view-switcher";
 import { ArchiveButton } from "@/components/shared/archive-button";
@@ -30,12 +31,14 @@ export default async function ApplicationsPage({
   const showArchived = archived === "1";
   const canArchive = session.user.role === "ADMIN" || session.user.role === "MANAGER";
 
-  const [applications, clients, assignableUsers, licenseTypes, caseTypes] = await Promise.all([
+  const [applications, clients, assignableUsers, licenseTypes, caseTypes, homeCareStages, cilaStages] = await Promise.all([
     listApplications({ archived: showArchived }),
     listClients(),
     listAssignableUsers(),
     listLicenseTypes(),
     listCaseTypes(),
+    listPipelineStages("HOME_CARE"),
+    listPipelineStages("CILA_GROUP_HOME"),
   ]);
 
   return (
@@ -115,6 +118,7 @@ export default async function ApplicationsPage({
           applications={applications}
           assignableUsers={assignableUsers}
           currentUserId={session.user.id}
+          pipelineStages={{ HOME_CARE: homeCareStages, CILA_GROUP_HOME: cilaStages }}
         />
       )}
     </div>
