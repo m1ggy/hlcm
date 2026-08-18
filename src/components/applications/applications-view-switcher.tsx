@@ -59,6 +59,13 @@ export function ApplicationsViewSwitcher({
   const [filter, setFilter] = useState<Filter>("all");
   const [tab, setTab] = useState<PipelineTab>("HOME_CARE");
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
+  // Every mount starts on the "HOME_CARE" default for a tick before the
+  // saved tab (below) loads — without this gate, the Pipeline Map's
+  // auto-open key would flash from "HOME_CARE" to the real saved tab on
+  // every single page visit, and could pop the dialog for whichever of the
+  // two happened not to be marked "seen" yet. Auto-open waits for this to
+  // flip true so it only ever evaluates the real, settled tab.
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     const id = setTimeout(() => {
@@ -69,6 +76,7 @@ export function ApplicationsViewSwitcher({
       if (savedFilter) setFilter(savedFilter as Filter);
       if (savedTab === "HOME_CARE" || savedTab === "CILA_GROUP_HOME" || savedTab === "NO_PIPELINE") setTab(savedTab);
       setFavoriteIds(getFavoriteApplicationIds());
+      setHydrated(true);
     }, 0);
     return () => clearTimeout(id);
   }, []);
@@ -160,7 +168,7 @@ export function ApplicationsViewSwitcher({
               pipeline={tab}
               pipelineLabel={PIPELINE_LABELS[tab]}
               stages={pipelineStagesFull[tab]}
-              autoOpenKey={tab}
+              autoOpenKey={hydrated ? tab : undefined}
             />
           )}
           <span className="text-xs text-muted-foreground">
@@ -169,41 +177,45 @@ export function ApplicationsViewSwitcher({
         </div>
       </div>
 
-      {tab !== "NO_PIPELINE" && <StageLegendStrip stages={pipelineStagesFull[tab]} />}
+      <div className="flex items-start gap-4">
+        <div className="min-w-0 flex-1 space-y-3">
+          <div className="flex flex-wrap gap-1.5" data-tour="filter-chips">
+            {chips.map((chip) => (
+              <button
+                key={chip.key}
+                type="button"
+                onClick={() => changeFilter(chip.key)}
+                className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                  filter === chip.key
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-input bg-transparent text-muted-foreground hover:bg-muted"
+                }`}
+              >
+                {chip.label}
+              </button>
+            ))}
+          </div>
 
-      <div className="flex flex-wrap gap-1.5" data-tour="filter-chips">
-        {chips.map((chip) => (
-          <button
-            key={chip.key}
-            type="button"
-            onClick={() => changeFilter(chip.key)}
-            className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
-              filter === chip.key
-                ? "border-primary bg-primary text-primary-foreground"
-                : "border-input bg-transparent text-muted-foreground hover:bg-muted"
-            }`}
-          >
-            {chip.label}
-          </button>
-        ))}
+          {view === "table" ? (
+            <ApplicationsTable
+              applications={withStepInfo}
+              assignableUsers={assignableUsers}
+              favoriteIds={favoriteIds}
+              onFavoriteChange={handleFavoriteChange}
+              pipelineMode={tab !== "NO_PIPELINE"}
+            />
+          ) : tab === "NO_PIPELINE" ? (
+            <ApplicationsBoard applications={filtered} />
+          ) : (
+            <PipelineApplicationsBoard
+              applications={filtered.filter((a): a is typeof a & { stageId: string } => a.stageId !== null)}
+              stages={pipelineStages[tab]}
+            />
+          )}
+        </div>
+
+        {tab !== "NO_PIPELINE" && <StageLegendStrip stages={pipelineStagesFull[tab]} />}
       </div>
-
-      {view === "table" ? (
-        <ApplicationsTable
-          applications={withStepInfo}
-          assignableUsers={assignableUsers}
-          favoriteIds={favoriteIds}
-          onFavoriteChange={handleFavoriteChange}
-          pipelineMode={tab !== "NO_PIPELINE"}
-        />
-      ) : tab === "NO_PIPELINE" ? (
-        <ApplicationsBoard applications={filtered} />
-      ) : (
-        <PipelineApplicationsBoard
-          applications={filtered.filter((a): a is typeof a & { stageId: string } => a.stageId !== null)}
-          stages={pipelineStages[tab]}
-        />
-      )}
     </div>
   );
 }
