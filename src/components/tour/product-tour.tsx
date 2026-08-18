@@ -130,7 +130,7 @@ function buildSteps(role: string | undefined): TourStep[] {
       element: '[data-tour="pipeline-tabs"]',
       popover: {
         title: "Pipeline tabs",
-        description: "Home Care and CILA / Group Home each run through their own licensing stages, so each gets its own tab and its own board — a case in Step I Supervisor Review and one in HC Corrections Received aren't on the same track. \"No Pipeline\" holds older cases that predate this and any case type without a mapped pipeline yet; those still use the plain status field. The strip of colored dots below the view switcher is a legend for every stage on this tab — hover any pill elsewhere in the app to match its color back to a name. \"Pipeline map\" opens the full stage flow with colors and which backward moves are allowed; it also opens itself automatically the first time you visit a tab, so you're not left guessing.",
+        description: "Home Care and CILA / Group Home each run through their own licensing stages, so each gets its own tab and its own board — a case in Step I Supervisor Review and one in HC Corrections Received aren't on the same track. \"MCO\" holds MCO credentialing cases and any older case that predates this and doesn't have a mapped pipeline; those still use the plain status field. The vertical strip of colored dots on the right is a legend for every stage on this tab — hover any pill elsewhere in the app to match its color back to a name. \"Pipeline map\" opens the full stage flow with colors and which backward moves are allowed; it also opens itself automatically the first time you visit a tab, so you're not left guessing.",
         side: "bottom",
       },
     },
@@ -148,7 +148,7 @@ function buildSteps(role: string | undefined): TourStep[] {
       element: '[data-tour="filter-chips"]',
       popover: {
         title: "Filters",
-        description: "Narrow the list down to your own cases or favorites. On the No Pipeline tab you can also filter by the old status field.",
+        description: "Narrow the list down to your own cases or favorites. On the MCO tab you can also filter by the old status field.",
         side: "bottom",
       },
     },

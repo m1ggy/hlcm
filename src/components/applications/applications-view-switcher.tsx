@@ -130,9 +130,11 @@ export function ApplicationsViewSwitcher({
     return { ...app, stepInfo: index === -1 ? null : { index: index + 1, total: stagesForTab.length } };
   });
 
-  // Legacy per-status chips only make sense on the No Pipeline tab — those
-  // cases have no stage, old status is still their only progress field. The
-  // pipeline tabs already show progress via stage columns/badges instead.
+  // Legacy per-status chips only make sense on the MCO tab (internal key
+  // NO_PIPELINE — cases whose license type never maps to a Home Care/CILA
+  // pipeline) — those cases have no stage, old status is still their only
+  // progress field. The pipeline tabs already show progress via stage
+  // columns/badges instead.
   const chips: { key: Filter; label: string }[] = [
     { key: "all", label: "All" },
     { key: "mine", label: "Mine" },
@@ -145,7 +147,7 @@ export function ApplicationsViewSwitcher({
       <div className="flex flex-wrap items-center gap-1 rounded-lg bg-muted p-1 text-xs w-fit" data-tour="pipeline-tabs">
         {TABS.map((t) => (
           <Button key={t} variant={tab === t ? "default" : "ghost"} size="xs" onClick={() => changeTab(t)}>
-            {t === "NO_PIPELINE" ? "No Pipeline" : PIPELINE_LABELS[t]}
+            {t === "NO_PIPELINE" ? "MCO" : PIPELINE_LABELS[t]}
             <span className="ml-1 opacity-70">
               {applications.filter((a) => (t === "NO_PIPELINE" ? a.pipeline === null : a.pipeline === t)).length}
             </span>
