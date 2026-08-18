@@ -6,6 +6,7 @@ import { createMcoCredential } from "@/lib/actions/mco";
 import { McoStagePicker } from "@/components/clients/mco-stage-picker";
 import type { PickerStage } from "@/components/shared/stage-picker";
 import { PipelineDiagramDialog, type DiagramStage } from "@/components/shared/pipeline-diagram";
+import { StageLegendStrip } from "@/components/applications/stage-legend-strip";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -33,7 +34,7 @@ const MCO_LABELS: Record<string, string> = {
   OTHER: "Other",
 };
 
-type Stage = { abbrev: string; name: string; hex: string };
+type Stage = { id: string; abbrev: string; name: string; hex: string };
 type Credential = {
   id: string;
   mcoName: string;
@@ -113,44 +114,60 @@ export function McoCredentialsCard({
   credentials: Credential[];
   mcoStages: DiagramStage[];
 }) {
+  const forwardStages = mcoStages.filter((s) => !s.isExitStatus).sort((a, b) => a.sortOrder - b.sortOrder);
+
   return (
     <Card>
       <CardContent>
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-base font-medium">MCO Credentialing</h2>
           <div className="flex items-center gap-2">
-            <PipelineDiagramDialog pipeline="MCO" pipelineLabel="MCO Credentialing" stages={mcoStages} />
+            <PipelineDiagramDialog
+              pipeline="MCO"
+              pipelineLabel="MCO Credentialing"
+              stages={mcoStages}
+              autoOpenKey="MCO"
+            />
             <NewMcoCredentialDialog clientId={clientId} existing={credentials.map((c) => c.mcoName)} />
           </div>
         </div>
+        {credentials.length > 0 && <StageLegendStrip stages={mcoStages} />}
         {credentials.length === 0 ? (
           <p className="text-sm text-muted-foreground">Not credentialing with any MCOs yet.</p>
         ) : (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {credentials.map((c) => (
-              <div key={c.id} className="rounded-lg border p-3">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium">{MCO_LABELS[c.mcoName] ?? c.mcoName}</span>
-                  <McoStagePicker mcoCredentialId={c.id} currentStage={c.stage} stages={c.reachableStages} />
-                </div>
-                <div className="mt-2 space-y-0.5 text-sm text-muted-foreground">
-                  <div>NPI: {c.npi ?? "—"}</div>
-                  <div>Provider ID: {c.providerId ?? "—"}</div>
-                  <div>
-                    Recredentialing due:{" "}
-                    {c.recredentialingDueDate ? new Date(c.recredentialingDueDate).toLocaleDateString() : "—"}
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {credentials.map((c) => {
+              const stepIndex = c.stage ? forwardStages.findIndex((s) => s.id === c.stage!.id) : -1;
+              return (
+                <div key={c.id} className="rounded-lg border p-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium">{MCO_LABELS[c.mcoName] ?? c.mcoName}</span>
+                    <McoStagePicker mcoCredentialId={c.id} currentStage={c.stage} stages={c.reachableStages} />
                   </div>
-                  <div>
-                    Days in stage:{" "}
-                    {c.daysInStage === null
-                      ? "—"
-                      : c.daysInStage === 0
-                        ? "Today"
-                        : `${c.daysInStage} day${c.daysInStage === 1 ? "" : "s"}`}
+                  {stepIndex !== -1 && (
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Step {stepIndex + 1} of {forwardStages.length} — {c.stage!.name}
+                    </p>
+                  )}
+                  <div className="mt-2 space-y-0.5 text-sm text-muted-foreground">
+                    <div>NPI: {c.npi ?? "—"}</div>
+                    <div>Provider ID: {c.providerId ?? "—"}</div>
+                    <div>
+                      Recredentialing due:{" "}
+                      {c.recredentialingDueDate ? new Date(c.recredentialingDueDate).toLocaleDateString() : "—"}
+                    </div>
+                    <div>
+                      Days in stage:{" "}
+                      {c.daysInStage === null
+                        ? "—"
+                        : c.daysInStage === 0
+                          ? "Today"
+                          : `${c.daysInStage} day${c.daysInStage === 1 ? "" : "s"}`}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </CardContent>

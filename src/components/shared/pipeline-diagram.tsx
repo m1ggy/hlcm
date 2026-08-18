@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Waypoints, ArrowRight, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -103,12 +103,33 @@ export function PipelineDiagramDialog({
   pipeline,
   pipelineLabel,
   stages,
+  autoOpenKey,
 }: {
   pipeline: string;
   pipelineLabel: string;
   stages: DiagramStage[];
+  // Opens the dialog once, unprompted, the first time a user ever lands on
+  // this pipeline — a new pipeline is not self-explanatory from a colored
+  // pill alone, so the reference diagram gets shown instead of waiting to be
+  // found. Persisted in localStorage (per user, per browser) so it never
+  // repeats after that first look. Omit to keep the dialog fully opt-in
+  // (e.g. if the same pipeline's diagram is rendered more than once on a page).
+  autoOpenKey?: string;
 }) {
   const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!autoOpenKey) return;
+    const seenKey = `hclm:pipeline-map-seen:${autoOpenKey}`;
+    if (window.localStorage.getItem(seenKey)) return;
+    window.localStorage.setItem(seenKey, "1");
+    // Deliberately opening the dialog in response to a prop change (a new
+    // pipeline tab that hasn't been seen before), not deriving render state
+    // from render — there's no way to know "seen" without checking
+    // localStorage, so this can't be a plain derived value.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setOpen(true);
+  }, [autoOpenKey]);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

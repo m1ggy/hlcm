@@ -43,6 +43,7 @@ export function ApplicationPropertiesTable({
   stage,
   reachableStages,
   daysInStage,
+  stepInfo,
 }: {
   applicationId: string;
   defaultValues: {
@@ -70,6 +71,9 @@ export function ApplicationPropertiesTable({
   // Auto-counted from the last StageHistory row's enteredAt — null until a
   // stage is set (docs/pipeline-stage-plan.md spec field).
   daysInStage: number | null;
+  // Position within the pipeline's forward-flow stage order — null for exit
+  // statuses (On Hold/Withdrawn/Hearing Lost), where it doesn't apply.
+  stepInfo: { index: number; total: number } | null;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -268,7 +272,14 @@ export function ApplicationPropertiesTable({
           <TableCell className="text-muted-foreground">Pipeline Stage</TableCell>
           <TableCell>
             {stage ? (
-              <ApplicationStagePicker applicationId={applicationId} currentStage={stage} stages={reachableStages} />
+              <div className="flex items-center gap-2">
+                <ApplicationStagePicker applicationId={applicationId} currentStage={stage} stages={reachableStages} />
+                {stepInfo && (
+                  <span className="text-xs text-muted-foreground">
+                    Step {stepInfo.index} of {stepInfo.total}
+                  </span>
+                )}
+              </div>
             ) : (
               <span className="text-sm text-muted-foreground">
                 Not on a pipeline yet — set a license type to enable stage tracking.

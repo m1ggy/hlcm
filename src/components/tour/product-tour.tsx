@@ -130,7 +130,7 @@ function buildSteps(role: string | undefined): TourStep[] {
       element: '[data-tour="pipeline-tabs"]',
       popover: {
         title: "Pipeline tabs",
-        description: "Home Care and CILA / Group Home each run through their own licensing stages, so each gets its own tab and its own board — a case in Step I Supervisor Review and one in HC Corrections Received aren't on the same track. \"No Pipeline\" holds older cases that predate this and any case type without a mapped pipeline yet; those still use the plain status field. \"Pipeline map\" next to the view switcher shows the whole stage flow for whichever tab you're on — full names, colors, and which backward moves are allowed.",
+        description: "Home Care and CILA / Group Home each run through their own licensing stages, so each gets its own tab and its own board — a case in Step I Supervisor Review and one in HC Corrections Received aren't on the same track. \"No Pipeline\" holds older cases that predate this and any case type without a mapped pipeline yet; those still use the plain status field. The strip of colored dots below the view switcher is a legend for every stage on this tab — hover any pill elsewhere in the app to match its color back to a name. \"Pipeline map\" opens the full stage flow with colors and which backward moves are allowed; it also opens itself automatically the first time you visit a tab, so you're not left guessing.",
         side: "bottom",
       },
     },
@@ -166,7 +166,7 @@ function buildSteps(role: string | undefined): TourStep[] {
       element: '[data-slot="table-container"]',
       popover: {
         title: "Open a case",
-        description: "Click any case for its checklist, files, generated documents, comments, sharing, and audit log — plus a client info panel with contact details for whoever you're licensing for. If it's on a pipeline, you'll also see its current stage (type to search, or pick from the list) and how many days it's been sitting there.",
+        description: "Click any case for its checklist, files, generated documents, comments, sharing, and audit log — plus a client info panel with contact details for whoever you're licensing for. If it's on a pipeline, you'll also see its current stage (type to search, or pick from the list), how many days it's been sitting there, and its position in the flow — \"Step 4 of 7\", for instance.",
         side: "top",
       },
     },

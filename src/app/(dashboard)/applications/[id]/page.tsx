@@ -14,7 +14,7 @@ import { listAccessGrants, listGrantableUsers } from "@/lib/actions/access-grant
 import { listApplicableTemplates, listGeneratedDocuments } from "@/lib/actions/generated-documents";
 import { getMySignatureProfile } from "@/lib/actions/signatures";
 import { listNotes } from "@/lib/actions/notes";
-import { listReachableStages } from "@/lib/actions/stage";
+import { listReachableStages, listPipelineStages } from "@/lib/actions/stage";
 import { ApplicationPropertiesTable } from "@/components/applications/application-properties-table";
 import { ClientSummaryCard } from "@/components/applications/client-summary-card";
 import { NotesPanel } from "@/components/applications/notes-panel";
@@ -77,6 +77,7 @@ export default async function ApplicationDetailPage({
     signatureProfile,
     notes,
     reachableStages,
+    forwardStages,
   ] = await Promise.all([
     listClients({ filter: "all" }),
     listAssignableUsers(),
@@ -89,7 +90,11 @@ export default async function ApplicationDetailPage({
     getMySignatureProfile(),
     listNotes(id),
     listReachableStages(id),
+    application.pipeline ? listPipelineStages(application.pipeline) : Promise.resolve([]),
   ]);
+
+  const stepIndex = application.stage ? forwardStages.findIndex((s) => s.id === application.stage!.id) : -1;
+  const stepInfo = stepIndex === -1 ? null : { index: stepIndex + 1, total: forwardStages.length };
 
   const clientLookup = Object.fromEntries(clients.map((c) => [c.id, c.name]));
   const userLookup = Object.fromEntries(assignableUsers.map((u) => [u.id, u.name]));
@@ -179,6 +184,7 @@ export default async function ApplicationDetailPage({
                   stage={application.stage}
                   reachableStages={reachableStages}
                   daysInStage={application.daysInStage}
+                  stepInfo={stepInfo}
                   defaultValues={{
                     clientId: application.clientId,
                     name: application.name,

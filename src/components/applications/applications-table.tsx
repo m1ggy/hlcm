@@ -33,6 +33,10 @@ type AppRow = {
   name: string;
   status: string;
   stage?: { abbrev: string; name: string; hex: string } | null;
+  // Position within the pipeline's forward-flow stage count — null for
+  // exit statuses (On Hold/Withdrawn/Hearing Lost) and no-pipeline cases,
+  // where "step N of M" doesn't mean anything.
+  stepInfo?: { index: number; total: number } | null;
   client: { name: string };
   assignedUser: { name: string };
   taskProgress: { total: number; done: number };
@@ -47,11 +51,16 @@ export function ApplicationsTable({
   assignableUsers,
   favoriteIds,
   onFavoriteChange,
+  pipelineMode,
 }: {
   applications: AppRow[];
   assignableUsers: { id: string; name: string }[];
   favoriteIds?: Set<string>;
   onFavoriteChange?: (id: string, isFavorite: boolean) => void;
+  // True on a pipeline tab (Home Care / CILA), false/undefined on No
+  // Pipeline — swaps the last column's header and content between "Stage"
+  // (colored pill + full name) and the legacy "Status" badge.
+  pipelineMode?: boolean;
 }) {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -147,7 +156,7 @@ export function ApplicationsTable({
             <TableHead>Client</TableHead>
             <TableHead>Assigned VA</TableHead>
             <TableHead>Progress</TableHead>
-            <TableHead>Status</TableHead>
+            <TableHead>{pipelineMode ? "Stage" : "Status"}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -180,13 +189,19 @@ export function ApplicationsTable({
               <TableCell>
                 <div className="flex flex-wrap items-center gap-1.5">
                   {app.stage ? (
-                    <span
-                      className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
-                      style={{ backgroundColor: app.stage.hex, color: "#fff" }}
-                      title={app.stage.name}
-                    >
-                      {app.stage.abbrev}
-                    </span>
+                    <>
+                      <span
+                        className="inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-xs font-medium"
+                        style={{ backgroundColor: app.stage.hex, color: "#fff" }}
+                        title={app.stage.name}
+                      >
+                        {app.stage.abbrev}
+                      </span>
+                      <span className="hidden text-xs text-muted-foreground lg:inline">
+                        {app.stage.name}
+                        {app.stepInfo && ` · Step ${app.stepInfo.index} of ${app.stepInfo.total}`}
+                      </span>
+                    </>
                   ) : (
                     <Badge variant={STATUS_BADGE_VARIANT[app.status as ApplicationStatus]}>
                       {STATUS_LABELS[app.status as ApplicationStatus]}

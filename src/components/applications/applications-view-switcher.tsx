@@ -10,6 +10,7 @@ import { getFavoriteApplicationIds } from "@/lib/favorite-applications";
 import { APPLICATION_STATUSES, STATUS_LABELS, ApplicationStatus } from "@/lib/status";
 import { PIPELINE_LABELS } from "@/lib/pipeline-labels";
 import { PipelineDiagramDialog, type DiagramStage } from "@/components/shared/pipeline-diagram";
+import { StageLegendStrip } from "@/components/applications/stage-legend-strip";
 
 type Stage = { id: string; abbrev: string; name: string; hex: string };
 
@@ -111,6 +112,16 @@ export function ApplicationsViewSwitcher({
     return app.status === filter;
   });
 
+  // "Step N of M" position within the current tab's forward-flow stage
+  // order — pipelineStages is already the non-exit catalog sorted by
+  // sortOrder, so a case sitting in an exit status (On Hold/Withdrawn/
+  // Hearing Lost) simply won't be found and gets no badge.
+  const stagesForTab = tab === "NO_PIPELINE" ? [] : pipelineStages[tab];
+  const withStepInfo = filtered.map((app) => {
+    const index = stagesForTab.findIndex((s) => s.id === app.stageId);
+    return { ...app, stepInfo: index === -1 ? null : { index: index + 1, total: stagesForTab.length } };
+  });
+
   // Legacy per-status chips only make sense on the No Pipeline tab — those
   // cases have no stage, old status is still their only progress field. The
   // pipeline tabs already show progress via stage columns/badges instead.
@@ -149,6 +160,7 @@ export function ApplicationsViewSwitcher({
               pipeline={tab}
               pipelineLabel={PIPELINE_LABELS[tab]}
               stages={pipelineStagesFull[tab]}
+              autoOpenKey={tab}
             />
           )}
           <span className="text-xs text-muted-foreground">
@@ -156,6 +168,8 @@ export function ApplicationsViewSwitcher({
           </span>
         </div>
       </div>
+
+      {tab !== "NO_PIPELINE" && <StageLegendStrip stages={pipelineStagesFull[tab]} />}
 
       <div className="flex flex-wrap gap-1.5" data-tour="filter-chips">
         {chips.map((chip) => (
@@ -176,10 +190,11 @@ export function ApplicationsViewSwitcher({
 
       {view === "table" ? (
         <ApplicationsTable
-          applications={filtered}
+          applications={withStepInfo}
           assignableUsers={assignableUsers}
           favoriteIds={favoriteIds}
           onFavoriteChange={handleFavoriteChange}
+          pipelineMode={tab !== "NO_PIPELINE"}
         />
       ) : tab === "NO_PIPELINE" ? (
         <ApplicationsBoard applications={filtered} />
