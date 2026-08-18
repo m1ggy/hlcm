@@ -195,6 +195,7 @@ export function formatAuditValue(
     users?: Record<string, string>;
     licenseTypes?: Record<string, string>;
     caseTypes?: Record<string, string>;
+    stages?: Record<string, string>;
   } = {}
 ) {
   if (value === null || value === undefined || value === "") return "—";
@@ -207,6 +208,7 @@ export function formatAuditValue(
   }
   if (field === "licenseTypeTemplateId") return lookups.licenseTypes?.[value] ?? value;
   if (field === "caseTypeId") return lookups.caseTypes?.[value] ?? value;
+  if (field === "stageId") return lookups.stages?.[value] ?? value;
   if (field === "pipeline") return PIPELINE_LABELS[value as keyof typeof PIPELINE_LABELS] ?? value;
   if (
     field === "dueDate" ||

@@ -33,6 +33,7 @@ type Lookups = {
   users?: Record<string, string>;
   licenseTypes?: Record<string, string>;
   caseTypes?: Record<string, string>;
+  stages?: Record<string, string>;
 };
 
 function describe(entry: AuditEntry, lookups: Lookups) {
@@ -54,6 +55,7 @@ export function AuditLogPanel({
   users = {},
   licenseTypes = {},
   caseTypes = {},
+  stages = {},
 }: {
   auditLog: AuditEntry[];
 } & Lookups) {
@@ -72,7 +74,7 @@ export function AuditLogPanel({
           <div className="min-w-0 flex-1 pt-0.5">
             <p className="text-sm">
               <span className="font-medium">{entry.actor.name}</span>{" "}
-              <span className="text-muted-foreground">{describe(entry, { clients, users, licenseTypes, caseTypes })}</span>
+              <span className="text-muted-foreground">{describe(entry, { clients, users, licenseTypes, caseTypes, stages })}</span>
             </p>
             <p className="text-xs text-muted-foreground" title={new Date(entry.createdAt).toLocaleString()}>
               {formatRelativeTime(new Date(entry.createdAt))}

@@ -16,7 +16,7 @@ import { listAccessGrants, listGrantableUsers } from "@/lib/actions/access-grant
 import { listApplicableTemplates, listGeneratedDocuments } from "@/lib/actions/generated-documents";
 import { getMySignatureProfile } from "@/lib/actions/signatures";
 import { listNotes } from "@/lib/actions/notes";
-import { listReachableStages, listPipelineStages } from "@/lib/actions/stage";
+import { listReachableStages, listPipelineStages, listAllStageNames } from "@/lib/actions/stage";
 import { ApplicationPropertiesTable } from "@/components/applications/application-properties-table";
 import { ClientSummaryCard } from "@/components/applications/client-summary-card";
 import { NotesPanel } from "@/components/applications/notes-panel";
@@ -82,6 +82,7 @@ export default async function ApplicationDetailPage({
     forwardStages,
     licenseTypes,
     caseTypes,
+    stageLookup,
   ] = await Promise.all([
     listClients({ filter: "all" }),
     listAssignableUsers(),
@@ -97,6 +98,7 @@ export default async function ApplicationDetailPage({
     application.pipeline ? listPipelineStages(application.pipeline) : Promise.resolve([]),
     listLicenseTypes(),
     listCaseTypes(),
+    listAllStageNames(),
   ]);
 
   const stepIndex = application.stage ? forwardStages.findIndex((s) => s.id === application.stage!.id) : -1;
@@ -241,6 +243,7 @@ export default async function ApplicationDetailPage({
                     users={userLookup}
                     licenseTypes={licenseTypeLookup}
                     caseTypes={caseTypeLookup}
+                    stages={stageLookup}
                   />
                 </div>
               </TabsContent>

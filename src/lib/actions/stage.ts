@@ -21,6 +21,15 @@ export async function listPipelineStages(pipeline: $Enums.Pipeline, opts: { incl
   });
 }
 
+// id -> name across every pipeline (including inactive/exit stages) — for
+// resolving a StageHistory or audit-log stageId to something readable,
+// where the record could point at a stage from any of the three catalogs.
+export async function listAllStageNames() {
+  await requireRole(["ADMIN", "MANAGER", "STAFF"]);
+  const stages = await prisma.pipelineStage.findMany({ select: { id: true, name: true } });
+  return Object.fromEntries(stages.map((s) => [s.id, s.name]));
+}
+
 // Moves an Application to a different stage within its own pipeline —
 // forward moves and exit statuses (On Hold/Withdrawn/Hearing Lost) are
 // always allowed, backward moves only if explicitly whitelisted (see
