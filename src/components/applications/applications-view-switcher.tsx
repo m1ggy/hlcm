@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { List, LayoutGrid } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ApplicationsTable } from "@/components/applications/applications-table";
-import { ApplicationsBoard } from "@/components/applications/applications-board";
 import { PipelineApplicationsBoard, type BoardStage } from "@/components/applications/pipeline-applications-board";
 import { getFavoriteApplicationIds } from "@/lib/favorite-applications";
 import { APPLICATION_STATUSES, STATUS_LABELS, ApplicationStatus } from "@/lib/status";
@@ -32,9 +31,9 @@ const VIEW_KEY = "hclm:applications-view";
 const FILTER_KEY = "hclm:applications-filter";
 const TAB_KEY = "hclm:applications-pipeline-tab";
 type Filter = "all" | "mine" | "favorites" | ApplicationStatus;
-type PipelineTab = "HOME_CARE" | "CILA_GROUP_HOME" | "NO_PIPELINE";
+type PipelineTab = "HOME_CARE" | "CILA_GROUP_HOME" | "MCO";
 
-const TABS: PipelineTab[] = ["HOME_CARE", "CILA_GROUP_HOME", "NO_PIPELINE"];
+const TABS: PipelineTab[] = ["HOME_CARE", "CILA_GROUP_HOME", "MCO"];
 
 export function ApplicationsViewSwitcher({
   applications,
@@ -46,14 +45,12 @@ export function ApplicationsViewSwitcher({
   applications: AppRow[];
   assignableUsers: { id: string; name: string }[];
   currentUserId: string;
-  // Non-exit stage catalog per pipeline — Application.pipeline is never
-  // "MCO" (that's exclusively the McoCredential model's pipeline), so only
-  // these two are needed for a Kanban board.
-  pipelineStages: { HOME_CARE: BoardStage[]; CILA_GROUP_HOME: BoardStage[] };
-  // Same two pipelines, but including exit statuses — the Kanban board
+  // Non-exit stage catalog per pipeline — a Kanban board's columns.
+  pipelineStages: { HOME_CARE: BoardStage[]; CILA_GROUP_HOME: BoardStage[]; MCO: BoardStage[] };
+  // Same three pipelines, but including exit statuses — the Kanban board
   // deliberately excludes those (see pipeline-applications-board.tsx), but
-  // the reference diagram shouldn't hide them.
-  pipelineStagesFull: { HOME_CARE: DiagramStage[]; CILA_GROUP_HOME: DiagramStage[] };
+  // the reference diagram and legend shouldn't hide them.
+  pipelineStagesFull: { HOME_CARE: DiagramStage[]; CILA_GROUP_HOME: DiagramStage[]; MCO: DiagramStage[] };
 }) {
   const [view, setView] = useState<"table" | "board">("table");
   const [filter, setFilter] = useState<Filter>("all");
@@ -63,7 +60,7 @@ export function ApplicationsViewSwitcher({
   // saved tab (below) loads — without this gate, the Pipeline Map's
   // auto-open key would flash from "HOME_CARE" to the real saved tab on
   // every single page visit, and could pop the dialog for whichever of the
-  // two happened not to be marked "seen" yet. Auto-open waits for this to
+  // three happened not to be marked "seen" yet. Auto-open waits for this to
   // flip true so it only ever evaluates the real, settled tab.
   const [hydrated, setHydrated] = useState(false);
 
@@ -74,7 +71,7 @@ export function ApplicationsViewSwitcher({
       const savedTab = window.localStorage.getItem(TAB_KEY);
       if (savedView === "table" || savedView === "board") setView(savedView);
       if (savedFilter) setFilter(savedFilter as Filter);
-      if (savedTab === "HOME_CARE" || savedTab === "CILA_GROUP_HOME" || savedTab === "NO_PIPELINE") setTab(savedTab);
+      if (savedTab === "HOME_CARE" || savedTab === "CILA_GROUP_HOME" || savedTab === "MCO") setTab(savedTab);
       setFavoriteIds(getFavoriteApplicationIds());
       setHydrated(true);
     }, 0);
@@ -109,8 +106,13 @@ export function ApplicationsViewSwitcher({
     });
   }
 
+  // The MCO tab also catches cases with no pipeline at all — leftovers from
+  // before every license type resolved to a real pipeline (createApplication
+  // now defaults unmapped license types to MCO, but older rows can still
+  // predate that and sit at pipeline: null). They show up here with the old
+  // status field instead of a stage until someone moves them onto a stage.
   const byTab = applications.filter((app) =>
-    tab === "NO_PIPELINE" ? app.pipeline === null : app.pipeline === tab
+    tab === "MCO" ? app.pipeline === "MCO" || app.pipeline === null : app.pipeline === tab
   );
 
   const filtered = byTab.filter((app) => {
@@ -123,23 +125,23 @@ export function ApplicationsViewSwitcher({
   // "Step N of M" position within the current tab's forward-flow stage
   // order — pipelineStages is already the non-exit catalog sorted by
   // sortOrder, so a case sitting in an exit status (On Hold/Withdrawn/
-  // Hearing Lost) simply won't be found and gets no badge.
-  const stagesForTab = tab === "NO_PIPELINE" ? [] : pipelineStages[tab];
+  // Hearing Lost) or with no stage at all simply won't be found and gets no
+  // badge.
+  const stagesForTab = pipelineStages[tab];
   const withStepInfo = filtered.map((app) => {
     const index = stagesForTab.findIndex((s) => s.id === app.stageId);
     return { ...app, stepInfo: index === -1 ? null : { index: index + 1, total: stagesForTab.length } };
   });
 
-  // Legacy per-status chips only make sense on the MCO tab (internal key
-  // NO_PIPELINE — cases whose license type never maps to a Home Care/CILA
-  // pipeline) — those cases have no stage, old status is still their only
-  // progress field. The pipeline tabs already show progress via stage
+  // Legacy per-status chips only make sense on the MCO tab, where a stageless
+  // leftover case (see byTab above) still relies on the old status field as
+  // its only progress indicator. Every other tab shows progress via stage
   // columns/badges instead.
   const chips: { key: Filter; label: string }[] = [
     { key: "all", label: "All" },
     { key: "mine", label: "Mine" },
     { key: "favorites", label: "Favorites" },
-    ...(tab === "NO_PIPELINE" ? APPLICATION_STATUSES.map((s) => ({ key: s, label: STATUS_LABELS[s] })) : []),
+    ...(tab === "MCO" ? APPLICATION_STATUSES.map((s) => ({ key: s, label: STATUS_LABELS[s] })) : []),
   ];
 
   return (
@@ -147,9 +149,9 @@ export function ApplicationsViewSwitcher({
       <div className="flex flex-wrap items-center gap-1 rounded-lg bg-muted p-1 text-xs w-fit" data-tour="pipeline-tabs">
         {TABS.map((t) => (
           <Button key={t} variant={tab === t ? "default" : "ghost"} size="xs" onClick={() => changeTab(t)}>
-            {t === "NO_PIPELINE" ? "MCO" : PIPELINE_LABELS[t]}
+            {PIPELINE_LABELS[t]}
             <span className="ml-1 opacity-70">
-              {applications.filter((a) => (t === "NO_PIPELINE" ? a.pipeline === null : a.pipeline === t)).length}
+              {applications.filter((a) => (t === "MCO" ? a.pipeline === "MCO" || a.pipeline === null : a.pipeline === t)).length}
             </span>
           </Button>
         ))}
@@ -165,14 +167,12 @@ export function ApplicationsViewSwitcher({
           </Button>
         </div>
         <div className="flex items-center gap-2">
-          {tab !== "NO_PIPELINE" && (
-            <PipelineDiagramDialog
-              pipeline={tab}
-              pipelineLabel={PIPELINE_LABELS[tab]}
-              stages={pipelineStagesFull[tab]}
-              autoOpenKey={hydrated ? tab : undefined}
-            />
-          )}
+          <PipelineDiagramDialog
+            pipeline={tab}
+            pipelineLabel={PIPELINE_LABELS[tab]}
+            stages={pipelineStagesFull[tab]}
+            autoOpenKey={hydrated ? tab : undefined}
+          />
           <span className="text-xs text-muted-foreground">
             {filtered.length} of {byTab.length}
           </span>
@@ -204,10 +204,8 @@ export function ApplicationsViewSwitcher({
               assignableUsers={assignableUsers}
               favoriteIds={favoriteIds}
               onFavoriteChange={handleFavoriteChange}
-              pipelineMode={tab !== "NO_PIPELINE"}
+              pipelineMode
             />
-          ) : tab === "NO_PIPELINE" ? (
-            <ApplicationsBoard applications={filtered} />
           ) : (
             <PipelineApplicationsBoard
               applications={filtered.filter((a): a is typeof a & { stageId: string } => a.stageId !== null)}
@@ -216,7 +214,7 @@ export function ApplicationsViewSwitcher({
           )}
         </div>
 
-        {tab !== "NO_PIPELINE" && <StageLegendStrip stages={pipelineStagesFull[tab]} />}
+        <StageLegendStrip stages={pipelineStagesFull[tab]} />
       </div>
     </div>
   );

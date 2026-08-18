@@ -39,8 +39,10 @@ export default async function ApplicationsPage({
     caseTypes,
     homeCareStages,
     cilaStages,
+    mcoStages,
     homeCareStagesFull,
     cilaStagesFull,
+    mcoStagesFull,
   ] = await Promise.all([
     listApplications({ archived: showArchived }),
     listClients(),
@@ -49,8 +51,10 @@ export default async function ApplicationsPage({
     listCaseTypes(),
     listPipelineStages("HOME_CARE"),
     listPipelineStages("CILA_GROUP_HOME"),
+    listPipelineStages("MCO"),
     listPipelineStages("HOME_CARE", { includeExit: true }),
     listPipelineStages("CILA_GROUP_HOME", { includeExit: true }),
+    listPipelineStages("MCO", { includeExit: true }),
   ]);
 
   return (
@@ -130,8 +134,8 @@ export default async function ApplicationsPage({
           applications={applications}
           assignableUsers={assignableUsers}
           currentUserId={session.user.id}
-          pipelineStages={{ HOME_CARE: homeCareStages, CILA_GROUP_HOME: cilaStages }}
-          pipelineStagesFull={{ HOME_CARE: homeCareStagesFull, CILA_GROUP_HOME: cilaStagesFull }}
+          pipelineStages={{ HOME_CARE: homeCareStages, CILA_GROUP_HOME: cilaStages, MCO: mcoStages }}
+          pipelineStagesFull={{ HOME_CARE: homeCareStagesFull, CILA_GROUP_HOME: cilaStagesFull, MCO: mcoStagesFull }}
         />
       )}
     </div>

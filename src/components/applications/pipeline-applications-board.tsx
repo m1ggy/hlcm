@@ -102,12 +102,13 @@ function KanbanColumn({ stage, cards }: { stage: BoardStage; cards: AppCard[] })
   );
 }
 
-// Stage-driven counterpart to ApplicationsBoard (applications-board.tsx,
-// which still drives the "MCO" tab — internal key NO_PIPELINE — off the
-// old status enum).
 // One board per pipeline — columns are that pipeline's own non-exit stages,
 // never a flat cross-pipeline list (docs/pipeline-stage-plan.md: CILA alone
 // has 24 stages, Home Care 7 — a single shared board can't sanely show both).
+// Drives all three tabs now, including MCO — a stageless leftover case
+// (pipeline: null, predating every license type resolving to a real
+// pipeline) simply won't have a stageId and gets filtered out below; it's
+// still visible in Table view via its old status field.
 export function PipelineApplicationsBoard({ applications, stages }: { applications: AppCard[]; stages: BoardStage[] }) {
   const [items, setItems] = useState(applications);
   const [activeId, setActiveId] = useState<string | null>(null);

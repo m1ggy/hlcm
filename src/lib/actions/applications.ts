@@ -168,15 +168,15 @@ export async function createApplication(formData: FormData) {
   });
 
   // Which pipeline (and starting stage within it) this case enters, derived
-  // from the license type — see docs/pipeline-stage-plan.md. Stays null when
-  // the license type isn't mapped to a pipeline yet (e.g. Change of
-  // Ownership has no license type at all); pipeline/stageId are nullable for
-  // exactly this reason.
+  // from the license type — see docs/pipeline-stage-plan.md. Falls back to
+  // MCO when the license type isn't mapped to Home Care/CILA (including no
+  // license type at all, e.g. Change of Ownership) — every case lands on a
+  // real pipeline now, none stay unassigned.
   const licenseType = parsed.licenseTypeTemplateId
     ? await prisma.licenseTypeTemplate.findUnique({ where: { id: parsed.licenseTypeTemplateId } })
     : null;
-  const pipeline = pipelineForLicenseType(licenseType?.name);
-  const initialStage = pipeline ? await getInitialStage(pipeline) : null;
+  const pipeline = pipelineForLicenseType(licenseType?.name) ?? "MCO";
+  const initialStage = await getInitialStage(pipeline);
 
   const application = await prisma.application.create({
     data: {
@@ -187,7 +187,7 @@ export async function createApplication(formData: FormData) {
       licenseTypeTemplateId: parsed.licenseTypeTemplateId,
       caseTypeId: parsed.caseTypeId,
       createdById: session.user.id,
-      pipeline: pipeline ?? undefined,
+      pipeline,
       stageId: initialStage?.id,
     },
   });

@@ -130,7 +130,7 @@ function buildSteps(role: string | undefined): TourStep[] {
       element: '[data-tour="pipeline-tabs"]',
       popover: {
         title: "Pipeline tabs",
-        description: "Home Care and CILA / Group Home each run through their own licensing stages, so each gets its own tab and its own board — a case in Step I Supervisor Review and one in HC Corrections Received aren't on the same track. \"MCO\" holds MCO credentialing cases and any older case that predates this and doesn't have a mapped pipeline; those still use the plain status field. The vertical strip of colored dots on the right is a legend for every stage on this tab — hover any pill elsewhere in the app to match its color back to a name. \"Pipeline map\" opens the full stage flow with colors and which backward moves are allowed; it also opens itself automatically the first time you visit a tab, so you're not left guessing.",
+        description: "Home Care, CILA / Group Home, and MCO each run through their own licensing stages, so each gets its own tab and its own board — a case in Step I Supervisor Review and one in HC Corrections Received aren't on the same track. Picking a license type at creation routes a case into Home Care or CILA automatically; anything else lands on MCO. A small number of older cases predate all this and still sit on the plain status field until someone gives them a stage. The vertical strip of colored dots on the right is a legend for every stage on this tab — hover any pill elsewhere in the app to match its color back to a name. \"Pipeline map\" opens the full stage flow with colors and which backward moves are allowed; it also opens itself automatically the first time you visit a tab, so you're not left guessing.",
         side: "bottom",
       },
     },
@@ -148,7 +148,7 @@ function buildSteps(role: string | undefined): TourStep[] {
       element: '[data-tour="filter-chips"]',
       popover: {
         title: "Filters",
-        description: "Narrow the list down to your own cases or favorites. On the MCO tab you can also filter by the old status field.",
+        description: "Narrow the list down to your own cases or favorites. On the MCO tab you can also filter by the old status field, for the few leftover cases that don't have a stage yet.",
         side: "bottom",
       },
     },
