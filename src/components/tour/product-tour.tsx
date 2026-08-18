@@ -195,7 +195,7 @@ function buildSteps(role: string | undefined): TourStep[] {
             element: '[data-tour="all-users-time"]',
             popover: {
               title: "Company-wide time report",
-              description: "Pick a user (or everyone) and a date range to see total hours × rate, download it as a PDF, or send it straight out as a Wise payout.",
+              description: "Pick a user (or everyone) and a date range to see total hours × rate, download it as a PDF, or send it straight out as a Wise payout. Admins get individual sessions listed below the totals too, with an \"Add time\" button for a missed punch and a delete on each row for a mistaken one.",
               side: "top",
             },
           } satisfies TourStep,

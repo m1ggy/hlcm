@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { FileDown, Loader2 } from "lucide-react";
+import { FileDown, Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,9 +21,18 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { getTimesheetTotals } from "@/lib/actions/time-entries";
+import { getTimesheetTotals, listTimeEntries, deleteTimeEntry } from "@/lib/actions/time-entries";
 import { payUserViaWise } from "@/lib/actions/wise";
-import { formatDuration, formatMoney, type TimesheetTotal } from "@/lib/time-entries";
+import { formatDuration, formatMoney, hoursBetween, type TimesheetTotal } from "@/lib/time-entries";
+import { AddTimeEntryDialog } from "@/components/time-clock/add-time-entry-dialog";
+
+type TimeEntryRow = {
+  id: string;
+  userId: string;
+  clockIn: Date;
+  clockOut: Date | null;
+  user: { id: string; name: string; hourlyRate: number | null };
+};
 
 function startOfMonth() {
   const d = new Date();
@@ -33,14 +42,19 @@ function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
-export function TimesheetReport({ users, canPay = false }: { users: { id: string; name: string }[]; canPay?: boolean }) {
+// isAdmin gates both the Pay button and the entry-level management (add/
+// delete) below — same population (role === "ADMIN") the caller already
+// computes for pay, reused rather than adding a second identical prop.
+export function TimesheetReport({ users, isAdmin = false }: { users: { id: string; name: string }[]; isAdmin?: boolean }) {
   const [userId, setUserId] = useState("all");
   const [from, setFrom] = useState(startOfMonth());
   const [to, setTo] = useState(today());
   const [totals, setTotals] = useState<TimesheetTotal[] | null>(null);
+  const [entries, setEntries] = useState<TimeEntryRow[] | null>(null);
   const [isPending, startTransition] = useTransition();
   const [payStatus, setPayStatus] = useState<Record<string, "paying" | "paid">>({});
   const [, startPaying] = useTransition();
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   function handlePay(payUserId: string) {
     setPayStatus((s) => ({ ...s, [payUserId]: "paying" }));
@@ -76,14 +90,32 @@ export function TimesheetReport({ users, canPay = false }: { users: { id: string
       try {
         // "to" is a date-only input — extend to end of day so that day's sessions are included.
         const toEnd = new Date(`${to}T23:59:59.999`);
-        const rows = await getTimesheetTotals({
+        const range = {
           userId: userId === "all" ? undefined : userId,
           from: new Date(`${from}T00:00:00`),
           to: toEnd,
-        });
+        };
+        const [rows, rawEntries] = await Promise.all([getTimesheetTotals(range), listTimeEntries(range)]);
         setTotals(rows);
+        setEntries(rawEntries);
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to load totals");
+      }
+    });
+  }
+
+  function handleDelete(entryId: string) {
+    if (!confirm("Delete this time entry? This can't be undone.")) return;
+    setDeletingId(entryId);
+    startTransition(async () => {
+      try {
+        await deleteTimeEntry(entryId);
+        toast.success("Time entry deleted");
+        handlePreview();
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Failed to delete entry");
+      } finally {
+        setDeletingId(null);
       }
     });
   }
@@ -127,6 +159,7 @@ export function TimesheetReport({ users, canPay = false }: { users: { id: string
         <Button nativeButton={false} render={<a href={pdfUrl()} target="_blank" rel="noopener noreferrer" />}>
           <FileDown className="size-3.5" /> Download PDF
         </Button>
+        {isAdmin && <AddTimeEntryDialog users={users} onAdded={handlePreview} />}
       </div>
 
       {totals && (
@@ -137,7 +170,7 @@ export function TimesheetReport({ users, canPay = false }: { users: { id: string
               <TableHead>Rate</TableHead>
               <TableHead>Hours</TableHead>
               <TableHead>Total pay</TableHead>
-              {canPay && <TableHead>Payout</TableHead>}
+              {isAdmin && <TableHead>Payout</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -152,7 +185,7 @@ export function TimesheetReport({ users, canPay = false }: { users: { id: string
                 <TableCell>{t.hourlyRate != null ? `${formatMoney(t.hourlyRate)}/hr` : "—"}</TableCell>
                 <TableCell>{formatDuration(t.hours)}</TableCell>
                 <TableCell>{t.pay != null ? formatMoney(t.pay) : "—"}</TableCell>
-                {canPay && (
+                {isAdmin && (
                   <TableCell>
                     {payStatus[t.userId] === "paid" ? (
                       <span className="text-xs text-muted-foreground">Sent</span>
@@ -176,7 +209,7 @@ export function TimesheetReport({ users, canPay = false }: { users: { id: string
             ))}
             {totals.length === 0 && (
               <TableRow>
-                <TableCell colSpan={canPay ? 5 : 4} className="text-center text-muted-foreground">
+                <TableCell colSpan={isAdmin ? 5 : 4} className="text-center text-muted-foreground">
                   No sessions in this range.
                 </TableCell>
               </TableRow>
@@ -187,11 +220,71 @@ export function TimesheetReport({ users, canPay = false }: { users: { id: string
                 <TableCell />
                 <TableCell className="font-medium">{formatDuration(grandHours)}</TableCell>
                 <TableCell className="font-medium">{formatMoney(grandPay)}</TableCell>
-                {canPay && <TableCell />}
+                {isAdmin && <TableCell />}
               </TableRow>
             )}
           </TableBody>
         </Table>
+      )}
+
+      {entries && (
+        <div className="space-y-1.5">
+          <p className="text-sm font-medium">Individual sessions</p>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>User</TableHead>
+                <TableHead>Date</TableHead>
+                <TableHead>Clock in</TableHead>
+                <TableHead>Clock out</TableHead>
+                <TableHead>Hours</TableHead>
+                {isAdmin && <TableHead className="w-10" />}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {[...entries]
+                .sort((a, b) => b.clockIn.getTime() - a.clockIn.getTime())
+                .map((entry) => (
+                  <TableRow key={entry.id}>
+                    <TableCell className="font-medium">{entry.user.name}</TableCell>
+                    <TableCell>{entry.clockIn.toLocaleDateString()}</TableCell>
+                    <TableCell>{entry.clockIn.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</TableCell>
+                    <TableCell>
+                      {entry.clockOut
+                        ? entry.clockOut.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                        : "In progress"}
+                    </TableCell>
+                    <TableCell>
+                      {entry.clockOut ? formatDuration(hoursBetween(entry.clockIn, entry.clockOut)) : "—"}
+                    </TableCell>
+                    {isAdmin && (
+                      <TableCell>
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          disabled={deletingId === entry.id}
+                          onClick={() => handleDelete(entry.id)}
+                        >
+                          {deletingId === entry.id ? (
+                            <Loader2 className="size-3 animate-spin" />
+                          ) : (
+                            <Trash2 className="size-3.5 text-destructive" />
+                          )}
+                        </Button>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))}
+              {entries.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={isAdmin ? 6 : 5} className="text-center text-muted-foreground">
+                    No sessions in this range.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
       )}
     </div>
   );

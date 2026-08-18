@@ -26,6 +26,9 @@ export default async function TimePage() {
           {canSeeAllUsers && (
             <p>As an admin or manager, you can also review everyone&apos;s hours and process pay from here.</p>
           )}
+          {canPay && (
+            <p>As an admin, hit Preview to see individual sessions below the totals — add a missed punch or delete a mistaken one from there.</p>
+          )}
         </PageInfoButton>
       </div>
 
@@ -44,7 +47,7 @@ export default async function TimePage() {
             <CardTitle>All users</CardTitle>
           </CardHeader>
           <CardContent>
-            <TimesheetReport users={users.map((u) => ({ id: u.id, name: u.name }))} canPay={canPay} />
+            <TimesheetReport users={users.map((u) => ({ id: u.id, name: u.name }))} isAdmin={canPay} />
           </CardContent>
         </Card>
       )}

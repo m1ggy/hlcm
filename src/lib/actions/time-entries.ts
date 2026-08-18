@@ -104,3 +104,56 @@ export async function getTimesheetTotals(input: TimeEntryRangeInput) {
   const entries = await listTimeEntries(input);
   return summarizeByUser(entries);
 }
+
+const manualEntrySchema = z
+  .object({
+    userId: z.string().min(1),
+    clockIn: z.coerce.date(),
+    clockOut: z.coerce.date(),
+  })
+  .refine((v) => v.clockOut > v.clockIn, { message: "Clock out must be after clock in" });
+
+/**
+ * Admin-only: backfills a session someone forgot to clock, or corrects a
+ * missed punch — always a completed shift (both ends required), unlike a
+ * real clock-in which starts open. Same TimeEntry row a clockIn/clockOut
+ * pair would produce, so it flows into totals, PDFs, and payouts exactly
+ * the same way.
+ */
+export async function createManualTimeEntry(input: { userId: string; clockIn: string; clockOut: string }) {
+  const session = await requireRole(["ADMIN"]);
+  const parsed = manualEntrySchema.parse(input);
+
+  const entry = await prisma.timeEntry.create({
+    data: { userId: parsed.userId, clockIn: parsed.clockIn, clockOut: parsed.clockOut },
+  });
+
+  await recordAudit({
+    entityType: "TimeEntry",
+    entityId: entry.id,
+    action: "manual_add",
+    actorId: session.user.id,
+    newValue: `${parsed.clockIn.toISOString()} – ${parsed.clockOut.toISOString()}`,
+  });
+
+  revalidatePath("/time");
+  return entry;
+}
+
+/** Admin-only: removes a mistaken or duplicate entry (e.g. a double clock-in left dangling open). */
+export async function deleteTimeEntry(id: string) {
+  const session = await requireRole(["ADMIN"]);
+  const entry = await prisma.timeEntry.findUniqueOrThrow({ where: { id } });
+
+  await prisma.timeEntry.delete({ where: { id } });
+
+  await recordAudit({
+    entityType: "TimeEntry",
+    entityId: id,
+    action: "delete",
+    actorId: session.user.id,
+    oldValue: `${entry.clockIn.toISOString()} – ${entry.clockOut?.toISOString() ?? "open"}`,
+  });
+
+  revalidatePath("/time");
+}
