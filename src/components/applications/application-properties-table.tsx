@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { updateApplication, updateApplicationCaseFields } from "@/lib/actions/applications";
+import { updateApplication, updateApplicationCaseFields, updateApplicationLicenseType } from "@/lib/actions/applications";
 import { ApplicationStagePicker } from "@/components/applications/application-stage-picker";
 import type { PickerStage } from "@/components/shared/stage-picker";
 import { Input } from "@/components/ui/input";
@@ -38,7 +38,8 @@ export function ApplicationPropertiesTable({
   defaultValues,
   clients,
   assignableUsers,
-  licenseTypeName,
+  licenseTypes,
+  licenseTypeTemplateId,
   caseTypeName,
   stage,
   reachableStages,
@@ -62,7 +63,12 @@ export function ApplicationPropertiesTable({
   };
   clients: Option[];
   assignableUsers: Option[];
-  licenseTypeName: string | null;
+  licenseTypes: Option[];
+  // Not required at creation — a case can start with "None" and get one set
+  // once it's known. Setting or changing it re-derives the pipeline the same
+  // way creation does (updateApplicationLicenseType), so this can move a
+  // case onto a different pipeline's stage flow after the fact.
+  licenseTypeTemplateId: string | null;
   caseTypeName: string | null;
   // Both null when the case predates the pipeline rollout and hasn't been
   // backfilled yet, or its license type doesn't map to a pipeline.
@@ -83,6 +89,7 @@ export function ApplicationPropertiesTable({
   const [status, setStatus] = useState<ApplicationStatus>(defaultValues.status);
   const [description, setDescription] = useState(defaultValues.description ?? "");
 
+  const [licenseTypeId, setLicenseTypeId] = useState(licenseTypeTemplateId ?? NONE);
   const [assignedManagerId, setAssignedManagerId] = useState(defaultValues.assignedManagerId ?? NONE);
   const [agency, setAgency] = useState(defaultValues.agency ?? NONE);
   const [ballIsWith, setBallIsWith] = useState(defaultValues.ballIsWith ?? NONE);
@@ -114,6 +121,27 @@ export function ApplicationPropertiesTable({
         router.refresh();
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to update application");
+      }
+    });
+  }
+
+  function saveLicenseType(next: string) {
+    setLicenseTypeId(next);
+    startTransition(async () => {
+      try {
+        const { pipelineChanged } = await updateApplicationLicenseType(
+          applicationId,
+          next === NONE ? null : next
+        );
+        if (pipelineChanged) {
+          toast.success("License type updated — case moved to the new pipeline's first stage");
+        } else {
+          toast.success("License type updated");
+        }
+        router.refresh();
+      } catch (error) {
+        setLicenseTypeId(licenseTypeTemplateId ?? NONE);
+        toast.error(error instanceof Error ? error.message : "Failed to update license type");
       }
     });
   }
@@ -297,7 +325,25 @@ export function ApplicationPropertiesTable({
         )}
         <TableRow>
           <TableCell className="text-muted-foreground">License Type</TableCell>
-          <TableCell className="text-muted-foreground">{licenseTypeName ?? "—"}</TableCell>
+          <TableCell>
+            <Select
+              items={{ [NONE]: "None", ...Object.fromEntries(licenseTypes.map((l) => [l.id, l.name])) }}
+              value={licenseTypeId}
+              onValueChange={(v) => saveLicenseType(v ?? licenseTypeId)}
+            >
+              <SelectTrigger size="sm" className="w-[14rem]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE}>None</SelectItem>
+                {licenseTypes.map((lt) => (
+                  <SelectItem key={lt.id} value={lt.id}>
+                    {lt.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </TableCell>
         </TableRow>
         <TableRow>
           <TableCell className="text-muted-foreground">Case Type</TableCell>

@@ -259,6 +259,60 @@ export async function updateApplication(id: string, formData: FormData) {
   return application;
 }
 
+// License type wasn't required at creation (a case can start with "None"
+// and get one filled in once it's known), so this covers setting or
+// changing it afterward too. Reassigns the pipeline the same way creation
+// does — if the new license type resolves to a different pipeline than the
+// case is currently on, it's moved onto that pipeline's first stage and a
+// StageHistory row records why; the case's own stage catalog changed out
+// from under it, so its old stageId wouldn't mean anything there anymore.
+// Landing on the *same* pipeline (e.g. IDPH -> IDOA, both Home Care)
+// leaves the current stage untouched — no reason to reset progress.
+export async function updateApplicationLicenseType(id: string, licenseTypeTemplateId: string | null) {
+  const session = await requireSession();
+  await assertCanEditApplication(session, id);
+
+  const before = await prisma.application.findUniqueOrThrow({ where: { id } });
+  const licenseType = licenseTypeTemplateId
+    ? await prisma.licenseTypeTemplate.findUniqueOrThrow({ where: { id: licenseTypeTemplateId } })
+    : null;
+  const newPipeline = pipelineForLicenseType(licenseType?.name) ?? "MCO";
+  const pipelineChanged = newPipeline !== before.pipeline;
+  const initialStage = pipelineChanged ? await getInitialStage(newPipeline) : null;
+
+  const application = await prisma.application.update({
+    where: { id },
+    data: {
+      licenseTypeTemplateId,
+      ...(pipelineChanged ? { pipeline: newPipeline, stageId: initialStage?.id ?? null } : {}),
+    },
+  });
+
+  if (pipelineChanged && initialStage) {
+    await prisma.stageHistory.create({
+      data: {
+        applicationId: id,
+        stageId: initialStage.id,
+        reason: "License type changed — moved to a new pipeline",
+        actorId: session.user.id,
+      },
+    });
+  }
+
+  await recordFieldChanges({
+    entityType: "Application",
+    entityId: id,
+    actorId: session.user.id,
+    action: "update",
+    before,
+    after: application,
+  });
+
+  revalidatePath("/applications");
+  revalidatePath(`/applications/${id}`);
+  return { application, pipelineChanged };
+}
+
 const AGENCY_VALUES = ["IDPH", "IDOA", "IDHS", "OTHER"] as const;
 const BALL_WITH_VALUES = ["CTK", "CLIENT", "GOVERNMENT"] as const;
 

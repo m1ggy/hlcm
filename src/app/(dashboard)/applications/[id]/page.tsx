@@ -8,6 +8,7 @@ import {
   restoreApplication,
 } from "@/lib/actions/applications";
 import { listClients } from "@/lib/actions/clients";
+import { listLicenseTypes } from "@/lib/actions/license-types";
 import { listTasksForApplication } from "@/lib/actions/tasks";
 import { listFiles } from "@/lib/actions/files";
 import { listAccessGrants, listGrantableUsers } from "@/lib/actions/access-grants";
@@ -78,6 +79,7 @@ export default async function ApplicationDetailPage({
     notes,
     reachableStages,
     forwardStages,
+    licenseTypes,
   ] = await Promise.all([
     listClients({ filter: "all" }),
     listAssignableUsers(),
@@ -91,6 +93,7 @@ export default async function ApplicationDetailPage({
     listNotes(id),
     listReachableStages(id),
     application.pipeline ? listPipelineStages(application.pipeline) : Promise.resolve([]),
+    listLicenseTypes(),
   ]);
 
   const stepIndex = application.stage ? forwardStages.findIndex((s) => s.id === application.stage!.id) : -1;
@@ -179,7 +182,8 @@ export default async function ApplicationDetailPage({
                   applicationId={id}
                   clients={clients}
                   assignableUsers={assignableUsers}
-                  licenseTypeName={application.licenseTypeTemplate?.name ?? null}
+                  licenseTypes={licenseTypes}
+                  licenseTypeTemplateId={application.licenseTypeTemplateId}
                   caseTypeName={application.caseType?.name ?? null}
                   stage={application.stage}
                   reachableStages={reachableStages}
