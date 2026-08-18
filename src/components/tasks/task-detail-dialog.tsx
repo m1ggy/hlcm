@@ -305,7 +305,10 @@ export function TaskDetailDialog({
           <div className="flex min-h-0 w-80 shrink-0 flex-col overflow-hidden border-l lg:w-96">
             <h3 className="shrink-0 px-4 pt-4 pb-3 text-sm font-medium">Activity</h3>
             <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
-              <AuditLogPanel auditLog={auditLog} />
+              <AuditLogPanel
+                auditLog={auditLog}
+                users={Object.fromEntries(assignableUsers.map((u) => [u.id, u.name]))}
+              />
             </div>
           </div>
         </div>

@@ -9,6 +9,7 @@ import {
 } from "@/lib/actions/applications";
 import { listClients } from "@/lib/actions/clients";
 import { listLicenseTypes } from "@/lib/actions/license-types";
+import { listCaseTypes } from "@/lib/actions/case-types";
 import { listTasksForApplication } from "@/lib/actions/tasks";
 import { listFiles } from "@/lib/actions/files";
 import { listAccessGrants, listGrantableUsers } from "@/lib/actions/access-grants";
@@ -80,6 +81,7 @@ export default async function ApplicationDetailPage({
     reachableStages,
     forwardStages,
     licenseTypes,
+    caseTypes,
   ] = await Promise.all([
     listClients({ filter: "all" }),
     listAssignableUsers(),
@@ -94,6 +96,7 @@ export default async function ApplicationDetailPage({
     listReachableStages(id),
     application.pipeline ? listPipelineStages(application.pipeline) : Promise.resolve([]),
     listLicenseTypes(),
+    listCaseTypes(),
   ]);
 
   const stepIndex = application.stage ? forwardStages.findIndex((s) => s.id === application.stage!.id) : -1;
@@ -101,6 +104,8 @@ export default async function ApplicationDetailPage({
 
   const clientLookup = Object.fromEntries(clients.map((c) => [c.id, c.name]));
   const userLookup = Object.fromEntries(assignableUsers.map((u) => [u.id, u.name]));
+  const licenseTypeLookup = Object.fromEntries(licenseTypes.map((l) => [l.id, l.name]));
+  const caseTypeLookup = Object.fromEntries(caseTypes.map((c) => [c.id, c.name]));
 
   const allTaskStatuses = taskData.tasks.flatMap((t) => [t.status, ...t.subtasks.map((s) => s.status)]);
   const taskProgress = {
@@ -230,7 +235,13 @@ export default async function ApplicationDetailPage({
               </TabsContent>
               <TabsContent value="audit">
                 <div className="max-h-[32rem] overflow-y-auto pr-1">
-                  <AuditLogPanel auditLog={auditLog} clients={clientLookup} users={userLookup} />
+                  <AuditLogPanel
+                    auditLog={auditLog}
+                    clients={clientLookup}
+                    users={userLookup}
+                    licenseTypes={licenseTypeLookup}
+                    caseTypes={caseTypeLookup}
+                  />
                 </div>
               </TabsContent>
             </Tabs>

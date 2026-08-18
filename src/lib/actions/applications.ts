@@ -272,7 +272,7 @@ export async function updateApplicationLicenseType(id: string, licenseTypeTempla
   const session = await requireSession();
   await assertCanEditApplication(session, id);
 
-  const before = await prisma.application.findUniqueOrThrow({ where: { id } });
+  const before = await prisma.application.findUniqueOrThrow({ where: { id }, include: { stage: true } });
   const licenseType = licenseTypeTemplateId
     ? await prisma.licenseTypeTemplate.findUniqueOrThrow({ where: { id: licenseTypeTemplateId } })
     : null;
@@ -297,15 +297,30 @@ export async function updateApplicationLicenseType(id: string, licenseTypeTempla
         actorId: session.user.id,
       },
     });
+    // Own event, not swept into the generic field diff below — `pipeline`
+    // and `stageId` are a raw enum and a stage's id, neither of which reads
+    // as anything to a human. change_stage (same action changeApplicationStage
+    // uses) already knows how to render "moved from X to Y" with real names.
+    await recordAudit({
+      entityType: "Application",
+      entityId: id,
+      action: "change_stage",
+      actorId: session.user.id,
+      oldValue: before.stage?.name ?? null,
+      newValue: initialStage.name,
+    });
   }
 
+  // Only the license type itself goes through the generic diff — pipeline
+  // and stageId (handled above) are deliberately left out of both sides so
+  // they can't also get swept in here as a second, uglier audit line.
   await recordFieldChanges({
     entityType: "Application",
     entityId: id,
     actorId: session.user.id,
     action: "update",
-    before,
-    after: application,
+    before: { licenseTypeTemplateId: before.licenseTypeTemplateId },
+    after: { licenseTypeTemplateId: application.licenseTypeTemplateId },
   });
 
   revalidatePath("/applications");

@@ -187,7 +187,10 @@ export default async function ClientDetailPage({
             </TabsContent>
             <TabsContent value="audit">
               <div className="max-h-[32rem] overflow-y-auto pr-1">
-                <AuditLogPanel auditLog={auditLog} />
+                <AuditLogPanel
+                  auditLog={auditLog}
+                  users={Object.fromEntries(assignableUsers.map((u) => [u.id, u.name]))}
+                />
               </div>
             </TabsContent>
           </Tabs>

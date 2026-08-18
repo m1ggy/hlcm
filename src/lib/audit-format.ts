@@ -1,5 +1,6 @@
 import { STATUS_LABELS, ApplicationStatus } from "@/lib/status";
 import { TASK_STATUS_LABELS, TaskStatusValue } from "@/lib/task-status";
+import { PIPELINE_LABELS } from "@/lib/pipeline-labels";
 
 const FIELD_LABELS: Record<string, string> = {
   name: "Name",
@@ -189,7 +190,12 @@ export function formatActionVerb(action: string) {
 export function formatAuditValue(
   field: string | null,
   value: string | null,
-  lookups: { clients?: Record<string, string>; users?: Record<string, string> } = {}
+  lookups: {
+    clients?: Record<string, string>;
+    users?: Record<string, string>;
+    licenseTypes?: Record<string, string>;
+    caseTypes?: Record<string, string>;
+  } = {}
 ) {
   if (value === null || value === undefined || value === "") return "—";
   if (field === "status") {
@@ -199,6 +205,9 @@ export function formatAuditValue(
   if (field === "assignedUserId" || field === "reviewerUserId" || field === "assignedManagerId") {
     return lookups.users?.[value] ?? value;
   }
+  if (field === "licenseTypeTemplateId") return lookups.licenseTypes?.[value] ?? value;
+  if (field === "caseTypeId") return lookups.caseTypes?.[value] ?? value;
+  if (field === "pipeline") return PIPELINE_LABELS[value as keyof typeof PIPELINE_LABELS] ?? value;
   if (
     field === "dueDate" ||
     field === "createdAt" ||
