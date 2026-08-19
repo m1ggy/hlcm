@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState, useTransition } from "react";
+import { Fragment, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ChevronRight, ChevronDown, Plus, GripVertical, Loader2 } from "lucide-react";
@@ -45,9 +45,36 @@ import { TaskItem, Option } from "./task-types";
 
 const NONE = "__none__";
 
+const COL_WIDTH_KEY = "hclm:task-table-col-widths";
+const DEFAULT_COL_WIDTHS = { task: 260, status: 160, assigned: 144, due: 144, reviewer: 144 };
+const MIN_COL_WIDTHS: Record<ColKey, number> = { task: 140, status: 120, assigned: 100, due: 110, reviewer: 100 };
+type ColKey = keyof typeof DEFAULT_COL_WIDTHS;
+
 function toDateInputValue(date: Date | null) {
   if (!date) return "";
   return new Date(date).toISOString().slice(0, 10);
+}
+
+// Thin drag handle on a column's right edge — mousedown starts tracking the
+// pointer, resizes just that column, and persists the whole width set to
+// localStorage on release so it's remembered across visits.
+function ColumnResizeHandle({
+  colKey,
+  onResize,
+}: {
+  colKey: ColKey;
+  onResize: (key: ColKey, e: React.MouseEvent) => void;
+}) {
+  return (
+    <div
+      onMouseDown={(e) => {
+        e.preventDefault();
+        onResize(colKey, e);
+      }}
+      title="Drag to resize column"
+      className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize touch-none select-none hover:bg-primary/40"
+    />
+  );
 }
 
 export function TaskTable({
@@ -67,7 +94,47 @@ export function TaskTable({
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [newRowId, setNewRowId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [colWidths, setColWidths] = useState(DEFAULT_COL_WIDTHS);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+
+  useEffect(() => {
+    const id = setTimeout(() => {
+      const saved = window.localStorage.getItem(COL_WIDTH_KEY);
+      if (!saved) return;
+      try {
+        setColWidths((w) => ({ ...w, ...JSON.parse(saved) }));
+      } catch {
+        // ignore malformed storage
+      }
+    }, 0);
+    return () => clearTimeout(id);
+  }, []);
+
+  function startResize(key: ColKey, e: React.MouseEvent) {
+    const startX = e.clientX;
+    const startWidth = colWidths[key];
+    let latest = startWidth;
+
+    function onMove(ev: MouseEvent) {
+      latest = Math.max(MIN_COL_WIDTHS[key], startWidth + (ev.clientX - startX));
+      setColWidths((w) => ({ ...w, [key]: latest }));
+    }
+    function onUp() {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      setColWidths((w) => {
+        const next = { ...w, [key]: latest };
+        window.localStorage.setItem(COL_WIDTH_KEY, JSON.stringify(next));
+        return next;
+      });
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
@@ -117,14 +184,40 @@ export function TaskTable({
 
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-      <Table className="table-fixed">
+      {/* Inline width beats the table's own w-full class, so the table sizes
+          exactly to the sum of the (user-adjustable) column widths — once
+          that exceeds the card, the Table wrapper's overflow-x-auto kicks in
+          with a real scrollbar instead of squeezing everything to fit. */}
+      <Table className="table-fixed" style={{ width: Object.values(colWidths).reduce((a, b) => a + b, 0) }}>
+        <colgroup>
+          <col style={{ width: colWidths.task }} />
+          <col style={{ width: colWidths.status }} />
+          <col style={{ width: colWidths.assigned }} />
+          <col style={{ width: colWidths.due }} />
+          <col style={{ width: colWidths.reviewer }} />
+        </colgroup>
         <TableHeader>
           <TableRow>
-            <TableHead>Task</TableHead>
-            <TableHead className="w-40">Status</TableHead>
-            <TableHead className="w-36">Assigned</TableHead>
-            <TableHead className="w-36">Due</TableHead>
-            <TableHead className="w-36">Reviewer</TableHead>
+            <TableHead className="relative">
+              Task
+              <ColumnResizeHandle colKey="task" onResize={startResize} />
+            </TableHead>
+            <TableHead className="relative">
+              Status
+              <ColumnResizeHandle colKey="status" onResize={startResize} />
+            </TableHead>
+            <TableHead className="relative">
+              Assigned
+              <ColumnResizeHandle colKey="assigned" onResize={startResize} />
+            </TableHead>
+            <TableHead className="relative">
+              Due
+              <ColumnResizeHandle colKey="due" onResize={startResize} />
+            </TableHead>
+            <TableHead className="relative">
+              Reviewer
+              <ColumnResizeHandle colKey="reviewer" onResize={startResize} />
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

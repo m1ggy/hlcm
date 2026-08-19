@@ -33,6 +33,7 @@ import { AccessGrantsPanel } from "@/components/applications/access-grants-panel
 import { DocumentGenerator } from "@/components/applications/document-generator";
 import { GeneratedDocumentsTable } from "@/components/applications/generated-documents-table";
 import { TaskBoard } from "@/components/tasks/task-board";
+import { CaseDetailLayout } from "@/components/applications/case-detail-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -152,106 +153,109 @@ export default async function ApplicationDetailPage({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-5">
-        <Card className="min-w-0 lg:col-span-3">
-          <CardHeader>
-            <CardTitle>Checklist</CardTitle>
-          </CardHeader>
-          <CardContent className="min-w-0">
-            <TaskBoard
-              applicationId={id}
-              phases={taskData.phases}
-              tasks={taskData.tasks.map((task) => ({
-                ...task,
-                subtasks: task.subtasks.map((subtask) => ({ ...subtask, subtasks: [] })),
-              }))}
-              assignableUsers={assignableUsers}
-              defaultAssignedUserId={application.assignedUserId}
-            />
-          </CardContent>
-        </Card>
-
-        <div className="min-w-0 space-y-6 lg:col-span-2">
-        <ClientSummaryCard client={application.client} />
-        <Card className="min-w-0">
-          <CardContent className="min-w-0">
-            <Tabs defaultValue="details" orientation="horizontal" className="w-full">
-              <TabsList className="w-full">
-                <TabsTrigger value="details">Details</TabsTrigger>
-                <TabsTrigger value="files">Files</TabsTrigger>
-                <TabsTrigger value="documents">Documents</TabsTrigger>
-                <TabsTrigger value="comments">Comments</TabsTrigger>
-                <TabsTrigger value="sharing">Sharing</TabsTrigger>
-                <TabsTrigger value="audit">Audit Log</TabsTrigger>
-              </TabsList>
-              <TabsContent value="details">
-                <ApplicationPropertiesTable
-                  applicationId={id}
-                  clients={clients}
-                  assignableUsers={assignableUsers}
-                  licenseTypes={licenseTypes}
-                  licenseTypeTemplateId={application.licenseTypeTemplateId}
-                  caseTypeName={application.caseType?.name ?? null}
-                  stage={application.stage}
-                  reachableStages={reachableStages}
-                  daysInStage={application.daysInStage}
-                  stepInfo={stepInfo}
-                  defaultValues={{
-                    clientId: application.clientId,
-                    name: application.name,
-                    description: application.description,
-                    assignedUserId: application.assignedUserId,
-                    assignedManagerId: application.assignedManagerId,
-                    status: application.status as ApplicationStatus,
-                    agency: application.agency,
-                    ballIsWith: application.ballIsWith,
-                    correctionRound: application.correctionRound,
-                    deficiencyReceivedDate: application.deficiencyReceivedDate,
-                    deficiencyResponseDueDate: application.deficiencyResponseDueDate,
-                    deficiencyResponseSubmittedDate: application.deficiencyResponseSubmittedDate,
-                  }}
-                />
-              </TabsContent>
-              <TabsContent value="files">
-                <FilePool
-                  applicationId={id}
-                  files={files}
-                  canEdit={canEdit}
-                  hasSavedSignature={!!signatureProfile}
-                />
-              </TabsContent>
-              <TabsContent value="documents" className="space-y-4">
-                {canEdit && <DocumentGenerator applicationId={id} templates={applicableTemplates} />}
-                <GeneratedDocumentsTable applicationId={id} documents={generatedDocuments} canEdit={canEdit} />
-              </TabsContent>
-              <TabsContent value="comments">
-                <NotesPanel applicationId={id} notes={notes} mentionableUsers={assignableUsers} />
-              </TabsContent>
-              <TabsContent value="sharing">
-                <AccessGrantsPanel
-                  applicationId={id}
-                  grants={accessGrants}
-                  grantableUsers={grantableUsers}
-                  canManage={canEdit}
-                />
-              </TabsContent>
-              <TabsContent value="audit">
-                <div className="max-h-[32rem] overflow-y-auto pr-1">
-                  <AuditLogPanel
-                    auditLog={auditLog}
-                    clients={clientLookup}
-                    users={userLookup}
-                    licenseTypes={licenseTypeLookup}
-                    caseTypes={caseTypeLookup}
-                    stages={stageLookup}
-                  />
-                </div>
-              </TabsContent>
-            </Tabs>
-          </CardContent>
-        </Card>
-        </div>
-      </div>
+      <CaseDetailLayout
+        checklist={
+          <Card className="min-w-0">
+            <CardHeader>
+              <CardTitle>Checklist</CardTitle>
+            </CardHeader>
+            <CardContent className="min-w-0">
+              <TaskBoard
+                applicationId={id}
+                phases={taskData.phases}
+                tasks={taskData.tasks.map((task) => ({
+                  ...task,
+                  subtasks: task.subtasks.map((subtask) => ({ ...subtask, subtasks: [] })),
+                }))}
+                assignableUsers={assignableUsers}
+                defaultAssignedUserId={application.assignedUserId}
+              />
+            </CardContent>
+          </Card>
+        }
+        sidebar={
+          <>
+            <ClientSummaryCard client={application.client} />
+            <Card className="min-w-0">
+              <CardContent className="min-w-0">
+                <Tabs defaultValue="details" orientation="horizontal" className="w-full">
+                  <TabsList className="w-full">
+                    <TabsTrigger value="details">Details</TabsTrigger>
+                    <TabsTrigger value="files">Files</TabsTrigger>
+                    <TabsTrigger value="documents">Documents</TabsTrigger>
+                    <TabsTrigger value="comments">Comments</TabsTrigger>
+                    <TabsTrigger value="sharing">Sharing</TabsTrigger>
+                    <TabsTrigger value="audit">Audit Log</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="details">
+                    <ApplicationPropertiesTable
+                      applicationId={id}
+                      clients={clients}
+                      assignableUsers={assignableUsers}
+                      licenseTypes={licenseTypes}
+                      licenseTypeTemplateId={application.licenseTypeTemplateId}
+                      caseTypeName={application.caseType?.name ?? null}
+                      stage={application.stage}
+                      reachableStages={reachableStages}
+                      daysInStage={application.daysInStage}
+                      stepInfo={stepInfo}
+                      defaultValues={{
+                        clientId: application.clientId,
+                        name: application.name,
+                        description: application.description,
+                        assignedUserId: application.assignedUserId,
+                        assignedManagerId: application.assignedManagerId,
+                        status: application.status as ApplicationStatus,
+                        agency: application.agency,
+                        ballIsWith: application.ballIsWith,
+                        correctionRound: application.correctionRound,
+                        deficiencyReceivedDate: application.deficiencyReceivedDate,
+                        deficiencyResponseDueDate: application.deficiencyResponseDueDate,
+                        deficiencyResponseSubmittedDate: application.deficiencyResponseSubmittedDate,
+                      }}
+                    />
+                  </TabsContent>
+                  <TabsContent value="files">
+                    <FilePool
+                      applicationId={id}
+                      files={files}
+                      canEdit={canEdit}
+                      hasSavedSignature={!!signatureProfile}
+                    />
+                  </TabsContent>
+                  <TabsContent value="documents" className="space-y-4">
+                    {canEdit && <DocumentGenerator applicationId={id} templates={applicableTemplates} />}
+                    <GeneratedDocumentsTable applicationId={id} documents={generatedDocuments} canEdit={canEdit} />
+                  </TabsContent>
+                  <TabsContent value="comments">
+                    <NotesPanel applicationId={id} notes={notes} mentionableUsers={assignableUsers} />
+                  </TabsContent>
+                  <TabsContent value="sharing">
+                    <AccessGrantsPanel
+                      applicationId={id}
+                      grants={accessGrants}
+                      grantableUsers={grantableUsers}
+                      canManage={canEdit}
+                    />
+                  </TabsContent>
+                  <TabsContent value="audit">
+                    <div className="max-h-[32rem] overflow-y-auto pr-1">
+                      <AuditLogPanel
+                        auditLog={auditLog}
+                        clients={clientLookup}
+                        users={userLookup}
+                        licenseTypes={licenseTypeLookup}
+                        caseTypes={caseTypeLookup}
+                        stages={stageLookup}
+                      />
+                    </div>
+                  </TabsContent>
+                </Tabs>
+              </CardContent>
+            </Card>
+          </>
+        }
+      />
     </div>
   );
 }
