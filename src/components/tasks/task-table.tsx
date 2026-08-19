@@ -285,7 +285,12 @@ function InlineRow({
         </Select>
       </TableCell>
       <TableCell>
-        <div className="space-y-1">
+        {/* flex flex-col, not space-y-1: TableCell forces whitespace-nowrap,
+            which keeps inline-level siblings (the date <input>, the Badge)
+            on one unbroken line instead of wrapping — that line then
+            overflowed into the Reviewer column. An explicit flex column
+            stacks them regardless of the nowrap ancestor. */}
+        <div className="flex flex-col gap-1">
           <Input
             type="date"
             value={dueDate}
