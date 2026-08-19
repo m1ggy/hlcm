@@ -15,7 +15,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { TASK_STATUSES, TASK_STATUS_LABELS, TASK_STATUS_BADGE_VARIANT } from "@/lib/task-status";
+import { TASK_STATUSES, isTaskOverdue } from "@/lib/task-status";
+import { TaskStatusSelect } from "./task-status-select";
 import { TaskDetailDialog } from "./task-detail-dialog";
 import { Option, TaskUserRef } from "./task-types";
 
@@ -95,23 +96,27 @@ export function StandaloneTaskRow({
     });
   }
 
+  const overdue = isTaskOverdue(dueDate, status);
+
   return (
-    <div className="rounded-lg border p-3">
+    <div className={`rounded-lg border p-3 ${overdue ? "border-destructive/40" : ""}`}>
       <div className="flex flex-wrap items-center gap-2">
         {task.subtasks.length > 0 ? (
           <button
             type="button"
             onClick={() => setExpanded((v) => !v)}
-            className="text-muted-foreground"
+            className="flex items-center gap-0.5 text-muted-foreground"
             title={expanded ? "Collapse subtasks" : "Expand subtasks"}
           >
             {expanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+            <span className="text-xs tabular-nums">{task.subtasks.length}</span>
           </button>
         ) : (
           <span className="inline-block w-4" />
         )}
         <span className="min-w-[10rem] flex-1 font-medium">{task.label}</span>
         {task.recurrenceRule && <Badge variant="outline">Repeats {task.recurrenceRule}</Badge>}
+        {overdue && <Badge variant="destructive">Overdue</Badge>}
         <Button variant="ghost" size="icon-sm" className="size-6" onClick={addSubtask} disabled={isAdding} title="Add subtask">
           {isAdding ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
         </Button>
@@ -127,26 +132,14 @@ export function StandaloneTaskRow({
           hasReviewer={false}
           assignableUsers={assignableUsers}
         />
-        <Select
-          items={Object.fromEntries(TASK_STATUSES.map((s) => [s, TASK_STATUS_LABELS[s]]))}
+        <TaskStatusSelect
           value={status}
-          onValueChange={(v) => {
-            const next = (v ?? status) as typeof status;
+          onValueChange={(next) => {
             setStatus(next);
             save({ status: next });
           }}
-        >
-          <SelectTrigger className="w-[9.5rem]" size="sm">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {TASK_STATUSES.map((s) => (
-              <SelectItem key={s} value={s}>
-                <Badge variant={TASK_STATUS_BADGE_VARIANT[s]}>{TASK_STATUS_LABELS[s]}</Badge>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          className="w-40"
+        />
         <Input
           type="date"
           value={dueDate}
@@ -154,7 +147,7 @@ export function StandaloneTaskRow({
             setDueDate(e.target.value);
             save({ dueDate: e.target.value });
           }}
-          className="w-[9.5rem]"
+          className={overdue ? "w-36 border-destructive/50 text-destructive focus-visible:border-ring" : "w-36"}
         />
       </div>
 
@@ -169,7 +162,7 @@ export function StandaloneTaskRow({
             save({ assignedUserId: next });
           }}
         >
-          <SelectTrigger size="sm" className="w-[10rem]">
+          <SelectTrigger size="sm" className="w-40">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -227,9 +220,12 @@ function SubtaskRow({ subtask, assignableUsers }: { subtask: Subtask; assignable
     });
   }
 
+  const overdue = isTaskOverdue(dueDate, status);
+
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-lg bg-muted/30 p-2 pl-8 text-sm">
       <span className="min-w-[9rem] flex-1">{subtask.label}</span>
+      {overdue && <Badge variant="destructive">Overdue</Badge>}
       <TaskDetailDialog
         taskId={subtask.id}
         label={subtask.label}
@@ -242,26 +238,14 @@ function SubtaskRow({ subtask, assignableUsers }: { subtask: Subtask; assignable
         hasReviewer={false}
         assignableUsers={assignableUsers}
       />
-      <Select
-        items={Object.fromEntries(TASK_STATUSES.map((s) => [s, TASK_STATUS_LABELS[s]]))}
+      <TaskStatusSelect
         value={status}
-        onValueChange={(v) => {
-          const next = (v ?? status) as typeof status;
+        onValueChange={(next) => {
           setStatus(next);
           save({ status: next });
         }}
-      >
-        <SelectTrigger className="w-[9rem]" size="sm">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {TASK_STATUSES.map((s) => (
-            <SelectItem key={s} value={s}>
-              {TASK_STATUS_LABELS[s]}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+        className="w-40"
+      />
       <Select
         items={Object.fromEntries(assignableUsers.map((u) => [u.id, u.name]))}
         value={assignedUserId}
@@ -271,7 +255,7 @@ function SubtaskRow({ subtask, assignableUsers }: { subtask: Subtask; assignable
           save({ assignedUserId: next });
         }}
       >
-        <SelectTrigger size="sm" className="w-[9rem]">
+        <SelectTrigger size="sm" className="w-40">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -289,7 +273,7 @@ function SubtaskRow({ subtask, assignableUsers }: { subtask: Subtask; assignable
           setDueDate(e.target.value);
           save({ dueDate: e.target.value });
         }}
-        className="w-[9rem]"
+        className={overdue ? "w-36 border-destructive/50 text-destructive focus-visible:border-ring" : "w-36"}
       />
     </div>
   );

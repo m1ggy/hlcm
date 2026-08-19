@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -37,7 +38,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { createTask, updateTask, setTaskReviewer, reorderTasks } from "@/lib/actions/tasks";
-import { TASK_STATUSES, TASK_STATUS_LABELS } from "@/lib/task-status";
+import { isTaskOverdue } from "@/lib/task-status";
+import { TaskStatusSelect } from "./task-status-select";
 import { TaskDetailDialog } from "./task-detail-dialog";
 import { TaskItem, Option } from "./task-types";
 
@@ -115,14 +117,14 @@ export function TaskTable({
 
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-      <Table>
+      <Table className="table-fixed">
         <TableHeader>
           <TableRow>
             <TableHead>Task</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Assigned</TableHead>
-            <TableHead>Due</TableHead>
-            <TableHead>Reviewer</TableHead>
+            <TableHead className="w-40">Status</TableHead>
+            <TableHead className="w-36">Assigned</TableHead>
+            <TableHead className="w-36">Due</TableHead>
+            <TableHead className="w-36">Reviewer</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -215,6 +217,8 @@ function InlineRow({
     });
   }
 
+  const overdue = isTaskOverdue(dueDate, status);
+
   return (
     <TableRow ref={rowRef} style={rowStyle} className={indent ? "bg-muted/30" : undefined}>
       <TableCell className={indent ? "pl-10" : undefined}>
@@ -232,40 +236,28 @@ function InlineRow({
             }}
             autoFocus={autoFocusLabel}
             onFocus={(e) => e.target.select()}
-            className="h-8 min-w-[10rem] border-transparent bg-transparent font-medium hover:border-input focus-visible:border-ring"
+            className="h-8 min-w-0 flex-1 border-transparent bg-transparent font-medium hover:border-input focus-visible:border-ring"
           />
           {extra}
         </div>
       </TableCell>
       <TableCell>
         <div className="space-y-1">
-          <Select
-            items={Object.fromEntries(TASK_STATUSES.map((s) => [s, TASK_STATUS_LABELS[s]]))}
+          <TaskStatusSelect
             value={status}
-            onValueChange={(v) => {
-              const next = (v ?? status) as typeof status;
+            onValueChange={(next) => {
               setStatus(next);
               save({ status: next });
             }}
-          >
-            <SelectTrigger size="sm" className="w-[9.5rem]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {TASK_STATUSES.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {TASK_STATUS_LABELS[s]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            className="w-full"
+          />
           {status === "BLOCKED" && (
             <Input
               placeholder="Blocked on…"
               value={blockedReason}
               onChange={(e) => setBlockedReason(e.target.value)}
               onBlur={() => save({ blockedReason })}
-              className="h-7 w-[9.5rem] text-xs"
+              className="h-7 w-full text-xs"
             />
           )}
         </div>
@@ -280,7 +272,7 @@ function InlineRow({
             save({ assignedUserId: next });
           }}
         >
-          <SelectTrigger size="sm" className="w-[9rem]">
+          <SelectTrigger size="sm" className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -293,15 +285,22 @@ function InlineRow({
         </Select>
       </TableCell>
       <TableCell>
-        <Input
-          type="date"
-          value={dueDate}
-          onChange={(e) => {
-            setDueDate(e.target.value);
-            save({ dueDate: e.target.value });
-          }}
-          className="h-8 w-[9rem]"
-        />
+        <div className="space-y-1">
+          <Input
+            type="date"
+            value={dueDate}
+            onChange={(e) => {
+              setDueDate(e.target.value);
+              save({ dueDate: e.target.value });
+            }}
+            className={
+              overdue
+                ? "h-8 w-full border-destructive/50 text-destructive focus-visible:border-ring"
+                : "h-8 w-full"
+            }
+          />
+          {overdue && <Badge variant="destructive">Overdue</Badge>}
+        </div>
       </TableCell>
       <TableCell>
         <Select
@@ -309,7 +308,7 @@ function InlineRow({
           value={reviewerId}
           onValueChange={handleReviewerChange}
         >
-          <SelectTrigger size="sm" className="w-[9rem]">
+          <SelectTrigger size="sm" className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -369,8 +368,14 @@ function TaskTableRows({
               <GripVertical className="size-4" />
             </button>
             {task.subtasks.length > 0 ? (
-              <button type="button" onClick={onToggleExpand} className="text-muted-foreground">
+              <button
+                type="button"
+                onClick={onToggleExpand}
+                className="flex items-center gap-0.5 text-muted-foreground"
+                title={expanded ? "Collapse subtasks" : "Expand subtasks"}
+              >
                 {expanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+                <span className="text-xs tabular-nums">{task.subtasks.length}</span>
               </button>
             ) : (
               <span className="inline-block w-4" />
