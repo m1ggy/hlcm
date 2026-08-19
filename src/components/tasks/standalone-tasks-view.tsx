@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { StandaloneTaskRow } from "@/components/tasks/standalone-task-row";
+import { MyTaskRow } from "@/components/tasks/standalone-task-row";
 import { TASK_STATUSES, TASK_STATUS_LABELS, TaskStatusValue } from "@/lib/task-status";
 import { Option, TaskUserRef } from "@/components/tasks/task-types";
 
@@ -15,7 +15,7 @@ type Subtask = {
   assignedUser: TaskUserRef;
 };
 
-type StandaloneTask = {
+type MyTask = {
   id: string;
   label: string;
   description: string | null;
@@ -27,16 +27,19 @@ type StandaloneTask = {
   assignedUser: TaskUserRef;
   subtasks: Subtask[];
   isOverdue: boolean;
+  // Which case this task is from — null for standalone tasks (internal
+  // errands not tied to any client case).
+  application: { id: string; name: string; client: { name: string } } | null;
 };
 
 const FILTER_KEY = "hclm:tasks-filter";
 type Filter = "all" | "overdue" | TaskStatusValue;
 
-export function StandaloneTasksView({
+export function MyTasksView({
   tasks,
   assignableUsers,
 }: {
-  tasks: StandaloneTask[];
+  tasks: MyTask[];
   assignableUsers: Option[];
 }) {
   const [filter, setFilter] = useState<Filter>("all");
@@ -86,7 +89,7 @@ export function StandaloneTasksView({
       </div>
       <div className="space-y-2">
         {filtered.map((task) => (
-          <StandaloneTaskRow key={task.id} task={task} assignableUsers={assignableUsers} />
+          <MyTaskRow key={task.id} task={task} assignableUsers={assignableUsers} />
         ))}
         {filtered.length === 0 && <p className="text-sm text-muted-foreground">No tasks match this filter.</p>}
       </div>

@@ -252,19 +252,27 @@ export async function setTaskReviewer(taskId: string, reviewerUserId: string | n
   else revalidatePath("/tasks");
 }
 
-// Standalone/recurring tasks — not tied to any Application (e.g. weekly
-// client report). STAFF only see their own; ADMIN/MANAGER see all.
-export async function listStandaloneTasks() {
+// Everything assigned to the current user — standalone tasks (e.g. weekly
+// client report) and case-tied tasks alike, so "My Tasks" is actually a
+// complete list of what's on someone's plate rather than just the
+// not-part-of-a-case subset. Always scoped to the caller, regardless of
+// role — a manager's "My Tasks" is their own tasks, not everyone's (see the
+// Applications/Tasks board views for the all-staff picture).
+// Tasks on an archived case are left out, same as the Applications list
+// filtering to active cases by default.
+export async function listMyTasks() {
   const session = await requireSession();
-  const role = session.user.role as AppRole;
-  const where =
-    role === "ADMIN" || role === "MANAGER"
-      ? { applicationId: null, parentTaskId: null }
-      : { applicationId: null, parentTaskId: null, assignedUserId: session.user.id };
 
   const tasks = await prisma.task.findMany({
-    where,
-    include: taskInclude,
+    where: {
+      assignedUserId: session.user.id,
+      parentTaskId: null,
+      OR: [{ applicationId: null }, { application: { active: true } }],
+    },
+    include: {
+      ...taskInclude,
+      application: { select: { id: true, name: true, client: { select: { name: true } } } },
+    },
     orderBy: { createdAt: "desc" },
   });
 
