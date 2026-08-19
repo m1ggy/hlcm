@@ -184,11 +184,16 @@ export function TaskTable({
 
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-      {/* Inline width beats the table's own w-full class, so the table sizes
-          exactly to the sum of the (user-adjustable) column widths — once
-          that exceeds the card, the Table wrapper's overflow-x-auto kicks in
-          with a real scrollbar instead of squeezing everything to fit. */}
-      <Table className="table-fixed" style={{ width: Object.values(colWidths).reduce((a, b) => a + b, 0) }}>
+      {/* width: 100% + minWidth: sum-of-columns — fills the card (columns
+          stretch proportionally, keeping their relative ratio) whenever the
+          card is wide enough, but never shrinks past what the columns were
+          set to. Once the card is narrower than that minimum, the Table
+          wrapper's overflow-x-auto kicks in with a real scrollbar instead of
+          squeezing everything to fit. */}
+      <Table
+        className="table-fixed"
+        style={{ width: "100%", minWidth: Object.values(colWidths).reduce((a, b) => a + b, 0) }}
+      >
         <colgroup>
           <col style={{ width: colWidths.task }} />
           <col style={{ width: colWidths.status }} />
