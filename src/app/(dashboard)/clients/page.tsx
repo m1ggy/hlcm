@@ -1,18 +1,8 @@
 import Link from "next/link";
 import { auth } from "@/auth";
 import { listClients, archiveClient, restoreClient } from "@/lib/actions/clients";
-import { ArchiveButton } from "@/components/shared/archive-button";
 import { PageInfoButton } from "@/components/shared/page-info-button";
-import { ServicePill } from "@/components/shared/service-pill";
-import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { ClientsTable } from "@/components/clients/clients-table";
 
 export default async function ClientsPage({
   searchParams,
@@ -49,62 +39,13 @@ export default async function ClientsPage({
           {showArchived ? "← Back to active clients" : "View archived clients"}
         </Link>
       </div>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Name</TableHead>
-            <TableHead>Projects</TableHead>
-            <TableHead>Contact Info</TableHead>
-            <TableHead>Address</TableHead>
-            {canArchive && <TableHead className="w-10" />}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {clients.map((client) => (
-            <TableRow key={client.id}>
-              <TableCell className="font-medium">
-                <Link href={`/clients/${client.id}`} className="hover:underline">
-                  {client.name}
-                </Link>
-                {showArchived && (
-                  <Badge variant="outline" className="ml-2">
-                    Archived
-                  </Badge>
-                )}
-              </TableCell>
-              <TableCell>
-                <div className="flex flex-wrap gap-1">
-                  {client.projects.map((project) => (
-                    <Link key={project.id} href={`/projects/${project.id}`} className="transition-opacity hover:opacity-80">
-                      <ServicePill label={project.name} service={project.serviceType} />
-                    </Link>
-                  ))}
-                </div>
-              </TableCell>
-              <TableCell>{client.contactInfo ?? "—"}</TableCell>
-              <TableCell>{client.address ?? "—"}</TableCell>
-              {canArchive && (
-                <TableCell className="text-right">
-                  <ArchiveButton
-                    id={client.id}
-                    label={client.name}
-                    archived={showArchived}
-                    archiveAction={archiveClient}
-                    restoreAction={restoreClient}
-                  />
-                </TableCell>
-              )}
-            </TableRow>
-          ))}
-          {clients.length === 0 && (
-            <TableRow>
-              <TableCell colSpan={canArchive ? 5 : 4} className="text-center text-muted-foreground">
-                {showArchived ? "No archived clients." : "No clients yet."}
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
+      <ClientsTable
+        clients={clients}
+        canArchive={canArchive}
+        showArchived={showArchived}
+        archiveAction={archiveClient}
+        restoreAction={restoreClient}
+      />
     </div>
   );
 }
