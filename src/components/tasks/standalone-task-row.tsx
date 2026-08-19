@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronDown, ChevronRight, Plus, Loader2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Plus, Loader2, Briefcase } from "lucide-react";
 import { updateTask, createStandaloneTask } from "@/lib/actions/tasks";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -29,7 +30,7 @@ type Subtask = {
   assignedUser: TaskUserRef;
 };
 
-type StandaloneTask = {
+type MyTask = {
   id: string;
   label: string;
   description: string | null;
@@ -40,6 +41,7 @@ type StandaloneTask = {
   createdById: string;
   assignedUser: TaskUserRef;
   subtasks: Subtask[];
+  application: { id: string; name: string; client: { name: string } } | null;
 };
 
 function toDateInputValue(date: Date | null) {
@@ -47,11 +49,11 @@ function toDateInputValue(date: Date | null) {
   return new Date(date).toISOString().slice(0, 10);
 }
 
-export function StandaloneTaskRow({
+export function MyTaskRow({
   task,
   assignableUsers,
 }: {
-  task: StandaloneTask;
+  task: MyTask;
   assignableUsers: Option[];
 }) {
   const router = useRouter();
@@ -111,6 +113,17 @@ export function StandaloneTaskRow({
           <span className="inline-block w-4" />
         )}
         <span className="min-w-[10rem] flex-1 font-medium">{task.label}</span>
+        {task.application ? (
+          <Link href={`/applications/${task.application.id}`} onClick={(e) => e.stopPropagation()}>
+            <Badge variant="outline" className="hover:bg-accent">
+              <Briefcase /> {task.application.name} · {task.application.client.name}
+            </Badge>
+          </Link>
+        ) : (
+          <Badge variant="outline" className="text-muted-foreground">
+            <Briefcase /> Internal
+          </Badge>
+        )}
         {task.recurrenceRule && <Badge variant="outline">Repeats {task.recurrenceRule}</Badge>}
         <Button variant="ghost" size="icon-sm" className="size-6" onClick={addSubtask} disabled={isAdding} title="Add subtask">
           {isAdding ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
@@ -127,26 +140,28 @@ export function StandaloneTaskRow({
           hasReviewer={false}
           assignableUsers={assignableUsers}
         />
-        <Select
-          items={Object.fromEntries(TASK_STATUSES.map((s) => [s, TASK_STATUS_LABELS[s]]))}
-          value={status}
-          onValueChange={(v) => {
-            const next = (v ?? status) as typeof status;
-            setStatus(next);
-            save({ status: next });
-          }}
-        >
-          <SelectTrigger className="w-[9.5rem]" size="sm">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {TASK_STATUSES.map((s) => (
-              <SelectItem key={s} value={s}>
-                <Badge variant={TASK_STATUS_BADGE_VARIANT[s]}>{TASK_STATUS_LABELS[s]}</Badge>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className={status === "COMPLETED" ? "-m-1 rounded-lg bg-emerald-500/10 p-1 dark:bg-emerald-500/15" : undefined}>
+          <Select
+            items={Object.fromEntries(TASK_STATUSES.map((s) => [s, TASK_STATUS_LABELS[s]]))}
+            value={status}
+            onValueChange={(v) => {
+              const next = (v ?? status) as typeof status;
+              setStatus(next);
+              save({ status: next });
+            }}
+          >
+            <SelectTrigger className="w-[9.5rem]" size="sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {TASK_STATUSES.map((s) => (
+                <SelectItem key={s} value={s}>
+                  <Badge variant={TASK_STATUS_BADGE_VARIANT[s]}>{TASK_STATUS_LABELS[s]}</Badge>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         <Input
           type="date"
           value={dueDate}
@@ -242,26 +257,28 @@ function SubtaskRow({ subtask, assignableUsers }: { subtask: Subtask; assignable
         hasReviewer={false}
         assignableUsers={assignableUsers}
       />
-      <Select
-        items={Object.fromEntries(TASK_STATUSES.map((s) => [s, TASK_STATUS_LABELS[s]]))}
-        value={status}
-        onValueChange={(v) => {
-          const next = (v ?? status) as typeof status;
-          setStatus(next);
-          save({ status: next });
-        }}
-      >
-        <SelectTrigger className="w-[9rem]" size="sm">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {TASK_STATUSES.map((s) => (
-            <SelectItem key={s} value={s}>
-              {TASK_STATUS_LABELS[s]}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <div className={status === "COMPLETED" ? "-m-1 rounded-lg bg-emerald-500/10 p-1 dark:bg-emerald-500/15" : undefined}>
+        <Select
+          items={Object.fromEntries(TASK_STATUSES.map((s) => [s, TASK_STATUS_LABELS[s]]))}
+          value={status}
+          onValueChange={(v) => {
+            const next = (v ?? status) as typeof status;
+            setStatus(next);
+            save({ status: next });
+          }}
+        >
+          <SelectTrigger className="w-[9rem]" size="sm">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {TASK_STATUSES.map((s) => (
+              <SelectItem key={s} value={s}>
+                {TASK_STATUS_LABELS[s]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
       <Select
         items={Object.fromEntries(assignableUsers.map((u) => [u.id, u.name]))}
         value={assignedUserId}

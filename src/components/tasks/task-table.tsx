@@ -237,7 +237,7 @@ function InlineRow({
           {extra}
         </div>
       </TableCell>
-      <TableCell>
+      <TableCell className={status === "COMPLETED" ? "bg-emerald-500/10 dark:bg-emerald-500/15" : undefined}>
         <div className="space-y-1">
           <Select
             items={Object.fromEntries(TASK_STATUSES.map((s) => [s, TASK_STATUS_LABELS[s]]))}
