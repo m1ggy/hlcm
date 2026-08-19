@@ -26,7 +26,8 @@ import { TaskFilePool } from "@/components/tasks/task-file-pool";
 import { updateTask, setTaskReviewer, getTaskAuditLog } from "@/lib/actions/tasks";
 import { listTaskNotes, addTaskNote } from "@/lib/actions/notes";
 import { listTaskFiles } from "@/lib/actions/files";
-import { TASK_STATUSES, TASK_STATUS_LABELS, TaskStatusValue } from "@/lib/task-status";
+import { TaskStatusValue } from "@/lib/task-status";
+import { TaskStatusSelect } from "./task-status-select";
 import { Option } from "./task-types";
 import type { FileRow } from "@/components/files/types";
 
@@ -196,26 +197,14 @@ export function TaskDetailDialog({
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <div className="space-y-1">
               <label className="text-xs text-muted-foreground">Status</label>
-              <Select
-                items={Object.fromEntries(TASK_STATUSES.map((s) => [s, TASK_STATUS_LABELS[s]]))}
+              <TaskStatusSelect
                 value={localStatus}
-                onValueChange={(v) => {
-                  const next = (v ?? localStatus) as TaskStatusValue;
+                onValueChange={(next) => {
                   setLocalStatus(next);
                   save({ status: next });
                 }}
-              >
-                <SelectTrigger size="sm" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {TASK_STATUSES.map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {TASK_STATUS_LABELS[s]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                className="w-full"
+              />
             </div>
 
             <div className="space-y-1">

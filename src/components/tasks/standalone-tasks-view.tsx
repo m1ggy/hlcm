@@ -57,16 +57,30 @@ export function MyTasksView({
     window.localStorage.setItem(FILTER_KEY, next);
   }
 
-  const filtered = tasks.filter((task) => {
-    if (filter === "all") return true;
-    if (filter === "overdue") return task.isOverdue;
-    return task.status === filter;
-  });
+  // Overdue first, then soonest due date, then no-due-date tasks last — so
+  // what needs attention today doesn't get buried under createdAt order.
+  const filtered = tasks
+    .filter((task) => {
+      if (filter === "all") return true;
+      if (filter === "overdue") return task.isOverdue;
+      return task.status === filter;
+    })
+    .sort((a, b) => {
+      if (a.isOverdue !== b.isOverdue) return a.isOverdue ? -1 : 1;
+      if (!a.dueDate && !b.dueDate) return 0;
+      if (!a.dueDate) return 1;
+      if (!b.dueDate) return -1;
+      return a.dueDate.getTime() - b.dueDate.getTime();
+    });
 
-  const chips: { key: Filter; label: string }[] = [
-    { key: "all", label: "All" },
-    { key: "overdue", label: "Overdue" },
-    ...TASK_STATUSES.map((s) => ({ key: s, label: TASK_STATUS_LABELS[s] })),
+  const chips: { key: Filter; label: string; count: number }[] = [
+    { key: "all", label: "All", count: tasks.length },
+    { key: "overdue", label: "Overdue", count: tasks.filter((t) => t.isOverdue).length },
+    ...TASK_STATUSES.map((s) => ({
+      key: s,
+      label: TASK_STATUS_LABELS[s],
+      count: tasks.filter((t) => t.status === s).length,
+    })),
   ];
 
   return (
@@ -77,13 +91,14 @@ export function MyTasksView({
             key={chip.key}
             type="button"
             onClick={() => changeFilter(chip.key)}
-            className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+            className={`flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs transition-colors ${
               filter === chip.key
                 ? "border-primary bg-primary text-primary-foreground"
                 : "border-input bg-transparent text-muted-foreground hover:bg-muted"
-            }`}
+            } ${chip.key === "overdue" && chip.count > 0 && filter !== chip.key ? "border-destructive/40 text-destructive" : ""}`}
           >
             {chip.label}
+            <span className="tabular-nums opacity-70">{chip.count}</span>
           </button>
         ))}
       </div>
