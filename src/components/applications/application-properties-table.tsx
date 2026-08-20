@@ -7,6 +7,7 @@ import { updateApplication, updateApplicationCaseFields, updateApplicationLicens
 import { ApplicationStagePicker } from "@/components/applications/application-stage-picker";
 import type { PickerStage } from "@/components/shared/stage-picker";
 import { Input } from "@/components/ui/input";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Table,
   TableBody,
@@ -198,26 +199,17 @@ export function ApplicationPropertiesTable({
         <TableRow>
           <TableCell className="text-muted-foreground">Client</TableCell>
           <TableCell>
-            <Select
+            <SearchableSelect
               items={Object.fromEntries(clients.map((c) => [c.id, c.name]))}
               value={clientId}
-              onValueChange={(v) => {
-                const next = v ?? clientId;
-                setClientId(next);
-                save({ clientId: next });
+              onValueChange={(next) => {
+                const value = next ?? clientId;
+                setClientId(value);
+                save({ clientId: value });
               }}
-            >
-              <SelectTrigger size="sm" className="w-[14rem]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {clients.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              size="sm"
+              className="flex h-7 w-[14rem] items-center justify-between gap-1.5 rounded-[min(var(--radius-md),10px)] border border-input bg-transparent py-2 pr-2 pl-2.5 text-sm whitespace-nowrap transition-colors outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30 dark:hover:bg-input/50"
+            />
           </TableCell>
         </TableRow>
         <TableRow>

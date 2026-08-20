@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 type Option = { id: string; name: string };
 
@@ -71,23 +72,13 @@ export function NewApplicationDialog({
         <form action={handleSubmit} className="space-y-4">
           <div className="space-y-1">
             <Label>Client</Label>
-            <Select
+            <SearchableSelect
               items={Object.fromEntries(clients.map((c) => [c.id, c.name]))}
-              value={clientId}
+              value={clientId || null}
               onValueChange={(v) => setClientId(v ?? "")}
-              required
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select a client" />
-              </SelectTrigger>
-              <SelectContent>
-                {clients.map((client) => (
-                  <SelectItem key={client.id} value={client.id}>
-                    {client.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              placeholder="Select a client"
+              searchPlaceholder="Search clients..."
+            />
           </div>
           <div className="space-y-1">
             <Label htmlFor="name">Application name</Label>
