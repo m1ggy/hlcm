@@ -15,12 +15,14 @@ export function TaskBoard({
   tasks,
   assignableUsers,
   defaultAssignedUserId,
+  isAdmin,
 }: {
   applicationId: string;
   phases: PhaseRef[];
   tasks: TaskItem[];
   assignableUsers: Option[];
   defaultAssignedUserId: string;
+  isAdmin?: boolean;
 }) {
   const [view, setView] = useState<"list" | "board">("list");
 
@@ -60,6 +62,7 @@ export function TaskBoard({
                 tasks={tasksByPhase.get(phase.id) ?? []}
                 assignableUsers={assignableUsers}
                 defaultAssignedUserId={defaultAssignedUserId}
+                isAdmin={isAdmin}
               />
             </div>
           ))}
@@ -72,6 +75,7 @@ export function TaskBoard({
               tasks={generalTasks}
               assignableUsers={assignableUsers}
               defaultAssignedUserId={defaultAssignedUserId}
+              isAdmin={isAdmin}
             />
           </div>
         </div>

@@ -688,6 +688,7 @@ model Task {
   dueDate         DateTime?
   blockedReason   String?
   recurrenceRule  String?
+  archived        Boolean  @default(false)
 
   assignedUser   User    @relation("TaskAssignee", fields: [assignedUserId], references: [id])
   assignedUserId String

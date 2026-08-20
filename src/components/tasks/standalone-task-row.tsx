@@ -4,8 +4,8 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronDown, ChevronRight, Plus, Loader2, Briefcase } from "lucide-react";
-import { updateTask, createStandaloneTask } from "@/lib/actions/tasks";
+import { ChevronDown, ChevronRight, Plus, Loader2, Briefcase, Archive } from "lucide-react";
+import { updateTask, createStandaloneTask, archiveTask } from "@/lib/actions/tasks";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -53,13 +53,16 @@ function toDateInputValue(date: Date | null) {
 export function MyTaskRow({
   task,
   assignableUsers,
+  isAdmin,
 }: {
   task: MyTask;
   assignableUsers: Option[];
+  isAdmin?: boolean;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [isAdding, startAdding] = useTransition();
+  const [isArchiving, startArchiving] = useTransition();
   const [status, setStatus] = useState(task.status);
   const [assignedUserId, setAssignedUserId] = useState(task.assignedUser.id);
   const [dueDate, setDueDate] = useState(toDateInputValue(task.dueDate));
@@ -99,6 +102,19 @@ export function MyTaskRow({
   }
 
   const overdue = isTaskOverdue(dueDate, status);
+
+  function archive() {
+    if (!confirm(`Archive "${task.label}"? It'll drop out of My Tasks — nothing is deleted.`)) return;
+    startArchiving(async () => {
+      try {
+        await archiveTask(task.id);
+        toast.success("Archived");
+        router.refresh();
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Failed to archive task");
+      }
+    });
+  }
 
   return (
     <div className={`rounded-lg border p-3 ${overdue ? "border-destructive/40" : ""}`}>
@@ -145,6 +161,18 @@ export function MyTaskRow({
           hasReviewer={false}
           assignableUsers={assignableUsers}
         />
+        {isAdmin && (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="size-6 text-muted-foreground hover:text-destructive"
+            onClick={archive}
+            disabled={isArchiving}
+            title="Archive task"
+          >
+            {isArchiving ? <Loader2 className="size-3.5 animate-spin" /> : <Archive className="size-3.5" />}
+          </Button>
+        )}
         <div className={status === "COMPLETED" ? "-m-1 rounded-lg bg-emerald-500/10 p-1 dark:bg-emerald-500/15" : undefined}>
           <TaskStatusSelect
             value={status}
@@ -205,7 +233,7 @@ export function MyTaskRow({
       {expanded && task.subtasks.length > 0 && (
         <div className="mt-3 space-y-2 border-t pt-3">
           {task.subtasks.map((subtask) => (
-            <SubtaskRow key={subtask.id} subtask={subtask} assignableUsers={assignableUsers} />
+            <SubtaskRow key={subtask.id} subtask={subtask} assignableUsers={assignableUsers} isAdmin={isAdmin} />
           ))}
         </div>
       )}
@@ -213,9 +241,18 @@ export function MyTaskRow({
   );
 }
 
-function SubtaskRow({ subtask, assignableUsers }: { subtask: Subtask; assignableUsers: Option[] }) {
+function SubtaskRow({
+  subtask,
+  assignableUsers,
+  isAdmin,
+}: {
+  subtask: Subtask;
+  assignableUsers: Option[];
+  isAdmin?: boolean;
+}) {
   const router = useRouter();
   const [, startTransition] = useTransition();
+  const [isArchiving, startArchiving] = useTransition();
   const [status, setStatus] = useState(subtask.status);
   const [assignedUserId, setAssignedUserId] = useState(subtask.assignedUser.id);
   const [dueDate, setDueDate] = useState(toDateInputValue(subtask.dueDate));
@@ -236,6 +273,19 @@ function SubtaskRow({ subtask, assignableUsers }: { subtask: Subtask; assignable
   }
 
   const overdue = isTaskOverdue(dueDate, status);
+
+  function archive() {
+    if (!confirm(`Archive "${subtask.label}"? It'll drop out of My Tasks — nothing is deleted.`)) return;
+    startArchiving(async () => {
+      try {
+        await archiveTask(subtask.id);
+        toast.success("Archived");
+        router.refresh();
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Failed to archive task");
+      }
+    });
+  }
 
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-lg bg-muted/30 p-2 pl-8 text-sm">
@@ -292,6 +342,18 @@ function SubtaskRow({ subtask, assignableUsers }: { subtask: Subtask; assignable
         }}
         className={overdue ? "w-36 border-destructive/50 text-destructive focus-visible:border-ring" : "w-36"}
       />
+      {isAdmin && (
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="size-6 text-muted-foreground hover:text-destructive"
+          onClick={archive}
+          disabled={isArchiving}
+          title="Archive task"
+        >
+          {isArchiving ? <Loader2 className="size-3.5 animate-spin" /> : <Archive className="size-3.5" />}
+        </Button>
+      )}
     </div>
   );
 }

@@ -169,6 +169,7 @@ export default async function ApplicationDetailPage({
                 }))}
                 assignableUsers={assignableUsers}
                 defaultAssignedUserId={application.assignedUserId}
+                isAdmin={session.user.role === "ADMIN"}
               />
             </CardContent>
           </Card>

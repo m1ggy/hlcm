@@ -14,6 +14,7 @@ const taskInclude = {
   assignedUser: { select: { id: true, name: true } },
   reviewer: { select: { id: true, name: true } },
   subtasks: {
+    where: { archived: false },
     include: {
       assignedUser: { select: { id: true, name: true } },
       reviewer: { select: { id: true, name: true } },
@@ -42,7 +43,7 @@ export async function listTasksForApplication(applicationId: string) {
   const [phases, tasks] = await Promise.all([
     prisma.phase.findMany({ where: { applicationId }, orderBy: { sortOrder: "asc" } }),
     prisma.task.findMany({
-      where: { applicationId, parentTaskId: null },
+      where: { applicationId, parentTaskId: null, archived: false },
       include: taskInclude,
       orderBy: { sortOrder: "asc" },
     }),
@@ -267,6 +268,7 @@ export async function listMyTasks() {
     where: {
       assignedUserId: session.user.id,
       parentTaskId: null,
+      archived: false,
       OR: [{ applicationId: null }, { application: { active: true } }],
     },
     include: {
@@ -342,5 +344,30 @@ export async function createStandaloneTask(formData: FormData) {
   );
 
   revalidatePath("/tasks");
+  return task;
+}
+
+// Soft delete — admin-only. Archived tasks drop out of the checklist and My
+// Tasks lists (see listTasksForApplication/listMyTasks) but the row stays in
+// the DB, so nothing here needs cascading deletes or FK cleanup.
+export async function archiveTask(taskId: string) {
+  const session = await requireRole(["ADMIN"]);
+  const task = await prisma.task.update({ where: { id: taskId }, data: { archived: true } });
+
+  await recordAudit({ entityType: "Task", entityId: taskId, action: "archive", actorId: session.user.id });
+
+  if (task.applicationId) revalidatePath(`/applications/${task.applicationId}`);
+  else revalidatePath("/tasks");
+  return task;
+}
+
+export async function restoreTask(taskId: string) {
+  const session = await requireRole(["ADMIN"]);
+  const task = await prisma.task.update({ where: { id: taskId }, data: { archived: false } });
+
+  await recordAudit({ entityType: "Task", entityId: taskId, action: "restore", actorId: session.user.id });
+
+  if (task.applicationId) revalidatePath(`/applications/${task.applicationId}`);
+  else revalidatePath("/tasks");
   return task;
 }

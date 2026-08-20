@@ -31,7 +31,7 @@ export default async function TasksPage() {
       {tasks.length === 0 ? (
         <p className="text-sm text-muted-foreground">No tasks assigned to you yet.</p>
       ) : (
-        <MyTasksView tasks={tasks} assignableUsers={assignableUsers} />
+        <MyTasksView tasks={tasks} assignableUsers={assignableUsers} isAdmin={session.user.role === "ADMIN"} />
       )}
     </div>
   );

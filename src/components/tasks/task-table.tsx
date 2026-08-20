@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronRight, ChevronDown, Plus, GripVertical, Loader2 } from "lucide-react";
+import { ChevronRight, ChevronDown, Plus, GripVertical, Loader2, Archive } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -37,7 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { createTask, updateTask, setTaskReviewer, reorderTasks } from "@/lib/actions/tasks";
+import { createTask, updateTask, setTaskReviewer, reorderTasks, archiveTask } from "@/lib/actions/tasks";
 import { isTaskOverdue } from "@/lib/task-status";
 import { TaskStatusSelect } from "./task-status-select";
 import { TaskDetailDialog } from "./task-detail-dialog";
@@ -83,12 +83,14 @@ export function TaskTable({
   tasks,
   assignableUsers,
   defaultAssignedUserId,
+  isAdmin,
 }: {
   applicationId: string;
   phaseId: string | null;
   tasks: TaskItem[];
   assignableUsers: Option[];
   defaultAssignedUserId: string;
+  isAdmin?: boolean;
 }) {
   const router = useRouter();
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -236,6 +238,7 @@ export function TaskTable({
                 onToggleExpand={() => toggleExpand(task.id)}
                 onAddSubtask={() => addRow(task.id)}
                 autoFocusId={newRowId}
+                isAdmin={isAdmin}
               />
             ))}
           </SortableContext>
@@ -266,6 +269,7 @@ function InlineRow({
   autoFocusLabel,
   rowRef,
   rowStyle,
+  isAdmin,
 }: {
   task: TaskItem;
   assignableUsers: Option[];
@@ -275,9 +279,11 @@ function InlineRow({
   autoFocusLabel?: boolean;
   rowRef?: (node: HTMLElement | null) => void;
   rowStyle?: React.CSSProperties;
+  isAdmin?: boolean;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
+  const [isArchiving, startArchiving] = useTransition();
   const [label, setLabel] = useState(task.label);
   const [status, setStatus] = useState(task.status);
   const [assignedUserId, setAssignedUserId] = useState(task.assignedUser.id);
@@ -317,6 +323,19 @@ function InlineRow({
 
   const overdue = isTaskOverdue(dueDate, status);
 
+  function archive() {
+    if (!confirm(`Archive "${task.label}"? It'll drop out of the checklist — nothing is deleted.`)) return;
+    startArchiving(async () => {
+      try {
+        await archiveTask(task.id);
+        toast.success("Archived");
+        router.refresh();
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Failed to archive task");
+      }
+    });
+  }
+
   return (
     <TableRow ref={rowRef} style={rowStyle} className={indent ? "bg-muted/30" : undefined}>
       <TableCell className={indent ? "pl-10" : undefined}>
@@ -337,6 +356,18 @@ function InlineRow({
             className="h-8 min-w-0 flex-1 border-transparent bg-transparent font-medium hover:border-input focus-visible:border-ring"
           />
           {extra}
+          {isAdmin && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="size-6 shrink-0 text-muted-foreground hover:text-destructive"
+              onClick={archive}
+              disabled={isArchiving}
+              title="Archive task"
+            >
+              {isArchiving ? <Loader2 className="size-3.5 animate-spin" /> : <Archive className="size-3.5" />}
+            </Button>
+          )}
         </div>
       </TableCell>
       <TableCell className={status === "COMPLETED" ? "bg-emerald-500/10 dark:bg-emerald-500/15" : undefined}>
@@ -435,6 +466,7 @@ function TaskTableRows({
   onToggleExpand,
   onAddSubtask,
   autoFocusId,
+  isAdmin,
 }: {
   task: TaskItem;
   assignableUsers: Option[];
@@ -442,6 +474,7 @@ function TaskTableRows({
   onToggleExpand: () => void;
   onAddSubtask: () => void;
   autoFocusId: string | null;
+  isAdmin?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
   const rowStyle: React.CSSProperties = {
@@ -459,6 +492,7 @@ function TaskTableRows({
         autoFocusLabel={task.id === autoFocusId}
         rowRef={setNodeRef}
         rowStyle={rowStyle}
+        isAdmin={isAdmin}
         expandControl={
           <div className="flex items-center">
             <button
@@ -513,6 +547,7 @@ function TaskTableRows({
             assignableUsers={assignableUsers}
             indent
             autoFocusLabel={subtask.id === autoFocusId}
+            isAdmin={isAdmin}
           />
         ))}
     </Fragment>

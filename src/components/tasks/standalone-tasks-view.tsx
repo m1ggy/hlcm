@@ -38,9 +38,11 @@ type Filter = "all" | "overdue" | TaskStatusValue;
 export function MyTasksView({
   tasks,
   assignableUsers,
+  isAdmin,
 }: {
   tasks: MyTask[];
   assignableUsers: Option[];
+  isAdmin?: boolean;
 }) {
   const [filter, setFilter] = useState<Filter>("all");
 
@@ -104,7 +106,7 @@ export function MyTasksView({
       </div>
       <div className="space-y-2">
         {filtered.map((task) => (
-          <MyTaskRow key={task.id} task={task} assignableUsers={assignableUsers} />
+          <MyTaskRow key={task.id} task={task} assignableUsers={assignableUsers} isAdmin={isAdmin} />
         ))}
         {filtered.length === 0 && <p className="text-sm text-muted-foreground">No tasks match this filter.</p>}
       </div>
