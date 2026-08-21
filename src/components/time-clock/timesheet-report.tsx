@@ -6,13 +6,7 @@ import { FileDown, Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Table,
   TableBody,
@@ -23,7 +17,15 @@ import {
 } from "@/components/ui/table";
 import { getTimesheetTotals, listTimeEntries, deleteTimeEntry } from "@/lib/actions/time-entries";
 import { payUserViaWise } from "@/lib/actions/wise";
-import { formatDuration, formatMoney, hoursBetween, type TimesheetTotal } from "@/lib/time-entries";
+import {
+  currentMonthRange,
+  currentPayPeriodRange,
+  formatDuration,
+  formatMoney,
+  hoursBetween,
+  toDateInputValue,
+  type TimesheetTotal,
+} from "@/lib/time-entries";
 import { AddTimeEntryDialog } from "@/components/time-clock/add-time-entry-dialog";
 import { EditTimeEntryDialog } from "@/components/time-clock/edit-time-entry-dialog";
 
@@ -36,11 +38,10 @@ type TimeEntryRow = {
 };
 
 function startOfMonth() {
-  const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
+  return currentMonthRange().from;
 }
 function today() {
-  return new Date().toISOString().slice(0, 10);
+  return toDateInputValue(new Date());
 }
 
 // isAdmin gates both the Pay button and the entry-level management (add/
@@ -82,27 +83,40 @@ export function TimesheetReport({ users, isAdmin = false }: { users: { id: strin
     return `/api/export/timesheet/pdf?${params.toString()}`;
   }
 
-  function handlePreview() {
-    if (!from || !to) {
+  // Takes an explicit range rather than reading `from`/`to` state so preset
+  // buttons can set the date fields and load in the same click — state
+  // updates from setFrom/setTo wouldn't be visible yet if this read them.
+  function loadRange(range: { from: string; to: string }) {
+    if (!range.from || !range.to) {
       toast.error("Pick a date range");
       return;
     }
     startTransition(async () => {
       try {
         // "to" is a date-only input — extend to end of day so that day's sessions are included.
-        const toEnd = new Date(`${to}T23:59:59.999`);
-        const range = {
+        const toEnd = new Date(`${range.to}T23:59:59.999`);
+        const query = {
           userId: userId === "all" ? undefined : userId,
-          from: new Date(`${from}T00:00:00`),
+          from: new Date(`${range.from}T00:00:00`),
           to: toEnd,
         };
-        const [rows, rawEntries] = await Promise.all([getTimesheetTotals(range), listTimeEntries(range)]);
+        const [rows, rawEntries] = await Promise.all([getTimesheetTotals(query), listTimeEntries(query)]);
         setTotals(rows);
         setEntries(rawEntries);
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to load totals");
       }
     });
+  }
+
+  function handlePreview() {
+    loadRange({ from, to });
+  }
+
+  function applyPreset(range: { from: string; to: string }) {
+    setFrom(range.from);
+    setTo(range.to);
+    loadRange(range);
   }
 
   function handleDelete(entryId: string) {
@@ -129,21 +143,13 @@ export function TimesheetReport({ users, isAdmin = false }: { users: { id: strin
       <div className="flex flex-wrap items-end gap-3">
         <div className="space-y-1">
           <Label>User</Label>
-          <Select value={userId} onValueChange={(v) => setUserId(v ?? "all")}>
-            <SelectTrigger className="w-48">
-              <SelectValue>
-                {(v: string) => (v === "all" ? "All users" : (users.find((u) => u.id === v)?.name ?? v))}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All users</SelectItem>
-              {users.map((u) => (
-                <SelectItem key={u.id} value={u.id}>
-                  {u.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SearchableSelect
+            items={{ all: "All users", ...Object.fromEntries(users.map((u) => [u.id, u.name])) }}
+            value={userId}
+            onValueChange={(v) => setUserId(v ?? "all")}
+            searchPlaceholder="Search users..."
+            className="flex h-8 w-48 items-center justify-between gap-1.5 rounded-lg border border-input bg-transparent py-2 pr-2 pl-2.5 text-sm whitespace-nowrap transition-colors outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30 dark:hover:bg-input/50"
+          />
         </div>
         <div className="space-y-1">
           <Label htmlFor="from">From</Label>
@@ -157,6 +163,14 @@ export function TimesheetReport({ users, isAdmin = false }: { users: { id: strin
           {isPending ? <Loader2 className="size-3.5 animate-spin" /> : null}
           Preview
         </Button>
+        <div className="flex items-center gap-1.5">
+          <Button variant="ghost" size="sm" onClick={() => applyPreset(currentPayPeriodRange())} disabled={isPending}>
+            This pay period
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => applyPreset(currentMonthRange())} disabled={isPending}>
+            This month
+          </Button>
+        </div>
         <Button nativeButton={false} render={<a href={pdfUrl()} target="_blank" rel="noopener noreferrer" />}>
           <FileDown className="size-3.5" /> Download PDF
         </Button>

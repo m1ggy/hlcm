@@ -13,13 +13,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { createManualTimeEntry } from "@/lib/actions/time-entries";
 
 // Admin-only backfill for a session someone forgot to clock, or a
@@ -84,22 +78,13 @@ export function AddTimeEntryDialog({
         <div className="space-y-4">
           <div className="space-y-1">
             <Label>User</Label>
-            <Select
+            <SearchableSelect
               items={Object.fromEntries(users.map((u) => [u.id, u.name]))}
-              value={userId}
+              value={userId || null}
               onValueChange={(v) => setUserId(v ?? "")}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select a user" />
-              </SelectTrigger>
-              <SelectContent>
-                {users.map((u) => (
-                  <SelectItem key={u.id} value={u.id}>
-                    {u.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              placeholder="Select a user"
+              searchPlaceholder="Search users..."
+            />
           </div>
           <div className="space-y-3">
             <div className="space-y-1">

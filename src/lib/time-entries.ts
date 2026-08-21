@@ -26,14 +26,43 @@ export function formatMoney(amount: number) {
   return amount.toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
 
+function pad(n: number) {
+  return String(n).padStart(2, "0");
+}
+
 /**
  * Local (not UTC) "yyyy-MM-ddTHH:mm" for a `datetime-local` input's value —
  * `toISOString()` would shift to UTC and show the wrong wall-clock time in
  * the picker. Pad by hand since `Date` has no locale-agnostic local format.
  */
 export function toDatetimeLocalValue(date: Date) {
-  const pad = (n: number) => String(n).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+/**
+ * Local (not UTC) "yyyy-MM-dd" for a `date` input's value — same
+ * UTC-shift trap as above (`toISOString().slice(0, 10)` can land on the
+ * wrong day near midnight depending on the viewer's timezone offset).
+ */
+export function toDateInputValue(date: Date) {
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+/** 1st–15th, or 16th–end of month, whichever contains today — a biweekly pay period. */
+export function currentPayPeriodRange(now = new Date()) {
+  const firstHalf = now.getDate() <= 15;
+  const from = new Date(now.getFullYear(), now.getMonth(), firstHalf ? 1 : 16);
+  const to = firstHalf
+    ? new Date(now.getFullYear(), now.getMonth(), 15)
+    : new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  return { from: toDateInputValue(from), to: toDateInputValue(to) };
+}
+
+/** 1st through the last day of the current month. */
+export function currentMonthRange(now = new Date()) {
+  const from = new Date(now.getFullYear(), now.getMonth(), 1);
+  const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  return { from: toDateInputValue(from), to: toDateInputValue(to) };
 }
 
 export type TimeEntryRangeInput = { userId?: string; from: Date; to: Date };
