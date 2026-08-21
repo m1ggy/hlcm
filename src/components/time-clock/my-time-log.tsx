@@ -1,5 +1,6 @@
 import { listMyTimeEntries } from "@/lib/actions/time-entries";
 import { hoursBetween, formatDuration } from "@/lib/time-entries";
+import { LocalDate, LocalTime } from "@/components/time-clock/local-time";
 import {
   Table,
   TableBody,
@@ -25,12 +26,10 @@ export async function MyTimeLog({ limit = 25 }: { limit?: number }) {
       <TableBody>
         {entries.map((entry) => (
           <TableRow key={entry.id}>
-            <TableCell>{entry.clockIn.toLocaleDateString()}</TableCell>
-            <TableCell>{entry.clockIn.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</TableCell>
+            <TableCell><LocalDate iso={entry.clockIn.toISOString()} /></TableCell>
+            <TableCell><LocalTime iso={entry.clockIn.toISOString()} /></TableCell>
             <TableCell>
-              {entry.clockOut
-                ? entry.clockOut.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-                : "In progress"}
+              {entry.clockOut ? <LocalTime iso={entry.clockOut.toISOString()} /> : "In progress"}
             </TableCell>
             <TableCell>{entry.clockOut ? formatDuration(hoursBetween(entry.clockIn, entry.clockOut)) : "—"}</TableCell>
           </TableRow>
