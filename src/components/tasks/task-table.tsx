@@ -30,24 +30,16 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { createTask, updateTask, setTaskReviewer, reorderTasks, archiveTask } from "@/lib/actions/tasks";
+import { MultiUserSelect } from "@/components/ui/multi-user-select";
+import { createTask, updateTask, setTaskReviewers, reorderTasks, archiveTask } from "@/lib/actions/tasks";
 import { isTaskOverdue } from "@/lib/task-status";
 import { TaskStatusSelect } from "./task-status-select";
 import { TaskDetailDialog } from "./task-detail-dialog";
 import { TaskItem, Option } from "./task-types";
 
-const NONE = "__none__";
-
 const COL_WIDTH_KEY = "hclm:task-table-col-widths";
-const DEFAULT_COL_WIDTHS = { task: 260, status: 160, assigned: 144, due: 144, reviewer: 144 };
-const MIN_COL_WIDTHS: Record<ColKey, number> = { task: 140, status: 120, assigned: 100, due: 110, reviewer: 100 };
+const DEFAULT_COL_WIDTHS = { task: 260, status: 160, assigned: 180, due: 144, reviewer: 180 };
+const MIN_COL_WIDTHS: Record<ColKey, number> = { task: 140, status: 120, assigned: 130, due: 110, reviewer: 130 };
 type ColKey = keyof typeof DEFAULT_COL_WIDTHS;
 
 function toDateInputValue(date: Date | null) {
@@ -222,7 +214,7 @@ export function TaskTable({
               <ColumnResizeHandle colKey="due" onResize={startResize} />
             </TableHead>
             <TableHead className="relative">
-              Reviewer
+              Reviewers
               <ColumnResizeHandle colKey="reviewer" onResize={startResize} />
             </TableHead>
           </TableRow>
@@ -286,16 +278,16 @@ function InlineRow({
   const [isArchiving, startArchiving] = useTransition();
   const [label, setLabel] = useState(task.label);
   const [status, setStatus] = useState(task.status);
-  const [assignedUserId, setAssignedUserId] = useState(task.assignedUser.id);
+  const [assignedUserIds, setAssignedUserIds] = useState(task.assignedUsers.map((u) => u.id));
   const [dueDate, setDueDate] = useState(toDateInputValue(task.dueDate));
   const [blockedReason, setBlockedReason] = useState(task.blockedReason ?? "");
-  const [reviewerId, setReviewerId] = useState(task.reviewer?.id ?? NONE);
+  const [reviewerIds, setReviewerIds] = useState(task.reviewers.map((r) => r.id));
 
-  function save(overrides: Partial<{ label: string; status: string; assignedUserId: string; dueDate: string; blockedReason: string }>) {
+  function save(overrides: Partial<{ label: string; status: string; assignedUserIds: string[]; dueDate: string; blockedReason: string }>) {
     const formData = new FormData();
     formData.set("label", overrides.label ?? label);
     formData.set("status", overrides.status ?? status);
-    formData.set("assignedUserId", overrides.assignedUserId ?? assignedUserId);
+    for (const id of overrides.assignedUserIds ?? assignedUserIds) formData.append("assignedUserId", id);
     formData.set("dueDate", overrides.dueDate ?? dueDate);
     formData.set("blockedReason", overrides.blockedReason ?? blockedReason);
     startTransition(async () => {
@@ -308,15 +300,14 @@ function InlineRow({
     });
   }
 
-  function handleReviewerChange(value: string | null) {
-    const next = value ?? NONE;
-    setReviewerId(next);
+  function handleReviewersChange(ids: string[]) {
+    setReviewerIds(ids);
     startTransition(async () => {
       try {
-        await setTaskReviewer(task.id, next === NONE ? null : next);
+        await setTaskReviewers(task.id, ids);
         router.refresh();
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Failed to update reviewer");
+        toast.error(error instanceof Error ? error.message : "Failed to update reviewers");
       }
     });
   }
@@ -392,26 +383,14 @@ function InlineRow({
         </div>
       </TableCell>
       <TableCell>
-        <Select
+        <MultiUserSelect
           items={Object.fromEntries(assignableUsers.map((u) => [u.id, u.name]))}
-          value={assignedUserId}
-          onValueChange={(v) => {
-            const next = v ?? assignedUserId;
-            setAssignedUserId(next);
-            save({ assignedUserId: next });
+          value={assignedUserIds}
+          onValueChange={(next) => {
+            setAssignedUserIds(next);
+            if (next.length > 0) save({ assignedUserIds: next });
           }}
-        >
-          <SelectTrigger size="sm" className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {assignableUsers.map((u) => (
-              <SelectItem key={u.id} value={u.id}>
-                {u.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        />
       </TableCell>
       <TableCell>
         {/* flex flex-col, not space-y-1: TableCell forces whitespace-nowrap,
@@ -437,23 +416,11 @@ function InlineRow({
         </div>
       </TableCell>
       <TableCell>
-        <Select
-          items={{ [NONE]: "None", ...Object.fromEntries(assignableUsers.map((u) => [u.id, u.name])) }}
-          value={reviewerId}
-          onValueChange={handleReviewerChange}
-        >
-          <SelectTrigger size="sm" className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={NONE}>None</SelectItem>
-            {assignableUsers.map((u) => (
-              <SelectItem key={u.id} value={u.id}>
-                {u.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <MultiUserSelect
+          items={Object.fromEntries(assignableUsers.map((u) => [u.id, u.name]))}
+          value={reviewerIds}
+          onValueChange={handleReviewersChange}
+        />
       </TableCell>
     </TableRow>
   );
@@ -531,8 +498,8 @@ function TaskTableRows({
               status={task.status}
               dueDate={task.dueDate}
               blockedReason={task.blockedReason}
-              assignedUserId={task.assignedUser.id}
-              reviewerId={task.reviewer?.id ?? null}
+              assignedUserIds={task.assignedUsers.map((u) => u.id)}
+              reviewerIds={task.reviewers.map((r) => r.id)}
               hasReviewer
               assignableUsers={assignableUsers}
             />

@@ -8,7 +8,10 @@ export async function GET(_req: NextRequest, ctx: RouteContext<"/api/files/[id]/
 
   try {
     const session = await requireSession();
-    const asset = await prisma.fileAsset.findUnique({ where: { id }, include: { task: true } });
+    const asset = await prisma.fileAsset.findUnique({
+      where: { id },
+      include: { task: { include: { assignees: { select: { userId: true } } } } },
+    });
     if (!asset) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
     if (asset.applicationId) {
@@ -19,7 +22,8 @@ export async function GET(_req: NextRequest, ctx: RouteContext<"/api/files/[id]/
         await assertApplicationAccess(session, task.applicationId, "view");
       } else {
         const role = session.user.role as AppRole;
-        if (!(role === "ADMIN" || role === "MANAGER" || task.assignedUserId === session.user.id || task.createdById === session.user.id)) {
+        const isAssignee = task.assignees.some((a) => a.userId === session.user.id);
+        if (!(role === "ADMIN" || role === "MANAGER" || isAssignee || task.createdById === session.user.id)) {
           throw new ForbiddenError("Not your task");
         }
       }

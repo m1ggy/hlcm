@@ -10,8 +10,11 @@ function formatTask(task: { label: string; dueDate: Date | null; application: { 
   return `<li>${scope} — ${task.label} (due ${due})</li>`;
 }
 
+type DigestTask = { label: string; dueDate: Date | null; application: { name: string } | null };
+
 // Groups every open task with a due date in the next few days (or already
-// overdue) by assignee and sends each of them one digest email. Meant to be
+// overdue) by assignee and sends each of them one digest email. A task with
+// multiple assignees shows up in every one of their digests. Meant to be
 // invoked at most once a day — see src/instrumentation.ts for the scheduler.
 export async function sendDueDateDigests() {
   const now = new Date();
@@ -25,22 +28,23 @@ export async function sendDueDateDigests() {
     select: {
       label: true,
       dueDate: true,
-      assignedUserId: true,
       application: { select: { name: true } },
-      assignedUser: { select: { email: true, emailNotificationsEnabled: true } },
+      assignees: { select: { user: { select: { id: true, email: true, emailNotificationsEnabled: true } } } },
     },
   });
 
-  const byAssignee = new Map<string, typeof tasks>();
+  const byAssignee = new Map<string, { user: { email: string; emailNotificationsEnabled: boolean }; tasks: DigestTask[] }>();
   for (const task of tasks) {
-    const existing = byAssignee.get(task.assignedUserId);
-    if (existing) existing.push(task);
-    else byAssignee.set(task.assignedUserId, [task]);
+    const { assignees, ...digestTask } = task;
+    for (const { user } of assignees) {
+      const existing = byAssignee.get(user.id);
+      if (existing) existing.tasks.push(digestTask);
+      else byAssignee.set(user.id, { user, tasks: [digestTask] });
+    }
   }
 
-  for (const [, userTasks] of byAssignee) {
-    const { assignedUser } = userTasks[0];
-    if (!assignedUser.emailNotificationsEnabled) continue;
+  for (const [, { user, tasks: userTasks }] of byAssignee) {
+    if (!user.emailNotificationsEnabled) continue;
 
     const overdue = userTasks.filter((t) => t.dueDate && t.dueDate.getTime() < now.getTime());
     const dueSoon = userTasks.filter((t) => !overdue.includes(t));
@@ -52,7 +56,7 @@ export async function sendDueDateDigests() {
 
     try {
       await sendEmail({
-        to: assignedUser.email,
+        to: user.email,
         subject: `${overdue.length + dueSoon.length} task(s) need your attention`,
         html: `${sections}<p><a href="${getAppUrl()}/tasks">View your tasks</a></p>`,
       });

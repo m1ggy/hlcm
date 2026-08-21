@@ -25,32 +25,40 @@ export async function getDashboardStats() {
     dueDate: { lt: new Date() },
     status: { notIn: [...TASK_CLOSED_STATUSES] },
     OR: [{ applicationId: null }, { application: { active: true } }],
-    ...(isManagement ? {} : { assignedUserId: session.user.id }),
+    ...(isManagement ? {} : { assignees: { some: { userId: session.user.id } } }),
   };
   const overdueTasks = await prisma.task.findMany({
     where: overdueWhere,
     include: {
-      assignedUser: { select: { name: true } },
+      assignees: { include: { user: { select: { name: true } } } },
       application: { select: { id: true, name: true } },
     },
     orderBy: { dueDate: "asc" },
     take: 20,
   });
 
+  // Prisma's groupBy can't group by an m2m relation (assignees), so the
+  // workload count is tallied in JS instead — a task with 2 assignees
+  // counts toward both people's totals.
   let workload: { userId: string; name: string; count: number }[] = [];
   if (isManagement) {
-    const grouped = await prisma.task.groupBy({
-      by: ["assignedUserId"],
+    const tasks = await prisma.task.findMany({
       where: { status: { notIn: [...TASK_CLOSED_STATUSES] } },
-      _count: { assignedUserId: true },
+      select: { assignees: { select: { userId: true } } },
     });
+    const counts = new Map<string, number>();
+    for (const task of tasks) {
+      for (const a of task.assignees) {
+        counts.set(a.userId, (counts.get(a.userId) ?? 0) + 1);
+      }
+    }
     const users = await prisma.user.findMany({
-      where: { id: { in: grouped.map((g) => g.assignedUserId) } },
+      where: { id: { in: [...counts.keys()] } },
       select: { id: true, name: true },
     });
     const nameById = Object.fromEntries(users.map((u) => [u.id, u.name]));
-    workload = grouped
-      .map((g) => ({ userId: g.assignedUserId, name: nameById[g.assignedUserId] ?? "Unknown", count: g._count.assignedUserId }))
+    workload = [...counts.entries()]
+      .map(([userId, count]) => ({ userId, name: nameById[userId] ?? "Unknown", count }))
       .sort((a, b) => b.count - a.count);
   }
 

@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { MultiUserSelect } from "@/components/ui/multi-user-select";
 import { Option } from "./task-types";
 
 const NONE = "__none__";
@@ -34,11 +35,11 @@ export function NewStandaloneTaskDialog({
 }) {
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
-  const [assignedUserId, setAssignedUserId] = useState(currentUserId);
+  const [assignedUserIds, setAssignedUserIds] = useState([currentUserId]);
   const [recurrenceRule, setRecurrenceRule] = useState(NONE);
 
   function handleSubmit(formData: FormData) {
-    formData.set("assignedUserId", assignedUserId);
+    for (const id of assignedUserIds) formData.append("assignedUserId", id);
     if (recurrenceRule !== NONE) formData.set("recurrenceRule", recurrenceRule);
     startTransition(async () => {
       try {
@@ -69,22 +70,11 @@ export function NewStandaloneTaskDialog({
           </div>
           <div className="space-y-1">
             <Label>Assigned to</Label>
-            <Select
+            <MultiUserSelect
               items={Object.fromEntries(assignableUsers.map((u) => [u.id, u.name]))}
-              value={assignedUserId}
-              onValueChange={(v) => setAssignedUserId(v ?? assignedUserId)}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {assignableUsers.map((u) => (
-                  <SelectItem key={u.id} value={u.id}>
-                    {u.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              value={assignedUserIds}
+              onValueChange={setAssignedUserIds}
+            />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1">
@@ -112,7 +102,7 @@ export function NewStandaloneTaskDialog({
               </Select>
             </div>
           </div>
-          <Button type="submit" className="w-full" disabled={isPending}>
+          <Button type="submit" className="w-full" disabled={isPending || assignedUserIds.length === 0}>
             {isPending ? "Creating..." : "Create"}
           </Button>
         </form>

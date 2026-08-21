@@ -152,6 +152,76 @@ function ComboboxItem({ className, children, ...props }: ComboboxPrimitive.Item.
   )
 }
 
+// Multi-select pieces (base-ui's `multiple` mode) — a text field that also
+// holds one removable "chip" per currently-selected item, per
+// https://base-ui.com/react/components/combobox#multiple-select.
+function ComboboxInputGroup({ className, ...props }: ComboboxPrimitive.InputGroup.Props) {
+  return (
+    <ComboboxPrimitive.InputGroup
+      data-slot="combobox-input-group"
+      className={cn(
+        "flex min-h-8 w-full flex-wrap items-center gap-1 rounded-lg border border-input bg-transparent px-2 py-1 text-sm transition-colors outline-none focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function ComboboxChips({ className, ...props }: ComboboxPrimitive.Chips.Props) {
+  return (
+    <ComboboxPrimitive.Chips
+      data-slot="combobox-chips"
+      className={cn("flex w-full flex-wrap items-center gap-1", className)}
+      {...props}
+    />
+  )
+}
+
+function ComboboxChip({ className, ...props }: ComboboxPrimitive.Chip.Props) {
+  return (
+    <ComboboxPrimitive.Chip
+      data-slot="combobox-chip"
+      className={cn(
+        "flex items-center gap-1 rounded-md bg-accent py-0.5 pr-1 pl-2 text-xs font-medium text-accent-foreground outline-none data-highlighted:bg-accent/70",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function ComboboxChipRemove({ className, children, ...props }: ComboboxPrimitive.ChipRemove.Props) {
+  return (
+    <ComboboxPrimitive.ChipRemove
+      data-slot="combobox-chip-remove"
+      className={cn(
+        "flex size-3.5 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent-foreground/10 hover:text-foreground",
+        className
+      )}
+      {...props}
+    >
+      {children ?? <XIcon className="pointer-events-none size-3" />}
+    </ComboboxPrimitive.ChipRemove>
+  )
+}
+
+// Bare text input for the multi-select field — unlike ComboboxInput above,
+// it has no icon/trigger addon of its own since it lives inline among the
+// chips inside ComboboxInputGroup, which already provides the box chrome.
+function ComboboxChipInput({ className, ...props }: ComboboxPrimitive.Input.Props) {
+  return (
+    <ComboboxPrimitive.Input
+      data-slot="combobox-chip-input"
+      className={cn(
+        "h-6 min-w-16 flex-1 border-0 bg-transparent p-0 text-sm outline-none placeholder:text-muted-foreground",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
 function ComboboxGroup({ className, ...props }: ComboboxPrimitive.Group.Props) {
   return <ComboboxPrimitive.Group data-slot="combobox-group" className={cn(className)} {...props} />
 }
@@ -190,4 +260,9 @@ export {
   ComboboxEmpty,
   ComboboxTrigger,
   ComboboxValue,
+  ComboboxInputGroup,
+  ComboboxChips,
+  ComboboxChip,
+  ComboboxChipRemove,
+  ComboboxChipInput,
 }

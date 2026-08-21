@@ -33,8 +33,20 @@ function KanbanCard({ task }: { task: BoardTask }) {
         {task.phaseName && <p className="text-xs text-muted-foreground">{task.phaseName}</p>}
         <div className="flex items-center justify-between pt-1">
           <div className="flex items-center gap-1.5">
-            <AvatarInitials name={task.assignedUser.name} className="size-5 text-[0.6rem]" />
-            <span className="text-xs text-muted-foreground">{task.assignedUser.name}</span>
+            {task.assignedUsers[0] && (
+              <>
+                <AvatarInitials name={task.assignedUsers[0].name} className="size-5 text-[0.6rem]" />
+                <span className="text-xs text-muted-foreground">{task.assignedUsers[0].name}</span>
+              </>
+            )}
+            {task.assignedUsers.length > 1 && (
+              <span
+                className="text-xs text-muted-foreground"
+                title={task.assignedUsers.slice(1).map((u) => u.name).join(", ")}
+              >
+                +{task.assignedUsers.length - 1}
+              </span>
+            )}
           </div>
           {task.dueDate && (
             <span className="text-xs text-muted-foreground">{new Date(task.dueDate).toLocaleDateString()}</span>

@@ -8,7 +8,7 @@ import { notify } from "@/lib/notifications";
 
 async function assertCanCommentOnTask(
   session: Awaited<ReturnType<typeof requireSession>>,
-  task: { applicationId: string | null; assignedUserId: string; createdById: string }
+  task: { applicationId: string | null; createdById: string; assignees: { userId: string }[] }
 ) {
   if (task.applicationId) {
     await assertApplicationAccess(session, task.applicationId, "view");
@@ -16,7 +16,8 @@ async function assertCanCommentOnTask(
   }
   const role = session.user.role as AppRole;
   if (role === "ADMIN" || role === "MANAGER") return;
-  if (task.assignedUserId !== session.user.id && task.createdById !== session.user.id) {
+  const isAssignee = task.assignees.some((a) => a.userId === session.user.id);
+  if (!isAssignee && task.createdById !== session.user.id) {
     throw new ForbiddenError("Not your task");
   }
 }
@@ -76,7 +77,10 @@ export async function addNote(input: z.infer<typeof addNoteSchema>) {
 
 export async function listTaskNotes(taskId: string) {
   const session = await requireSession();
-  const task = await prisma.task.findUniqueOrThrow({ where: { id: taskId } });
+  const task = await prisma.task.findUniqueOrThrow({
+    where: { id: taskId },
+    include: { assignees: { select: { userId: true } } },
+  });
   await assertCanCommentOnTask(session, task);
 
   return prisma.note.findMany({
@@ -95,7 +99,10 @@ const addTaskNoteSchema = z.object({
 export async function addTaskNote(input: z.infer<typeof addTaskNoteSchema>) {
   const parsed = addTaskNoteSchema.parse(input);
   const session = await requireSession();
-  const task = await prisma.task.findUniqueOrThrow({ where: { id: parsed.taskId } });
+  const task = await prisma.task.findUniqueOrThrow({
+    where: { id: parsed.taskId },
+    include: { assignees: { select: { userId: true } } },
+  });
   await assertCanCommentOnTask(session, task);
 
   const note = await prisma.note.create({

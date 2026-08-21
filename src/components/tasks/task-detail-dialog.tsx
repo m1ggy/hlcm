@@ -13,25 +13,17 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { MultiUserSelect } from "@/components/ui/multi-user-select";
 import { CommentThread } from "@/components/comment-thread";
 import { AuditLogPanel } from "@/components/applications/audit-log-panel";
 import { TaskFilePool } from "@/components/tasks/task-file-pool";
-import { updateTask, setTaskReviewer, getTaskAuditLog } from "@/lib/actions/tasks";
+import { updateTask, setTaskReviewers, getTaskAuditLog } from "@/lib/actions/tasks";
 import { listTaskNotes, addTaskNote } from "@/lib/actions/notes";
 import { listTaskFiles } from "@/lib/actions/files";
 import { TaskStatusValue } from "@/lib/task-status";
 import { TaskStatusSelect } from "./task-status-select";
 import { Option } from "./task-types";
 import type { FileRow } from "@/components/files/types";
-
-const NONE = "__none__";
 
 type Note = { id: string; body: string; createdAt: Date; author: { id: string; name: string } };
 type AuditEntry = {
@@ -56,8 +48,8 @@ export function TaskDetailDialog({
   status,
   dueDate,
   blockedReason,
-  assignedUserId,
-  reviewerId,
+  assignedUserIds,
+  reviewerIds,
   hasReviewer,
   assignableUsers,
 }: {
@@ -67,8 +59,8 @@ export function TaskDetailDialog({
   status: TaskStatusValue;
   dueDate: Date | null;
   blockedReason: string | null;
-  assignedUserId: string;
-  reviewerId: string | null;
+  assignedUserIds: string[];
+  reviewerIds: string[];
   hasReviewer: boolean;
   assignableUsers: Option[];
 }) {
@@ -79,10 +71,10 @@ export function TaskDetailDialog({
   const [localLabel, setLocalLabel] = useState(label);
   const [localDescription, setLocalDescription] = useState(description ?? "");
   const [localStatus, setLocalStatus] = useState(status);
-  const [localAssignedUserId, setLocalAssignedUserId] = useState(assignedUserId);
+  const [localAssignedUserIds, setLocalAssignedUserIds] = useState(assignedUserIds);
   const [localDueDate, setLocalDueDate] = useState(toDateInputValue(dueDate));
   const [localBlockedReason, setLocalBlockedReason] = useState(blockedReason ?? "");
-  const [localReviewerId, setLocalReviewerId] = useState(reviewerId ?? NONE);
+  const [localReviewerIds, setLocalReviewerIds] = useState(reviewerIds);
 
   const [notes, setNotes] = useState<Note[]>([]);
   const [notesLoaded, setNotesLoaded] = useState(false);
@@ -115,12 +107,12 @@ export function TaskDetailDialog({
     });
   }, [open, filesLoaded, taskId]);
 
-  function save(overrides: Partial<{ label: string; description: string; status: string; assignedUserId: string; dueDate: string; blockedReason: string }>) {
+  function save(overrides: Partial<{ label: string; description: string; status: string; assignedUserIds: string[]; dueDate: string; blockedReason: string }>) {
     const formData = new FormData();
     formData.set("label", overrides.label ?? localLabel);
     formData.set("description", overrides.description ?? localDescription);
     formData.set("status", overrides.status ?? localStatus);
-    formData.set("assignedUserId", overrides.assignedUserId ?? localAssignedUserId);
+    for (const id of overrides.assignedUserIds ?? localAssignedUserIds) formData.append("assignedUserId", id);
     formData.set("dueDate", overrides.dueDate ?? localDueDate);
     formData.set("blockedReason", overrides.blockedReason ?? localBlockedReason);
     startTransition(async () => {
@@ -133,15 +125,14 @@ export function TaskDetailDialog({
     });
   }
 
-  function handleReviewerChange(value: string | null) {
-    const next = value ?? NONE;
-    setLocalReviewerId(next);
+  function handleReviewersChange(ids: string[]) {
+    setLocalReviewerIds(ids);
     startTransition(async () => {
       try {
-        await setTaskReviewer(taskId, next === NONE ? null : next);
+        await setTaskReviewers(taskId, ids);
         router.refresh();
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Failed to update reviewer");
+        toast.error(error instanceof Error ? error.message : "Failed to update reviewers");
       }
     });
   }
@@ -209,26 +200,14 @@ export function TaskDetailDialog({
 
             <div className="space-y-1">
               <label className="text-xs text-muted-foreground">Assigned</label>
-              <Select
+              <MultiUserSelect
                 items={Object.fromEntries(assignableUsers.map((u) => [u.id, u.name]))}
-                value={localAssignedUserId}
-                onValueChange={(v) => {
-                  const next = v ?? localAssignedUserId;
-                  setLocalAssignedUserId(next);
-                  save({ assignedUserId: next });
+                value={localAssignedUserIds}
+                onValueChange={(next) => {
+                  setLocalAssignedUserIds(next);
+                  if (next.length > 0) save({ assignedUserIds: next });
                 }}
-              >
-                <SelectTrigger size="sm" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {assignableUsers.map((u) => (
-                    <SelectItem key={u.id} value={u.id}>
-                      {u.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              />
             </div>
 
             <div className="space-y-1">
@@ -246,24 +225,12 @@ export function TaskDetailDialog({
 
             {hasReviewer && (
               <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">Reviewer</label>
-                <Select
-                  items={{ [NONE]: "None", ...Object.fromEntries(assignableUsers.map((u) => [u.id, u.name])) }}
-                  value={localReviewerId}
-                  onValueChange={handleReviewerChange}
-                >
-                  <SelectTrigger size="sm" className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NONE}>None</SelectItem>
-                    {assignableUsers.map((u) => (
-                      <SelectItem key={u.id} value={u.id}>
-                        {u.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <label className="text-xs text-muted-foreground">Reviewers</label>
+                <MultiUserSelect
+                  items={Object.fromEntries(assignableUsers.map((u) => [u.id, u.name]))}
+                  value={localReviewerIds}
+                  onValueChange={handleReviewersChange}
+                />
               </div>
             )}
           </div>

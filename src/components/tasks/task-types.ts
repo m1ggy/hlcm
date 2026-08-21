@@ -11,8 +11,8 @@ export type TaskItem = {
   blockedReason: string | null;
   phaseId: string | null;
   createdById: string;
-  assignedUser: TaskUserRef;
-  reviewer: TaskUserRef | null;
+  assignedUsers: TaskUserRef[];
+  reviewers: TaskUserRef[];
   subtasks: TaskItem[];
 };
 

@@ -112,7 +112,8 @@ export default async function HomePage() {
                   {task.label}
                 </Link>
                 <p className="text-xs text-muted-foreground">
-                  {task.application?.name ?? "Standalone"} · {task.assignedUser.name} ·{" "}
+                  {task.application?.name ?? "Standalone"} ·{" "}
+                  {task.assignees.map((a) => a.user.name).join(", ")} ·{" "}
                   {TASK_STATUS_LABELS[task.status as TaskStatusValue]}
                 </p>
               </div>

@@ -129,8 +129,8 @@ model User {
   clientCredentialsCreated         ClientCredential[]       @relation("ClientCredentialCreatedBy")
   stageHistoryActed               StageHistory[]           @relation("StageHistoryActor")
   checklistItemTemplatesCreated ChecklistItemTemplate[]  @relation("ChecklistItemTemplateCreatedBy")
-  tasksAssigned                  Task[]                   @relation("TaskAssignee")
-  tasksReviewing                  Task[]                   @relation("TaskReviewer")
+  taskAssignments                 TaskAssignee[]
+  taskReviews                     TaskReviewer[]
   tasksCreated                    Task[]                   @relation("TaskCreatedBy")
   auditLogs                       AuditLog[]
   accessGrantsReceived            AccessGrant[]            @relation("AccessGrantUser")
@@ -690,10 +690,8 @@ model Task {
   recurrenceRule  String?
   archived        Boolean  @default(false)
 
-  assignedUser   User    @relation("TaskAssignee", fields: [assignedUserId], references: [id])
-  assignedUserId String
-  reviewer       User?   @relation("TaskReviewer", fields: [reviewerUserId], references: [id])
-  reviewerUserId String?
+  assignees TaskAssignee[]
+  reviewers TaskReviewer[]
 
   parentTask   Task?   @relation("TaskSubtasks", fields: [parentTaskId], references: [id])
   parentTaskId String?
@@ -708,6 +706,28 @@ model Task {
   files FileAsset[]
 
   @@map("tasks")
+}
+
+model TaskAssignee {
+  id     String @id @default(cuid())
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  taskId String
+  user   User   @relation(fields: [userId], references: [id])
+  userId String
+
+  @@unique([taskId, userId])
+  @@map("task_assignees")
+}
+
+model TaskReviewer {
+  id     String @id @default(cuid())
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  taskId String
+  user   User   @relation(fields: [userId], references: [id])
+  userId String
+
+  @@unique([taskId, userId])
+  @@map("task_reviewers")
 }
 
 model AuditLog {

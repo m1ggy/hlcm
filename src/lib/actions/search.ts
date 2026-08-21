@@ -32,7 +32,10 @@ export async function searchAll(query: string) {
   const taskWhere =
     role === "ADMIN" || role === "MANAGER"
       ? { label: { contains: q, mode: "insensitive" as const } }
-      : { label: { contains: q, mode: "insensitive" as const }, assignedUserId: session.user.id };
+      : {
+          label: { contains: q, mode: "insensitive" as const },
+          assignees: { some: { userId: session.user.id } },
+        };
   const tasks = await prisma.task.findMany({
     where: taskWhere,
     include: { application: { select: { id: true, name: true } } },

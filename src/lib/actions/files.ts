@@ -10,7 +10,7 @@ const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20MB — keep well under bodySizeLim
 
 async function assertCanAccessTask(
   session: Awaited<ReturnType<typeof requireSession>>,
-  task: { applicationId: string | null; assignedUserId: string; createdById: string },
+  task: { applicationId: string | null; createdById: string; assignees: { userId: string }[] },
   level: "view" | "edit"
 ) {
   if (task.applicationId) {
@@ -19,7 +19,8 @@ async function assertCanAccessTask(
   }
   const role = session.user.role as AppRole;
   if (role === "ADMIN" || role === "MANAGER") return;
-  if (task.assignedUserId !== session.user.id && task.createdById !== session.user.id) {
+  const isAssignee = task.assignees.some((a) => a.userId === session.user.id);
+  if (!isAssignee && task.createdById !== session.user.id) {
     throw new ForbiddenError("Not your task");
   }
 }
@@ -28,7 +29,7 @@ async function assertCanAccessFileAsset(
   session: Awaited<ReturnType<typeof requireSession>>,
   asset: {
     applicationId: string | null;
-    task: { applicationId: string | null; assignedUserId: string; createdById: string } | null;
+    task: { applicationId: string | null; createdById: string; assignees: { userId: string }[] } | null;
   },
   level: "view" | "edit"
 ) {
@@ -140,7 +141,10 @@ export async function deleteFile(fileId: string, applicationId: string) {
 
 export async function listTaskFiles(taskId: string) {
   const session = await requireSession();
-  const task = await prisma.task.findUniqueOrThrow({ where: { id: taskId } });
+  const task = await prisma.task.findUniqueOrThrow({
+    where: { id: taskId },
+    include: { assignees: { select: { userId: true } } },
+  });
   await assertCanAccessTask(session, task, "view");
 
   const assets = await prisma.fileAsset.findMany({
@@ -160,7 +164,10 @@ export async function listTaskFiles(taskId: string) {
 
 export async function uploadTaskFile(taskId: string, formData: FormData) {
   const session = await requireSession();
-  const task = await prisma.task.findUniqueOrThrow({ where: { id: taskId } });
+  const task = await prisma.task.findUniqueOrThrow({
+    where: { id: taskId },
+    include: { assignees: { select: { userId: true } } },
+  });
   await assertCanAccessTask(session, task, "edit");
 
   const file = formData.get("file");
@@ -205,7 +212,10 @@ export async function uploadTaskFile(taskId: string, formData: FormData) {
 
 export async function deleteTaskFile(fileId: string, taskId: string) {
   const session = await requireSession();
-  const task = await prisma.task.findUniqueOrThrow({ where: { id: taskId } });
+  const task = await prisma.task.findUniqueOrThrow({
+    where: { id: taskId },
+    include: { assignees: { select: { userId: true } } },
+  });
   await assertCanAccessTask(session, task, "edit");
 
   const asset = await prisma.fileAsset.findUniqueOrThrow({ where: { id: fileId } });
@@ -227,7 +237,10 @@ export async function deleteTaskFile(fileId: string, taskId: string) {
 
 export async function listFileVersions(fileId: string) {
   const session = await requireSession();
-  const asset = await prisma.fileAsset.findUniqueOrThrow({ where: { id: fileId }, include: { task: true } });
+  const asset = await prisma.fileAsset.findUniqueOrThrow({
+    where: { id: fileId },
+    include: { task: { include: { assignees: { select: { userId: true } } } } },
+  });
   await assertCanAccessFileAsset(session, asset, "view");
 
   return prisma.fileVersion.findMany({
@@ -241,7 +254,7 @@ export async function uploadNewFileVersion(fileId: string, formData: FormData) {
   const session = await requireSession();
   const asset = await prisma.fileAsset.findUniqueOrThrow({
     where: { id: fileId },
-    include: { task: true, signatureEvents: { select: { id: true } } },
+    include: { task: { include: { assignees: { select: { userId: true } } } }, signatureEvents: { select: { id: true } } },
   });
   await assertCanAccessFileAsset(session, asset, "edit");
   assertNotSigned(asset);
@@ -299,7 +312,7 @@ export async function revertFileVersion(fileId: string, versionId: string) {
   const session = await requireSession();
   const asset = await prisma.fileAsset.findUniqueOrThrow({
     where: { id: fileId },
-    include: { task: true, signatureEvents: { select: { id: true } } },
+    include: { task: { include: { assignees: { select: { userId: true } } } }, signatureEvents: { select: { id: true } } },
   });
   await assertCanAccessFileAsset(session, asset, "edit");
   assertNotSigned(asset);

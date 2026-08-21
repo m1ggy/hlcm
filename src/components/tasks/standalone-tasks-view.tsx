@@ -12,7 +12,7 @@ type Subtask = {
   status: TaskStatusValue;
   dueDate: Date | null;
   blockedReason: string | null;
-  assignedUser: TaskUserRef;
+  assignedUsers: TaskUserRef[];
 };
 
 type MyTask = {
@@ -24,7 +24,7 @@ type MyTask = {
   blockedReason: string | null;
   recurrenceRule: string | null;
   createdById: string;
-  assignedUser: TaskUserRef;
+  assignedUsers: TaskUserRef[];
   subtasks: Subtask[];
   isOverdue: boolean;
   // Which case this task is from — null for standalone tasks (internal

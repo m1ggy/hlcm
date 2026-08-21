@@ -58,7 +58,7 @@ export async function cloneChecklistForApplication(params: {
         label: template.label,
         description: template.description,
         sortOrder: template.sortOrder,
-        assignedUserId,
+        assignees: { create: [{ userId: assignedUserId }] },
         createdById: actorId,
       },
     });

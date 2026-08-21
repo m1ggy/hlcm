@@ -24,6 +24,8 @@ const FIELD_LABELS: Record<string, string> = {
   blockedReason: "Blocked reason",
   dueDate: "Due date",
   reviewerUserId: "Reviewer",
+  assignedUserIds: "Assignees",
+  reviewerUserIds: "Reviewers",
   mfaEnabled: "MFA",
   active: "Active",
   contactInfo: "Contact info",
@@ -70,6 +72,7 @@ const ACTION_VERBS: Record<string, string> = {
   disable_mfa: "Disabled MFA",
   flag_for_review: "Flagged for review",
   clear_review: "Cleared review flag",
+  set_reviewers: "Updated reviewers",
   share: "Shared access",
   update_share: "Updated shared access",
   unshare: "Removed shared access",
@@ -207,6 +210,15 @@ export function formatAuditValue(
   if (field === "clientId") return lookups.clients?.[value] ?? value;
   if (field === "assignedUserId" || field === "reviewerUserId" || field === "assignedManagerId") {
     return lookups.users?.[value] ?? value;
+  }
+  if (field === "assignedUserIds" || field === "reviewerUserIds") {
+    try {
+      const ids = JSON.parse(value) as string[];
+      if (ids.length === 0) return "None";
+      return ids.map((id) => lookups.users?.[id] ?? id).join(", ");
+    } catch {
+      return value;
+    }
   }
   if (field === "licenseTypeTemplateId") return lookups.licenseTypes?.[value] ?? value;
   if (field === "caseTypeId") return lookups.caseTypes?.[value] ?? value;

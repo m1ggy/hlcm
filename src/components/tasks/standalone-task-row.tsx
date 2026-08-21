@@ -9,13 +9,7 @@ import { updateTask, createStandaloneTask, archiveTask } from "@/lib/actions/tas
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { MultiUserSelect } from "@/components/ui/multi-user-select";
 import { TASK_STATUSES, isTaskOverdue } from "@/lib/task-status";
 import { TaskStatusSelect } from "./task-status-select";
 import { TaskDetailDialog } from "./task-detail-dialog";
@@ -28,7 +22,7 @@ type Subtask = {
   status: (typeof TASK_STATUSES)[number];
   dueDate: Date | null;
   blockedReason: string | null;
-  assignedUser: TaskUserRef;
+  assignedUsers: TaskUserRef[];
 };
 
 type MyTask = {
@@ -40,7 +34,7 @@ type MyTask = {
   blockedReason: string | null;
   recurrenceRule: string | null;
   createdById: string;
-  assignedUser: TaskUserRef;
+  assignedUsers: TaskUserRef[];
   subtasks: Subtask[];
   application: { id: string; name: string; client: { name: string } } | null;
 };
@@ -64,15 +58,15 @@ export function MyTaskRow({
   const [isAdding, startAdding] = useTransition();
   const [isArchiving, startArchiving] = useTransition();
   const [status, setStatus] = useState(task.status);
-  const [assignedUserId, setAssignedUserId] = useState(task.assignedUser.id);
+  const [assignedUserIds, setAssignedUserIds] = useState(task.assignedUsers.map((u) => u.id));
   const [dueDate, setDueDate] = useState(toDateInputValue(task.dueDate));
   const [blockedReason, setBlockedReason] = useState(task.blockedReason ?? "");
   const [expanded, setExpanded] = useState(false);
 
-  function save(overrides: Partial<{ status: string; assignedUserId: string; dueDate: string; blockedReason: string }>) {
+  function save(overrides: Partial<{ status: string; assignedUserIds: string[]; dueDate: string; blockedReason: string }>) {
     const formData = new FormData();
     formData.set("status", overrides.status ?? status);
-    formData.set("assignedUserId", overrides.assignedUserId ?? assignedUserId);
+    for (const id of overrides.assignedUserIds ?? assignedUserIds) formData.append("assignedUserId", id);
     formData.set("dueDate", overrides.dueDate ?? dueDate);
     formData.set("blockedReason", overrides.blockedReason ?? blockedReason);
     startTransition(async () => {
@@ -88,7 +82,7 @@ export function MyTaskRow({
   function addSubtask() {
     const formData = new FormData();
     formData.set("label", "New subtask");
-    formData.set("assignedUserId", task.assignedUser.id);
+    for (const id of assignedUserIds) formData.append("assignedUserId", id);
     formData.set("parentTaskId", task.id);
     startAdding(async () => {
       try {
@@ -156,8 +150,8 @@ export function MyTaskRow({
           status={task.status}
           dueDate={task.dueDate}
           blockedReason={task.blockedReason}
-          assignedUserId={task.assignedUser.id}
-          reviewerId={null}
+          assignedUserIds={assignedUserIds}
+          reviewerIds={[]}
           hasReviewer={false}
           assignableUsers={assignableUsers}
         />
@@ -196,26 +190,15 @@ export function MyTaskRow({
 
       <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
         <span className="text-muted-foreground">Assigned:</span>
-        <Select
+        <MultiUserSelect
           items={Object.fromEntries(assignableUsers.map((u) => [u.id, u.name]))}
-          value={assignedUserId}
-          onValueChange={(v) => {
-            const next = v ?? assignedUserId;
-            setAssignedUserId(next);
-            save({ assignedUserId: next });
+          value={assignedUserIds}
+          onValueChange={(next) => {
+            setAssignedUserIds(next);
+            if (next.length > 0) save({ assignedUserIds: next });
           }}
-        >
-          <SelectTrigger size="sm" className="w-40">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {assignableUsers.map((u) => (
-              <SelectItem key={u.id} value={u.id}>
-                {u.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          className="w-64"
+        />
       </div>
 
       {status === "BLOCKED" && (
@@ -254,13 +237,13 @@ function SubtaskRow({
   const [, startTransition] = useTransition();
   const [isArchiving, startArchiving] = useTransition();
   const [status, setStatus] = useState(subtask.status);
-  const [assignedUserId, setAssignedUserId] = useState(subtask.assignedUser.id);
+  const [assignedUserIds, setAssignedUserIds] = useState(subtask.assignedUsers.map((u) => u.id));
   const [dueDate, setDueDate] = useState(toDateInputValue(subtask.dueDate));
 
-  function save(overrides: Partial<{ status: string; assignedUserId: string; dueDate: string }>) {
+  function save(overrides: Partial<{ status: string; assignedUserIds: string[]; dueDate: string }>) {
     const formData = new FormData();
     formData.set("status", overrides.status ?? status);
-    formData.set("assignedUserId", overrides.assignedUserId ?? assignedUserId);
+    for (const id of overrides.assignedUserIds ?? assignedUserIds) formData.append("assignedUserId", id);
     formData.set("dueDate", overrides.dueDate ?? dueDate);
     startTransition(async () => {
       try {
@@ -298,8 +281,8 @@ function SubtaskRow({
         status={subtask.status}
         dueDate={subtask.dueDate}
         blockedReason={subtask.blockedReason}
-        assignedUserId={subtask.assignedUser.id}
-        reviewerId={null}
+        assignedUserIds={assignedUserIds}
+        reviewerIds={[]}
         hasReviewer={false}
         assignableUsers={assignableUsers}
       />
@@ -313,26 +296,15 @@ function SubtaskRow({
           className="w-40"
         />
       </div>
-      <Select
+      <MultiUserSelect
         items={Object.fromEntries(assignableUsers.map((u) => [u.id, u.name]))}
-        value={assignedUserId}
-        onValueChange={(v) => {
-          const next = v ?? assignedUserId;
-          setAssignedUserId(next);
-          save({ assignedUserId: next });
+        value={assignedUserIds}
+        onValueChange={(next) => {
+          setAssignedUserIds(next);
+          if (next.length > 0) save({ assignedUserIds: next });
         }}
-      >
-        <SelectTrigger size="sm" className="w-40">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {assignableUsers.map((u) => (
-            <SelectItem key={u.id} value={u.id}>
-              {u.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+        className="w-56"
+      />
       <Input
         type="date"
         value={dueDate}
