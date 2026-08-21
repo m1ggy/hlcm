@@ -82,6 +82,12 @@ const ACTION_VERBS: Record<string, string> = {
   update_document_status: "Updated document status",
   delete_document: "Deleted a document",
   sign_document: "Signed a document",
+  send: "Sent the invoice",
+  void: "Voided the invoice",
+  mark_paid: "Marked as paid",
+  paid_online: "Paid online",
+  payment_failed: "Payment attempt failed",
+  finalization_failed: "Failed to finalize (check the client's billing address)",
 };
 
 const DOCUMENT_STATUS_LABELS: Record<string, string> = {

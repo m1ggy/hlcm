@@ -17,6 +17,11 @@ const clientDetailFields = {
   ownerEmail: z.string().optional(),
   ownerPhone: z.string().optional(),
   ownerDateOfBirth: z.string().optional(),
+  billingAddressLine1: z.string().optional(),
+  billingCity: z.string().optional(),
+  billingState: z.string().optional(),
+  billingPostalCode: z.string().optional(),
+  billingCountry: z.string().optional(),
 };
 
 const createClientSchema = z.object({
@@ -38,6 +43,11 @@ function readClientFields(formData: FormData) {
     ownerEmail: formData.get("ownerEmail") || undefined,
     ownerPhone: formData.get("ownerPhone") || undefined,
     ownerDateOfBirth: formData.get("ownerDateOfBirth") || undefined,
+    billingAddressLine1: formData.get("billingAddressLine1") || undefined,
+    billingCity: formData.get("billingCity") || undefined,
+    billingState: formData.get("billingState") || undefined,
+    billingPostalCode: formData.get("billingPostalCode") || undefined,
+    billingCountry: formData.get("billingCountry") || undefined,
   };
 }
 

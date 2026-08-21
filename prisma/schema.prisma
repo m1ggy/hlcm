@@ -98,6 +98,15 @@ enum NotificationType {
   APPLICATION_STATUS_CHANGED
   APPLICATION_SHARED
   MENTIONED
+  INVOICE_PAID
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  OVERDUE
+  VOID
 }
 
 model User {
@@ -147,6 +156,7 @@ model User {
   wiseRecipient                    WiseRecipient?
   wisePayoutsReceived              WiseTransaction[]        @relation("WiseTransactionPayee")
   wisePayoutsInitiated             WiseTransaction[]        @relation("WiseTransactionInitiatedBy")
+  invoicesCreated                  Invoice[]                @relation("InvoiceCreatedBy")
 
   @@map("users")
 }
@@ -285,6 +295,21 @@ model Client {
   ownerPhone       String?
   ownerDateOfBirth DateTime?
 
+  // Structured billing address — separate from the freeform `address`
+  // above because Stripe Tax needs discrete fields (state/postal code at
+  // minimum for US nexus) to determine the tax jurisdiction on an invoice.
+  // Required before sending an invoice with automatic tax (see
+  // sendInvoice in src/lib/actions/invoices.ts).
+  billingAddressLine1 String?
+  billingCity         String?
+  billingState        String?
+  billingPostalCode   String?
+  billingCountry      String? @default("US")
+
+  // Cached Stripe Customer id (see src/lib/stripe.ts) — created on first
+  // invoice send, reused after.
+  stripeCustomerId String?
+
   createdBy   User     @relation("ClientCreatedBy", fields: [createdById], references: [id])
   createdById String
   createdAt   DateTime @default(now())
@@ -294,6 +319,7 @@ model Client {
   notes           Note[]
   mcoCredentials  McoCredential[]
   credentials     ClientCredential[]
+  invoices        Invoice[]
 
   @@map("clients")
 }
@@ -453,6 +479,7 @@ model Application {
   generatedDocuments GeneratedDocument[]
   notes             Note[]
   stageHistory      StageHistory[]
+  invoices          Invoice[]
 
   @@map("applications")
 }
@@ -845,4 +872,61 @@ model ClientCredential {
   updatedAt   DateTime @updatedAt
 
   @@map("client_credentials")
+}
+
+// One invoice sent to a Client, optionally tied back to the Application it
+// was billed for. `seq` is a plain autoincrement used only to render a
+// stable display number ("INV-00042") — there's no separate unique string
+// column to keep in sync or race on. `total` is always server-recomputed
+// from lineItems + taxAmount, never trusted from the client.
+model Invoice {
+  id            String        @id @default(cuid())
+  // Local draft counter — only used to display a number before Stripe
+  // assigns its own (stripeInvoiceNumber, set at finalize).
+  seq           Int           @default(autoincrement())
+  client        Client        @relation(fields: [clientId], references: [id])
+  clientId      String
+  application   Application?  @relation(fields: [applicationId], references: [id])
+  applicationId String?
+  status        InvoiceStatus @default(DRAFT)
+  issueDate     DateTime      @default(now())
+  dueDate       DateTime?
+  notes         String?
+
+  // Null until Stripe finalizes the invoice — Stripe computes the actual
+  // tax (via Stripe Tax) and total at that point, not us.
+  total     Float?
+  taxAmount Float?
+
+  // Set on first "Send": a Stripe Invoice + its line items are created,
+  // finalized, then emailed by Stripe itself (see src/lib/stripe.ts /
+  // src/lib/actions/invoices.ts). Resending reuses the same Stripe invoice.
+  stripeInvoiceId     String? @unique
+  stripeInvoiceNumber String?
+  hostedInvoiceUrl    String?
+  invoicePdfUrl       String?
+
+  sentAt      DateTime?
+  paidAt      DateTime?
+  createdBy   User      @relation("InvoiceCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  lineItems InvoiceLineItem[]
+
+  @@index([clientId])
+  @@map("invoices")
+}
+
+model InvoiceLineItem {
+  id          String  @id @default(cuid())
+  invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoiceId   String
+  description String
+  quantity    Int     @default(1)
+  unitPrice   Float
+  sortOrder   Int     @default(0)
+
+  @@map("invoice_line_items")
 }

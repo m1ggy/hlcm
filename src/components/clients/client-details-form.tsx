@@ -19,6 +19,11 @@ type ClientDetails = {
   ownerEmail: string | null;
   ownerPhone: string | null;
   ownerDateOfBirth: Date | null;
+  billingAddressLine1: string | null;
+  billingCity: string | null;
+  billingState: string | null;
+  billingPostalCode: string | null;
+  billingCountry: string | null;
 };
 
 type FieldKey = keyof ClientDetails;
@@ -69,6 +74,11 @@ export function ClientDetailsForm({ clientId, defaultValues }: { clientId: strin
     ownerEmail: defaultValues.ownerEmail ?? "",
     ownerPhone: defaultValues.ownerPhone ?? "",
     ownerDateOfBirth: toDateInputValue(defaultValues.ownerDateOfBirth),
+    billingAddressLine1: defaultValues.billingAddressLine1 ?? "",
+    billingCity: defaultValues.billingCity ?? "",
+    billingState: defaultValues.billingState ?? "",
+    billingPostalCode: defaultValues.billingPostalCode ?? "",
+    billingCountry: defaultValues.billingCountry ?? "US",
   });
 
   function set(field: FieldKey, v: string) {
@@ -138,6 +148,31 @@ export function ClientDetailsForm({ clientId, defaultValues }: { clientId: strin
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Billing address</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="mb-3 text-xs text-muted-foreground">
+            Needed to send this client an invoice — Stripe Tax uses the state and ZIP to calculate sales tax.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <LabeledInput
+              id="billingAddressLine1"
+              label="Street address"
+              value={values.billingAddressLine1}
+              onChange={(v) => set("billingAddressLine1", v)}
+              onBlur={() => save("billingAddressLine1")}
+              className="sm:col-span-2"
+            />
+            <LabeledInput id="billingCity" label="City" value={values.billingCity} onChange={(v) => set("billingCity", v)} onBlur={() => save("billingCity")} />
+            <LabeledInput id="billingState" label="State" value={values.billingState} onChange={(v) => set("billingState", v)} onBlur={() => save("billingState")} />
+            <LabeledInput id="billingPostalCode" label="ZIP code" value={values.billingPostalCode} onChange={(v) => set("billingPostalCode", v)} onBlur={() => save("billingPostalCode")} />
+            <LabeledInput id="billingCountry" label="Country" value={values.billingCountry} onChange={(v) => set("billingCountry", v)} onBlur={() => save("billingCountry")} />
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

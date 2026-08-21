@@ -22,7 +22,10 @@ export async function AppSidebar() {
         </Link>
       </SidebarHeader>
       <SidebarContent className="px-2">
-        <AppSidebarNav isAdmin={session.user.role === "ADMIN"} />
+        <AppSidebarNav
+          isAdmin={session.user.role === "ADMIN"}
+          canManageInvoices={session.user.role === "ADMIN" || session.user.role === "MANAGER"}
+        />
       </SidebarContent>
       <SidebarFooter className="gap-2 border-t px-3 py-3">
         <div className="flex items-center justify-between gap-2">
