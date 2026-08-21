@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Pencil, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { DateTimeInput } from "@/components/ui/datetime-input";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
@@ -65,31 +65,19 @@ export function EditTimeEntryDialog({
           </Button>
         }
       />
-      <DialogContent>
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Edit time entry</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <Label htmlFor="edit-clock-in">Clock in</Label>
-              <Input
-                id="edit-clock-in"
-                type="datetime-local"
-                value={clockIn}
-                onChange={(e) => setClockIn(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="edit-clock-out">Clock out</Label>
-              <Input
-                id="edit-clock-out"
-                type="datetime-local"
-                value={clockOut}
-                onChange={(e) => setClockOut(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">Leave blank to re-open this session.</p>
-            </div>
+          <div className="space-y-1">
+            <Label>Clock in</Label>
+            <DateTimeInput value={clockIn} onChange={setClockIn} clearable={false} />
+          </div>
+          <div className="space-y-1">
+            <Label>Clock out</Label>
+            <DateTimeInput value={clockOut} onChange={setClockOut} />
+            <p className="text-xs text-muted-foreground">Clear it to re-open this session.</p>
           </div>
           <Button onClick={handleSubmit} disabled={isPending} className="w-full">
             {isPending ? <Loader2 className="size-3.5 animate-spin" /> : null}

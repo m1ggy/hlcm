@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Plus, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { DateTimeInput } from "@/components/ui/datetime-input";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
@@ -77,7 +77,7 @@ export function AddTimeEntryDialog({
           </Button>
         }
       />
-      <DialogContent>
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Add a time entry</DialogTitle>
         </DialogHeader>
@@ -101,24 +101,14 @@ export function AddTimeEntryDialog({
               </SelectContent>
             </Select>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-3">
             <div className="space-y-1">
-              <Label htmlFor="manual-clock-in">Clock in</Label>
-              <Input
-                id="manual-clock-in"
-                type="datetime-local"
-                value={clockIn}
-                onChange={(e) => setClockIn(e.target.value)}
-              />
+              <Label>Clock in</Label>
+              <DateTimeInput value={clockIn} onChange={setClockIn} clearable={false} />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="manual-clock-out">Clock out</Label>
-              <Input
-                id="manual-clock-out"
-                type="datetime-local"
-                value={clockOut}
-                onChange={(e) => setClockOut(e.target.value)}
-              />
+              <Label>Clock out</Label>
+              <DateTimeInput value={clockOut} onChange={setClockOut} clearable={false} />
             </div>
           </div>
           <Button onClick={handleSubmit} disabled={isPending} className="w-full">
