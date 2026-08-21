@@ -26,6 +26,16 @@ export function formatMoney(amount: number) {
   return amount.toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
 
+/**
+ * Local (not UTC) "yyyy-MM-ddTHH:mm" for a `datetime-local` input's value —
+ * `toISOString()` would shift to UTC and show the wrong wall-clock time in
+ * the picker. Pad by hand since `Date` has no locale-agnostic local format.
+ */
+export function toDatetimeLocalValue(date: Date) {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 export type TimeEntryRangeInput = { userId?: string; from: Date; to: Date };
 
 export type TimesheetTotal = {

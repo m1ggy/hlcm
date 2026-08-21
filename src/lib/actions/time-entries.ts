@@ -140,6 +140,49 @@ export async function createManualTimeEntry(input: { userId: string; clockIn: st
   return entry;
 }
 
+const updateEntrySchema = z
+  .object({
+    clockIn: z.coerce.date(),
+    clockOut: z.coerce.date().nullable(),
+  })
+  .refine((v) => !v.clockOut || v.clockOut > v.clockIn, { message: "Clock out must be after clock in" });
+
+/**
+ * Admin-only: corrects an existing entry's times (e.g. someone clocked in
+ * late, or fat-fingered a punch). `clockOut: null` re-opens the entry (rare,
+ * but lets an admin undo an accidental clock-out) — checked against other
+ * open entries for that user so it can't create a second one.
+ */
+export async function updateTimeEntry(id: string, input: { clockIn: string; clockOut: string | null }) {
+  const session = await requireRole(["ADMIN"]);
+  const existing = await prisma.timeEntry.findUniqueOrThrow({ where: { id } });
+  const parsed = updateEntrySchema.parse(input);
+
+  if (!parsed.clockOut) {
+    const otherOpen = await prisma.timeEntry.findFirst({
+      where: { userId: existing.userId, clockOut: null, id: { not: id } },
+    });
+    if (otherOpen) throw new TimeClockError("This user already has an open entry");
+  }
+
+  const entry = await prisma.timeEntry.update({
+    where: { id },
+    data: { clockIn: parsed.clockIn, clockOut: parsed.clockOut },
+  });
+
+  await recordAudit({
+    entityType: "TimeEntry",
+    entityId: id,
+    action: "edit_time_entry",
+    actorId: session.user.id,
+    oldValue: `${existing.clockIn.toISOString()} – ${existing.clockOut?.toISOString() ?? "open"}`,
+    newValue: `${parsed.clockIn.toISOString()} – ${parsed.clockOut?.toISOString() ?? "open"}`,
+  });
+
+  revalidatePath("/time");
+  return entry;
+}
+
 /** Admin-only: removes a mistaken or duplicate entry (e.g. a double clock-in left dangling open). */
 export async function deleteTimeEntry(id: string) {
   const session = await requireRole(["ADMIN"]);

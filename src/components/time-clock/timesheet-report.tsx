@@ -25,6 +25,7 @@ import { getTimesheetTotals, listTimeEntries, deleteTimeEntry } from "@/lib/acti
 import { payUserViaWise } from "@/lib/actions/wise";
 import { formatDuration, formatMoney, hoursBetween, type TimesheetTotal } from "@/lib/time-entries";
 import { AddTimeEntryDialog } from "@/components/time-clock/add-time-entry-dialog";
+import { EditTimeEntryDialog } from "@/components/time-clock/edit-time-entry-dialog";
 
 type TimeEntryRow = {
   id: string;
@@ -238,7 +239,7 @@ export function TimesheetReport({ users, isAdmin = false }: { users: { id: strin
                 <TableHead>Clock in</TableHead>
                 <TableHead>Clock out</TableHead>
                 <TableHead>Hours</TableHead>
-                {isAdmin && <TableHead className="w-10" />}
+                {isAdmin && <TableHead className="w-20" />}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -259,18 +260,21 @@ export function TimesheetReport({ users, isAdmin = false }: { users: { id: strin
                     </TableCell>
                     {isAdmin && (
                       <TableCell>
-                        <Button
-                          size="xs"
-                          variant="ghost"
-                          disabled={deletingId === entry.id}
-                          onClick={() => handleDelete(entry.id)}
-                        >
-                          {deletingId === entry.id ? (
-                            <Loader2 className="size-3 animate-spin" />
-                          ) : (
-                            <Trash2 className="size-3.5 text-destructive" />
-                          )}
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          <EditTimeEntryDialog entry={entry} onUpdated={handlePreview} />
+                          <Button
+                            size="xs"
+                            variant="ghost"
+                            disabled={deletingId === entry.id}
+                            onClick={() => handleDelete(entry.id)}
+                          >
+                            {deletingId === entry.id ? (
+                              <Loader2 className="size-3 animate-spin" />
+                            ) : (
+                              <Trash2 className="size-3.5 text-destructive" />
+                            )}
+                          </Button>
+                        </div>
                       </TableCell>
                     )}
                   </TableRow>
