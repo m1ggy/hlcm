@@ -82,7 +82,16 @@ export function DateTimeInput({
         <InputGroupAddon>
           <Clock3 />
         </InputGroupAddon>
-        <InputGroupInput type="time" value={time} onChange={(e) => setTime(e.target.value)} disabled={disabled} />
+        {/* lang="en-GB" is a standard trick to force the native time picker
+            into 24-hour display regardless of the browser/OS locale — this
+            is a UI toggle only, the underlying value is always "HH:mm". */}
+        <InputGroupInput
+          type="time"
+          lang="en-GB"
+          value={time}
+          onChange={(e) => setTime(e.target.value)}
+          disabled={disabled}
+        />
       </InputGroup>
       <Button type="button" variant="outline" size="sm" onClick={setNow} disabled={disabled}>
         Now
