@@ -134,8 +134,8 @@ function TimeInput({
   }
 
   return (
-    <div className="flex items-center gap-1.5">
-      <div className="flex items-center gap-0.5 tabular-nums">
+    <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1 tabular-nums">
         <input
           type="text"
           inputMode="numeric"
@@ -149,7 +149,7 @@ function TimeInput({
             setHourFocused(false);
             commit(hourDraft, minuteDraft, ampm);
           }}
-          className="w-5 border-0 bg-transparent p-0 text-center outline-none"
+          className="w-7 border-0 bg-transparent p-0 text-center outline-none"
         />
         <span className="text-muted-foreground">:</span>
         <input
@@ -165,7 +165,7 @@ function TimeInput({
             setMinuteFocused(false);
             commit(hourDraft, minuteDraft, ampm);
           }}
-          className="w-5 border-0 bg-transparent p-0 text-center outline-none"
+          className="w-7 border-0 bg-transparent p-0 text-center outline-none"
         />
       </div>
       {format === "12" && (
@@ -173,7 +173,7 @@ function TimeInput({
           type="button"
           disabled={disabled || hour24 === null}
           onClick={toggleAmPm}
-          className="rounded px-1 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground disabled:opacity-50"
+          className="rounded px-1.5 py-0.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground disabled:opacity-50"
           title="Toggle AM/PM"
         >
           {ampm}
@@ -183,7 +183,7 @@ function TimeInput({
         type="button"
         disabled={disabled}
         onClick={toggleFormat}
-        className="rounded px-1 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground disabled:opacity-50"
+        className="rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground disabled:opacity-50"
         title="Switch between 24-hour and 12-hour display"
       >
         {format === "24" ? "24h" : "12h"}
@@ -245,11 +245,11 @@ export function DateTimeInput({
         </InputGroupAddon>
         <InputGroupInput type="date" value={date} onChange={(e) => setDate(e.target.value)} disabled={disabled} />
       </InputGroup>
-      <InputGroup className="h-9 w-auto">
+      <InputGroup className="h-9 w-auto min-w-44">
         <InputGroupAddon>
           <Clock3 />
         </InputGroupAddon>
-        <div className="flex flex-1 items-center px-1">
+        <div className="flex flex-1 items-center px-2">
           <TimeInput value={time} onChange={setTime} disabled={disabled} />
         </div>
       </InputGroup>
