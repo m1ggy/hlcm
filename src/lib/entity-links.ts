@@ -15,6 +15,7 @@ export const ENTITY_LINKS: Record<EntityLinkVariant, Record<string, (id: string)
     Task: () => "/tasks",
     Application: (id) => `/applications/${id}`,
     Client: (id) => `/clients/${id}`,
+    Invoice: (id) => `/invoices/${id}`,
   },
   portal: {
     Application: (id) => `/portal/applications/${id}`,

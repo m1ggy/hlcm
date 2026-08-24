@@ -121,6 +121,11 @@ export default async function ClientDetailPage({
           ownerEmail: client.ownerEmail,
           ownerPhone: client.ownerPhone,
           ownerDateOfBirth: client.ownerDateOfBirth,
+          billingAddressLine1: client.billingAddressLine1,
+          billingCity: client.billingCity,
+          billingState: client.billingState,
+          billingPostalCode: client.billingPostalCode,
+          billingCountry: client.billingCountry,
         }}
       />
 

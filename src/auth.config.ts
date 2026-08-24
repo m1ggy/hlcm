@@ -16,7 +16,12 @@ export const authConfig = {
       const isPublicPath =
         pathname.startsWith("/login") ||
         pathname.startsWith("/api/auth") ||
-        pathname.startsWith("/handbook");
+        pathname.startsWith("/handbook") ||
+        // Stripe calls this directly with no session — it's authenticated
+        // by signature (see verifyWebhookSignature), not by cookie. Without
+        // this, the proxy 307-redirects every webhook POST to /login before
+        // it ever reaches the route handler.
+        pathname.startsWith("/api/webhooks");
       if (isPublicPath) return true;
       return isLoggedIn;
     },
