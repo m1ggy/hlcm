@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { InvoiceStatusBadge, INVOICE_STATUS_LABELS, InvoiceStatusValue, isInvoiceOverdue } from "./invoice-status-badge";
-import { displayInvoiceNumber } from "@/lib/actions/invoices";
+import { displayInvoiceNumber } from "@/lib/invoice-format";
 import {
   Table,
   TableBody,

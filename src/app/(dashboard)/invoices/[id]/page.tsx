@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { getInvoice, getInvoiceAuditLog, displayInvoiceNumber } from "@/lib/actions/invoices";
+import { getInvoice, getInvoiceAuditLog } from "@/lib/actions/invoices";
+import { displayInvoiceNumber } from "@/lib/invoice-format";
 import { listClients } from "@/lib/actions/clients";
 import { listApplications } from "@/lib/actions/applications";
 import { InvoiceStatusBadge, isInvoiceOverdue } from "@/components/invoices/invoice-status-badge";

@@ -18,12 +18,6 @@ import type { $Enums } from "@/generated/prisma/client";
 
 const MANAGE_ROLES: AppRole[] = ["ADMIN", "MANAGER"];
 
-// Display number before Stripe assigns its own at finalize (invoice.number
-// is null on a draft) — falls back to our local counter.
-export function displayInvoiceNumber(invoice: { seq: number; stripeInvoiceNumber: string | null }) {
-  return invoice.stripeInvoiceNumber ?? `DRAFT-${String(invoice.seq).padStart(5, "0")}`;
-}
-
 const invoiceInclude = {
   client: {
     select: {

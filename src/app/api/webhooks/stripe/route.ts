@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { recordAudit } from "@/lib/audit";
 import { notify } from "@/lib/notifications";
 import { verifyWebhookSignature, StripeApiError } from "@/lib/stripe";
-import { displayInvoiceNumber } from "@/lib/actions/invoices";
+import { displayInvoiceNumber } from "@/lib/invoice-format";
 
 type StripeInvoiceObject = {
   id: string;
