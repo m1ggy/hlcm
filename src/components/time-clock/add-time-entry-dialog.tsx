@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Plus, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { createManualTimeEntry } from "@/lib/actions/time-entries";
+import { localInputToISOString, localTimezoneLabel } from "@/lib/time-entries";
 
 // Admin-only backfill for a session someone forgot to clock, or a
 // correction for a missed punch — always a completed shift (both ends
@@ -31,6 +32,13 @@ export function AddTimeEntryDialog({
   const [clockIn, setClockIn] = useState("");
   const [clockOut, setClockOut] = useState("");
   const [isPending, startTransition] = useTransition();
+  // Computed client-side only (after mount) — Intl/Date would report the
+  // server's timezone during SSR, mismatching the browser's on hydration.
+  const [tzLabel, setTzLabel] = useState("");
+  useEffect(() => {
+    const id = setTimeout(() => setTzLabel(localTimezoneLabel()), 0);
+    return () => clearTimeout(id);
+  }, []);
 
   function reset() {
     setUserId("");
@@ -45,7 +53,11 @@ export function AddTimeEntryDialog({
     }
     startTransition(async () => {
       try {
-        await createManualTimeEntry({ userId, clockIn, clockOut });
+        await createManualTimeEntry({
+          userId,
+          clockIn: localInputToISOString(clockIn),
+          clockOut: localInputToISOString(clockOut),
+        });
         toast.success("Time entry added");
         setOpen(false);
         reset();
@@ -95,6 +107,9 @@ export function AddTimeEntryDialog({
               <Label>Clock out</Label>
               <DateTimeInput value={clockOut} onChange={setClockOut} clearable={false} />
             </div>
+            {tzLabel && (
+              <p className="text-xs text-muted-foreground">Times are read in your timezone — {tzLabel}.</p>
+            )}
           </div>
           <Button onClick={handleSubmit} disabled={isPending} className="w-full">
             {isPending ? <Loader2 className="size-3.5 animate-spin" /> : null}

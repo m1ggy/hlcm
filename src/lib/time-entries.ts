@@ -48,6 +48,39 @@ export function toDateInputValue(date: Date) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
+/**
+ * Converts a `DateTimeInput`'s "yyyy-MM-ddTHH:mm" value (a plain wall-clock
+ * reading, no timezone attached) into an unambiguous ISO instant, by
+ * building the `Date` from numeric parts — which JS always interprets in
+ * whatever timezone it's *executed* in. Call this client-side (in the
+ * browser, before sending the value to a server action), not server-side:
+ * the point is to resolve "2pm" against the browser's own timezone, the one
+ * the person actually typing it is in. Passing the raw string straight to
+ * the server instead would let `z.coerce.date()` parse it against the
+ * *server's* timezone — silently wrong whenever server and browser differ.
+ */
+export function localInputToISOString(value: string): string {
+  if (!value) return "";
+  const [datePart, timePart = "00:00"] = value.split("T");
+  const [y, mo, d] = datePart.split("-").map(Number);
+  const [h, mi] = timePart.split(":").map(Number);
+  return new Date(y, mo - 1, d, h, mi).toISOString();
+}
+
+/** e.g. "America/Chicago (UTC-05:00)" — shown next to time inputs so it's
+ * clear which timezone a typed time is resolved against (the browser's). */
+export function localTimezoneLabel(): string {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const offsetMin = -new Date().getTimezoneOffset();
+    const sign = offsetMin >= 0 ? "+" : "-";
+    const abs = Math.abs(offsetMin);
+    return `${tz} (UTC${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)})`;
+  } catch {
+    return "your local timezone";
+  }
+}
+
 /** 1st–15th, or 16th–end of month, whichever contains today — a biweekly pay period. */
 export function currentPayPeriodRange(now = new Date()) {
   const firstHalf = now.getDate() <= 15;
