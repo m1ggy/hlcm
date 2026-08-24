@@ -40,6 +40,14 @@ function getWebhookSecret() {
   return secret;
 }
 
+// Stripe Tax requires an origin address configured in the Dashboard
+// (Tax > Settings) before it'll compute tax on anything — without one,
+// `automatic_tax: { enabled: true }` makes invoice finalization error out.
+// Default off so invoicing can be built/tested before that one-time setup
+// is done; flip STRIPE_TAX_ENABLED=true once the origin address (and any
+// registrations) are in place.
+const taxEnabled = process.env.STRIPE_TAX_ENABLED === "true";
+
 async function stripeFetch<T>(path: string, method: "GET" | "POST", params?: Record<string, string>): Promise<T> {
   const res = await fetch(`${API_BASE}/${path}`, {
     method,
@@ -115,7 +123,7 @@ export async function createDraftInvoice(params: {
       collection_method: "send_invoice",
       days_until_due: params.daysUntilDue,
       auto_advance: false,
-      automatic_tax: { enabled: true },
+      automatic_tax: { enabled: taxEnabled },
       metadata: { invoiceId: params.invoiceId },
     })
   );
