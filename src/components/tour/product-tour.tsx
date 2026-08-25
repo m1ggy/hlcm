@@ -18,6 +18,7 @@ type TourStep = DriveStep & { data: { path: string } };
 function buildSteps(role: string | undefined): TourStep[] {
   const isAdmin = role === "ADMIN";
   const canSeeAllUsersTime = isAdmin || role === "MANAGER";
+  const canManageInvoices = isAdmin || role === "MANAGER";
 
   const steps: TourStep[] = [
     {
@@ -74,6 +75,21 @@ function buildSteps(role: string | undefined): TourStep[] {
         side: "right",
       },
     },
+    ...(canManageInvoices
+      ? [
+          {
+            data: { path: "/applications" },
+            element: '[data-tour="nav-invoices"]',
+            popover: {
+              title: "Invoices",
+              description: "Bill a client and email them a PDF invoice with a \"Pay now\" link — Stripe confirms payment automatically, no need to mark it by hand unless they paid another way. Visible to admins and managers.",
+              side: "right",
+            },
+            skipMissingElement: true,
+            waitForElement: 0,
+          } satisfies TourStep,
+        ]
+      : []),
     {
       data: { path: "/applications" },
       element: '[data-tour="nav-admin"]',
@@ -211,6 +227,31 @@ function buildSteps(role: string | undefined): TourStep[] {
               description: "Every payout attempt is logged here, including failures — so re-paying someone for a period is always a deliberate click, never an accident.",
               side: "top",
             },
+          } satisfies TourStep,
+        ]
+      : []),
+    ...(canManageInvoices
+      ? [
+          {
+            data: { path: "/invoices" },
+            element: '[data-tour="new-invoice"]',
+            popover: {
+              title: "Create an invoice",
+              description: "Pick a client (and optionally a case), add line items, and save as a draft — nothing goes to the client until you hit Send.",
+              side: "bottom",
+            },
+          } satisfies TourStep,
+          {
+            data: { path: "/invoices" },
+            element: '[data-slot="table-container"]',
+            popover: {
+              title: "Invoice list",
+              description: "Filter by status with the chips above. Click any invoice for its line items, a Send/Resend button, the hosted invoice page and PDF once sent, a Mark Paid override for payments taken outside Stripe, and a full audit log.",
+              side: "top",
+            },
+            // Empty for a brand-new company — no invoices means no table yet.
+            skipMissingElement: true,
+            waitForElement: 0,
           } satisfies TourStep,
         ]
       : []),
