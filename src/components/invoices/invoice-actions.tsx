@@ -7,6 +7,8 @@ import { Send, CheckCircle2, Ban, Download, ExternalLink, Trash2 } from "lucide-
 import { sendInvoice, markInvoicePaid, voidInvoice, deleteInvoice } from "@/lib/actions/invoices";
 import { Button } from "@/components/ui/button";
 import { InvoiceFormDialog } from "./invoice-form-dialog";
+import { AddManualPaymentDialog } from "./add-manual-payment-dialog";
+import { isManualPayment } from "./invoice-status-badge";
 
 type LineItem = { description: string; quantity: number; unitPrice: number };
 
@@ -18,12 +20,15 @@ export function InvoiceActions({
   invoice: {
     id: string;
     status: string;
+    stripeInvoiceId: string | null;
     hostedInvoiceUrl: string | null;
     invoicePdfUrl: string | null;
     clientId: string;
     applicationId: string | null;
     dueDate: Date | null;
     notes: string | null;
+    total: number | null;
+    amountPaid: number | null;
     lineItems: LineItem[];
   };
   clients: { id: string; name: string }[];
@@ -88,15 +93,25 @@ export function InvoiceActions({
     });
   }
 
+  const isManual = isManualPayment(invoice);
   const canEdit = invoice.status === "DRAFT";
-  const canVoid = invoice.status !== "PAID" && invoice.status !== "VOID";
-  const canMarkPaid = invoice.status !== "PAID" && invoice.status !== "VOID";
+  // A manual record never had (or ever will have) a Stripe invoice to send —
+  // "Send"/"Resend" would otherwise silently create one for money already
+  // collected outside Stripe.
+  const canSend = !isManual && invoice.status !== "VOID";
+  const canVoid = !isManual && invoice.status !== "PAID" && invoice.status !== "VOID";
+  const canMarkPaid = !isManual && invoice.status !== "PAID" && invoice.status !== "VOID";
+  const canAddManualPayment = isManual && invoice.status === "PARTIALLY_PAID";
+  const remaining = (invoice.total ?? 0) - (invoice.amountPaid ?? 0);
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Button onClick={handleSend} disabled={isSending}>
-        <Send className="size-3.5" /> {invoice.status === "DRAFT" ? "Send" : "Resend"}
-      </Button>
+      {canSend && (
+        <Button onClick={handleSend} disabled={isSending}>
+          <Send className="size-3.5" /> {invoice.status === "DRAFT" ? "Send" : "Resend"}
+        </Button>
+      )}
+      {canAddManualPayment && <AddManualPaymentDialog invoiceId={invoice.id} remaining={remaining} />}
       {invoice.hostedInvoiceUrl && (
         <Button
           variant="outline"

@@ -3,7 +3,6 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, Trash2 } from "lucide-react";
 import { createInvoice, updateInvoice } from "@/lib/actions/invoices";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,10 +16,9 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { InvoiceLineItemsEditor, emptyLineItem, type LineItem } from "./invoice-line-items-editor";
 
 const NONE = "__none__";
-
-type LineItem = { description: string; quantity: number; unitPrice: number };
 
 type ClientOption = { id: string; name: string };
 type ApplicationOption = { id: string; name: string; clientId: string };
@@ -37,10 +35,6 @@ type ExistingInvoice = {
 function toDateInputValue(date: Date | null) {
   if (!date) return "";
   return new Date(date).toISOString().slice(0, 10);
-}
-
-function emptyLineItem(): LineItem {
-  return { description: "", quantity: 1, unitPrice: 0 };
 }
 
 export function InvoiceFormDialog({
@@ -68,18 +62,6 @@ export function InvoiceFormDialog({
 
   const clientApplications = applications.filter((a) => a.clientId === clientId);
   const subtotal = lineItems.reduce((sum, li) => sum + li.quantity * li.unitPrice, 0);
-
-  function updateLineItem(index: number, patch: Partial<LineItem>) {
-    setLineItems((items) => items.map((item, i) => (i === index ? { ...item, ...patch } : item)));
-  }
-
-  function addLineItem() {
-    setLineItems((items) => [...items, emptyLineItem()]);
-  }
-
-  function removeLineItem(index: number) {
-    setLineItems((items) => (items.length > 1 ? items.filter((_, i) => i !== index) : items));
-  }
 
   function handleSubmit() {
     if (!clientId) {
@@ -149,51 +131,7 @@ export function InvoiceFormDialog({
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label>Line items</Label>
-            <div className="space-y-2">
-              {lineItems.map((item, index) => (
-                <div key={index} className="flex items-start gap-2">
-                  <Input
-                    placeholder="Description"
-                    value={item.description}
-                    onChange={(e) => updateLineItem(index, { description: e.target.value })}
-                    className="min-w-0 flex-1"
-                  />
-                  <Input
-                    type="number"
-                    min={1}
-                    value={item.quantity}
-                    onChange={(e) => updateLineItem(index, { quantity: Number(e.target.value) || 1 })}
-                    className="w-16"
-                    title="Quantity"
-                  />
-                  <Input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={item.unitPrice}
-                    onChange={(e) => updateLineItem(index, { unitPrice: Number(e.target.value) || 0 })}
-                    className="w-24"
-                    title="Unit price"
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    onClick={() => removeLineItem(index)}
-                    disabled={lineItems.length === 1}
-                    title="Remove line"
-                  >
-                    <Trash2 className="size-3.5" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-            <Button type="button" variant="outline" size="sm" onClick={addLineItem}>
-              <Plus className="size-3.5" /> Add line
-            </Button>
-          </div>
+          <InvoiceLineItemsEditor lineItems={lineItems} onChange={setLineItems} />
 
           <div className="space-y-1">
             <Label htmlFor="dueDate">Due date</Label>

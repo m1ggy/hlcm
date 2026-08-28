@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { InvoiceStatusBadge, INVOICE_STATUS_LABELS, InvoiceStatusValue, isInvoiceOverdue } from "./invoice-status-badge";
+import { InvoiceStatusBadge, INVOICE_STATUS_LABELS, InvoiceStatusValue, isInvoiceOverdue, isManualPayment } from "./invoice-status-badge";
 import { displayInvoiceNumber } from "@/lib/invoice-format";
 import {
   Table,
@@ -16,6 +16,7 @@ import {
 type InvoiceRow = {
   id: string;
   seq: number;
+  stripeInvoiceId: string | null;
   stripeInvoiceNumber: string | null;
   status: string;
   total: number | null;
@@ -98,7 +99,16 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
               <TableCell className="font-medium tabular-nums">{displayInvoiceNumber(invoice)}</TableCell>
               <TableCell>{invoice.client.businessName ?? invoice.client.name}</TableCell>
               <TableCell className="text-muted-foreground">{invoice.application?.name ?? "—"}</TableCell>
-              <TableCell><InvoiceStatusBadge status={isInvoiceOverdue(invoice) ? "OVERDUE" : invoice.status} /></TableCell>
+              <TableCell>
+                <div className="flex items-center gap-1.5">
+                  <InvoiceStatusBadge status={isInvoiceOverdue(invoice) ? "OVERDUE" : invoice.status} />
+                  {isManualPayment(invoice) && (
+                    <span className="text-xs text-muted-foreground" title="Recorded manually — never went through Stripe">
+                      (manual)
+                    </span>
+                  )}
+                </div>
+              </TableCell>
               <TableCell className={isInvoiceOverdue(invoice) ? "text-destructive" : undefined}>
                 {invoice.dueDate ? invoice.dueDate.toLocaleDateString() : "—"}
               </TableCell>

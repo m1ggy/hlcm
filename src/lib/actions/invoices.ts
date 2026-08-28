@@ -184,6 +184,105 @@ export async function markInvoicePaid(id: string) {
   revalidatePath(`/invoices/${id}`);
 }
 
+// A transaction paid before any invoice existed — cash handed over, a wire
+// that landed, a check already cashed. Recorded straight into PAID with
+// stripeInvoiceId left null forever: no customer, no draft, no email, no
+// Stripe involvement at all. That's also how isManualPayment (see
+// src/components/invoices/invoice-status-badge.tsx) tells these apart from
+// a normal invoice later.
+const manualPaymentInputSchema = z.object({
+  clientId: z.string().min(1),
+  applicationId: z.string().optional(),
+  paidAt: z.string().min(1, "Payment date is required"),
+  paymentMethod: z.string().min(1, "Payment method is required"),
+  amountPaid: z.coerce.number().positive("Amount received must be greater than 0"),
+  notes: z.string().optional(),
+  lineItems: z.array(lineItemSchema).min(1, "At least one line item is required"),
+});
+
+export async function recordManualPayment(input: z.infer<typeof manualPaymentInputSchema>) {
+  const session = await requireRole(MANAGE_ROLES);
+  const parsed = manualPaymentInputSchema.parse(input);
+  const total = subtotalOf(parsed.lineItems);
+
+  const invoice = await prisma.invoice.create({
+    data: {
+      clientId: parsed.clientId,
+      applicationId: parsed.applicationId || undefined,
+      notes: parsed.notes,
+      status: parsed.amountPaid >= total ? "PAID" : "PARTIALLY_PAID",
+      paidAt: new Date(parsed.paidAt),
+      paymentMethod: parsed.paymentMethod,
+      amountPaid: parsed.amountPaid,
+      total,
+      taxAmount: 0,
+      createdById: session.user.id,
+      lineItems: {
+        create: parsed.lineItems.map((li, index) => ({ ...li, sortOrder: index })),
+      },
+    },
+    include: invoiceInclude,
+  });
+
+  await recordAudit({
+    entityType: "Invoice",
+    entityId: invoice.id,
+    action: "record_manual_payment",
+    actorId: session.user.id,
+    newValue: parsed.paymentMethod,
+  });
+
+  revalidatePath("/invoices");
+  return invoice;
+}
+
+const additionalPaymentInputSchema = z.object({
+  amount: z.coerce.number().positive("Amount must be greater than 0"),
+  paidAt: z.string().min(1, "Payment date is required"),
+  paymentMethod: z.string().min(1, "Payment method is required"),
+});
+
+// Tops up a PARTIALLY_PAID manual record with another payment — the rest of
+// a balance coming in later (e.g. a deposit, then the remainder). Flips to
+// PAID once the running total covers the invoice; stays PARTIALLY_PAID
+// otherwise. Refuses anything that isn't itself a manual record already
+// mid-payment — a real Stripe-bound invoice's paid state comes from the
+// webhook, not this.
+export async function addManualPayment(id: string, input: z.infer<typeof additionalPaymentInputSchema>) {
+  const session = await requireRole(MANAGE_ROLES);
+  const parsed = additionalPaymentInputSchema.parse(input);
+
+  const before = await prisma.invoice.findUniqueOrThrow({ where: { id } });
+  if (before.stripeInvoiceId) throw new Error("This invoice isn't a manually-recorded payment");
+  if (before.status !== "PARTIALLY_PAID") throw new Error("This invoice isn't partially paid");
+
+  const amountPaid = (before.amountPaid ?? 0) + parsed.amount;
+  const total = before.total ?? 0;
+
+  const invoice = await prisma.invoice.update({
+    where: { id },
+    data: {
+      amountPaid,
+      paidAt: new Date(parsed.paidAt),
+      paymentMethod: parsed.paymentMethod,
+      status: amountPaid >= total ? "PAID" : "PARTIALLY_PAID",
+    },
+    include: invoiceInclude,
+  });
+
+  await recordAudit({
+    entityType: "Invoice",
+    entityId: id,
+    action: "record_manual_payment",
+    actorId: session.user.id,
+    newValue: `${parsed.paymentMethod} (+$${parsed.amount.toFixed(2)})`,
+  });
+
+  revalidatePath("/invoices");
+  revalidatePath(`/invoices/${id}`);
+  return invoice;
+}
+
 // --- Send ---------------------------------------------------------------
 
 // First send: creates the Stripe Customer (cached on Client), the Stripe

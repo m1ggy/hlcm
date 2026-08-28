@@ -4,7 +4,7 @@ import { getInvoice, getInvoiceAuditLog } from "@/lib/actions/invoices";
 import { displayInvoiceNumber } from "@/lib/invoice-format";
 import { listClients } from "@/lib/actions/clients";
 import { listApplications } from "@/lib/actions/applications";
-import { InvoiceStatusBadge, isInvoiceOverdue } from "@/components/invoices/invoice-status-badge";
+import { InvoiceStatusBadge, isInvoiceOverdue, isManualPayment } from "@/components/invoices/invoice-status-badge";
 import { InvoiceActions } from "@/components/invoices/invoice-actions";
 import { AuditLogPanel } from "@/components/applications/audit-log-panel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -56,6 +56,11 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-semibold">{number}</h1>
           <InvoiceStatusBadge status={isInvoiceOverdue(invoice) ? "OVERDUE" : invoice.status} />
+          {isManualPayment(invoice) && (
+            <span className="text-xs text-muted-foreground" title="Recorded manually — never went through Stripe">
+              Recorded manually
+            </span>
+          )}
         </div>
         <InvoiceActions
           invoice={invoice}
@@ -164,8 +169,23 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               )}
               {invoice.paidAt && (
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Paid</span>
+                  <span className="text-muted-foreground">{invoice.status === "PARTIALLY_PAID" ? "Last payment" : "Paid"}</span>
                   <span>{invoice.paidAt.toLocaleDateString()}</span>
+                </div>
+              )}
+              {invoice.paymentMethod && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Payment method</span>
+                  <span>{invoice.paymentMethod}</span>
+                </div>
+              )}
+              {isManualPayment(invoice) && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Amount received</span>
+                  <span>
+                    ${(invoice.amountPaid ?? 0).toFixed(2)}
+                    {invoice.status === "PARTIALLY_PAID" && ` of $${(invoice.total ?? 0).toFixed(2)}`}
+                  </span>
                 </div>
               )}
               <div className="flex justify-between">

@@ -105,64 +105,68 @@ enum InvoiceStatus {
   DRAFT
   SENT
   PAID
+  // Manually-recorded invoices only (see recordManualPayment /
+  // addManualPayment in src/lib/actions/invoices.ts) — a Stripe-bound
+  // invoice only ever reaches PAID in one webhook-driven step, never this.
+  PARTIALLY_PAID
   OVERDUE
   VOID
 }
 
 model User {
-  id           String   @id @default(cuid())
-  name         String
-  email        String   @unique
-  passwordHash String
-  role         Role     @default(STAFF)
-  mfaSecret    String?
-  mfaEnabled   Boolean  @default(false)
-  active       Boolean  @default(true)
-  hourlyRate   Float?
-  emailNotificationsEnabled Boolean @default(true)
+  id                        String   @id @default(cuid())
+  name                      String
+  email                     String   @unique
+  passwordHash              String
+  role                      Role     @default(STAFF)
+  mfaSecret                 String?
+  mfaEnabled                Boolean  @default(false)
+  active                    Boolean  @default(true)
+  hourlyRate                Float?
+  emailNotificationsEnabled Boolean  @default(true)
   // IANA zone id (e.g. "America/Chicago") — null means "use the browser's
   // own timezone" (the pre-existing behavior). Set from Account settings;
   // controls both how this user's own times are displayed and how a typed
   // time in a time-entry dialog is resolved to an instant, wherever this
   // user is the one reading/typing it (see src/lib/time-entries.ts).
-  timezone     String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  timezone                  String?
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
 
-  projectsCreated              Project[]                @relation("ProjectCreatedBy")
+  projectsCreated               Project[]               @relation("ProjectCreatedBy")
   clientsCreated                Client[]                @relation("ClientCreatedBy")
-  applicationsOwned             Application[]            @relation("ApplicationOwner")
-  applicationsManaging          Application[]            @relation("ApplicationManager")
-  mcoCredentialsAssigned        McoCredential[]          @relation("McoCredentialAssignee")
-  mcoCredentialsManaging        McoCredential[]          @relation("McoCredentialManager")
-  mcoCredentialsCreated         McoCredential[]          @relation("McoCredentialCreatedBy")
-  applicationsCreated           Application[]            @relation("ApplicationCreatedBy")
-  licenseTypeTemplatesCreated   LicenseTypeTemplate[]    @relation("LicenseTypeTemplateCreatedBy")
-  caseTypesCreated               CaseType[]               @relation("CaseTypeCreatedBy")
-  pipelineStagesCreated           PipelineStage[]          @relation("PipelineStageCreatedBy")
-  serviceTypesCreated              ServiceType[]            @relation("ServiceTypeCreatedBy")
-  clientCredentialsCreated         ClientCredential[]       @relation("ClientCredentialCreatedBy")
-  stageHistoryActed               StageHistory[]           @relation("StageHistoryActor")
-  checklistItemTemplatesCreated ChecklistItemTemplate[]  @relation("ChecklistItemTemplateCreatedBy")
-  taskAssignments                 TaskAssignee[]
-  taskReviews                     TaskReviewer[]
-  tasksCreated                    Task[]                   @relation("TaskCreatedBy")
-  auditLogs                       AuditLog[]
-  accessGrantsReceived            AccessGrant[]            @relation("AccessGrantUser")
-  accessGrantsGiven               AccessGrant[]            @relation("AccessGrantGrantedBy")
-  filesUploaded                   FileAsset[]              @relation("FileUploadedBy")
-  fileVersionsUploaded             FileVersion[]            @relation("FileVersionUploadedBy")
-  documentTemplatesCreated         DocumentTemplate[]       @relation("DocumentTemplateCreatedBy")
-  documentsGenerated               GeneratedDocument[]      @relation("GeneratedDocumentGeneratedBy")
-  signatureProfile                 SignatureProfile?
-  signatureEvents                  SignatureEvent[]         @relation("SignatureEventSignedBy")
-  notifications                    Notification[]
-  notesAuthored                    Note[]                   @relation("NoteAuthor")
-  timeEntries                      TimeEntry[]
-  wiseRecipient                    WiseRecipient?
-  wisePayoutsReceived              WiseTransaction[]        @relation("WiseTransactionPayee")
-  wisePayoutsInitiated             WiseTransaction[]        @relation("WiseTransactionInitiatedBy")
-  invoicesCreated                  Invoice[]                @relation("InvoiceCreatedBy")
+  applicationsOwned             Application[]           @relation("ApplicationOwner")
+  applicationsManaging          Application[]           @relation("ApplicationManager")
+  mcoCredentialsAssigned        McoCredential[]         @relation("McoCredentialAssignee")
+  mcoCredentialsManaging        McoCredential[]         @relation("McoCredentialManager")
+  mcoCredentialsCreated         McoCredential[]         @relation("McoCredentialCreatedBy")
+  applicationsCreated           Application[]           @relation("ApplicationCreatedBy")
+  licenseTypeTemplatesCreated   LicenseTypeTemplate[]   @relation("LicenseTypeTemplateCreatedBy")
+  caseTypesCreated              CaseType[]              @relation("CaseTypeCreatedBy")
+  pipelineStagesCreated         PipelineStage[]         @relation("PipelineStageCreatedBy")
+  serviceTypesCreated           ServiceType[]           @relation("ServiceTypeCreatedBy")
+  clientCredentialsCreated      ClientCredential[]      @relation("ClientCredentialCreatedBy")
+  stageHistoryActed             StageHistory[]          @relation("StageHistoryActor")
+  checklistItemTemplatesCreated ChecklistItemTemplate[] @relation("ChecklistItemTemplateCreatedBy")
+  taskAssignments               TaskAssignee[]
+  taskReviews                   TaskReviewer[]
+  tasksCreated                  Task[]                  @relation("TaskCreatedBy")
+  auditLogs                     AuditLog[]
+  accessGrantsReceived          AccessGrant[]           @relation("AccessGrantUser")
+  accessGrantsGiven             AccessGrant[]           @relation("AccessGrantGrantedBy")
+  filesUploaded                 FileAsset[]             @relation("FileUploadedBy")
+  fileVersionsUploaded          FileVersion[]           @relation("FileVersionUploadedBy")
+  documentTemplatesCreated      DocumentTemplate[]      @relation("DocumentTemplateCreatedBy")
+  documentsGenerated            GeneratedDocument[]     @relation("GeneratedDocumentGeneratedBy")
+  signatureProfile              SignatureProfile?
+  signatureEvents               SignatureEvent[]        @relation("SignatureEventSignedBy")
+  notifications                 Notification[]
+  notesAuthored                 Note[]                  @relation("NoteAuthor")
+  timeEntries                   TimeEntry[]
+  wiseRecipient                 WiseRecipient?
+  wisePayoutsReceived           WiseTransaction[]       @relation("WiseTransactionPayee")
+  wisePayoutsInitiated          WiseTransaction[]       @relation("WiseTransactionInitiatedBy")
+  invoicesCreated               Invoice[]               @relation("InvoiceCreatedBy")
 
   @@map("users")
 }
@@ -193,24 +197,24 @@ model WiseRecipient {
 // partway (status reflects how far it got) so a re-pay attempt for the same
 // period is a deliberate admin action, not something that silently double-pays.
 model WiseTransaction {
-  id              String   @id @default(cuid())
-  userId          String
-  user            User     @relation("WiseTransactionPayee", fields: [userId], references: [id])
-  initiatedById   String
-  initiatedBy     User     @relation("WiseTransactionInitiatedBy", fields: [initiatedById], references: [id])
-  periodFrom      DateTime
-  periodTo        DateTime
-  hours           Float
-  sourceCurrency  String
-  sourceAmount    Float
-  targetCurrency  String
-  targetAmount    Float
-  wiseQuoteId     String
-  wiseTransferId  String?
-  status          String
-  failureReason   String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation("WiseTransactionPayee", fields: [userId], references: [id])
+  initiatedById  String
+  initiatedBy    User     @relation("WiseTransactionInitiatedBy", fields: [initiatedById], references: [id])
+  periodFrom     DateTime
+  periodTo       DateTime
+  hours          Float
+  sourceCurrency String
+  sourceAmount   Float
+  targetCurrency String
+  targetAmount   Float
+  wiseQuoteId    String
+  wiseTransferId String?
+  status         String
+  failureReason  String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@index([userId])
   @@map("wise_transactions")
@@ -277,7 +281,7 @@ model ServiceType {
 }
 
 model Client {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   // A client can be worked under more than one project (e.g. a facility
   // that comes back for a new batch of renewals next year) — many-to-many
   // rather than a single owning project, so it's added once and linked
@@ -286,7 +290,7 @@ model Client {
   name        String
   contactInfo String?
   address     String?
-  active      Boolean  @default(true)
+  active      Boolean   @default(true)
 
   // Business details — the licensed entity itself.
   businessName  String?
@@ -321,11 +325,11 @@ model Client {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  applications    Application[]
-  notes           Note[]
-  mcoCredentials  McoCredential[]
-  credentials     ClientCredential[]
-  invoices        Invoice[]
+  applications   Application[]
+  notes          Note[]
+  mcoCredentials McoCredential[]
+  credentials    ClientCredential[]
+  invoices       Invoice[]
 
   @@map("clients")
 }
@@ -343,9 +347,9 @@ model LicenseTypeTemplate {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  applications            Application[]
-  checklistItemTemplates  ChecklistItemTemplate[]
-  documentTemplates       DocumentTemplate[]
+  applications           Application[]
+  checklistItemTemplates ChecklistItemTemplate[]
+  documentTemplates      DocumentTemplate[]
 
   @@map("license_type_templates")
 }
@@ -363,8 +367,8 @@ model CaseType {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  applications            Application[]
-  checklistItemTemplates  ChecklistItemTemplate[]
+  applications           Application[]
+  checklistItemTemplates ChecklistItemTemplate[]
 
   @@map("case_types")
 }
@@ -421,9 +425,9 @@ model PipelineStage {
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
 
-  applications    Application[]
-  mcoCredentials  McoCredential[]
-  stageHistory    StageHistory[]
+  applications   Application[]
+  mcoCredentials McoCredential[]
+  stageHistory   StageHistory[]
 
   @@unique([pipeline, abbrev])
   @@index([pipeline, sortOrder])
@@ -447,9 +451,9 @@ model Application {
 
   // Which stage list this case moves through and where it currently sits.
   // Nullable until the backfill script runs; required after.
-  pipeline   Pipeline?
-  stage      PipelineStage? @relation(fields: [stageId], references: [id])
-  stageId    String?
+  pipeline Pipeline?
+  stage    PipelineStage? @relation(fields: [stageId], references: [id])
+  stageId  String?
 
   licenseTypeTemplate   LicenseTypeTemplate? @relation(fields: [licenseTypeTemplateId], references: [id])
   licenseTypeTemplateId String?
@@ -459,8 +463,8 @@ model Application {
   // "Assigned VA" in the UI — the field/relation name predates the pipeline
   // spec's terminology, left as-is rather than churning every call site for
   // a label change.
-  assignedUser   User   @relation("ApplicationOwner", fields: [assignedUserId], references: [id])
-  assignedUserId String
+  assignedUser      User    @relation("ApplicationOwner", fields: [assignedUserId], references: [id])
+  assignedUserId    String
   assignedManager   User?   @relation("ApplicationManager", fields: [assignedManagerId], references: [id])
   assignedManagerId String?
 
@@ -478,14 +482,14 @@ model Application {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  phases            Phase[]
-  tasks             Task[]
-  accessGrants      AccessGrant[]
-  files             FileAsset[]
+  phases             Phase[]
+  tasks              Task[]
+  accessGrants       AccessGrant[]
+  files              FileAsset[]
   generatedDocuments GeneratedDocument[]
-  notes             Note[]
-  stageHistory      StageHistory[]
-  invoices          Invoice[]
+  notes              Note[]
+  stageHistory       StageHistory[]
+  invoices           Invoice[]
 
   @@map("applications")
 }
@@ -537,16 +541,16 @@ model McoCredential {
   effectiveDate          DateTime?
   recredentialingDueDate DateTime?
 
-  ballIsWith                       BallWith?
-  correctionRound                  Int?
-  deficiencyReceivedDate           DateTime?
-  deficiencyResponseDueDate        DateTime?
-  deficiencyResponseSubmittedDate  DateTime?
+  ballIsWith                      BallWith?
+  correctionRound                 Int?
+  deficiencyReceivedDate          DateTime?
+  deficiencyResponseDueDate       DateTime?
+  deficiencyResponseSubmittedDate DateTime?
 
   assignedUser      User?   @relation("McoCredentialAssignee", fields: [assignedUserId], references: [id])
-  assignedUserId     String?
-  assignedManager    User?   @relation("McoCredentialManager", fields: [assignedManagerId], references: [id])
-  assignedManagerId  String?
+  assignedUserId    String?
+  assignedManager   User?   @relation("McoCredentialManager", fields: [assignedManagerId], references: [id])
+  assignedManagerId String?
 
   createdBy   User     @relation("McoCredentialCreatedBy", fields: [createdById], references: [id])
   createdById String
@@ -610,7 +614,7 @@ model FileAsset {
 // Files with any SignatureEvent are excluded from new versions/reverts
 // (see assertNotSigned in files.ts) — a signed PDF's bytes must stay fixed.
 model FileVersion {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   fileAsset    FileAsset @relation(fields: [fileAssetId], references: [id], onDelete: Cascade)
   fileAssetId  String
   version      Int
@@ -618,9 +622,9 @@ model FileVersion {
   fileName     String
   mimeType     String
   sizeBytes    Int
-  uploadedBy   User     @relation("FileVersionUploadedBy", fields: [uploadedById], references: [id])
+  uploadedBy   User      @relation("FileVersionUploadedBy", fields: [uploadedById], references: [id])
   uploadedById String
-  createdAt    DateTime @default(now())
+  createdAt    DateTime  @default(now())
 
   @@unique([fileAssetId, version])
   @@map("file_versions")
@@ -630,18 +634,18 @@ model FileVersion {
 // to a license type when it only applies to that kind of case; null means it
 // shows up as an option for every Application.
 model DocumentTemplate {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
+  id                    String               @id @default(cuid())
+  name                  String
+  description           String?
   licenseTypeTemplate   LicenseTypeTemplate? @relation(fields: [licenseTypeTemplateId], references: [id])
   licenseTypeTemplateId String?
-  storageKey  String
-  fileName    String
-  active      Boolean  @default(true)
-  createdBy   User     @relation("DocumentTemplateCreatedBy", fields: [createdById], references: [id])
-  createdById String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  storageKey            String
+  fileName              String
+  active                Boolean              @default(true)
+  createdBy             User                 @relation("DocumentTemplateCreatedBy", fields: [createdById], references: [id])
+  createdById           String
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
 
   fields             DocumentTemplateField[]
   generatedDocuments GeneratedDocument[]
@@ -653,14 +657,14 @@ model DocumentTemplate {
 // Client/Application data at generation time (see src/lib/merge-fields.ts for
 // the fixed registry); CUSTOM fields prompt the VA for a value per generation.
 model DocumentTemplateField {
-  id         String      @id @default(cuid())
+  id         String           @id @default(cuid())
   template   DocumentTemplate @relation(fields: [templateId], references: [id])
   templateId String
   key        String
   label      String
-  source     FieldSource @default(CUSTOM)
+  source     FieldSource      @default(CUSTOM)
   autoField  String?
-  sortOrder  Int         @default(0)
+  sortOrder  Int              @default(0)
 
   @@unique([templateId, key])
   @@map("document_template_fields")
@@ -705,7 +709,7 @@ model Phase {
 // A checklist item / task. `applicationId` is null for standalone/recurring
 // ops tasks not tied to any case. `parentTaskId` set = this is a subtask.
 model Task {
-  id            String   @id @default(cuid())
+  id            String       @id @default(cuid())
   application   Application? @relation(fields: [applicationId], references: [id])
   applicationId String?
   phase         Phase?       @relation(fields: [phaseId], references: [id])
@@ -718,10 +722,10 @@ model Task {
   status      TaskStatus @default(NOT_STARTED)
   sortOrder   Int        @default(0)
 
-  dueDate         DateTime?
-  blockedReason   String?
-  recurrenceRule  String?
-  archived        Boolean  @default(false)
+  dueDate        DateTime?
+  blockedReason  String?
+  recurrenceRule String?
+  archived       Boolean   @default(false)
 
   assignees TaskAssignee[]
   reviewers TaskReviewer[]
@@ -798,10 +802,10 @@ model SignatureProfile {
 // Position stored as ratios of page size so it's independent of any one
 // viewer's pixel scale.
 model SignatureEvent {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   fileAsset   FileAsset @relation(fields: [fileAssetId], references: [id])
   fileAssetId String
-  signedBy    User     @relation("SignatureEventSignedBy", fields: [signedById], references: [id])
+  signedBy    User      @relation("SignatureEventSignedBy", fields: [signedById], references: [id])
   signedById  String
   pageNumber  Int
   xRatio      Float
@@ -809,7 +813,7 @@ model SignatureEvent {
   widthRatio  Float
   heightRatio Float
   ipAddress   String?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
 
   @@map("signature_events")
 }
@@ -912,12 +916,20 @@ model Invoice {
   hostedInvoiceUrl    String?
   invoicePdfUrl       String?
 
-  sentAt      DateTime?
-  paidAt      DateTime?
-  createdBy   User      @relation("InvoiceCreatedBy", fields: [createdById], references: [id])
-  createdById String
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  sentAt        DateTime?
+  paidAt        DateTime?
+  // Set only by recordManualPayment/addManualPayment — a transaction paid
+  // before any invoice existed (cash/check/wire), recorded with no Stripe
+  // involvement at all. stripeInvoiceId staying null on a PAID or
+  // PARTIALLY_PAID row is what marks it as one of these (see
+  // isManualPayment in invoice-status-badge.tsx). amountPaid is the running
+  // total actually received so far — only meaningful for these rows.
+  paymentMethod String?
+  amountPaid    Float?    @default(0)
+  createdBy     User      @relation("InvoiceCreatedBy", fields: [createdById], references: [id])
+  createdById   String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   lineItems InvoiceLineItem[]
 
