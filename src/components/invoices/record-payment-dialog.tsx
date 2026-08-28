@@ -20,7 +20,12 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { InvoiceLineItemsEditor, emptyLineItem } from "./invoice-line-items-editor";
 import { PaymentMethodSelect } from "./payment-method-select";
 
-const NONE = "__none__";
+// One combobox covers both "just a client, no case" and "this specific
+// case" — prefixing the key is simpler than a parallel id/type pair to
+// carry through state, and keeps the two kinds of option unambiguous even
+// though a client id and an application id could otherwise collide.
+const CLIENT_PREFIX = "client:";
+const CASE_PREFIX = "case:";
 
 type ClientOption = { id: string; name: string };
 type ApplicationOption = { id: string; name: string; clientId: string };
@@ -46,8 +51,7 @@ export function RecordPaymentDialog({
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
-  const [clientId, setClientId] = useState(clients[0]?.id ?? "");
-  const [applicationId, setApplicationId] = useState(NONE);
+  const [selection, setSelection] = useState(clients[0] ? `${CLIENT_PREFIX}${clients[0].id}` : "");
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [lineItems, setLineItems] = useState([emptyLineItem()]);
   const [paidAt, setPaidAt] = useState(todayInputValue());
@@ -59,13 +63,25 @@ export function RecordPaymentDialog({
   // silently overwritten as line items change.
   const [amountOverride, setAmountOverride] = useState<string | null>(null);
 
-  const clientApplications = applications.filter((a) => a.clientId === clientId);
+  const selectedCase = selection.startsWith(CASE_PREFIX)
+    ? applications.find((a) => a.id === selection.slice(CASE_PREFIX.length))
+    : undefined;
+  const clientId = selectedCase ? selectedCase.clientId : selection.slice(CLIENT_PREFIX.length);
+  const applicationId = selectedCase?.id;
+
+  const clientNameById = new Map(clients.map((c) => [c.id, c.name]));
+  const selectionItems: Record<string, string> = {
+    ...Object.fromEntries(clients.map((c) => [`${CLIENT_PREFIX}${c.id}`, c.name])),
+    ...Object.fromEntries(
+      applications.map((a) => [`${CASE_PREFIX}${a.id}`, `${a.name} — ${clientNameById.get(a.clientId) ?? "Unknown client"}`])
+    ),
+  };
+
   const subtotal = lineItems.reduce((sum, li) => sum + li.quantity * li.unitPrice, 0);
   const amountPaid = amountOverride ?? subtotal.toFixed(2);
 
   function reset() {
-    setClientId(clients[0]?.id ?? "");
-    setApplicationId(NONE);
+    setSelection(clients[0] ? `${CLIENT_PREFIX}${clients[0].id}` : "");
     setInvoiceNumber("");
     setLineItems([emptyLineItem()]);
     setPaidAt(todayInputValue());
@@ -76,7 +92,7 @@ export function RecordPaymentDialog({
 
   function handleSubmit() {
     if (!clientId) {
-      toast.error("Pick a client");
+      toast.error("Pick a client or case");
       return;
     }
     const cleanItems = lineItems.filter((li) => li.description.trim().length > 0);
@@ -98,7 +114,7 @@ export function RecordPaymentDialog({
       try {
         await recordManualPayment({
           clientId,
-          applicationId: applicationId === NONE ? undefined : applicationId,
+          applicationId,
           invoiceNumber: invoiceNumber.trim() || undefined,
           paidAt,
           paymentMethod: paymentMethod.trim(),
@@ -137,28 +153,14 @@ export function RecordPaymentDialog({
             anything — it&apos;s logged straight in as paid.
           </p>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <Label>Client</Label>
-              <SearchableSelect
-                items={Object.fromEntries(clients.map((c) => [c.id, c.name]))}
-                value={clientId || null}
-                onValueChange={(v) => {
-                  setClientId(v ?? clientId);
-                  setApplicationId(NONE);
-                }}
-                searchPlaceholder="Search clients..."
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Case (optional)</Label>
-              <SearchableSelect
-                items={{ [NONE]: "None", ...Object.fromEntries(clientApplications.map((a) => [a.id, a.name])) }}
-                value={applicationId}
-                onValueChange={(v) => setApplicationId(v ?? NONE)}
-                searchPlaceholder="Search cases..."
-              />
-            </div>
+          <div className="space-y-1">
+            <Label>Client / case</Label>
+            <SearchableSelect
+              items={selectionItems}
+              value={selection || null}
+              onValueChange={(v) => setSelection(v ?? selection)}
+              searchPlaceholder="Search clients or cases..."
+            />
           </div>
 
           <div className="space-y-1">
