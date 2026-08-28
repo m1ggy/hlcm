@@ -44,10 +44,16 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
     window.localStorage.setItem(FILTER_KEY, next);
   }
 
-  const filtered = invoices.filter((invoice) => filter === "all" || invoice.status === filter);
+  // "All" follows the same hide-by-default pattern as archived clients/
+  // projects — a voided invoice is done, nothing left to act on, and
+  // shouldn't clutter the main list. It's still one click away via its own
+  // "Void" chip, same as archived items get their own explicit view.
+  const filtered = invoices.filter((invoice) =>
+    filter === "all" ? invoice.status !== "VOID" : invoice.status === filter
+  );
 
   const chips: { key: Filter; label: string; count: number }[] = [
-    { key: "all", label: "All", count: invoices.length },
+    { key: "all", label: "All", count: invoices.filter((i) => i.status !== "VOID").length },
     ...(Object.keys(INVOICE_STATUS_LABELS) as InvoiceStatusValue[]).map((s) => ({
       key: s,
       label: INVOICE_STATUS_LABELS[s],
