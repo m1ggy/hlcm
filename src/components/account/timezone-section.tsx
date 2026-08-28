@@ -6,13 +6,14 @@ import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { updateTimezone } from "@/lib/actions/account";
-import { browserTimezone, timezoneLabel } from "@/lib/time-entries";
+import { DEFAULT_TIMEZONE, effectiveTimezone, timezoneLabel } from "@/lib/time-entries";
 
 // Controls how this user's own times display everywhere in the time-clock
 // area (My Time, the all-users report, the timesheet PDF) and how a typed
 // time is resolved when they add/edit an entry (see src/lib/time-entries.ts's
-// effectiveTimezone). null means "not set" — every reader falls back to the
-// browser's own zone, same as before this setting existed.
+// effectiveTimezone). null means "not set" — every reader falls back to
+// DEFAULT_TIMEZONE (the company's home base), so a self clock-in and a
+// manually-added entry land on the same hours by default.
 export function TimezoneSection({ initialTimezone }: { initialTimezone: string | null }) {
   const [timezone, setTimezone] = useState(initialTimezone);
   const [isPending, startTransition] = useTransition();
@@ -43,19 +44,19 @@ export function TimezoneSection({ initialTimezone }: { initialTimezone: string |
         items={items}
         value={timezone}
         onValueChange={save}
-        placeholder="Use my browser's timezone"
+        placeholder={`Use the default (${DEFAULT_TIMEZONE})`}
         searchPlaceholder="Search timezones..."
         disabled={isPending}
       />
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs text-muted-foreground">
-          Currently: {timezoneLabel(timezone || browserTimezone())}
-          {!timezone && " (from your browser)"}
+          Currently: {timezoneLabel(effectiveTimezone(timezone))}
+          {!timezone && " (default)"}
         </p>
         {timezone && (
           <Button type="button" variant="ghost" size="xs" disabled={isPending} onClick={() => save(null)}>
             {isPending ? <Loader2 className="size-3 animate-spin" /> : null}
-            Reset to browser default
+            Reset to default
           </Button>
         )}
       </div>

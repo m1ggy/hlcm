@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Pencil, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { updateTimeEntry } from "@/lib/actions/time-entries";
-import { toDatetimeLocalValue, browserTimezone, zonedInputToISOString, timezoneLabel } from "@/lib/time-entries";
+import { toDatetimeLocalValue, effectiveTimezone, zonedInputToISOString, timezoneLabel } from "@/lib/time-entries";
 
 // Admin-only correction for an existing entry (wrong clock in/out time on
 // someone else's session). Leaving "Clock out" blank re-opens the entry —
@@ -33,15 +33,10 @@ export function EditTimeEntryDialog({
   const [clockIn, setClockIn] = useState("");
   const [clockOut, setClockOut] = useState("");
   const [isPending, startTransition] = useTransition();
-  // Falls back to the browser's own zone only when no Account setting is
-  // saved — resolved after mount, since Intl would report the server's
-  // timezone during SSR, mismatching the browser's on hydration.
-  const [timezone, setTimezone] = useState(accountTimezone ?? "UTC");
-  useEffect(() => {
-    if (accountTimezone) return;
-    const id = setTimeout(() => setTimezone(browserTimezone()), 0);
-    return () => clearTimeout(id);
-  }, [accountTimezone]);
+  // Falls back to DEFAULT_TIMEZONE only when no Account setting is saved —
+  // a plain server-provided string either way, so safe to resolve directly
+  // (no SSR/hydration mismatch risk, unlike a browser-detected fallback).
+  const timezone = effectiveTimezone(accountTimezone);
 
   function handleOpenChange(next: boolean) {
     setOpen(next);

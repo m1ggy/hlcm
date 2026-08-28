@@ -30,8 +30,16 @@ function pad(n: number) {
   return String(n).padStart(2, "0");
 }
 
-/** The browser's own IANA zone (e.g. "America/Chicago") — the fallback used
- * everywhere below when a user hasn't set an explicit one in Account settings. */
+/** Company home base — the fallback for anyone who hasn't set their own
+ * zone in Account settings. Everyone defaults to the same zone (rather
+ * than each browser's own auto-detected one) so a self clock-in and a
+ * manually-added entry land on the same wall-clock hours by default. */
+export const DEFAULT_TIMEZONE = "America/Chicago";
+
+/** The browser's own IANA zone (e.g. "America/Chicago") — kept as an
+ * option for anyone who wants to explicitly set their Account timezone
+ * to "wherever I am", but no longer the fallback when unset (see
+ * DEFAULT_TIMEZONE). */
 export function browserTimezone(): string {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -40,10 +48,10 @@ export function browserTimezone(): string {
   }
 }
 
-/** `account.timezone` if set, else the browser's own — the single place
+/** `account.timezone` if set, else DEFAULT_TIMEZONE — the single place
  * every time-clock display/input resolves "which zone am I working in". */
 export function effectiveTimezone(accountTimezone: string | null | undefined): string {
-  return accountTimezone || browserTimezone();
+  return accountTimezone || DEFAULT_TIMEZONE;
 }
 
 /**
@@ -98,7 +106,7 @@ export function toDatetimeLocalValue(date: Date, timeZone: string): string {
 
 /** "yyyy-MM-dd" for `date`'s wall-clock reading in `timeZone` — same idea
  * as `toDatetimeLocalValue`, for a plain `date` input. */
-export function toDateInputValue(date: Date, timeZone: string = browserTimezone()): string {
+export function toDateInputValue(date: Date, timeZone: string = DEFAULT_TIMEZONE): string {
   return toDatetimeLocalValue(date, timeZone).split("T")[0];
 }
 
@@ -158,7 +166,7 @@ function zonedYMD(date: Date, timeZone: string) {
 }
 
 /** 1st–15th, or 16th–end of month, whichever contains "today" in `timeZone` — a biweekly pay period. */
-export function currentPayPeriodRange(timeZone: string = browserTimezone(), now = new Date()) {
+export function currentPayPeriodRange(timeZone: string = DEFAULT_TIMEZONE, now = new Date()) {
   const { y, mo, d } = zonedYMD(now, timeZone);
   const firstHalf = d <= 15;
   const from = new Date(Date.UTC(y, mo - 1, firstHalf ? 1 : 16));
@@ -167,7 +175,7 @@ export function currentPayPeriodRange(timeZone: string = browserTimezone(), now 
 }
 
 /** 1st through the last day of "this month" in `timeZone`. */
-export function currentMonthRange(timeZone: string = browserTimezone(), now = new Date()) {
+export function currentMonthRange(timeZone: string = DEFAULT_TIMEZONE, now = new Date()) {
   const { y, mo } = zonedYMD(now, timeZone);
   const from = new Date(Date.UTC(y, mo - 1, 1));
   const to = new Date(Date.UTC(y, mo, 0));

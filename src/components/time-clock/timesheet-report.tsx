@@ -18,7 +18,7 @@ import {
 import { getTimesheetTotals, listTimeEntries, deleteTimeEntry } from "@/lib/actions/time-entries";
 import { payUserViaWise } from "@/lib/actions/wise";
 import {
-  browserTimezone,
+  effectiveTimezone,
   currentMonthRange,
   currentPayPeriodRange,
   formatDuration,
@@ -51,7 +51,7 @@ export function TimesheetReport({
   accountTimezone: string | null;
   isAdmin?: boolean;
 }) {
-  const timezone = accountTimezone ?? browserTimezone();
+  const timezone = effectiveTimezone(accountTimezone);
   const [userId, setUserId] = useState("all");
   const [from, setFrom] = useState(() => currentMonthRange(timezone).from);
   const [to, setTo] = useState(() => toDateInputValue(new Date(), timezone));
