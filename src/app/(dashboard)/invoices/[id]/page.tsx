@@ -4,7 +4,7 @@ import { getInvoice, getInvoiceAuditLog } from "@/lib/actions/invoices";
 import { displayInvoiceNumber } from "@/lib/invoice-format";
 import { listClients } from "@/lib/actions/clients";
 import { listApplications } from "@/lib/actions/applications";
-import { InvoiceStatusBadge, isInvoiceOverdue, isManualPayment } from "@/components/invoices/invoice-status-badge";
+import { InvoiceStatusBadge, isInvoiceOverdue, isManualInvoice } from "@/components/invoices/invoice-status-badge";
 import { InvoiceActions } from "@/components/invoices/invoice-actions";
 import { AuditLogPanel } from "@/components/applications/audit-log-panel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -56,8 +56,8 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-semibold">{number}</h1>
           <InvoiceStatusBadge status={isInvoiceOverdue(invoice) ? "OVERDUE" : invoice.status} />
-          {isManualPayment(invoice) && (
-            <span className="text-xs text-muted-foreground" title="Recorded manually — never went through Stripe">
+          {isManualInvoice(invoice) && (
+            <span className="text-xs text-muted-foreground" title="Recorded manually — not billed through an online payment link">
               Recorded manually
             </span>
           )}
@@ -80,7 +80,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                 <thead>
                   <tr className="border-b text-left text-muted-foreground">
                     <th className="pb-2 font-normal">Description</th>
-                    <th className="pb-2 font-normal">Qty</th>
+                    <th className="pb-2 font-normal">Quantity</th>
                     <th className="pb-2 text-right font-normal">Unit Price</th>
                     <th className="pb-2 text-right font-normal">Amount</th>
                   </tr>
@@ -179,12 +179,12 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                   <span>{invoice.paymentMethod}</span>
                 </div>
               )}
-              {isManualPayment(invoice) && (
+              {isManualInvoice(invoice) && (
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Amount received</span>
                   <span>
                     ${(invoice.amountPaid ?? 0).toFixed(2)}
-                    {invoice.status === "PARTIALLY_PAID" && ` of $${(invoice.total ?? 0).toFixed(2)}`}
+                    {invoice.status !== "PAID" && ` of $${(invoice.total ?? 0).toFixed(2)}`}
                   </span>
                 </div>
               )}

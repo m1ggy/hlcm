@@ -33,8 +33,11 @@ export default async function InvoicesPage() {
               automatically once the client pays online — no need to mark it by hand unless they paid another way.
             </p>
             <p>
-              Already collected a payment outside Stripe before any invoice existed? Use <strong>Record Payment</strong>{" "}
-              instead — it logs it as paid (or partially paid) with no draft, no Send, no Stripe involvement at all.
+              Billing without an online payment link? Use <strong>Record Payment</strong> instead — no draft, no
+              Send step. It creates the invoice awaiting payment; record what actually comes in (in full or
+              partial) from the invoice&apos;s own page, whenever it arrives. A PDF is available to download or
+              email the client any time, and a thank-you email with the invoice attached goes out automatically
+              once it&apos;s paid in full.
             </p>
           </PageInfoButton>
         </div>

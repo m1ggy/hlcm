@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { InvoiceStatusBadge, INVOICE_STATUS_LABELS, InvoiceStatusValue, isInvoiceOverdue, isManualPayment } from "./invoice-status-badge";
+import { InvoiceStatusBadge, INVOICE_STATUS_LABELS, InvoiceStatusValue, isInvoiceOverdue, isManualInvoice } from "./invoice-status-badge";
 import { displayInvoiceNumber } from "@/lib/invoice-format";
 import {
   Table,
@@ -103,8 +103,8 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
               <TableCell>
                 <div className="flex items-center gap-1.5">
                   <InvoiceStatusBadge status={isInvoiceOverdue(invoice) ? "OVERDUE" : invoice.status} />
-                  {isManualPayment(invoice) && (
-                    <span className="text-xs text-muted-foreground" title="Recorded manually — never went through Stripe">
+                  {isManualInvoice(invoice) && (
+                    <span className="text-xs text-muted-foreground" title="Recorded manually — not billed through an online payment link">
                       (manual)
                     </span>
                   )}

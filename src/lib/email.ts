@@ -98,7 +98,13 @@ export function renderEmailLayout(opts: {
 </html>`;
 }
 
-export async function sendEmail(params: { to: string; subject: string; html: string }) {
+export async function sendEmail(params: {
+  to: string;
+  subject: string;
+  html: string;
+  /** e.g. an invoice PDF — `content` is raw bytes, base64-encoded here, not by the caller. */
+  attachments?: { filename: string; content: Uint8Array }[];
+}) {
   const res = await fetch(`${API_BASE}/emails`, {
     method: "POST",
     headers: {
@@ -110,6 +116,10 @@ export async function sendEmail(params: { to: string; subject: string; html: str
       to: params.to,
       subject: params.subject,
       html: params.html,
+      attachments: params.attachments?.map((a) => ({
+        filename: a.filename,
+        content: Buffer.from(a.content).toString("base64"),
+      })),
     }),
   });
   const text = await res.text();

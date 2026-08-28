@@ -38,12 +38,14 @@ export function isInvoiceOverdue(invoice: { status: string; dueDate: Date | stri
   return due.getTime() < Date.now();
 }
 
-// A PAID or PARTIALLY_PAID invoice that never got a Stripe invoice — the
-// only way that combination happens is recordManualPayment/addManualPayment
-// (see src/lib/actions/invoices.ts), since every other path to either status
-// goes through Stripe first.
-export function isManualPayment(invoice: { status: string; stripeInvoiceId: string | null }) {
-  return !invoice.stripeInvoiceId && (invoice.status === "PAID" || invoice.status === "PARTIALLY_PAID");
+// A non-DRAFT invoice that never got a Stripe invoice — the only way that
+// combination happens is createManualInvoice/addManualPayment (see
+// src/lib/actions/invoices.ts): a Stripe-bound invoice only ever leaves
+// DRAFT in the same step that sets stripeInvoiceId (see sendInvoice), and
+// never clears it again afterward, so DRAFT is the only status a *real*
+// Stripe invoice can have alongside a null stripeInvoiceId.
+export function isManualInvoice(invoice: { status: string; stripeInvoiceId: string | null }) {
+  return !invoice.stripeInvoiceId && invoice.status !== "DRAFT";
 }
 
 export function InvoiceStatusBadge({ status }: { status: string }) {

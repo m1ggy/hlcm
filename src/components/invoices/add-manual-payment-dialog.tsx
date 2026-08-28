@@ -22,8 +22,11 @@ function todayInputValue() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-// Tops up a Partially Paid manual record with the next installment —
-// flips to Paid on its own once the running total covers the invoice.
+// Records a payment against a manual invoice — the first one (bringing it
+// off Sent/unpaid) or another installment on a Partially Paid balance,
+// same dialog either way. Flips to Paid on its own once the running total
+// covers the invoice (which fires the thank-you email — see
+// addManualPayment in src/lib/actions/invoices.ts).
 export function AddManualPaymentDialog({ invoiceId, remaining }: { invoiceId: string; remaining: number }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -56,10 +59,10 @@ export function AddManualPaymentDialog({ invoiceId, remaining }: { invoiceId: st
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button variant="outline"><PlusCircle className="size-3.5" /> Record additional payment</Button>} />
+      <DialogTrigger render={<Button variant="outline"><PlusCircle className="size-3.5" /> Record payment</Button>} />
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>Record additional payment</DialogTitle>
+          <DialogTitle>Record payment</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <p className="text-xs text-muted-foreground">${remaining.toFixed(2)} still owed on this invoice.</p>
