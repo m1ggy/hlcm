@@ -631,6 +631,14 @@
         <span class="dot">i</span>
         <span>An invoice's number (like <code>V4TCU4XB-0002</code>) is assigned by Stripe once it's sent — a draft shows a placeholder like <code>DRAFT-00003</code> until then.</span>
       </div>
+      <div class="tip">
+        <span class="dot">i</span>
+        <span>Send fails right away if the client is missing a business or owner email, or a billing state and ZIP (Stripe Tax needs those to calculate tax) — the error names exactly which one. Fix it from the client's own page, or fill it in up front next time from <strong>New Client</strong>, which now asks for all of it at once.</span>
+      </div>
+      <div class="tip">
+        <span class="dot">i</span>
+        <span>The invoice email comes straight from Stripe, not from HCLM. If a client says they never got it, that invoice's own activity feed in the Stripe dashboard shows exactly which address it went to and whether it bounced — check there before assuming it's a bug, and have them check spam too.</span>
+      </div>
     </section>
 
 
