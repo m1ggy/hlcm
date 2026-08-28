@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { sendEmail, getAppUrl } from "@/lib/email";
+import { sendEmail, renderEmailLayout, getAppUrl } from "@/lib/email";
 import { TASK_CLOSED_STATUSES } from "@/lib/task-status";
 
 const DUE_SOON_WINDOW_DAYS = 3;
@@ -7,7 +7,7 @@ const DUE_SOON_WINDOW_DAYS = 3;
 function formatTask(task: { label: string; dueDate: Date | null; application: { name: string } | null }) {
   const scope = task.application ? task.application.name : "Standalone task";
   const due = task.dueDate ? task.dueDate.toLocaleDateString() : "";
-  return `<li>${scope} — ${task.label} (due ${due})</li>`;
+  return `<li style="margin:4px 0"><strong>${scope}</strong> — ${task.label} <span style="color:#6b7280">(due ${due})</span></li>`;
 }
 
 type DigestTask = { label: string; dueDate: Date | null; application: { name: string } | null };
@@ -48,17 +48,28 @@ export async function sendDueDateDigests() {
 
     const overdue = userTasks.filter((t) => t.dueDate && t.dueDate.getTime() < now.getTime());
     const dueSoon = userTasks.filter((t) => !overdue.includes(t));
+    const total = overdue.length + dueSoon.length;
 
     const sections = [
-      overdue.length ? `<h2>Overdue (${overdue.length})</h2><ul>${overdue.map(formatTask).join("")}</ul>` : "",
-      dueSoon.length ? `<h2>Due soon (${dueSoon.length})</h2><ul>${dueSoon.map(formatTask).join("")}</ul>` : "",
+      overdue.length
+        ? `<p style="margin:0 0 4px;font-weight:600;color:#b91c1c">Overdue (${overdue.length})</p><ul style="margin:0 0 16px;padding-left:18px">${overdue.map(formatTask).join("")}</ul>`
+        : "",
+      dueSoon.length
+        ? `<p style="margin:0 0 4px;font-weight:600;color:#1f2937">Due in the next ${DUE_SOON_WINDOW_DAYS} days (${dueSoon.length})</p><ul style="margin:0;padding-left:18px">${dueSoon.map(formatTask).join("")}</ul>`
+        : "",
     ].join("");
 
     try {
       await sendEmail({
         to: user.email,
-        subject: `${overdue.length + dueSoon.length} task(s) need your attention`,
-        html: `${sections}<p><a href="${getAppUrl()}/tasks">View your tasks</a></p>`,
+        subject: `${total} task${total === 1 ? "" : "s"} need${total === 1 ? "s" : ""} your attention`,
+        html: renderEmailLayout({
+          heading: "Daily task digest",
+          bodyHtml: sections,
+          ctaLabel: "View your tasks",
+          ctaUrl: `${getAppUrl()}/tasks`,
+          preheader: `${total} task${total === 1 ? "" : "s"} due or overdue`,
+        }),
       });
     } catch (error) {
       console.error("Failed to send due-date digest:", error);
