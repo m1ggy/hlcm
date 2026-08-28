@@ -48,6 +48,7 @@ export function RecordPaymentDialog({
   const [isPending, startTransition] = useTransition();
   const [clientId, setClientId] = useState(clients[0]?.id ?? "");
   const [applicationId, setApplicationId] = useState(NONE);
+  const [invoiceNumber, setInvoiceNumber] = useState("");
   const [lineItems, setLineItems] = useState([emptyLineItem()]);
   const [paidAt, setPaidAt] = useState(todayInputValue());
   const [paymentMethod, setPaymentMethod] = useState("");
@@ -65,6 +66,7 @@ export function RecordPaymentDialog({
   function reset() {
     setClientId(clients[0]?.id ?? "");
     setApplicationId(NONE);
+    setInvoiceNumber("");
     setLineItems([emptyLineItem()]);
     setPaidAt(todayInputValue());
     setPaymentMethod("");
@@ -97,6 +99,7 @@ export function RecordPaymentDialog({
         await recordManualPayment({
           clientId,
           applicationId: applicationId === NONE ? undefined : applicationId,
+          invoiceNumber: invoiceNumber.trim() || undefined,
           paidAt,
           paymentMethod: paymentMethod.trim(),
           amountPaid: amount,
@@ -156,6 +159,17 @@ export function RecordPaymentDialog({
                 searchPlaceholder="Search cases..."
               />
             </div>
+          </div>
+
+          <div className="space-y-1">
+            <Label htmlFor="invoiceNumber">Invoice number (optional)</Label>
+            <Input
+              id="invoiceNumber"
+              value={invoiceNumber}
+              onChange={(e) => setInvoiceNumber(e.target.value)}
+              placeholder="Leave blank to show a placeholder like DRAFT-00007"
+              className="max-w-56"
+            />
           </div>
 
           <InvoiceLineItemsEditor lineItems={lineItems} onChange={setLineItems} />

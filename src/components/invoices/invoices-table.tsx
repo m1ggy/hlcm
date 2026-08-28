@@ -18,6 +18,7 @@ type InvoiceRow = {
   seq: number;
   stripeInvoiceId: string | null;
   stripeInvoiceNumber: string | null;
+  invoiceNumber: string | null;
   status: string;
   total: number | null;
   dueDate: Date | null;

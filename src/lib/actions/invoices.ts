@@ -193,6 +193,7 @@ export async function markInvoicePaid(id: string) {
 const manualPaymentInputSchema = z.object({
   clientId: z.string().min(1),
   applicationId: z.string().optional(),
+  invoiceNumber: z.string().optional(),
   paidAt: z.string().min(1, "Payment date is required"),
   paymentMethod: z.string().min(1, "Payment method is required"),
   amountPaid: z.coerce.number().positive("Amount received must be greater than 0"),
@@ -200,29 +201,44 @@ const manualPaymentInputSchema = z.object({
   lineItems: z.array(lineItemSchema).min(1, "At least one line item is required"),
 });
 
+// A duplicate typed invoiceNumber is the one way this insert can fail on a
+// constraint rather than validation — surfaced as a plain, readable error
+// instead of Prisma's raw P2002 (there's no existing convention for this in
+// the codebase to follow, so this is deliberately duck-typed on `.code`
+// rather than importing Prisma's error class).
+function friendlyInvoiceNumberError(error: unknown): never {
+  if (error && typeof error === "object" && "code" in error && error.code === "P2002") {
+    throw new Error("That invoice number is already in use on another invoice");
+  }
+  throw error;
+}
+
 export async function recordManualPayment(input: z.infer<typeof manualPaymentInputSchema>) {
   const session = await requireRole(MANAGE_ROLES);
   const parsed = manualPaymentInputSchema.parse(input);
   const total = subtotalOf(parsed.lineItems);
 
-  const invoice = await prisma.invoice.create({
-    data: {
-      clientId: parsed.clientId,
-      applicationId: parsed.applicationId || undefined,
-      notes: parsed.notes,
-      status: parsed.amountPaid >= total ? "PAID" : "PARTIALLY_PAID",
-      paidAt: new Date(parsed.paidAt),
-      paymentMethod: parsed.paymentMethod,
-      amountPaid: parsed.amountPaid,
-      total,
-      taxAmount: 0,
-      createdById: session.user.id,
-      lineItems: {
-        create: parsed.lineItems.map((li, index) => ({ ...li, sortOrder: index })),
+  const invoice = await prisma.invoice
+    .create({
+      data: {
+        clientId: parsed.clientId,
+        applicationId: parsed.applicationId || undefined,
+        invoiceNumber: parsed.invoiceNumber || undefined,
+        notes: parsed.notes,
+        status: parsed.amountPaid >= total ? "PAID" : "PARTIALLY_PAID",
+        paidAt: new Date(parsed.paidAt),
+        paymentMethod: parsed.paymentMethod,
+        amountPaid: parsed.amountPaid,
+        total,
+        taxAmount: 0,
+        createdById: session.user.id,
+        lineItems: {
+          create: parsed.lineItems.map((li, index) => ({ ...li, sortOrder: index })),
+        },
       },
-    },
-    include: invoiceInclude,
-  });
+      include: invoiceInclude,
+    })
+    .catch(friendlyInvoiceNumberError);
 
   await recordAudit({
     entityType: "Invoice",

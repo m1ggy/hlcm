@@ -916,6 +916,13 @@ model Invoice {
   hostedInvoiceUrl    String?
   invoicePdfUrl       String?
 
+  // A manually-typed number for a recordManualPayment invoice — lets it
+  // match an existing paper receipt/QuickBooks number instead of showing
+  // the generic DRAFT-##### placeholder (see displayInvoiceNumber in
+  // src/lib/invoice-format.ts). @unique still allows any number of nulls;
+  // only actual duplicate typed numbers collide.
+  invoiceNumber String? @unique
+
   sentAt        DateTime?
   paidAt        DateTime?
   // Set only by recordManualPayment/addManualPayment — a transaction paid
