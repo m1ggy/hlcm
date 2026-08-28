@@ -113,7 +113,7 @@ export function RecordPaymentDialog({
         if (!next) reset();
       }}
     >
-      <DialogTrigger render={<Button variant="outline"><HandCoins className="size-3.5" /> Record Payment</Button>} />
+      <DialogTrigger render={<Button variant="outline"><HandCoins className="size-3.5" /> New Manual Invoice</Button>} />
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>New invoice</DialogTitle>
