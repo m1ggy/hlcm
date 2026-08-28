@@ -18,6 +18,10 @@ export async function GET(request: NextRequest) {
     const userId = params.get("userId") ?? undefined;
     const fromParam = params.get("from");
     const toParam = params.get("to");
+    // The browser passes its (or the viewer's saved Account) timezone
+    // explicitly — this route runs in Node, which has no idea which
+    // timezone the person downloading the PDF is actually in.
+    const timeZone = params.get("tz") || "UTC";
     if (!fromParam || !toParam) {
       return NextResponse.json({ error: "from and to are required" }, { status: 400 });
     }
@@ -36,7 +40,7 @@ export async function GET(request: NextRequest) {
       entriesByUser.set(entry.userId, list);
     }
 
-    const rangeLabel = `${from.toLocaleDateString()} – ${to.toLocaleDateString()}`;
+    const rangeLabel = `${from.toLocaleDateString(undefined, { timeZone })} – ${to.toLocaleDateString(undefined, { timeZone })}`;
 
     const pdfDoc = await PDFDocument.create();
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -56,7 +60,7 @@ export async function GET(request: NextRequest) {
 
     page.drawText("Timesheet Report", { x: MARGIN, y, size: 16, font: boldFont });
     y -= 20;
-    page.drawText(`${rangeLabel} · Generated ${new Date().toLocaleString()}`, {
+    page.drawText(`${rangeLabel} · Generated ${new Date().toLocaleString(undefined, { timeZone })}`, {
       x: MARGIN,
       y,
       size: 9,
@@ -102,9 +106,11 @@ export async function GET(request: NextRequest) {
         ensureRoom(1);
         const hours = entry.clockOut ? hoursBetween(entry.clockIn, entry.clockOut) : null;
         const row = [
-          entry.clockIn.toLocaleDateString(),
-          entry.clockIn.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          entry.clockOut ? entry.clockOut.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—",
+          entry.clockIn.toLocaleDateString(undefined, { timeZone }),
+          entry.clockIn.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZone }),
+          entry.clockOut
+            ? entry.clockOut.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZone })
+            : "—",
           hours !== null ? formatDuration(hours) : "in progress",
         ];
         let rx = MARGIN;

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FolderKanban, Users, ClipboardList, UserCog, CheckSquare, Clock, Receipt } from "lucide-react";
+import { FolderKanban, Users, ClipboardList, UserCog, CheckSquare, Clock, Receipt, Settings } from "lucide-react";
 import {
   SidebarMenu,
   SidebarMenuButton,
@@ -22,6 +22,7 @@ export function AppSidebarNav({ isAdmin, canManageInvoices }: { isAdmin: boolean
   let links = canManageInvoices
     ? [...LINKS, { href: "/invoices", label: "Invoices", icon: Receipt, tour: "nav-invoices" }]
     : LINKS;
+  links = [...links, { href: "/account", label: "Settings", icon: Settings, tour: "nav-settings" }];
   if (isAdmin) links = [...links, { href: "/admin", label: "Admin", icon: UserCog, tour: "nav-admin" }];
 
   return (

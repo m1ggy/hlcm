@@ -14,33 +14,40 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { updateTimeEntry } from "@/lib/actions/time-entries";
-import { toDatetimeLocalValue, localInputToISOString, localTimezoneLabel } from "@/lib/time-entries";
+import { toDatetimeLocalValue, browserTimezone, zonedInputToISOString, timezoneLabel } from "@/lib/time-entries";
 
 // Admin-only correction for an existing entry (wrong clock in/out time on
 // someone else's session). Leaving "Clock out" blank re-opens the entry —
 // the server checks that doesn't create a second open session for the user.
 export function EditTimeEntryDialog({
   entry,
+  accountTimezone,
   onUpdated,
 }: {
   entry: { id: string; clockIn: Date; clockOut: Date | null };
+  /** The admin's own Account timezone setting, or null if unset. */
+  accountTimezone: string | null;
   onUpdated?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [clockIn, setClockIn] = useState("");
   const [clockOut, setClockOut] = useState("");
   const [isPending, startTransition] = useTransition();
-  const [tzLabel, setTzLabel] = useState("");
+  // Falls back to the browser's own zone only when no Account setting is
+  // saved — resolved after mount, since Intl would report the server's
+  // timezone during SSR, mismatching the browser's on hydration.
+  const [timezone, setTimezone] = useState(accountTimezone ?? "UTC");
   useEffect(() => {
-    const id = setTimeout(() => setTzLabel(localTimezoneLabel()), 0);
+    if (accountTimezone) return;
+    const id = setTimeout(() => setTimezone(browserTimezone()), 0);
     return () => clearTimeout(id);
-  }, []);
+  }, [accountTimezone]);
 
   function handleOpenChange(next: boolean) {
     setOpen(next);
     if (next) {
-      setClockIn(toDatetimeLocalValue(entry.clockIn));
-      setClockOut(entry.clockOut ? toDatetimeLocalValue(entry.clockOut) : "");
+      setClockIn(toDatetimeLocalValue(entry.clockIn, timezone));
+      setClockOut(entry.clockOut ? toDatetimeLocalValue(entry.clockOut, timezone) : "");
     }
   }
 
@@ -52,8 +59,8 @@ export function EditTimeEntryDialog({
     startTransition(async () => {
       try {
         await updateTimeEntry(entry.id, {
-          clockIn: localInputToISOString(clockIn),
-          clockOut: clockOut ? localInputToISOString(clockOut) : null,
+          clockIn: zonedInputToISOString(clockIn, timezone),
+          clockOut: clockOut ? zonedInputToISOString(clockOut, timezone) : null,
         });
         toast.success("Time entry updated");
         setOpen(false);
@@ -80,16 +87,17 @@ export function EditTimeEntryDialog({
         <div className="space-y-4">
           <div className="space-y-1">
             <Label>Clock in</Label>
-            <DateTimeInput value={clockIn} onChange={setClockIn} clearable={false} />
+            <DateTimeInput value={clockIn} onChange={setClockIn} timeZone={timezone} clearable={false} />
           </div>
           <div className="space-y-1">
             <Label>Clock out</Label>
-            <DateTimeInput value={clockOut} onChange={setClockOut} />
+            <DateTimeInput value={clockOut} onChange={setClockOut} timeZone={timezone} />
             <p className="text-xs text-muted-foreground">Clear it to re-open this session.</p>
           </div>
-          {tzLabel && (
-            <p className="text-xs text-muted-foreground">Times are read in your timezone — {tzLabel}.</p>
-          )}
+          <p className="text-xs text-muted-foreground">
+            Times are read in your timezone — {timezoneLabel(timezone)}.{" "}
+            <a href="/account" className="underline">Change it</a>.
+          </p>
           <Button onClick={handleSubmit} disabled={isPending} className="w-full">
             {isPending ? <Loader2 className="size-3.5 animate-spin" /> : null}
             Save changes

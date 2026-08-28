@@ -12,7 +12,29 @@ export async function getAccount() {
   const session = await requireSession();
   return prisma.user.findUniqueOrThrow({
     where: { id: session.user.id },
-    select: { id: true, name: true, email: true, mfaEnabled: true, emailNotificationsEnabled: true },
+    select: { id: true, name: true, email: true, mfaEnabled: true, emailNotificationsEnabled: true, timezone: true },
+  });
+}
+
+// null clears back to "use the browser's own timezone" (the pre-existing
+// behavior) — validated against the runtime's own IANA database rather than
+// a hardcoded list, so it can never drift out of sync with it.
+export async function updateTimezone(timezone: string | null) {
+  const session = await requireSession();
+  if (timezone !== null && !Intl.supportedValuesOf("timeZone").includes(timezone)) {
+    throw new Error("Unrecognized timezone");
+  }
+
+  await prisma.user.update({
+    where: { id: session.user.id },
+    data: { timezone },
+  });
+
+  await recordAudit({
+    entityType: "User",
+    entityId: session.user.id,
+    action: "update_timezone",
+    actorId: session.user.id,
   });
 }
 

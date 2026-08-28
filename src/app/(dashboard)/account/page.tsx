@@ -5,6 +5,7 @@ import { PasswordChangeForm } from "@/components/account/password-change-form";
 import { MfaSection } from "@/components/account/mfa-section";
 import { SignaturePadSection } from "@/components/account/signature-pad-section";
 import { EmailNotificationsToggle } from "@/components/account/email-notifications-toggle";
+import { TimezoneSection } from "@/components/account/timezone-section";
 import { PayoutDetailsForm } from "@/components/wise/payout-details-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -56,6 +57,15 @@ export default async function AccountPage() {
         </CardHeader>
         <CardContent>
           <EmailNotificationsToggle initialEnabled={account.emailNotificationsEnabled} />
+        </CardContent>
+      </Card>
+
+      <Card data-tour="timezone-setting">
+        <CardHeader>
+          <CardTitle>Timezone</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <TimezoneSection initialTimezone={account.timezone} />
         </CardContent>
       </Card>
       </div>

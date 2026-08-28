@@ -15,16 +15,19 @@ import {
 } from "@/components/ui/dialog";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { createManualTimeEntry } from "@/lib/actions/time-entries";
-import { localInputToISOString, localTimezoneLabel } from "@/lib/time-entries";
+import { browserTimezone, zonedInputToISOString, timezoneLabel } from "@/lib/time-entries";
 
 // Admin-only backfill for a session someone forgot to clock, or a
 // correction for a missed punch — always a completed shift (both ends
 // required up front), unlike the clock widget which starts an open entry.
 export function AddTimeEntryDialog({
   users,
+  accountTimezone,
   onAdded,
 }: {
   users: { id: string; name: string }[];
+  /** The admin's own Account timezone setting, or null if unset. */
+  accountTimezone: string | null;
   onAdded?: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -32,13 +35,15 @@ export function AddTimeEntryDialog({
   const [clockIn, setClockIn] = useState("");
   const [clockOut, setClockOut] = useState("");
   const [isPending, startTransition] = useTransition();
-  // Computed client-side only (after mount) — Intl/Date would report the
-  // server's timezone during SSR, mismatching the browser's on hydration.
-  const [tzLabel, setTzLabel] = useState("");
+  // Falls back to the browser's own zone only when no Account setting is
+  // saved — resolved after mount, since Intl would report the server's
+  // timezone during SSR, mismatching the browser's on hydration.
+  const [timezone, setTimezone] = useState(accountTimezone ?? "UTC");
   useEffect(() => {
-    const id = setTimeout(() => setTzLabel(localTimezoneLabel()), 0);
+    if (accountTimezone) return;
+    const id = setTimeout(() => setTimezone(browserTimezone()), 0);
     return () => clearTimeout(id);
-  }, []);
+  }, [accountTimezone]);
 
   function reset() {
     setUserId("");
@@ -55,8 +60,8 @@ export function AddTimeEntryDialog({
       try {
         await createManualTimeEntry({
           userId,
-          clockIn: localInputToISOString(clockIn),
-          clockOut: localInputToISOString(clockOut),
+          clockIn: zonedInputToISOString(clockIn, timezone),
+          clockOut: zonedInputToISOString(clockOut, timezone),
         });
         toast.success("Time entry added");
         setOpen(false);
@@ -101,15 +106,16 @@ export function AddTimeEntryDialog({
           <div className="space-y-3">
             <div className="space-y-1">
               <Label>Clock in</Label>
-              <DateTimeInput value={clockIn} onChange={setClockIn} clearable={false} />
+              <DateTimeInput value={clockIn} onChange={setClockIn} timeZone={timezone} clearable={false} />
             </div>
             <div className="space-y-1">
               <Label>Clock out</Label>
-              <DateTimeInput value={clockOut} onChange={setClockOut} clearable={false} />
+              <DateTimeInput value={clockOut} onChange={setClockOut} timeZone={timezone} clearable={false} />
             </div>
-            {tzLabel && (
-              <p className="text-xs text-muted-foreground">Times are read in your timezone — {tzLabel}.</p>
-            )}
+            <p className="text-xs text-muted-foreground">
+              Times are read in your timezone — {timezoneLabel(timezone)}.{" "}
+              <a href="/account" className="underline">Change it</a>.
+            </p>
           </div>
           <Button onClick={handleSubmit} disabled={isPending} className="w-full">
             {isPending ? <Loader2 className="size-3.5 animate-spin" /> : null}

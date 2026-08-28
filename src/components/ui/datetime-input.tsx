@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { CalendarDays, Clock3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
+import { zonedNowParts } from "@/lib/time-entries";
 import { cn } from "@/lib/utils";
 
 const TIME_FORMAT_STORAGE_KEY = "hclm-time-format"; // "24" | "12"
@@ -14,18 +15,6 @@ function pad(n: number) {
 
 function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n));
-}
-
-/** "yyyy-MM-dd" for today, in local time (not UTC). */
-function todayLocalDate() {
-  const d = new Date();
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
-/** "HH:mm" for now, in local time. */
-function nowLocalTime() {
-  const d = new Date();
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function splitValue(value: string) {
@@ -204,12 +193,15 @@ function TimeInput({
 export function DateTimeInput({
   value,
   onChange,
+  timeZone,
   disabled,
   className,
   clearable = true,
 }: {
   value: string;
   onChange: (value: string) => void;
+  /** IANA zone "now"/defaults are read against — the account's effective timezone (see effectiveTimezone). */
+  timeZone: string;
   disabled?: boolean;
   className?: string;
   /** Show a button to clear back to "" (used for the open-ended "clock out" field). */
@@ -222,7 +214,7 @@ export function DateTimeInput({
       onChange("");
       return;
     }
-    onChange(`${nextDate}T${time || nowLocalTime()}`);
+    onChange(`${nextDate}T${time || zonedNowParts(timeZone).time}`);
   }
 
   function setTime(nextTime: string) {
@@ -230,11 +222,12 @@ export function DateTimeInput({
       onChange("");
       return;
     }
-    onChange(`${date || todayLocalDate()}T${nextTime}`);
+    onChange(`${date || zonedNowParts(timeZone).date}T${nextTime}`);
   }
 
   function setNow() {
-    onChange(`${todayLocalDate()}T${nowLocalTime()}`);
+    const now = zonedNowParts(timeZone);
+    onChange(`${now.date}T${now.time}`);
   }
 
   return (

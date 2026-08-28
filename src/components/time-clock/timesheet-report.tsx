@@ -18,6 +18,7 @@ import {
 import { getTimesheetTotals, listTimeEntries, deleteTimeEntry } from "@/lib/actions/time-entries";
 import { payUserViaWise } from "@/lib/actions/wise";
 import {
+  browserTimezone,
   currentMonthRange,
   currentPayPeriodRange,
   formatDuration,
@@ -37,20 +38,23 @@ type TimeEntryRow = {
   user: { id: string; name: string; hourlyRate: number | null };
 };
 
-function startOfMonth() {
-  return currentMonthRange().from;
-}
-function today() {
-  return toDateInputValue(new Date());
-}
-
 // isAdmin gates both the Pay button and the entry-level management (add/
 // delete) below — same population (role === "ADMIN") the caller already
 // computes for pay, reused rather than adding a second identical prop.
-export function TimesheetReport({ users, isAdmin = false }: { users: { id: string; name: string }[]; isAdmin?: boolean }) {
+export function TimesheetReport({
+  users,
+  accountTimezone,
+  isAdmin = false,
+}: {
+  users: { id: string; name: string }[];
+  /** The viewer's own Account timezone setting, or null if unset (falls back to the browser's). */
+  accountTimezone: string | null;
+  isAdmin?: boolean;
+}) {
+  const timezone = accountTimezone ?? browserTimezone();
   const [userId, setUserId] = useState("all");
-  const [from, setFrom] = useState(startOfMonth());
-  const [to, setTo] = useState(today());
+  const [from, setFrom] = useState(() => currentMonthRange(timezone).from);
+  const [to, setTo] = useState(() => toDateInputValue(new Date(), timezone));
   const [totals, setTotals] = useState<TimesheetTotal[] | null>(null);
   const [entries, setEntries] = useState<TimeEntryRow[] | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -78,7 +82,7 @@ export function TimesheetReport({ users, isAdmin = false }: { users: { id: strin
   }
 
   function pdfUrl() {
-    const params = new URLSearchParams({ from, to });
+    const params = new URLSearchParams({ from, to, tz: timezone });
     if (userId !== "all") params.set("userId", userId);
     return `/api/export/timesheet/pdf?${params.toString()}`;
   }
@@ -164,17 +168,19 @@ export function TimesheetReport({ users, isAdmin = false }: { users: { id: strin
           Preview
         </Button>
         <div className="flex items-center gap-1.5">
-          <Button variant="ghost" size="sm" onClick={() => applyPreset(currentPayPeriodRange())} disabled={isPending}>
+          <Button variant="ghost" size="sm" onClick={() => applyPreset(currentPayPeriodRange(timezone))} disabled={isPending}>
             This pay period
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => applyPreset(currentMonthRange())} disabled={isPending}>
+          <Button variant="ghost" size="sm" onClick={() => applyPreset(currentMonthRange(timezone))} disabled={isPending}>
             This month
           </Button>
         </div>
         <Button nativeButton={false} render={<a href={pdfUrl()} target="_blank" rel="noopener noreferrer" />}>
           <FileDown className="size-3.5" /> Download PDF
         </Button>
-        {isAdmin && <AddTimeEntryDialog users={users} onAdded={handlePreview} />}
+        {isAdmin && (
+          <AddTimeEntryDialog users={users} accountTimezone={accountTimezone} onAdded={handlePreview} />
+        )}
       </div>
 
       {totals && (
@@ -262,11 +268,13 @@ export function TimesheetReport({ users, isAdmin = false }: { users: { id: strin
                 .map((entry) => (
                   <TableRow key={entry.id}>
                     <TableCell className="font-medium">{entry.user.name}</TableCell>
-                    <TableCell>{entry.clockIn.toLocaleDateString()}</TableCell>
-                    <TableCell>{entry.clockIn.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</TableCell>
+                    <TableCell>{entry.clockIn.toLocaleDateString(undefined, { timeZone: timezone })}</TableCell>
+                    <TableCell>
+                      {entry.clockIn.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZone: timezone })}
+                    </TableCell>
                     <TableCell>
                       {entry.clockOut
-                        ? entry.clockOut.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                        ? entry.clockOut.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZone: timezone })
                         : "In progress"}
                     </TableCell>
                     <TableCell>
@@ -275,7 +283,7 @@ export function TimesheetReport({ users, isAdmin = false }: { users: { id: strin
                     {isAdmin && (
                       <TableCell>
                         <div className="flex items-center gap-1">
-                          <EditTimeEntryDialog entry={entry} onUpdated={handlePreview} />
+                          <EditTimeEntryDialog entry={entry} accountTimezone={accountTimezone} onUpdated={handlePreview} />
                           <Button
                             size="xs"
                             variant="ghost"

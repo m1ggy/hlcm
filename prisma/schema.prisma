@@ -120,6 +120,12 @@ model User {
   active       Boolean  @default(true)
   hourlyRate   Float?
   emailNotificationsEnabled Boolean @default(true)
+  // IANA zone id (e.g. "America/Chicago") — null means "use the browser's
+  // own timezone" (the pre-existing behavior). Set from Account settings;
+  // controls both how this user's own times are displayed and how a typed
+  // time in a time-entry dialog is resolved to an instant, wherever this
+  // user is the one reading/typing it (see src/lib/time-entries.ts).
+  timezone     String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

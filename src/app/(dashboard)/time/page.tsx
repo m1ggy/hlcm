@@ -1,5 +1,6 @@
 import { auth } from "@/auth";
 import { listAssignableUsers } from "@/lib/actions/applications";
+import { getAccount } from "@/lib/actions/account";
 import { MyTimeLog } from "@/components/time-clock/my-time-log";
 import { TimesheetReport } from "@/components/time-clock/timesheet-report";
 import { RecentPayouts } from "@/components/wise/recent-payouts";
@@ -12,7 +13,10 @@ export default async function TimePage() {
   const canSeeAllUsers = role === "ADMIN" || role === "MANAGER";
   const canPay = role === "ADMIN";
 
-  const users = canSeeAllUsers ? await listAssignableUsers() : [];
+  const [users, account] = await Promise.all([
+    canSeeAllUsers ? listAssignableUsers() : Promise.resolve([]),
+    getAccount(),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -47,7 +51,11 @@ export default async function TimePage() {
             <CardTitle>All users</CardTitle>
           </CardHeader>
           <CardContent>
-            <TimesheetReport users={users.map((u) => ({ id: u.id, name: u.name }))} isAdmin={canPay} />
+            <TimesheetReport
+              users={users.map((u) => ({ id: u.id, name: u.name }))}
+              accountTimezone={account.timezone}
+              isAdmin={canPay}
+            />
           </CardContent>
         </Card>
       )}

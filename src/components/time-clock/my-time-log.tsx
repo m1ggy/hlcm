@@ -1,4 +1,5 @@
 import { listMyTimeEntries } from "@/lib/actions/time-entries";
+import { getAccount } from "@/lib/actions/account";
 import { hoursBetween, formatDuration } from "@/lib/time-entries";
 import { LocalDate, LocalTime } from "@/components/time-clock/local-time";
 import {
@@ -11,7 +12,8 @@ import {
 } from "@/components/ui/table";
 
 export async function MyTimeLog({ limit = 25 }: { limit?: number }) {
-  const entries = await listMyTimeEntries(limit);
+  const [entries, account] = await Promise.all([listMyTimeEntries(limit), getAccount()]);
+  const timeZone = account.timezone;
 
   return (
     <Table>
@@ -26,10 +28,10 @@ export async function MyTimeLog({ limit = 25 }: { limit?: number }) {
       <TableBody>
         {entries.map((entry) => (
           <TableRow key={entry.id}>
-            <TableCell><LocalDate iso={entry.clockIn.toISOString()} /></TableCell>
-            <TableCell><LocalTime iso={entry.clockIn.toISOString()} /></TableCell>
+            <TableCell><LocalDate iso={entry.clockIn.toISOString()} timeZone={timeZone} /></TableCell>
+            <TableCell><LocalTime iso={entry.clockIn.toISOString()} timeZone={timeZone} /></TableCell>
             <TableCell>
-              {entry.clockOut ? <LocalTime iso={entry.clockOut.toISOString()} /> : "In progress"}
+              {entry.clockOut ? <LocalTime iso={entry.clockOut.toISOString()} timeZone={timeZone} /> : "In progress"}
             </TableCell>
             <TableCell>{entry.clockOut ? formatDuration(hoursBetween(entry.clockIn, entry.clockOut)) : "—"}</TableCell>
           </TableRow>
