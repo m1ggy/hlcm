@@ -265,6 +265,53 @@ export async function createManualInvoice(input: z.infer<typeof createManualInvo
   return invoice;
 }
 
+const updateManualInvoiceDraftSchema = z.object({
+  notes: z.string().optional(),
+  lineItems: z.array(lineItemSchema).min(1, "At least one line item is required"),
+});
+
+// A manual invoice is created straight to "awaiting payment" — there's no
+// Draft state to hide it behind while it's being put together. This is
+// the next best thing: line items + notes stay editable right up until
+// either the client's actually seen it (lastSentAt set by "Send invoice
+// PDF") or any money's been recorded — whichever comes first. Once
+// either happens, changing the total out from under a PDF the client may
+// already have, or a payment already logged against it, would be
+// confusing at best.
+export async function updateManualInvoiceDraft(id: string, input: z.infer<typeof updateManualInvoiceDraftSchema>) {
+  const session = await requireRole(MANAGE_ROLES);
+  const parsed = updateManualInvoiceDraftSchema.parse(input);
+
+  const before = await prisma.invoice.findUniqueOrThrow({ where: { id } });
+  if (!isManual(before)) throw new Error("This invoice isn't a manually-recorded one");
+  if (before.status !== "SENT" || before.lastSentAt) {
+    throw new Error("This invoice can no longer be edited — it's already been sent or paid");
+  }
+
+  const total = subtotalOf(parsed.lineItems);
+
+  const invoice = await prisma.$transaction(async (tx) => {
+    await tx.invoiceLineItem.deleteMany({ where: { invoiceId: id } });
+    return tx.invoice.update({
+      where: { id },
+      data: {
+        notes: parsed.notes,
+        total,
+        lineItems: {
+          create: parsed.lineItems.map((li, index) => ({ ...li, sortOrder: index })),
+        },
+      },
+      include: invoiceInclude,
+    });
+  });
+
+  await recordAudit({ entityType: "Invoice", entityId: id, action: "update_manual_draft", actorId: session.user.id });
+
+  revalidatePath("/invoices");
+  revalidatePath(`/invoices/${id}`);
+  return invoice;
+}
+
 const additionalPaymentInputSchema = z.object({
   amount: z.coerce.number().positive("Amount must be greater than 0"),
   paidAt: z.string().min(1, "Payment date is required"),
