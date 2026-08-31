@@ -101,7 +101,7 @@ export function InvoiceFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={trigger ?? <Button data-tour="new-invoice">New Invoice</Button>} />
+      <DialogTrigger render={trigger ?? <Button data-tour="new-invoice">New Online Invoice</Button>} />
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit Invoice" : "New Invoice"}</DialogTitle>
