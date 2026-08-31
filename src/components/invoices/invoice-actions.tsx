@@ -8,7 +8,6 @@ import { sendInvoice, sendManualInvoicePdf, markInvoicePaid, voidInvoice, delete
 import { Button } from "@/components/ui/button";
 import { InvoiceFormDialog } from "./invoice-form-dialog";
 import { AddManualPaymentDialog } from "./add-manual-payment-dialog";
-import { EditManualInvoiceDialog } from "./edit-manual-invoice-dialog";
 import { isManualInvoice } from "./invoice-status-badge";
 
 type LineItem = { description: string; quantity: number; unitPrice: number };
@@ -125,10 +124,6 @@ export function InvoiceActions({
   const canVoid = invoice.status !== "PAID" && invoice.status !== "PARTIALLY_PAID" && invoice.status !== "VOID";
   const canMarkPaid = !isManual && invoice.status !== "PAID" && invoice.status !== "VOID";
   const canAddManualPayment = isManual && (invoice.status === "SENT" || invoice.status === "PARTIALLY_PAID");
-  // Line items + notes stay editable until the client's actually seen it
-  // (lastSentAt set) or any money's been recorded — see
-  // updateManualInvoiceDraft in src/lib/actions/invoices.ts.
-  const canEditManual = isManual && invoice.status === "SENT" && !invoice.lastSentAt;
   const remaining = (invoice.total ?? 0) - (invoice.amountPaid ?? 0);
 
   return (
@@ -188,9 +183,6 @@ export function InvoiceActions({
           invoice={invoice}
           trigger={<Button variant="outline">Edit</Button>}
         />
-      )}
-      {canEditManual && (
-        <EditManualInvoiceDialog invoiceId={invoice.id} notes={invoice.notes} lineItems={invoice.lineItems} />
       )}
       {canVoid && (
         <Button variant="outline" onClick={handleVoid} disabled={isVoiding}>

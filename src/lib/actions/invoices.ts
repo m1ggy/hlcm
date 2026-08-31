@@ -267,17 +267,19 @@ export async function createManualInvoice(input: z.infer<typeof createManualInvo
 
 const updateManualInvoiceDraftSchema = z.object({
   notes: z.string().optional(),
+  issueDate: z.string().optional(),
+  dueDate: z.string().optional(),
   lineItems: z.array(lineItemSchema).min(1, "At least one line item is required"),
 });
 
 // A manual invoice is created straight to "awaiting payment" — there's no
 // Draft state to hide it behind while it's being put together. This is
-// the next best thing: line items + notes stay editable right up until
-// either the client's actually seen it (lastSentAt set by "Send invoice
-// PDF") or any money's been recorded — whichever comes first. Once
-// either happens, changing the total out from under a PDF the client may
-// already have, or a payment already logged against it, would be
-// confusing at best.
+// the next best thing: line items, notes, and dates stay editable right
+// up until either the client's actually seen it (lastSentAt set by "Send
+// invoice PDF") or any money's been recorded — whichever comes first.
+// Once either happens, changing the total (or the dates printed) out
+// from under a PDF the client may already have, or a payment already
+// logged against it, would be confusing at best.
 export async function updateManualInvoiceDraft(id: string, input: z.infer<typeof updateManualInvoiceDraftSchema>) {
   const session = await requireRole(MANAGE_ROLES);
   const parsed = updateManualInvoiceDraftSchema.parse(input);
@@ -296,6 +298,8 @@ export async function updateManualInvoiceDraft(id: string, input: z.infer<typeof
       where: { id },
       data: {
         notes: parsed.notes,
+        issueDate: parsed.issueDate ? new Date(parsed.issueDate) : undefined,
+        dueDate: parsed.dueDate ? new Date(parsed.dueDate) : null,
         total,
         lineItems: {
           create: parsed.lineItems.map((li, index) => ({ ...li, sortOrder: index })),

@@ -6,6 +6,7 @@ import { listClients } from "@/lib/actions/clients";
 import { listApplications } from "@/lib/actions/applications";
 import { InvoiceStatusBadge, isInvoiceOverdue, isManualInvoice } from "@/components/invoices/invoice-status-badge";
 import { InvoiceActions } from "@/components/invoices/invoice-actions";
+import { ManualInvoiceEditor } from "@/components/invoices/manual-invoice-editor";
 import { AuditLogPanel } from "@/components/applications/audit-log-panel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -37,6 +38,11 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
 
   const number = displayInvoiceNumber(invoice);
   const subtotal = invoice.lineItems.reduce((sum, li) => sum + li.quantity * li.unitPrice, 0);
+  // Line items, notes, and dates stay editable inline right on this page
+  // until the client's actually seen it (lastSentAt set) or any money's
+  // been recorded — see updateManualInvoiceDraft in
+  // src/lib/actions/invoices.ts.
+  const canEditManual = isManualInvoice(invoice) && invoice.status === "SENT" && !invoice.lastSentAt;
 
   return (
     <div className="space-y-6">
@@ -76,49 +82,61 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               <CardTitle>Line items</CardTitle>
             </CardHeader>
             <CardContent>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left text-muted-foreground">
-                    <th className="pb-2 font-normal">Description</th>
-                    <th className="pb-2 font-normal">Quantity</th>
-                    <th className="pb-2 text-right font-normal">Unit Price</th>
-                    <th className="pb-2 text-right font-normal">Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {invoice.lineItems.map((li) => (
-                    <tr key={li.id} className="border-b last:border-0">
-                      <td className="py-2">{li.description}</td>
-                      <td className="py-2">{li.quantity}</td>
-                      <td className="py-2 text-right tabular-nums">${li.unitPrice.toFixed(2)}</td>
-                      <td className="py-2 text-right tabular-nums">${(li.quantity * li.unitPrice).toFixed(2)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <div className="mt-4 flex flex-col items-end gap-1 text-sm">
-                <div className="flex w-48 justify-between text-muted-foreground">
-                  <span>Subtotal</span>
-                  <span className="tabular-nums">${subtotal.toFixed(2)}</span>
-                </div>
-                {invoice.taxAmount != null && (
-                  <div className="flex w-48 justify-between text-muted-foreground">
-                    <span>Tax</span>
-                    <span className="tabular-nums">${invoice.taxAmount.toFixed(2)}</span>
+              {canEditManual ? (
+                <ManualInvoiceEditor
+                  invoiceId={invoice.id}
+                  notes={invoice.notes}
+                  issueDate={invoice.issueDate}
+                  dueDate={invoice.dueDate}
+                  lineItems={invoice.lineItems}
+                />
+              ) : (
+                <>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left text-muted-foreground">
+                        <th className="pb-2 font-normal">Description</th>
+                        <th className="pb-2 font-normal">Quantity</th>
+                        <th className="pb-2 text-right font-normal">Unit Price</th>
+                        <th className="pb-2 text-right font-normal">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {invoice.lineItems.map((li) => (
+                        <tr key={li.id} className="border-b last:border-0">
+                          <td className="py-2">{li.description}</td>
+                          <td className="py-2">{li.quantity}</td>
+                          <td className="py-2 text-right tabular-nums">${li.unitPrice.toFixed(2)}</td>
+                          <td className="py-2 text-right tabular-nums">${(li.quantity * li.unitPrice).toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div className="mt-4 flex flex-col items-end gap-1 text-sm">
+                    <div className="flex w-48 justify-between text-muted-foreground">
+                      <span>Subtotal</span>
+                      <span className="tabular-nums">${subtotal.toFixed(2)}</span>
+                    </div>
+                    {invoice.taxAmount != null && (
+                      <div className="flex w-48 justify-between text-muted-foreground">
+                        <span>Tax</span>
+                        <span className="tabular-nums">${invoice.taxAmount.toFixed(2)}</span>
+                      </div>
+                    )}
+                    <div className="flex w-48 justify-between font-medium">
+                      <span>Total</span>
+                      <span className="tabular-nums">
+                        {invoice.total != null ? `$${invoice.total.toFixed(2)}` : `~$${subtotal.toFixed(2)} (tax not yet calculated)`}
+                      </span>
+                    </div>
                   </div>
-                )}
-                <div className="flex w-48 justify-between font-medium">
-                  <span>Total</span>
-                  <span className="tabular-nums">
-                    {invoice.total != null ? `$${invoice.total.toFixed(2)}` : `~$${subtotal.toFixed(2)} (tax not yet calculated)`}
-                  </span>
-                </div>
-              </div>
-              {invoice.notes && (
-                <p className="mt-4 text-sm text-muted-foreground">
-                  <span className="font-medium text-foreground">Notes: </span>
-                  {invoice.notes}
-                </p>
+                  {invoice.notes && (
+                    <p className="mt-4 text-sm text-muted-foreground">
+                      <span className="font-medium text-foreground">Notes: </span>
+                      {invoice.notes}
+                    </p>
+                  )}
+                </>
               )}
             </CardContent>
           </Card>
