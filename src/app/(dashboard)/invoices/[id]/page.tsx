@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import { TriangleAlert } from "lucide-react";
 import { getInvoice, getInvoiceAuditLog } from "@/lib/actions/invoices";
 import { displayInvoiceNumber } from "@/lib/invoice-format";
 import { listClients } from "@/lib/actions/clients";
@@ -74,6 +75,19 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           applications={applications.map((a) => ({ id: a.id, name: a.name, clientId: a.client.id }))}
         />
       </div>
+
+      {!invoice.client.businessEmail && !invoice.client.ownerEmail && (
+        <div className="flex items-center gap-2 rounded-lg border border-amber-500/50 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-400">
+          <TriangleAlert className="size-4 shrink-0" />
+          <span>
+            This client has no email on file — sending this invoice will fail.{" "}
+            <Link href={`/clients/${invoice.client.id}`} className="underline">
+              Add one on the client&apos;s page
+            </Link>
+            .
+          </span>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
