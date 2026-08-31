@@ -407,12 +407,43 @@ async function sendManualPaymentThankYouEmail(invoiceId: string) {
   }
 }
 
+// Extra files the sender can staple onto a single "Send invoice PDF"
+// email — picked fresh each time in SendInvoicePdfDialog, not persisted
+// on the invoice itself. Whitelisted by MIME type rather than extension
+// (a renamed file can't slip past this); size cap matches the one
+// files.ts already applies to uploaded documents, kept well under the
+// server actions bodySizeLimit (see next.config).
+const ALLOWED_ATTACHMENT_TYPES: Record<string, true> = {
+  "application/pdf": true,
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": true, // .xlsx
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": true, // .docx
+};
+const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
+
+async function readExtraAttachments(formData: FormData | undefined) {
+  if (!formData) return [];
+  const files = formData.getAll("attachments").filter((f): f is File => f instanceof File && f.size > 0);
+  const attachments: { filename: string; content: Uint8Array }[] = [];
+  for (const file of files) {
+    if (!ALLOWED_ATTACHMENT_TYPES[file.type]) {
+      throw new Error(`"${file.name}" isn't a supported attachment type — only PDF, XLSX, and DOCX are allowed`);
+    }
+    if (file.size > MAX_ATTACHMENT_BYTES) {
+      throw new Error(`"${file.name}" is too large — attachments are limited to 20MB`);
+    }
+    attachments.push({ filename: file.name, content: new Uint8Array(await file.arrayBuffer()) });
+  }
+  return attachments;
+}
+
 // A plain courtesy copy of the invoice PDF — separate from the automatic
 // thank-you-for-payment email above. Only while the invoice is still
 // awaiting payment (once PAID, the thank-you email is the one that goes
 // out); tracks lastSentAt so the invoice detail page can show when this
-// was last used.
-export async function sendManualInvoicePdf(id: string) {
+// was last used. `formData` is optional and, when present, may carry
+// extra one-off attachments under the "attachments" field (see
+// readExtraAttachments above) — nothing here persists them.
+export async function sendManualInvoicePdf(id: string, formData?: FormData) {
   const session = await requireRole(MANAGE_ROLES);
   const invoice = await prisma.invoice.findUniqueOrThrow({ where: { id }, include: invoiceInclude });
 
@@ -423,6 +454,8 @@ export async function sendManualInvoicePdf(id: string) {
 
   const recipientEmail = invoice.client.businessEmail ?? invoice.client.ownerEmail;
   if (!recipientEmail) throw new Error("Client has no email on file — add one before sending");
+
+  const extraAttachments = await readExtraAttachments(formData);
 
   const number = displayInvoiceNumber(invoice);
   const profile = await getInvoiceProfile(invoice.invoiceProfileId);
@@ -439,7 +472,7 @@ export async function sendManualInvoicePdf(id: string) {
       bodyHtml: `<p style="margin:0 0 8px">Please find invoice ${number} attached${invoice.dueDate ? ` — due ${invoice.dueDate.toLocaleDateString()}` : ""}.</p><p style="margin:0">Amount due: $${amountDue.toFixed(2)}</p>`,
       preheader: `Invoice ${number} — $${amountDue.toFixed(2)} due`,
     }),
-    attachments: [{ filename: `invoice-${number}.pdf`, content: pdfBytes }],
+    attachments: [{ filename: `invoice-${number}.pdf`, content: pdfBytes }, ...extraAttachments],
   });
 
   const updated = await prisma.invoice.update({ where: { id }, data: { lastSentAt: new Date() } });

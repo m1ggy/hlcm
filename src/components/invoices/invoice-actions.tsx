@@ -3,11 +3,12 @@
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Send, CheckCircle2, Ban, Download, ExternalLink, Trash2, Mail } from "lucide-react";
-import { sendInvoice, sendManualInvoicePdf, markInvoicePaid, voidInvoice, deleteInvoice } from "@/lib/actions/invoices";
+import { Send, CheckCircle2, Ban, Download, ExternalLink, Trash2 } from "lucide-react";
+import { sendInvoice, markInvoicePaid, voidInvoice, deleteInvoice } from "@/lib/actions/invoices";
 import { Button } from "@/components/ui/button";
 import { InvoiceFormDialog } from "./invoice-form-dialog";
 import { AddManualPaymentDialog } from "./add-manual-payment-dialog";
+import { SendInvoicePdfDialog } from "./send-invoice-pdf-dialog";
 import { isManualInvoice } from "./invoice-status-badge";
 
 type LineItem = { description: string; quantity: number; unitPrice: number };
@@ -37,7 +38,6 @@ export function InvoiceActions({
 }) {
   const router = useRouter();
   const [isSending, startSending] = useTransition();
-  const [isSendingPdf, startSendingPdf] = useTransition();
   const [isMarking, startMarking] = useTransition();
   const [isVoiding, startVoiding] = useTransition();
   const [isDeleting, startDeleting] = useTransition();
@@ -52,20 +52,6 @@ export function InvoiceActions({
         router.refresh();
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to send invoice");
-      }
-    });
-  }
-
-  function handleSendPdf() {
-    const verb = invoice.lastSentAt ? "Resend" : "Send";
-    if (!confirm(`${verb} the invoice PDF by email now?`)) return;
-    startSendingPdf(async () => {
-      try {
-        await sendManualInvoicePdf(invoice.id);
-        toast.success("Invoice PDF sent");
-        router.refresh();
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Failed to send invoice PDF");
       }
     });
   }
@@ -136,9 +122,7 @@ export function InvoiceActions({
       {canAddManualPayment && <AddManualPaymentDialog invoiceId={invoice.id} remaining={remaining} />}
       {canSendPdf && (
         <div className="flex items-center gap-1.5">
-          <Button variant="outline" onClick={handleSendPdf} disabled={isSendingPdf}>
-            <Mail className="size-3.5" /> {invoice.lastSentAt ? "Resend invoice PDF" : "Send invoice PDF"}
-          </Button>
+          <SendInvoicePdfDialog invoiceId={invoice.id} alreadySent={!!invoice.lastSentAt} />
           {invoice.lastSentAt && (
             <span className="text-xs text-muted-foreground">Last sent {invoice.lastSentAt.toLocaleDateString()}</span>
           )}
