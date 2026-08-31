@@ -32,9 +32,11 @@ export type InvoicePdfInput = {
     billingPostalCode: string | null;
   };
   lineItems: { description: string; quantity: number; unitPrice: number }[];
-  /** Org-wide branding from InvoiceSettings — see src/lib/invoice-settings.ts. */
+  /** Which InvoiceProfile this invoice was billed under — see src/lib/invoice-profiles.ts. */
   logo?: { bytes: Uint8Array; mimeType: string } | null;
   footerText?: string | null;
+  /** Printed where the logo would go when there isn't one. Falls back to "CTK". */
+  profileName?: string | null;
 };
 
 function money(n: number) {
@@ -49,7 +51,7 @@ export async function generateInvoicePdf(invoice: InvoicePdfInput): Promise<Uint
   const page = pdfDoc.addPage(PAGE_SIZE);
   let y = PAGE_SIZE[1] - MARGIN;
 
-  // A custom logo (see InvoiceSettings) replaces the plain "CTK" wordmark
+  // A custom logo (see InvoiceProfile) replaces the plain "CTK" wordmark
   // when one's been uploaded; pdf-lib only embeds PNG/JPEG, which is all
   // the admin upload form accepts.
   if (invoice.logo) {
@@ -61,7 +63,7 @@ export async function generateInvoicePdf(invoice: InvoicePdfInput): Promise<Uint
     const width = (image.width / image.height) * height;
     page.drawImage(image, { x: MARGIN, y: y - height + 14, width, height });
   } else {
-    page.drawText("CTK", { x: MARGIN, y, size: 20, font: boldFont });
+    page.drawText(invoice.profileName ?? "CTK", { x: MARGIN, y, size: 20, font: boldFont });
   }
   page.drawText("INVOICE", { x: PAGE_SIZE[0] - MARGIN - 90, y, size: 20, font: boldFont });
   y -= 20;
@@ -176,7 +178,7 @@ export async function generateInvoicePdf(invoice: InvoicePdfInput): Promise<Uint
     y -= 40;
   }
 
-  // Org-wide boilerplate (see InvoiceSettings) — always last, distinct from
+  // Org-wide boilerplate (see InvoiceProfile) — always last, distinct from
   // the invoice's own notes above.
   if (invoice.footerText) {
     page.drawLine({

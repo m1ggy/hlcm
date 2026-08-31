@@ -58,7 +58,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           <InvoiceStatusBadge status={isInvoiceOverdue(invoice) ? "OVERDUE" : invoice.status} />
           {isManualInvoice(invoice) && (
             <span className="text-xs text-muted-foreground" title="Recorded manually — not billed through an online payment link">
-              Recorded manually
+              Recorded manually{invoice.invoiceProfile ? ` — billed as ${invoice.invoiceProfile.name}` : ""}
             </span>
           )}
         </div>

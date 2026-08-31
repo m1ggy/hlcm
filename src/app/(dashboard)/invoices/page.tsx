@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { listInvoices } from "@/lib/actions/invoices";
 import { listClients } from "@/lib/actions/clients";
 import { listApplications } from "@/lib/actions/applications";
+import { listInvoiceProfiles } from "@/lib/invoice-profiles";
 import { InvoicesTable } from "@/components/invoices/invoices-table";
 import { InvoiceFormDialog } from "@/components/invoices/invoice-form-dialog";
 import { RecordPaymentDialog } from "@/components/invoices/record-payment-dialog";
@@ -17,9 +18,10 @@ export default async function InvoicesPage() {
     throw error;
   }
 
-  const [clients, applications] = await Promise.all([
+  const [clients, applications, profiles] = await Promise.all([
     listClients({ filter: "all" }),
     listApplications(),
+    listInvoiceProfiles(),
   ]);
 
   return (
@@ -45,6 +47,7 @@ export default async function InvoicesPage() {
           <RecordPaymentDialog
             clients={clients.map((c) => ({ id: c.id, name: c.name }))}
             applications={applications.map((a) => ({ id: a.id, name: a.name, clientId: a.client.id }))}
+            profiles={profiles.map((p) => ({ id: p.id, name: p.name }))}
           />
           <InvoiceFormDialog
             clients={clients.map((c) => ({ id: c.id, name: c.name }))}

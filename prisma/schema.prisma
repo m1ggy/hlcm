@@ -945,6 +945,14 @@ model Invoice {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
+  // Manual invoices only — which billing identity (logo/CC/footer) this
+  // was billed under. Null forever on a Stripe-bound invoice, same as
+  // stripeInvoiceId is null forever on a manual one. SetNull on delete so
+  // removing a profile later can never be blocked by, or destroy, a
+  // historical invoice's own record of who it billed under.
+  invoiceProfile   InvoiceProfile? @relation(fields: [invoiceProfileId], references: [id], onDelete: SetNull)
+  invoiceProfileId String?
+
   lineItems InvoiceLineItem[]
 
   @@index([clientId])
@@ -963,22 +971,36 @@ model InvoiceLineItem {
   @@map("invoice_line_items")
 }
 
-// Org-wide branding/config applied to every manually-recorded invoice's PDF
-// and emails — logo, CC recipients, and boilerplate footer text. Always
-// exactly one row (id pinned to "singleton"); read via getInvoiceSettings()
-// in src/lib/invoice-settings.ts, edited from /admin/invoice-settings.
+// Org-wide branding/config applied to a manually-recorded invoice's PDF
+// and emails — logo, CC recipients, and boilerplate footer text. One row
+// per billing identity; exactly one has isDefault: true at any time
+// (enforced in the action layer — see setDefaultInvoiceProfile in
+// src/lib/actions/invoice-profiles.ts, Prisma can't express a
+// conditional unique constraint declaratively). Read via
+// listInvoiceProfiles()/getInvoiceProfile() in
+// src/lib/invoice-profiles.ts, edited from /admin/invoice-profiles.
 // Stripe-bound invoices aren't touched by this — Stripe emails those
 // itself and has its own branding settings.
-model InvoiceSettings {
-  id             String   @id @default("singleton")
+model InvoiceProfile {
+  id        String  @id @default(cuid())
+  // Shown in the picker AND printed on the PDF/emails — one field, not two.
+  name      String
+  isDefault Boolean @default(false)
+
   logoStorageKey String?
   logoMimeType   String?
-  // Comma-separated email addresses, CC'd on every manual-invoice email.
+  // Comma-separated email addresses, CC'd on every invoice email sent
+  // under this profile.
   ccEmails       String?
-  // Boilerplate printed at the bottom of every invoice PDF, below the
-  // invoice's own (optional) notes — terms, remit-to info, etc.
+  // Boilerplate printed at the bottom of every invoice PDF using this
+  // profile, below the invoice's own (optional) notes — terms, remit-to
+  // info, etc.
   footerText     String?
-  updatedAt      DateTime @updatedAt
 
-  @@map("invoice_settings")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  invoices Invoice[]
+
+  @@map("invoice_profiles")
 }

@@ -8,7 +8,7 @@ import { requireRole, AppRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { sendEmail, renderEmailLayout } from "@/lib/email";
 import { generateInvoicePdf } from "@/lib/invoice-pdf";
-import { getInvoiceSettings, getInvoiceLogo, parseCcEmails } from "@/lib/invoice-settings";
+import { getInvoiceProfile, getDefaultInvoiceProfile, getInvoiceLogo, parseCcEmails } from "@/lib/invoice-profiles";
 import { displayInvoiceNumber } from "@/lib/invoice-format";
 import {
   createCustomer,
@@ -40,6 +40,7 @@ const invoiceInclude = {
     },
   },
   application: { select: { id: true, name: true } },
+  invoiceProfile: { select: { id: true, name: true } },
   createdBy: { select: { id: true, name: true } },
   lineItems: { orderBy: { sortOrder: "asc" as const } },
 } as const;
@@ -213,7 +214,9 @@ function isManual(invoice: { status: string; stripeInvoiceId: string | null }) {
 const createManualInvoiceSchema = z.object({
   clientId: z.string().min(1),
   applicationId: z.string().optional(),
+  invoiceProfileId: z.string().optional(),
   invoiceNumber: z.string().optional(),
+  issueDate: z.string().optional(),
   dueDate: z.string().optional(),
   notes: z.string().optional(),
   lineItems: z.array(lineItemSchema).min(1, "At least one line item is required"),
@@ -229,12 +232,19 @@ export async function createManualInvoice(input: z.infer<typeof createManualInvo
   const parsed = createManualInvoiceSchema.parse(input);
   const total = subtotalOf(parsed.lineItems);
 
+  // Resolved server-side rather than left null — every manual invoice
+  // should have a definite billing identity, even if the dialog somehow
+  // submitted without picking one.
+  const profileId = parsed.invoiceProfileId || (await getDefaultInvoiceProfile())?.id;
+
   const invoice = await prisma.invoice
     .create({
       data: {
         clientId: parsed.clientId,
         applicationId: parsed.applicationId || undefined,
+        invoiceProfileId: profileId,
         invoiceNumber: parsed.invoiceNumber || undefined,
+        issueDate: parsed.issueDate ? new Date(parsed.issueDate) : undefined,
         dueDate: parsed.dueDate ? new Date(parsed.dueDate) : undefined,
         notes: parsed.notes,
         status: "SENT",
@@ -324,13 +334,13 @@ async function sendManualPaymentThankYouEmail(invoiceId: string) {
     if (!recipientEmail) return;
 
     const number = displayInvoiceNumber(invoice);
-    const settings = await getInvoiceSettings();
-    const logo = await getInvoiceLogo(settings);
-    const pdfBytes = await generateInvoicePdf({ ...invoice, logo, footerText: settings.footerText });
+    const profile = await getInvoiceProfile(invoice.invoiceProfileId);
+    const logo = await getInvoiceLogo(profile);
+    const pdfBytes = await generateInvoicePdf({ ...invoice, logo, footerText: profile?.footerText ?? null, profileName: profile?.name ?? null });
 
     await sendEmail({
       to: recipientEmail,
-      cc: parseCcEmails(settings.ccEmails),
+      cc: parseCcEmails(profile?.ccEmails ?? null),
       subject: `Thank you for your payment — Invoice ${number}`,
       html: renderEmailLayout({
         heading: "Payment received",
@@ -364,15 +374,15 @@ export async function sendManualInvoicePdf(id: string) {
   if (!recipientEmail) throw new Error("Client has no email on file — add one before sending");
 
   const number = displayInvoiceNumber(invoice);
-  const settings = await getInvoiceSettings();
-  const logo = await getInvoiceLogo(settings);
-  const pdfBytes = await generateInvoicePdf({ ...invoice, logo, footerText: settings.footerText });
+  const profile = await getInvoiceProfile(invoice.invoiceProfileId);
+  const logo = await getInvoiceLogo(profile);
+  const pdfBytes = await generateInvoicePdf({ ...invoice, logo, footerText: profile?.footerText ?? null, profileName: profile?.name ?? null });
   const amountDue = (invoice.total ?? 0) - (invoice.amountPaid ?? 0);
 
   await sendEmail({
     to: recipientEmail,
-    cc: parseCcEmails(settings.ccEmails),
-    subject: `Invoice ${number} from CTK`,
+    cc: parseCcEmails(profile?.ccEmails ?? null),
+    subject: `Invoice ${number} from ${profile?.name ?? "CTK"}`,
     html: renderEmailLayout({
       heading: "Invoice",
       bodyHtml: `<p style="margin:0 0 8px">Please find invoice ${number} attached${invoice.dueDate ? ` — due ${invoice.dueDate.toLocaleDateString()}` : ""}.</p><p style="margin:0">Amount due: $${amountDue.toFixed(2)}</p>`,

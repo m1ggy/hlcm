@@ -28,6 +28,12 @@ const CASE_PREFIX = "case:";
 
 type ClientOption = { id: string; name: string };
 type ApplicationOption = { id: string; name: string; clientId: string };
+type ProfileOption = { id: string; name: string };
+
+function todayInputValue() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 // The main way to bill a client without an online payment link — no draft,
 // no Send step. Creates the invoice unpaid (awaiting
@@ -37,15 +43,21 @@ type ApplicationOption = { id: string; name: string; clientId: string };
 export function RecordPaymentDialog({
   clients,
   applications,
+  profiles,
 }: {
   clients: ClientOption[];
   applications: ApplicationOption[];
+  profiles: ProfileOption[];
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [selection, setSelection] = useState(clients[0] ? `${CLIENT_PREFIX}${clients[0].id}` : "");
+  // profiles[0] is always the default — see listInvoiceProfiles' ordering
+  // (isDefault desc) in src/lib/invoice-profiles.ts.
+  const [profileId, setProfileId] = useState(profiles[0]?.id ?? "");
   const [invoiceNumber, setInvoiceNumber] = useState("");
+  const [issueDate, setIssueDate] = useState(todayInputValue());
   const [dueDate, setDueDate] = useState("");
   const [lineItems, setLineItems] = useState([emptyLineItem()]);
   const [notes, setNotes] = useState("");
@@ -68,7 +80,9 @@ export function RecordPaymentDialog({
 
   function reset() {
     setSelection(clients[0] ? `${CLIENT_PREFIX}${clients[0].id}` : "");
+    setProfileId(profiles[0]?.id ?? "");
     setInvoiceNumber("");
+    setIssueDate(todayInputValue());
     setDueDate("");
     setLineItems([emptyLineItem()]);
     setNotes("");
@@ -90,7 +104,9 @@ export function RecordPaymentDialog({
         await createManualInvoice({
           clientId,
           applicationId,
+          invoiceProfileId: profileId || undefined,
           invoiceNumber: invoiceNumber.trim() || undefined,
+          issueDate: issueDate || undefined,
           dueDate: dueDate || undefined,
           notes: notes || undefined,
           lineItems: cleanItems,
@@ -134,7 +150,19 @@ export function RecordPaymentDialog({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          {profiles.length > 1 && (
+            <div className="space-y-1">
+              <Label>Bill as</Label>
+              <SearchableSelect
+                items={Object.fromEntries(profiles.map((p) => [p.id, p.name]))}
+                value={profileId || null}
+                onValueChange={(v) => setProfileId(v ?? profileId)}
+                searchPlaceholder="Search profiles..."
+              />
+            </div>
+          )}
+
+          <div className="grid grid-cols-3 gap-4">
             <div className="space-y-1">
               <Label htmlFor="invoiceNumber">Invoice number (optional)</Label>
               <Input
@@ -143,6 +171,10 @@ export function RecordPaymentDialog({
                 onChange={(e) => setInvoiceNumber(e.target.value)}
                 placeholder="Leave blank for DRAFT-00007"
               />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="issueDate">Issue date</Label>
+              <Input id="issueDate" type="date" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} />
             </div>
             <div className="space-y-1">
               <Label htmlFor="dueDate">Due date (optional)</Label>

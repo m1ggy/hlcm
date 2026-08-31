@@ -2,16 +2,21 @@ import { NextResponse } from "next/server";
 import { getInvoice } from "@/lib/actions/invoices";
 import { generateInvoicePdf } from "@/lib/invoice-pdf";
 import { displayInvoiceNumber } from "@/lib/invoice-format";
-import { getInvoiceSettings, getInvoiceLogo } from "@/lib/invoice-settings";
+import { getInvoiceProfile, getInvoiceLogo } from "@/lib/invoice-profiles";
 import { UnauthorizedError, ForbiddenError } from "@/lib/rbac";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
     const invoice = await getInvoice(id);
-    const settings = await getInvoiceSettings();
-    const logo = await getInvoiceLogo(settings);
-    const bytes = await generateInvoicePdf({ ...invoice, logo, footerText: settings.footerText });
+    const profile = await getInvoiceProfile(invoice.invoiceProfileId);
+    const logo = await getInvoiceLogo(profile);
+    const bytes = await generateInvoicePdf({
+      ...invoice,
+      logo,
+      footerText: profile?.footerText ?? null,
+      profileName: profile?.name ?? null,
+    });
 
     return new NextResponse(Buffer.from(bytes), {
       headers: {
