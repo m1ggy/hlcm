@@ -15,31 +15,34 @@ import {
 } from "@/components/ui/dialog";
 
 // Same field set as ClientDetailsForm (the edit page) — filled in here
-// up front instead of piecemeal after the fact. Everything but the name
-// is optional at creation time (staff can finish the rest later from the
-// client's page), but business/owner email and the billing address are
-// what invoicing and the client portal actually need, so they're asked
-// for now rather than discovered missing when someone tries to send an
-// invoice (see sendInvoice in src/lib/actions/invoices.ts).
+// up front instead of piecemeal after the fact. Everything but name and
+// business email is optional at creation time (staff can finish the
+// rest later from the client's page) — business email is required
+// because invoice sending needs it and it's otherwise easy to discover
+// missing only once someone tries to send an invoice (see sendInvoice /
+// sendManualInvoicePdf in src/lib/actions/invoices.ts).
 function Field({
   id,
   label,
   type = "text",
   defaultValue,
   className,
+  required,
 }: {
   id: string;
   label: string;
   type?: string;
   defaultValue?: string;
   className?: string;
+  required?: boolean;
 }) {
   return (
     <div className={`space-y-1 ${className ?? ""}`}>
       <Label htmlFor={id} className="text-xs text-muted-foreground">
         {label}
+        {required && <span className="text-destructive"> *</span>}
       </Label>
-      <Input id={id} name={id} type={type} defaultValue={defaultValue} className="h-8" />
+      <Input id={id} name={id} type={type} defaultValue={defaultValue} required={required} className="h-8" />
     </div>
   );
 }
@@ -91,7 +94,7 @@ export function NewClientDialog({ projectId }: { projectId: string }) {
               <Field id="businessName" label="Legal business name" />
               <Field id="address" label="Address" />
               <Field id="businessPhone" label="Business phone" type="tel" />
-              <Field id="businessEmail" label="Business email" type="email" />
+              <Field id="businessEmail" label="Business email" type="email" required />
               <Field id="contactInfo" label="Other contact info" />
             </div>
 

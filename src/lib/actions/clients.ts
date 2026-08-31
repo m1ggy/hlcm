@@ -27,6 +27,12 @@ const clientDetailFields = {
 const createClientSchema = z.object({
   projectId: z.string().min(1, "Project is required"),
   ...clientDetailFields,
+  // Required on create (unlike everywhere else this field appears) —
+  // invoice sending needs it, and it's otherwise easy to only discover
+  // missing once someone tries to send one (see sendInvoice /
+  // sendManualInvoicePdf below). Existing clients created before this
+  // still won't have one; that's a client-page edit, not a create.
+  businessEmail: z.string().min(1, "Business email is required").email("Enter a valid email address"),
 });
 
 const updateClientSchema = z.object(clientDetailFields);
