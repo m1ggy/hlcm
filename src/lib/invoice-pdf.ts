@@ -57,7 +57,7 @@ export async function generateInvoicePdf(invoice: InvoicePdfInput): Promise<Uint
       invoice.logo.mimeType === "image/png"
         ? await pdfDoc.embedPng(invoice.logo.bytes)
         : await pdfDoc.embedJpg(invoice.logo.bytes);
-    const height = 32;
+    const height = 56;
     const width = (image.width / image.height) * height;
     page.drawImage(image, { x: MARGIN, y: y - height + 14, width, height });
   } else {

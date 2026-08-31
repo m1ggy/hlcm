@@ -92,7 +92,7 @@ export function InvoiceSettingsForm({
               key={logoVersion}
               src={`/api/invoice-settings/logo?v=${logoVersion}`}
               alt="Invoice logo"
-              className="h-12 w-auto rounded border border-border bg-white object-contain p-1"
+              className="h-20 w-auto rounded border border-border bg-white object-contain p-1"
             />
           ) : (
             <p className="text-sm text-muted-foreground">No logo set — invoices show the plain &quot;CTK&quot; wordmark.</p>
@@ -112,7 +112,7 @@ export function InvoiceSettingsForm({
               </Button>
             )}
           </div>
-          <p className="text-xs text-muted-foreground">PNG or JPEG. Displayed up to 32px tall in the top-left of the PDF.</p>
+          <p className="text-xs text-muted-foreground">PNG or JPEG. Displayed up to 56pt tall in the top-left of the PDF.</p>
         </CardContent>
       </Card>
 
