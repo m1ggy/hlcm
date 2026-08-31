@@ -100,6 +100,7 @@ export function renderEmailLayout(opts: {
 
 export async function sendEmail(params: {
   to: string;
+  cc?: string[];
   subject: string;
   html: string;
   /** e.g. an invoice PDF — `content` is raw bytes, base64-encoded here, not by the caller. */
@@ -114,6 +115,7 @@ export async function sendEmail(params: {
     body: JSON.stringify({
       from: getFrom(),
       to: params.to,
+      cc: params.cc?.length ? params.cc : undefined,
       subject: params.subject,
       html: params.html,
       attachments: params.attachments?.map((a) => ({

@@ -7,6 +7,7 @@ const ADMIN_LINKS = [
   { href: "/admin/case-types", label: "Case Types", description: "New, Renewal, Post-License, Change of Ownership" },
   { href: "/admin/checklist-templates", label: "Checklist Templates", description: "Checklist items cloned onto new Applications" },
   { href: "/admin/document-templates", label: "Document Templates", description: "Merge-tag handbooks and policies generated per client" },
+  { href: "/admin/invoice-settings", label: "Invoice Settings", description: "Logo, CC recipients, and footer text for manual invoices" },
 ];
 
 export default function AdminPage() {

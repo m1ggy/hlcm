@@ -962,3 +962,23 @@ model InvoiceLineItem {
 
   @@map("invoice_line_items")
 }
+
+// Org-wide branding/config applied to every manually-recorded invoice's PDF
+// and emails — logo, CC recipients, and boilerplate footer text. Always
+// exactly one row (id pinned to "singleton"); read via getInvoiceSettings()
+// in src/lib/invoice-settings.ts, edited from /admin/invoice-settings.
+// Stripe-bound invoices aren't touched by this — Stripe emails those
+// itself and has its own branding settings.
+model InvoiceSettings {
+  id             String   @id @default("singleton")
+  logoStorageKey String?
+  logoMimeType   String?
+  // Comma-separated email addresses, CC'd on every manual-invoice email.
+  ccEmails       String?
+  // Boilerplate printed at the bottom of every invoice PDF, below the
+  // invoice's own (optional) notes — terms, remit-to info, etc.
+  footerText     String?
+  updatedAt      DateTime @updatedAt
+
+  @@map("invoice_settings")
+}

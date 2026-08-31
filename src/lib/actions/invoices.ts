@@ -8,6 +8,7 @@ import { requireRole, AppRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { sendEmail, renderEmailLayout } from "@/lib/email";
 import { generateInvoicePdf } from "@/lib/invoice-pdf";
+import { getInvoiceSettings, getInvoiceLogo, parseCcEmails } from "@/lib/invoice-settings";
 import { displayInvoiceNumber } from "@/lib/invoice-format";
 import {
   createCustomer,
@@ -323,10 +324,13 @@ async function sendManualPaymentThankYouEmail(invoiceId: string) {
     if (!recipientEmail) return;
 
     const number = displayInvoiceNumber(invoice);
-    const pdfBytes = await generateInvoicePdf(invoice);
+    const settings = await getInvoiceSettings();
+    const logo = await getInvoiceLogo(settings);
+    const pdfBytes = await generateInvoicePdf({ ...invoice, logo, footerText: settings.footerText });
 
     await sendEmail({
       to: recipientEmail,
+      cc: parseCcEmails(settings.ccEmails),
       subject: `Thank you for your payment — Invoice ${number}`,
       html: renderEmailLayout({
         heading: "Payment received",
@@ -360,11 +364,14 @@ export async function sendManualInvoicePdf(id: string) {
   if (!recipientEmail) throw new Error("Client has no email on file — add one before sending");
 
   const number = displayInvoiceNumber(invoice);
-  const pdfBytes = await generateInvoicePdf(invoice);
+  const settings = await getInvoiceSettings();
+  const logo = await getInvoiceLogo(settings);
+  const pdfBytes = await generateInvoicePdf({ ...invoice, logo, footerText: settings.footerText });
   const amountDue = (invoice.total ?? 0) - (invoice.amountPaid ?? 0);
 
   await sendEmail({
     to: recipientEmail,
+    cc: parseCcEmails(settings.ccEmails),
     subject: `Invoice ${number} from CTK`,
     html: renderEmailLayout({
       heading: "Invoice",

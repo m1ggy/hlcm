@@ -32,6 +32,9 @@ export type InvoicePdfInput = {
     billingPostalCode: string | null;
   };
   lineItems: { description: string; quantity: number; unitPrice: number }[];
+  /** Org-wide branding from InvoiceSettings — see src/lib/invoice-settings.ts. */
+  logo?: { bytes: Uint8Array; mimeType: string } | null;
+  footerText?: string | null;
 };
 
 function money(n: number) {
@@ -46,7 +49,20 @@ export async function generateInvoicePdf(invoice: InvoicePdfInput): Promise<Uint
   const page = pdfDoc.addPage(PAGE_SIZE);
   let y = PAGE_SIZE[1] - MARGIN;
 
-  page.drawText("CTK", { x: MARGIN, y, size: 20, font: boldFont });
+  // A custom logo (see InvoiceSettings) replaces the plain "CTK" wordmark
+  // when one's been uploaded; pdf-lib only embeds PNG/JPEG, which is all
+  // the admin upload form accepts.
+  if (invoice.logo) {
+    const image =
+      invoice.logo.mimeType === "image/png"
+        ? await pdfDoc.embedPng(invoice.logo.bytes)
+        : await pdfDoc.embedJpg(invoice.logo.bytes);
+    const height = 32;
+    const width = (image.width / image.height) * height;
+    page.drawImage(image, { x: MARGIN, y: y - height + 14, width, height });
+  } else {
+    page.drawText("CTK", { x: MARGIN, y, size: 20, font: boldFont });
+  }
   page.drawText("INVOICE", { x: PAGE_SIZE[0] - MARGIN - 90, y, size: 20, font: boldFont });
   y -= 20;
   page.drawText(displayInvoiceNumber(invoice), {
@@ -157,6 +173,27 @@ export async function generateInvoicePdf(invoice: InvoicePdfInput): Promise<Uint
     page.drawText("Notes", { x: MARGIN, y, size: 9, font, color: rgb(0.5, 0.5, 0.5) });
     y -= 14;
     page.drawText(invoice.notes, { x: MARGIN, y, size: 10, font, maxWidth: PAGE_SIZE[0] - MARGIN * 2 });
+    y -= 40;
+  }
+
+  // Org-wide boilerplate (see InvoiceSettings) — always last, distinct from
+  // the invoice's own notes above.
+  if (invoice.footerText) {
+    page.drawLine({
+      start: { x: MARGIN, y: y + 14 },
+      end: { x: PAGE_SIZE[0] - MARGIN, y: y + 14 },
+      thickness: 0.5,
+      color: rgb(0.85, 0.85, 0.85),
+    });
+    page.drawText(invoice.footerText, {
+      x: MARGIN,
+      y,
+      size: 8,
+      font,
+      color: rgb(0.55, 0.55, 0.55),
+      maxWidth: PAGE_SIZE[0] - MARGIN * 2,
+      lineHeight: 11,
+    });
   }
 
   return pdfDoc.save();
