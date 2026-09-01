@@ -923,27 +923,34 @@ model Invoice {
   // only actual duplicate typed numbers collide.
   invoiceNumber String? @unique
 
-  sentAt          DateTime?
-  paidAt          DateTime?
+  sentAt            DateTime?
+  paidAt            DateTime?
   // Set only by recordManualPayment/addManualPayment — a transaction paid
   // before any invoice existed (cash/check/wire), recorded with no Stripe
   // involvement at all. stripeInvoiceId staying null on a PAID or
   // PARTIALLY_PAID row is what marks it as one of these (see
   // isManualPayment in invoice-status-badge.tsx). amountPaid is the running
   // total actually received so far — only meaningful for these rows.
-  paymentMethod   String?
-  amountPaid      Float?    @default(0)
+  paymentMethod     String?
+  amountPaid        Float?    @default(0)
   // Manual invoices only. lastSentAt tracks the "Send invoice PDF" button
   // (a plain courtesy copy, before payment) — separate from paidEmailSentAt,
   // which guards the automatic thank-you email so a status transition can
   // never fire it twice (see recordManualPayment/addManualPayment in
   // src/lib/actions/invoices.ts).
-  lastSentAt      DateTime?
-  paidEmailSentAt DateTime?
-  createdBy       User      @relation("InvoiceCreatedBy", fields: [createdById], references: [id])
-  createdById     String
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  lastSentAt        DateTime?
+  paidEmailSentAt   DateTime?
+  // Set by updateManualInvoiceDraft whenever an edit lands after lastSentAt
+  // is already set — i.e. the client may be holding a PDF that no longer
+  // matches this invoice. Cleared back to null the next time "Send invoice
+  // PDF" actually goes out (see sendManualInvoicePdf), since that email
+  // carries the current version. Drives the "edited after sending"
+  // indicator on the invoice list/detail pages.
+  editedAfterSendAt DateTime?
+  createdBy         User      @relation("InvoiceCreatedBy", fields: [createdById], references: [id])
+  createdById       String
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   // Manual invoices only — which billing identity (logo/CC/footer) this
   // was billed under. Null forever on a Stripe-bound invoice, same as

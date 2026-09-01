@@ -273,24 +273,32 @@ const updateManualInvoiceDraftSchema = z.object({
 });
 
 // A manual invoice is created straight to "awaiting payment" — there's no
-// Draft state to hide it behind while it's being put together. This is
-// the next best thing: line items, notes, and dates stay editable right
-// up until either the client's actually seen it (lastSentAt set by "Send
-// invoice PDF") or any money's been recorded — whichever comes first.
-// Once either happens, changing the total (or the dates printed) out
-// from under a PDF the client may already have, or a payment already
-// logged against it, would be confusing at best.
+// Draft state to hide it behind while it's being put together. Line items,
+// notes, and dates stay editable right through SENT and PARTIALLY_PAID —
+// including after the client's already been emailed a copy (lastSentAt
+// set) — so a mistake spotted after the fact doesn't have to become a
+// voided invoice and a new one. Once PAID or VOID, it locks: money's been
+// fully reconciled against the numbers as they stood, and changing them
+// now would make that record wrong. Editing after lastSentAt is already
+// set stamps editedAfterSendAt, which drives the "edited after sending"
+// indicator on the invoice list/detail pages — see sendManualInvoicePdf,
+// which clears it again once a fresh copy actually goes out.
 export async function updateManualInvoiceDraft(id: string, input: z.infer<typeof updateManualInvoiceDraftSchema>) {
   const session = await requireRole(MANAGE_ROLES);
   const parsed = updateManualInvoiceDraftSchema.parse(input);
 
   const before = await prisma.invoice.findUniqueOrThrow({ where: { id } });
   if (!isManual(before)) throw new Error("This invoice isn't a manually-recorded one");
-  if (before.status !== "SENT" || before.lastSentAt) {
-    throw new Error("This invoice can no longer be edited — it's already been sent or paid");
+  if (before.status !== "SENT" && before.status !== "PARTIALLY_PAID") {
+    throw new Error("This invoice can no longer be edited — it's already been paid in full or voided");
   }
 
   const total = subtotalOf(parsed.lineItems);
+  if (total < (before.amountPaid ?? 0)) {
+    throw new Error(
+      `The new total ($${total.toFixed(2)}) can't be less than the $${(before.amountPaid ?? 0).toFixed(2)} already recorded as paid`
+    );
+  }
 
   const invoice = await prisma.$transaction(async (tx) => {
     await tx.invoiceLineItem.deleteMany({ where: { invoiceId: id } });
@@ -301,6 +309,7 @@ export async function updateManualInvoiceDraft(id: string, input: z.infer<typeof
         issueDate: parsed.issueDate ? new Date(parsed.issueDate) : undefined,
         dueDate: parsed.dueDate ? new Date(parsed.dueDate) : null,
         total,
+        editedAfterSendAt: before.lastSentAt ? new Date() : undefined,
         lineItems: {
           create: parsed.lineItems.map((li, index) => ({ ...li, sortOrder: index })),
         },
@@ -475,7 +484,10 @@ export async function sendManualInvoicePdf(id: string, formData?: FormData) {
     attachments: [{ filename: `invoice-${number}.pdf`, content: pdfBytes }, ...extraAttachments],
   });
 
-  const updated = await prisma.invoice.update({ where: { id }, data: { lastSentAt: new Date() } });
+  const updated = await prisma.invoice.update({
+    where: { id },
+    data: { lastSentAt: new Date(), editedAfterSendAt: null },
+  });
 
   await recordAudit({
     entityType: "Invoice",

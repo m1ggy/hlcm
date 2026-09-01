@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { TriangleAlert } from "lucide-react";
+import { TriangleAlert, PenLine } from "lucide-react";
 import { getInvoice, getInvoiceAuditLog } from "@/lib/actions/invoices";
 import { displayInvoiceNumber } from "@/lib/invoice-format";
 import { listClients } from "@/lib/actions/clients";
@@ -40,10 +40,10 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   const number = displayInvoiceNumber(invoice);
   const subtotal = invoice.lineItems.reduce((sum, li) => sum + li.quantity * li.unitPrice, 0);
   // Line items, notes, and dates stay editable inline right on this page
-  // until the client's actually seen it (lastSentAt set) or any money's
-  // been recorded — see updateManualInvoiceDraft in
-  // src/lib/actions/invoices.ts.
-  const canEditManual = isManualInvoice(invoice) && invoice.status === "SENT" && !invoice.lastSentAt;
+  // through SENT and PARTIALLY_PAID — including after the client's
+  // already been emailed a copy — and lock once PAID or VOID. See
+  // updateManualInvoiceDraft in src/lib/actions/invoices.ts.
+  const canEditManual = isManualInvoice(invoice) && (invoice.status === "SENT" || invoice.status === "PARTIALLY_PAID");
 
   return (
     <div className="space-y-6">
@@ -75,6 +75,16 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           applications={applications.map((a) => ({ id: a.id, name: a.name, clientId: a.client.id }))}
         />
       </div>
+
+      {invoice.editedAfterSendAt && (
+        <div className="flex items-center gap-2 rounded-lg border border-sky-500/50 bg-sky-500/10 px-4 py-3 text-sm text-sky-700 dark:text-sky-400">
+          <PenLine className="size-4 shrink-0" />
+          <span>
+            Edited after sending — {invoice.editedAfterSendAt.toLocaleString()}. The client&apos;s last copy may not
+            match; use &quot;Send invoice PDF&quot; to send them the current version.
+          </span>
+        </div>
+      )}
 
       {!invoice.client.businessEmail && !invoice.client.ownerEmail && (
         <div className="flex items-center gap-2 rounded-lg border border-amber-500/50 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-400">

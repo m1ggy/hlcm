@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { InvoiceStatusBadge, INVOICE_STATUS_LABELS, InvoiceStatusValue, isInvoiceOverdue, isManualInvoice } from "./invoice-status-badge";
 import { displayInvoiceNumber } from "@/lib/invoice-format";
+import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -22,6 +23,7 @@ type InvoiceRow = {
   status: string;
   total: number | null;
   dueDate: Date | null;
+  editedAfterSendAt: Date | null;
   client: { id: string; name: string; businessName: string | null };
   application: { id: string; name: string } | null;
 };
@@ -107,6 +109,15 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
                     <span className="text-xs text-muted-foreground" title="Recorded manually — not billed through an online payment link">
                       (manual)
                     </span>
+                  )}
+                  {invoice.editedAfterSendAt && (
+                    <Badge
+                      variant="outline"
+                      className="border-sky-500/50 text-sky-600 dark:text-sky-400"
+                      title={`Edited after sending on ${invoice.editedAfterSendAt.toLocaleDateString()} — the client's last copy may be out of date`}
+                    >
+                      Edited
+                    </Badge>
                   )}
                 </div>
               </TableCell>
