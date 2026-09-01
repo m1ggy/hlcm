@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { listTimeEntries, listBreakDeductions } from "@/lib/actions/time-entries";
-import { hoursBetween, formatDuration, formatMoney, summarizeByUser, type BreakDeductionRule } from "@/lib/time-entries";
+import {
+  hoursBetween,
+  formatDuration,
+  formatMoney,
+  summarizeByUser,
+  zonedInputToISOString,
+  type BreakDeductionRule,
+} from "@/lib/time-entries";
 import { UnauthorizedError, ForbiddenError } from "@/lib/rbac";
 
 const PAGE_SIZE: [number, number] = [612, 792];
@@ -25,8 +32,16 @@ export async function GET(request: NextRequest) {
     if (!fromParam || !toParam) {
       return NextResponse.json({ error: "from and to are required" }, { status: 400 });
     }
-    const from = new Date(`${fromParam}T00:00:00`);
-    const to = new Date(`${toParam}T23:59:59.999`);
+    // Resolved against the caller's own `timeZone`, not this route's server
+    // process — plain `new Date("yyyy-MM-ddTHH:mm:ss")` parses as *local*
+    // time per the JS spec, which silently shifted the displayed range (and
+    // the query boundaries) by this server's own UTC offset whenever it
+    // didn't match `timeZone`. `to` is the instant just before the next
+    // day's midnight in that zone, so the whole of `toParam`'s day is
+    // included.
+    const from = new Date(zonedInputToISOString(`${fromParam}T00:00`, timeZone));
+    const toNextMidnight = new Date(zonedInputToISOString(`${toParam}T00:00`, timeZone));
+    const to = new Date(toNextMidnight.getTime() + 24 * 60 * 60 * 1000 - 1);
     if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
       return NextResponse.json({ error: "Invalid date range" }, { status: 400 });
     }
