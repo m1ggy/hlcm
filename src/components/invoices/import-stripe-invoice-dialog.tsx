@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { CloudDownload, Loader2, Search } from "lucide-react";
+import { CloudDownload, Loader2, Search, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,7 +15,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { previewStripeInvoice, importStripeInvoice } from "@/lib/actions/invoices";
+import { previewStripeInvoice, importStripeInvoice, findStripeInvoicesForClient } from "@/lib/actions/invoices";
 
 const NONE = "__none__";
 
@@ -23,6 +23,7 @@ type ClientOption = { id: string; name: string };
 type ApplicationOption = { id: string; name: string; clientId: string };
 
 type Preview = Awaited<ReturnType<typeof previewStripeInvoice>>;
+type BrowseResult = Awaited<ReturnType<typeof findStripeInvoicesForClient>>[number];
 
 // Pulls in an invoice a coworker created directly in the Stripe Dashboard
 // instead of through this app — it never got a matching row here, so every
@@ -47,16 +48,42 @@ export function ImportStripeInvoiceDialog({
   const [isLookingUp, startLookup] = useTransition();
   const [isImporting, startImport] = useTransition();
 
+  // "Don't have the ID?" — browse a client's (or an email's) recent Stripe
+  // invoices instead of pasting one in directly.
+  const [browseOpen, setBrowseOpen] = useState(false);
+  const [browseClientId, setBrowseClientId] = useState("");
+  const [browseEmail, setBrowseEmail] = useState("");
+  const [browseResults, setBrowseResults] = useState<BrowseResult[] | null>(null);
+  const [isBrowsing, startBrowsing] = useTransition();
+
   function reset() {
     setRawInput("");
     setPreview(null);
     setClientId("");
     setApplicationId(NONE);
+    setBrowseOpen(false);
+    setBrowseClientId("");
+    setBrowseEmail("");
+    setBrowseResults(null);
   }
 
   function extractInvoiceId(value: string) {
     const match = value.match(/in_[a-zA-Z0-9]+/);
     return match ? match[0] : value.trim();
+  }
+
+  function lookupId(id: string) {
+    startLookup(async () => {
+      try {
+        const result = await previewStripeInvoice(id);
+        setPreview(result);
+        setClientId(result.suggestedClientId ?? browseClientId ?? "");
+        setRawInput(id);
+      } catch (error) {
+        setPreview(null);
+        toast.error(error instanceof Error ? error.message : "Couldn't find that Stripe invoice");
+      }
+    });
   }
 
   function handleLookup() {
@@ -65,14 +92,25 @@ export function ImportStripeInvoiceDialog({
       toast.error("Paste a Stripe invoice ID or hosted invoice link");
       return;
     }
-    startLookup(async () => {
+    lookupId(id);
+  }
+
+  function handleBrowse() {
+    if (!browseClientId && !browseEmail.trim()) {
+      toast.error("Pick a client or enter an email to search by");
+      return;
+    }
+    startBrowsing(async () => {
       try {
-        const result = await previewStripeInvoice(id);
-        setPreview(result);
-        setClientId(result.suggestedClientId ?? "");
+        const results = await findStripeInvoicesForClient({
+          clientId: browseClientId || undefined,
+          email: browseEmail || undefined,
+        });
+        setBrowseResults(results);
+        if (results.length === 0) toast.error("No Stripe invoices found for that client/email");
       } catch (error) {
-        setPreview(null);
-        toast.error(error instanceof Error ? error.message : "Couldn't find that Stripe invoice");
+        setBrowseResults(null);
+        toast.error(error instanceof Error ? error.message : "Search failed");
       }
     });
   }
@@ -138,6 +176,76 @@ export function ImportStripeInvoiceDialog({
                 Look up
               </Button>
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <button
+              type="button"
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+              onClick={() => setBrowseOpen((o) => !o)}
+            >
+              {browseOpen ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+              Don&apos;t have the ID? Browse by client
+            </button>
+
+            {browseOpen && (
+              <div className="space-y-3 rounded-lg border p-3">
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <Label>Client</Label>
+                    <SearchableSelect
+                      items={Object.fromEntries(clients.map((c) => [c.id, c.name]))}
+                      value={browseClientId || null}
+                      onValueChange={(v) => setBrowseClientId(v ?? "")}
+                      placeholder="If already in the app"
+                      searchPlaceholder="Search clients..."
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="browseEmail">Or billing email</Label>
+                    <Input
+                      id="browseEmail"
+                      type="email"
+                      value={browseEmail}
+                      onChange={(e) => setBrowseEmail(e.target.value)}
+                      placeholder="If not linked yet"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Uses the client&apos;s linked Stripe customer if it has one, otherwise an exact match on the email
+                  typed above.
+                </p>
+                <Button variant="outline" size="sm" onClick={handleBrowse} disabled={isBrowsing}>
+                  {isBrowsing ? <Loader2 className="size-3.5 animate-spin" /> : <Search className="size-3.5" />}
+                  Find invoices
+                </Button>
+
+                {browseResults && browseResults.length > 0 && (
+                  <div className="max-h-56 space-y-1 overflow-y-auto">
+                    {browseResults.map((inv) => (
+                      <button
+                        key={inv.stripeInvoiceId}
+                        type="button"
+                        disabled={inv.alreadyImported}
+                        onClick={() => lookupId(inv.stripeInvoiceId)}
+                        className="flex w-full items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-left text-sm hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <span>
+                          <span className="font-medium">{inv.number ?? inv.stripeInvoiceId}</span>{" "}
+                          <span className="text-muted-foreground">
+                            {inv.customerName ?? inv.customerEmail} · {inv.createdAt.toLocaleDateString()}
+                          </span>
+                        </span>
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          {inv.alreadyImported ? "Already imported" : `${inv.status} · $${inv.total.toFixed(2)}`}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {preview && (

@@ -21,6 +21,8 @@ import {
   retrieveInvoice,
   listInvoiceLines,
   retrieveCustomer,
+  findCustomersByEmail,
+  listCustomerInvoices,
 } from "@/lib/stripe";
 import type { $Enums } from "@/generated/prisma/client";
 
@@ -608,6 +610,59 @@ const STRIPE_IMPORT_STATUS_MAP: Partial<Record<string, $Enums.InvoiceStatus>> = 
   // "uncollectible" has no equivalent here — surfaced as an error below
   // rather than silently guessed at.
 };
+
+/**
+ * For when whoever's importing doesn't have the Stripe invoice ID or
+ * hosted link — only knows which client/email it's for. Resolves to a
+ * Stripe customer (the client's own stripeCustomerId if it has one,
+ * otherwise an exact email match on Stripe's side) and lists that
+ * customer's recent invoices so the right one can be picked by eye,
+ * flagging any already imported so they're not offered twice.
+ */
+export async function findStripeInvoicesForClient(input: { clientId?: string; email?: string }) {
+  await requireRole(MANAGE_ROLES);
+
+  let customers: { id: string; name: string | null; email: string | null }[] = [];
+
+  if (input.clientId) {
+    const client = await prisma.client.findUniqueOrThrow({ where: { id: input.clientId } });
+    if (client.stripeCustomerId) customers = [await retrieveCustomer(client.stripeCustomerId)];
+  }
+  if (customers.length === 0 && input.email?.trim()) {
+    customers = await findCustomersByEmail(input.email.trim());
+  }
+  if (customers.length === 0) {
+    throw new Error("No matching Stripe customer found — try the client's exact billing email instead");
+  }
+
+  const perCustomer = await Promise.all(customers.map((c) => listCustomerInvoices(c.id)));
+  const invoices = perCustomer.flatMap((list, i) =>
+    list.map((inv) => ({ ...inv, customerName: customers[i].name, customerEmail: customers[i].email }))
+  );
+  if (invoices.length === 0) return [];
+
+  const existingIds = new Set(
+    (
+      await prisma.invoice.findMany({
+        where: { stripeInvoiceId: { in: invoices.map((inv) => inv.id) } },
+        select: { stripeInvoiceId: true },
+      })
+    ).map((inv) => inv.stripeInvoiceId)
+  );
+
+  return invoices
+    .sort((a, b) => b.created - a.created)
+    .map((inv) => ({
+      stripeInvoiceId: inv.id,
+      number: inv.number,
+      status: inv.status,
+      total: inv.total / 100,
+      createdAt: new Date(inv.created * 1000),
+      customerName: inv.customerName,
+      customerEmail: inv.customerEmail,
+      alreadyImported: existingIds.has(inv.id),
+    }));
+}
 
 /**
  * Fetches a Stripe invoice's current state (and its customer) without

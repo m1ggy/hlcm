@@ -226,6 +226,23 @@ export async function retrieveCustomer(customerId: string): Promise<StripeCustom
   return stripeFetch<StripeCustomerFull>(`customers/${customerId}`, "GET");
 }
 
+// For when whoever's importing doesn't have the Stripe invoice ID or
+// hosted link at hand — only their coworker's client's email. `email` is
+// an exact, case-sensitive match on Stripe's side (not a fuzzy search),
+// so this can come back empty even for a real customer if the case
+// doesn't match what's on file in Stripe.
+export async function findCustomersByEmail(email: string): Promise<StripeCustomerFull[]> {
+  const result = await stripeFetch<{ data: StripeCustomerFull[] }>("customers", "GET", { email, limit: "10" });
+  return result.data;
+}
+
+// Most recent invoices for one Stripe customer — used to let someone
+// browse to the right invoice instead of typing its id in directly.
+export async function listCustomerInvoices(customerId: string): Promise<StripeInvoiceFull[]> {
+  const result = await stripeFetch<{ data: StripeInvoiceFull[] }>("invoices", "GET", { customer: customerId, limit: "25" });
+  return result.data;
+}
+
 // Hand-rolled per Stripe's documented verification scheme — no SDK needed.
 // Header looks like "t=1614556800,v1=<hex hmac>[,v0=...]".
 export function verifyWebhookSignature(
