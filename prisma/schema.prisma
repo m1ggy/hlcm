@@ -973,6 +973,14 @@ model Invoice {
   // carries the current version. Drives the "edited after sending"
   // indicator on the invoice list/detail pages.
   editedAfterSendAt DateTime?
+  // Set only by importStripeInvoice — a Stripe invoice created directly in
+  // the Stripe Dashboard (never through this app), pulled in after the
+  // fact so it shows up here too. It's just a local mirror of something
+  // that already fully exists in Stripe: deleteInvoice allows removing one
+  // regardless of status (unlike a normal invoice, deletable only while
+  // DRAFT), since deleting it never touches the real Stripe invoice —
+  // whoever imported it can safely re-import if they picked the wrong one.
+  importedAt        DateTime?
   createdBy         User      @relation("InvoiceCreatedBy", fields: [createdById], references: [id])
   createdById       String
   createdAt         DateTime  @default(now())

@@ -24,6 +24,7 @@ type InvoiceRow = {
   total: number | null;
   dueDate: Date | null;
   editedAfterSendAt: Date | null;
+  importedAt: Date | null;
   client: { id: string; name: string; businessName: string | null };
   application: { id: string; name: string } | null;
 };
@@ -108,6 +109,11 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
                   {isManualInvoice(invoice) && (
                     <span className="text-xs text-muted-foreground" title="Recorded manually — not billed through an online payment link">
                       (manual)
+                    </span>
+                  )}
+                  {invoice.importedAt && (
+                    <span className="text-xs text-muted-foreground" title="Created directly in Stripe, then imported into this app">
+                      (imported)
                     </span>
                   )}
                   {invoice.editedAfterSendAt && (

@@ -6,6 +6,7 @@ import { listInvoiceProfiles } from "@/lib/invoice-profiles";
 import { InvoicesTable } from "@/components/invoices/invoices-table";
 import { InvoiceFormDialog } from "@/components/invoices/invoice-form-dialog";
 import { RecordPaymentDialog } from "@/components/invoices/record-payment-dialog";
+import { ImportStripeInvoiceDialog } from "@/components/invoices/import-stripe-invoice-dialog";
 import { PageInfoButton } from "@/components/shared/page-info-button";
 import { ForbiddenError } from "@/lib/rbac";
 
@@ -41,6 +42,11 @@ export default async function InvoicesPage() {
               email the client any time, and a thank-you email with the invoice attached goes out automatically
               once it&apos;s paid in full.
             </p>
+            <p>
+              Someone created an invoice straight in the Stripe Dashboard? Use <strong>Import from Stripe</strong> to
+              pull it in — payment/void updates from Stripe are silently ignored for any invoice that doesn&apos;t
+              have a matching record here yet.
+            </p>
           </PageInfoButton>
         </div>
         <div className="flex items-center gap-2">
@@ -50,6 +56,10 @@ export default async function InvoicesPage() {
             profiles={profiles.map((p) => ({ id: p.id, name: p.name }))}
           />
           <InvoiceFormDialog
+            clients={clients.map((c) => ({ id: c.id, name: c.name }))}
+            applications={applications.map((a) => ({ id: a.id, name: a.name, clientId: a.client.id }))}
+          />
+          <ImportStripeInvoiceDialog
             clients={clients.map((c) => ({ id: c.id, name: c.name }))}
             applications={applications.map((a) => ({ id: a.id, name: a.name, clientId: a.client.id }))}
           />

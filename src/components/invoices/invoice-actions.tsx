@@ -32,6 +32,7 @@ export function InvoiceActions({
     total: number | null;
     amountPaid: number | null;
     lineItems: LineItem[];
+    importedAt: Date | null;
   };
   clients: { id: string; name: string }[];
   applications: { id: string; name: string; clientId: string }[];
@@ -97,6 +98,10 @@ export function InvoiceActions({
 
   const isManual = isManualInvoice(invoice);
   const canEdit = invoice.status === "DRAFT";
+  // An imported row (see importStripeInvoice) is a local mirror of an
+  // invoice that already fully exists in Stripe — deletable at any status,
+  // same reasoning as deleteInvoice's own guard.
+  const canDelete = canEdit || !!invoice.importedAt;
   // A manual invoice never had (or ever will have) a Stripe invoice to
   // send — "Send"/"Resend" would otherwise silently create one for a
   // payment that either already happened outside Stripe, or was never
@@ -173,7 +178,7 @@ export function InvoiceActions({
           <Ban className="size-3.5" /> Void
         </Button>
       )}
-      {canEdit && (
+      {canDelete && (
         <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={handleDelete} disabled={isDeleting}>
           <Trash2 className="size-3.5" /> Delete
         </Button>

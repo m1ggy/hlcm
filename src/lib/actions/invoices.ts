@@ -18,6 +18,9 @@ import {
   sendInvoice as sendInvoiceRemote,
   voidInvoiceRemote,
   payInvoiceOutOfBand,
+  retrieveInvoice,
+  listInvoiceLines,
+  retrieveCustomer,
 } from "@/lib/stripe";
 import type { $Enums } from "@/generated/prisma/client";
 
@@ -152,7 +155,13 @@ export async function updateInvoice(id: string, input: z.infer<typeof invoiceInp
 export async function deleteInvoice(id: string) {
   const session = await requireRole(MANAGE_ROLES);
   const invoice = await prisma.invoice.findUniqueOrThrow({ where: { id } });
-  if (invoice.status !== "DRAFT") throw new Error("Only draft invoices can be deleted");
+  // An imported row is deletable regardless of status — it's just a local
+  // mirror of an invoice that already fully exists in Stripe (see
+  // importStripeInvoice below), so removing it never touches Stripe itself
+  // and just clears the way to re-import if the wrong one got picked.
+  if (invoice.status !== "DRAFT" && !invoice.importedAt) {
+    throw new Error("Only draft invoices can be deleted");
+  }
 
   await prisma.invoice.delete({ where: { id } });
   await recordAudit({ entityType: "Invoice", entityId: id, action: "delete", actorId: session.user.id });
@@ -587,4 +596,147 @@ export async function sendInvoice(id: string) {
   revalidatePath("/invoices");
   revalidatePath(`/invoices/${id}`);
   return updated;
+}
+
+// --- Import (a Stripe invoice created outside this app) --------------------
+
+const STRIPE_IMPORT_STATUS_MAP: Partial<Record<string, $Enums.InvoiceStatus>> = {
+  draft: "DRAFT",
+  open: "SENT",
+  paid: "PAID",
+  void: "VOID",
+  // "uncollectible" has no equivalent here — surfaced as an error below
+  // rather than silently guessed at.
+};
+
+/**
+ * Fetches a Stripe invoice's current state (and its customer) without
+ * writing anything — the first step of importStripeInvoice below, so an
+ * admin can confirm they've got the right invoice/client pairing before
+ * committing it. Also flags whether an existing Client already looks like
+ * a match (same stripeCustomerId), to prefill the picker.
+ */
+export async function previewStripeInvoice(rawStripeInvoiceId: string) {
+  await requireRole(MANAGE_ROLES);
+  const stripeInvoiceId = rawStripeInvoiceId.trim();
+  if (!stripeInvoiceId) throw new Error("Enter a Stripe invoice ID");
+
+  const existing = await prisma.invoice.findUnique({ where: { stripeInvoiceId } });
+  if (existing) throw new Error("This Stripe invoice has already been imported");
+
+  const [invoice, lines] = await Promise.all([retrieveInvoice(stripeInvoiceId), listInvoiceLines(stripeInvoiceId)]);
+  if (!STRIPE_IMPORT_STATUS_MAP[invoice.status]) {
+    throw new Error(`Stripe invoice status "${invoice.status}" isn't supported for import`);
+  }
+  if (lines.length === 0) throw new Error("This Stripe invoice has no line items to import");
+
+  const [customer, suggestedClient] = await Promise.all([
+    retrieveCustomer(invoice.customer),
+    prisma.client.findFirst({ where: { stripeCustomerId: invoice.customer }, select: { id: true, name: true } }),
+  ]);
+
+  return {
+    stripeInvoiceId: invoice.id,
+    status: invoice.status,
+    number: invoice.number,
+    total: invoice.total / 100,
+    dueDate: invoice.due_date ? new Date(invoice.due_date * 1000) : null,
+    createdAt: new Date(invoice.created * 1000),
+    lineItemCount: lines.length,
+    customerId: invoice.customer,
+    customerName: customer.name,
+    customerEmail: customer.email,
+    suggestedClientId: suggestedClient?.id ?? null,
+    suggestedClientName: suggestedClient?.name ?? null,
+  };
+}
+
+const importStripeInvoiceSchema = z.object({
+  stripeInvoiceId: z.string().min(1),
+  clientId: z.string().min(1),
+  applicationId: z.string().optional(),
+});
+
+/**
+ * Pulls in a Stripe invoice that a coworker created directly in the Stripe
+ * Dashboard rather than through this app — it has no matching Invoice row,
+ * so the webhook handler (src/app/api/webhooks/stripe/route.ts) has been
+ * silently ignoring every event for it. This backfills that row from
+ * Stripe's current state; once stripeInvoiceId is set here, future webhook
+ * events for the same Stripe invoice (paid, voided, ...) start applying
+ * normally, same as one created the regular way.
+ */
+export async function importStripeInvoice(input: z.infer<typeof importStripeInvoiceSchema>) {
+  const session = await requireRole(MANAGE_ROLES);
+  const parsed = importStripeInvoiceSchema.parse(input);
+
+  const existing = await prisma.invoice.findUnique({ where: { stripeInvoiceId: parsed.stripeInvoiceId } });
+  if (existing) throw new Error("This Stripe invoice has already been imported");
+
+  const [invoice, lines, client] = await Promise.all([
+    retrieveInvoice(parsed.stripeInvoiceId),
+    listInvoiceLines(parsed.stripeInvoiceId),
+    prisma.client.findUniqueOrThrow({ where: { id: parsed.clientId } }),
+  ]);
+
+  const status = STRIPE_IMPORT_STATUS_MAP[invoice.status];
+  if (!status) throw new Error(`Stripe invoice status "${invoice.status}" isn't supported for import`);
+  if (lines.length === 0) throw new Error("This Stripe invoice has no line items to import");
+
+  // A client already linked to a *different* Stripe customer is refused
+  // outright rather than silently overwritten — that link is what every
+  // future "New Online Invoice" for this client bills against.
+  if (client.stripeCustomerId && client.stripeCustomerId !== invoice.customer) {
+    throw new Error(
+      `${client.name} is already linked to a different Stripe customer — pick the client that matches this invoice's Stripe customer (${invoice.customer}), or clear that client's existing link first.`
+    );
+  }
+
+  const created = await prisma.$transaction(async (tx) => {
+    if (!client.stripeCustomerId) {
+      await tx.client.update({ where: { id: client.id }, data: { stripeCustomerId: invoice.customer } });
+    }
+    return tx.invoice.create({
+      data: {
+        clientId: client.id,
+        applicationId: parsed.applicationId || undefined,
+        status,
+        issueDate: new Date(invoice.created * 1000),
+        dueDate: invoice.due_date ? new Date(invoice.due_date * 1000) : undefined,
+        total: invoice.total / 100,
+        taxAmount: (invoice.tax ?? 0) / 100,
+        stripeInvoiceId: invoice.id,
+        stripeInvoiceNumber: invoice.number,
+        hostedInvoiceUrl: invoice.hosted_invoice_url,
+        invoicePdfUrl: invoice.invoice_pdf,
+        sentAt: status !== "DRAFT" ? new Date(invoice.created * 1000) : undefined,
+        paidAt: invoice.status_transitions?.paid_at ? new Date(invoice.status_transitions.paid_at * 1000) : undefined,
+        importedAt: new Date(),
+        createdById: session.user.id,
+        lineItems: {
+          create: lines.map((li, index) => {
+            const quantity = li.quantity ?? 1;
+            return {
+              description: li.description || "Invoice item",
+              quantity,
+              unitPrice: li.amount / 100 / quantity,
+              sortOrder: index,
+            };
+          }),
+        },
+      },
+      include: invoiceInclude,
+    });
+  });
+
+  await recordAudit({
+    entityType: "Invoice",
+    entityId: created.id,
+    action: "import_stripe",
+    actorId: session.user.id,
+    newValue: invoice.id,
+  });
+
+  revalidatePath("/invoices");
+  return created;
 }

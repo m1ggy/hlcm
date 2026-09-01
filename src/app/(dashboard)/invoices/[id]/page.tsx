@@ -68,6 +68,11 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               Recorded manually{invoice.invoiceProfile ? ` — billed as ${invoice.invoiceProfile.name}` : ""}
             </span>
           )}
+          {invoice.importedAt && (
+            <span className="text-xs text-muted-foreground" title="Created directly in Stripe, then imported into this app">
+              Imported from Stripe — {invoice.importedAt.toLocaleDateString()}
+            </span>
+          )}
         </div>
         <InvoiceActions
           invoice={invoice}

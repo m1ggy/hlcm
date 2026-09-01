@@ -49,13 +49,15 @@ function getWebhookSecret() {
 const taxEnabled = process.env.STRIPE_TAX_ENABLED === "true";
 
 async function stripeFetch<T>(path: string, method: "GET" | "POST", params?: Record<string, string>): Promise<T> {
-  const res = await fetch(`${API_BASE}/${path}`, {
+  const isGet = method === "GET";
+  const query = isGet && params ? `?${new URLSearchParams(params).toString()}` : "";
+  const res = await fetch(`${API_BASE}/${path}${query}`, {
     method,
     headers: {
       Authorization: `Bearer ${getSecretKey()}`,
       "Content-Type": "application/x-www-form-urlencoded",
     },
-    body: method === "POST" ? new URLSearchParams(params ?? {}) : undefined,
+    body: !isGet ? new URLSearchParams(params ?? {}) : undefined,
   });
   const text = await res.text();
   const body = text ? JSON.parse(text) : null;
@@ -174,6 +176,54 @@ export async function voidInvoiceRemote(stripeInvoiceId: string): Promise<Stripe
 // correct, rather than only updating our own DB.
 export async function payInvoiceOutOfBand(stripeInvoiceId: string): Promise<StripeInvoice> {
   return stripeFetch<StripeInvoice>(`invoices/${stripeInvoiceId}/pay`, "POST", { paid_out_of_band: "true" });
+}
+
+// --- Importing an invoice created directly in the Stripe Dashboard --------
+// (never routed through createDraftInvoice/finalizeInvoice above) — see
+// importStripeInvoice in src/lib/actions/invoices.ts.
+
+type StripeInvoiceFull = StripeInvoice & {
+  customer: string;
+  status: string; // draft | open | paid | uncollectible | void
+  created: number; // unix seconds
+  due_date: number | null;
+  status_transitions?: { paid_at: number | null };
+};
+
+export async function retrieveInvoice(stripeInvoiceId: string): Promise<StripeInvoiceFull> {
+  return stripeFetch<StripeInvoiceFull>(`invoices/${stripeInvoiceId}`, "GET");
+}
+
+type StripeInvoiceLine = {
+  id: string;
+  description: string | null;
+  quantity: number | null;
+  amount: number; // cents, already quantity × unit price
+};
+
+// The invoice object's own embedded `lines` list is capped at 10 by
+// default — paged through the dedicated endpoint instead so a longer
+// Dashboard-created invoice doesn't get silently truncated on import.
+export async function listInvoiceLines(stripeInvoiceId: string): Promise<StripeInvoiceLine[]> {
+  const lines: StripeInvoiceLine[] = [];
+  let startingAfter: string | undefined;
+  for (;;) {
+    const page = await stripeFetch<{ data: StripeInvoiceLine[]; has_more: boolean }>(
+      `invoices/${stripeInvoiceId}/lines`,
+      "GET",
+      { limit: "100", ...(startingAfter ? { starting_after: startingAfter } : {}) }
+    );
+    lines.push(...page.data);
+    if (!page.has_more || page.data.length === 0) break;
+    startingAfter = page.data[page.data.length - 1].id;
+  }
+  return lines;
+}
+
+type StripeCustomerFull = StripeCustomer & { name: string | null; email: string | null };
+
+export async function retrieveCustomer(customerId: string): Promise<StripeCustomerFull> {
+  return stripeFetch<StripeCustomerFull>(`customers/${customerId}`, "GET");
 }
 
 // Hand-rolled per Stripe's documented verification scheme — no SDK needed.
