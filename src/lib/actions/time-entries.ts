@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireSession, requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
-import { TimeClockError, summarizeByUser, type TimeEntryRangeInput } from "@/lib/time-entries";
+import { TimeClockError, summarizeByUser, DEFAULT_TIMEZONE, type TimeEntryRangeInput, type BreakDeductionRule } from "@/lib/time-entries";
 
 export async function getMyActiveEntry() {
   const session = await requireSession();
@@ -99,10 +99,107 @@ export async function listTimeEntries(input: TimeEntryRangeInput) {
   });
 }
 
+/**
+ * Which TimesheetBreakDeduction rules could apply somewhere in [from, to] —
+ * a blanket rule (userId null) always qualifies; a user-specific one only
+ * when it matches `userId` (or `userId` is omitted, i.e. an "all users"
+ * report, where every rule is relevant). Callers still need to check each
+ * entry's own day against a rule's [fromDate, toDate] (see dayInRule in
+ * src/lib/time-entries.ts) — this only narrows by range/user up front.
+ */
+export async function listBreakDeductions(input: { userId?: string; from: Date; to: Date }) {
+  await requireRole(["ADMIN", "MANAGER"]);
+  return prisma.timesheetBreakDeduction.findMany({
+    where: {
+      fromDate: { lte: input.to },
+      toDate: { gte: input.from },
+      ...(input.userId ? { OR: [{ userId: null }, { userId: input.userId }] } : {}),
+    },
+    include: { user: { select: { id: true, name: true } }, createdBy: { select: { name: true } } },
+    orderBy: { fromDate: "desc" },
+  });
+}
+
 /** Server action wrapper so client components can preview totals without hitting the PDF route. */
-export async function getTimesheetTotals(input: TimeEntryRangeInput) {
-  const entries = await listTimeEntries(input);
-  return summarizeByUser(entries);
+export async function getTimesheetTotals(input: TimeEntryRangeInput & { timeZone?: string }) {
+  const [entries, deductions] = await Promise.all([
+    listTimeEntries(input),
+    listBreakDeductions(input),
+  ]);
+  const rules: BreakDeductionRule[] = deductions.map((d) => ({
+    userId: d.userId,
+    fromDate: d.fromDate,
+    toDate: d.toDate,
+    minutesPerDay: d.minutesPerDay,
+  }));
+  return summarizeByUser(entries, rules, input.timeZone || DEFAULT_TIMEZONE);
+}
+
+const breakDeductionSchema = z
+  .object({
+    userId: z.string().optional(),
+    fromDate: z.coerce.date(),
+    toDate: z.coerce.date(),
+    minutesPerDay: z.coerce.number().int().min(1, "Must be at least 1 minute").max(1440, "Can't exceed 24 hours"),
+    note: z.string().optional(),
+  })
+  .refine((v) => v.toDate >= v.fromDate, { message: "End date must be on or after the start date" });
+
+/**
+ * Admin-only: adds a retroactive unpaid-break deduction (e.g. "this pay
+ * period should've had a 30-minute lunch deducted each day"). Applied at
+ * report/PDF/payout time by summarizeByUser — nothing here touches the
+ * underlying TimeEntry rows, so it can be corrected or removed without
+ * losing the original clock times.
+ */
+export async function createBreakDeduction(input: {
+  userId?: string;
+  fromDate: string;
+  toDate: string;
+  minutesPerDay: number;
+  note?: string;
+}) {
+  const session = await requireRole(["ADMIN"]);
+  const parsed = breakDeductionSchema.parse(input);
+
+  const deduction = await prisma.timesheetBreakDeduction.create({
+    data: {
+      userId: parsed.userId || null,
+      fromDate: parsed.fromDate,
+      toDate: parsed.toDate,
+      minutesPerDay: parsed.minutesPerDay,
+      note: parsed.note || undefined,
+      createdById: session.user.id,
+    },
+  });
+
+  await recordAudit({
+    entityType: "TimesheetBreakDeduction",
+    entityId: deduction.id,
+    action: "create",
+    actorId: session.user.id,
+    newValue: `${parsed.minutesPerDay}min/day, ${parsed.fromDate.toISOString().slice(0, 10)} – ${parsed.toDate.toISOString().slice(0, 10)}${parsed.userId ? ` (user ${parsed.userId})` : " (all users)"}`,
+  });
+
+  revalidatePath("/time");
+  return deduction;
+}
+
+export async function deleteBreakDeduction(id: string) {
+  const session = await requireRole(["ADMIN"]);
+  const deduction = await prisma.timesheetBreakDeduction.findUniqueOrThrow({ where: { id } });
+
+  await prisma.timesheetBreakDeduction.delete({ where: { id } });
+
+  await recordAudit({
+    entityType: "TimesheetBreakDeduction",
+    entityId: id,
+    action: "delete",
+    actorId: session.user.id,
+    oldValue: `${deduction.minutesPerDay}min/day, ${deduction.fromDate.toISOString().slice(0, 10)} – ${deduction.toDate.toISOString().slice(0, 10)}`,
+  });
+
+  revalidatePath("/time");
 }
 
 const manualEntrySchema = z

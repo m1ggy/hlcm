@@ -5,8 +5,8 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireSession, requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
-import { listTimeEntries } from "@/lib/actions/time-entries";
-import { summarizeByUser } from "@/lib/time-entries";
+import { listTimeEntries, listBreakDeductions } from "@/lib/actions/time-entries";
+import { summarizeByUser, DEFAULT_TIMEZONE, type BreakDeductionRule } from "@/lib/time-entries";
 import {
   getAccountRequirements,
   createRecipientAccount,
@@ -113,11 +113,17 @@ const payoutRangeSchema = z.object({
   userId: z.string().min(1),
   from: z.coerce.date(),
   to: z.coerce.date(),
+  // The admin's own effective timezone (from the report they're paying
+  // out of) — needed so a day's worked hours get bucketed the same way
+  // here as they were on screen, since a TimesheetBreakDeduction is
+  // applied per calendar day. Falls back to the company default if the
+  // caller (e.g. a script) doesn't have one to pass.
+  timeZone: z.string().optional(),
 });
 
 export async function payUserViaWise(input: z.infer<typeof payoutRangeSchema>) {
   const session = await requireRole(["ADMIN"]);
-  const { userId, from, to } = payoutRangeSchema.parse(input);
+  const { userId, from, to, timeZone } = payoutRangeSchema.parse(input);
 
   const [user, recipient] = await Promise.all([
     prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { name: true, hourlyRate: true } }),
@@ -126,8 +132,17 @@ export async function payUserViaWise(input: z.infer<typeof payoutRangeSchema>) {
   if (!user.hourlyRate) throw new Error(`${user.name} has no hourly rate set`);
   if (!recipient) throw new Error(`${user.name} hasn't added payout details yet`);
 
-  const entries = await listTimeEntries({ userId, from, to });
-  const [totals] = summarizeByUser(entries);
+  const [entries, deductions] = await Promise.all([
+    listTimeEntries({ userId, from, to }),
+    listBreakDeductions({ userId, from, to }),
+  ]);
+  const rules: BreakDeductionRule[] = deductions.map((d) => ({
+    userId: d.userId,
+    fromDate: d.fromDate,
+    toDate: d.toDate,
+    minutesPerDay: d.minutesPerDay,
+  }));
+  const [totals] = summarizeByUser(entries, rules, timeZone || DEFAULT_TIMEZONE);
   const hours = totals?.hours ?? 0;
   if (hours <= 0) throw new Error("No completed sessions in this date range");
 

@@ -189,6 +189,10 @@ export type TimesheetTotal = {
   userName: string;
   hourlyRate: number | null;
   hours: number;
+  // Hours actually subtracted by a TimesheetBreakDeduction (see below) —
+  // broken out from `hours` purely so the report/PDF can show what was
+  // deducted, not folded silently into the total.
+  breakHours: number;
   pay: number | null;
   hasOpenEntry: boolean;
 };
@@ -200,30 +204,83 @@ type EntryWithUser = {
   user: { name: string; hourlyRate: number | null };
 };
 
-/** Groups a flat entry list into one totals row per user — used by both the report table and the PDF export. */
-export function summarizeByUser(entries: EntryWithUser[]): TimesheetTotal[] {
-  const byUser = new Map<string, TimesheetTotal>();
+/** One TimesheetBreakDeduction row, as summarizeByUser needs it — `userId:
+ * null` applies to every user's hours in [fromDate, toDate], not just one. */
+export type BreakDeductionRule = {
+  userId: string | null;
+  fromDate: Date;
+  toDate: Date;
+  minutesPerDay: number;
+};
+
+function dayInRule(day: string, rule: BreakDeductionRule) {
+  return day >= toDateInputValue(rule.fromDate, "UTC") && day <= toDateInputValue(rule.toDate, "UTC");
+}
+
+/**
+ * Groups a flat entry list into one totals row per user — used by the
+ * report table, the PDF export, and the Wise payout amount alike, so all
+ * three always agree on the same number.
+ *
+ * `breaks` are applied per calendar day (in `timeZone`, matching how the
+ * sessions table itself buckets a shift to "the day it started"): any day
+ * with worked hours that falls inside a rule's [fromDate, toDate] has that
+ * rule's minutesPerDay subtracted from just that day, not once across the
+ * whole range — a rule spanning a 15-day pay period with only 9 worked
+ * days deducts 9 breaks, not 15. Overlapping rules for the same user (e.g.
+ * a blanket one plus a specific one) stack. A day's deduction never pushes
+ * that day below 0 hours.
+ */
+export function summarizeByUser(
+  entries: EntryWithUser[],
+  breaks: BreakDeductionRule[] = [],
+  timeZone: string = DEFAULT_TIMEZONE
+): TimesheetTotal[] {
+  const meta = new Map<string, { userName: string; hourlyRate: number | null; hasOpenEntry: boolean }>();
+  const dayHoursByUser = new Map<string, Map<string, number>>();
+
   for (const entry of entries) {
-    const existing = byUser.get(entry.userId) ?? {
-      userId: entry.userId,
+    const existing = meta.get(entry.userId) ?? {
       userName: entry.user.name,
       hourlyRate: entry.user.hourlyRate,
-      hours: 0,
-      pay: 0,
       hasOpenEntry: false,
     };
     if (!entry.clockOut) {
       existing.hasOpenEntry = true;
     } else {
+      const day = toDateInputValue(entry.clockIn, timeZone);
       const hours = hoursBetween(entry.clockIn, entry.clockOut);
-      existing.hours += hours;
-      existing.pay = (existing.pay ?? 0) + (existing.hourlyRate ?? 0) * hours;
+      const days = dayHoursByUser.get(entry.userId) ?? new Map<string, number>();
+      days.set(day, (days.get(day) ?? 0) + hours);
+      dayHoursByUser.set(entry.userId, days);
     }
-    byUser.set(entry.userId, existing);
+    meta.set(entry.userId, existing);
   }
-  const totals = [...byUser.values()];
-  for (const t of totals) {
-    if (t.hourlyRate === null) t.pay = null;
+
+  const totals: TimesheetTotal[] = [];
+  for (const [userId, info] of meta) {
+    const days = dayHoursByUser.get(userId);
+    let hours = 0;
+    let breakHours = 0;
+    if (days) {
+      for (const [day, dayHours] of days) {
+        const minutes = breaks
+          .filter((b) => (b.userId === null || b.userId === userId) && dayInRule(day, b))
+          .reduce((sum, b) => sum + b.minutesPerDay, 0);
+        const deducted = Math.min(dayHours, minutes / 60);
+        hours += dayHours - deducted;
+        breakHours += deducted;
+      }
+    }
+    totals.push({
+      userId,
+      userName: info.userName,
+      hourlyRate: info.hourlyRate,
+      hours,
+      breakHours,
+      pay: info.hourlyRate != null ? info.hourlyRate * hours : null,
+      hasOpenEntry: info.hasOpenEntry,
+    });
   }
   return totals.sort((a, b) => a.userName.localeCompare(b.userName));
 }

@@ -133,40 +133,42 @@ model User {
   createdAt                 DateTime @default(now())
   updatedAt                 DateTime @updatedAt
 
-  projectsCreated               Project[]               @relation("ProjectCreatedBy")
-  clientsCreated                Client[]                @relation("ClientCreatedBy")
-  applicationsOwned             Application[]           @relation("ApplicationOwner")
-  applicationsManaging          Application[]           @relation("ApplicationManager")
-  mcoCredentialsAssigned        McoCredential[]         @relation("McoCredentialAssignee")
-  mcoCredentialsManaging        McoCredential[]         @relation("McoCredentialManager")
-  mcoCredentialsCreated         McoCredential[]         @relation("McoCredentialCreatedBy")
-  applicationsCreated           Application[]           @relation("ApplicationCreatedBy")
-  licenseTypeTemplatesCreated   LicenseTypeTemplate[]   @relation("LicenseTypeTemplateCreatedBy")
-  caseTypesCreated              CaseType[]              @relation("CaseTypeCreatedBy")
-  pipelineStagesCreated         PipelineStage[]         @relation("PipelineStageCreatedBy")
-  serviceTypesCreated           ServiceType[]           @relation("ServiceTypeCreatedBy")
-  clientCredentialsCreated      ClientCredential[]      @relation("ClientCredentialCreatedBy")
-  stageHistoryActed             StageHistory[]          @relation("StageHistoryActor")
-  checklistItemTemplatesCreated ChecklistItemTemplate[] @relation("ChecklistItemTemplateCreatedBy")
+  projectsCreated               Project[]                 @relation("ProjectCreatedBy")
+  clientsCreated                Client[]                  @relation("ClientCreatedBy")
+  applicationsOwned             Application[]             @relation("ApplicationOwner")
+  applicationsManaging          Application[]             @relation("ApplicationManager")
+  mcoCredentialsAssigned        McoCredential[]           @relation("McoCredentialAssignee")
+  mcoCredentialsManaging        McoCredential[]           @relation("McoCredentialManager")
+  mcoCredentialsCreated         McoCredential[]           @relation("McoCredentialCreatedBy")
+  applicationsCreated           Application[]             @relation("ApplicationCreatedBy")
+  licenseTypeTemplatesCreated   LicenseTypeTemplate[]     @relation("LicenseTypeTemplateCreatedBy")
+  caseTypesCreated              CaseType[]                @relation("CaseTypeCreatedBy")
+  pipelineStagesCreated         PipelineStage[]           @relation("PipelineStageCreatedBy")
+  serviceTypesCreated           ServiceType[]             @relation("ServiceTypeCreatedBy")
+  clientCredentialsCreated      ClientCredential[]        @relation("ClientCredentialCreatedBy")
+  stageHistoryActed             StageHistory[]            @relation("StageHistoryActor")
+  checklistItemTemplatesCreated ChecklistItemTemplate[]   @relation("ChecklistItemTemplateCreatedBy")
   taskAssignments               TaskAssignee[]
   taskReviews                   TaskReviewer[]
-  tasksCreated                  Task[]                  @relation("TaskCreatedBy")
+  tasksCreated                  Task[]                    @relation("TaskCreatedBy")
   auditLogs                     AuditLog[]
-  accessGrantsReceived          AccessGrant[]           @relation("AccessGrantUser")
-  accessGrantsGiven             AccessGrant[]           @relation("AccessGrantGrantedBy")
-  filesUploaded                 FileAsset[]             @relation("FileUploadedBy")
-  fileVersionsUploaded          FileVersion[]           @relation("FileVersionUploadedBy")
-  documentTemplatesCreated      DocumentTemplate[]      @relation("DocumentTemplateCreatedBy")
-  documentsGenerated            GeneratedDocument[]     @relation("GeneratedDocumentGeneratedBy")
+  accessGrantsReceived          AccessGrant[]             @relation("AccessGrantUser")
+  accessGrantsGiven             AccessGrant[]             @relation("AccessGrantGrantedBy")
+  filesUploaded                 FileAsset[]               @relation("FileUploadedBy")
+  fileVersionsUploaded          FileVersion[]             @relation("FileVersionUploadedBy")
+  documentTemplatesCreated      DocumentTemplate[]        @relation("DocumentTemplateCreatedBy")
+  documentsGenerated            GeneratedDocument[]       @relation("GeneratedDocumentGeneratedBy")
   signatureProfile              SignatureProfile?
-  signatureEvents               SignatureEvent[]        @relation("SignatureEventSignedBy")
+  signatureEvents               SignatureEvent[]          @relation("SignatureEventSignedBy")
   notifications                 Notification[]
-  notesAuthored                 Note[]                  @relation("NoteAuthor")
+  notesAuthored                 Note[]                    @relation("NoteAuthor")
   timeEntries                   TimeEntry[]
   wiseRecipient                 WiseRecipient?
-  wisePayoutsReceived           WiseTransaction[]       @relation("WiseTransactionPayee")
-  wisePayoutsInitiated          WiseTransaction[]       @relation("WiseTransactionInitiatedBy")
-  invoicesCreated               Invoice[]               @relation("InvoiceCreatedBy")
+  wisePayoutsReceived           WiseTransaction[]         @relation("WiseTransactionPayee")
+  wisePayoutsInitiated          WiseTransaction[]         @relation("WiseTransactionInitiatedBy")
+  invoicesCreated               Invoice[]                 @relation("InvoiceCreatedBy")
+  breakDeductionsFor            TimesheetBreakDeduction[] @relation("TimesheetBreakDeductionUser")
+  breakDeductionsCreated        TimesheetBreakDeduction[] @relation("TimesheetBreakDeductionCreatedBy")
 
   @@map("users")
 }
@@ -234,6 +236,30 @@ model TimeEntry {
 
   @@index([userId, clockIn])
   @@map("time_entries")
+}
+
+// An unpaid-break policy applied retroactively to hours already worked —
+// e.g. a forgotten lunch-break deduction added for a whole pay period after
+// the fact. Applied per calendar day (see summarizeByUser in
+// src/lib/time-entries.ts): any day within [fromDate, toDate] that has
+// worked hours for the targeted user(s) has minutesPerDay subtracted from
+// that day's total, not once for the whole range. userId null means "every
+// user's hours in range" (a company-wide policy) rather than one employee;
+// multiple overlapping rules (e.g. a blanket one plus a specific one) stack.
+model TimesheetBreakDeduction {
+  id            String   @id @default(cuid())
+  user          User?    @relation("TimesheetBreakDeductionUser", fields: [userId], references: [id], onDelete: Cascade)
+  userId        String?
+  fromDate      DateTime
+  toDate        DateTime
+  minutesPerDay Int
+  note          String?
+  createdBy     User     @relation("TimesheetBreakDeductionCreatedBy", fields: [createdById], references: [id])
+  createdById   String
+  createdAt     DateTime @default(now())
+
+  @@index([userId])
+  @@map("timesheet_break_deductions")
 }
 
 // A Project is an internal engagement/case grouping — independent of which

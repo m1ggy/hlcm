@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { FileDown, Loader2, Trash2 } from "lucide-react";
+import { FileDown, Loader2, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,7 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { getTimesheetTotals, listTimeEntries, deleteTimeEntry } from "@/lib/actions/time-entries";
+import { getTimesheetTotals, listTimeEntries, listBreakDeductions, deleteBreakDeduction, deleteTimeEntry } from "@/lib/actions/time-entries";
 import { payUserViaWise } from "@/lib/actions/wise";
 import {
   effectiveTimezone,
@@ -29,6 +29,7 @@ import {
 } from "@/lib/time-entries";
 import { AddTimeEntryDialog } from "@/components/time-clock/add-time-entry-dialog";
 import { EditTimeEntryDialog } from "@/components/time-clock/edit-time-entry-dialog";
+import { BreakDeductionDialog } from "@/components/time-clock/break-deduction-dialog";
 
 type TimeEntryRow = {
   id: string;
@@ -36,6 +37,17 @@ type TimeEntryRow = {
   clockIn: Date;
   clockOut: Date | null;
   user: { id: string; name: string; hourlyRate: number | null };
+};
+
+type BreakDeductionRow = {
+  id: string;
+  userId: string | null;
+  fromDate: Date;
+  toDate: Date;
+  minutesPerDay: number;
+  note: string | null;
+  user: { id: string; name: string } | null;
+  createdBy: { name: string };
 };
 
 // isAdmin gates both the Pay button and the entry-level management (add/
@@ -57,17 +69,19 @@ export function TimesheetReport({
   const [to, setTo] = useState(() => toDateInputValue(new Date(), timezone));
   const [totals, setTotals] = useState<TimesheetTotal[] | null>(null);
   const [entries, setEntries] = useState<TimeEntryRow[] | null>(null);
+  const [breaks, setBreaks] = useState<BreakDeductionRow[]>([]);
   const [isPending, startTransition] = useTransition();
   const [payStatus, setPayStatus] = useState<Record<string, "paying" | "paid">>({});
   const [, startPaying] = useTransition();
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deletingBreakId, setDeletingBreakId] = useState<string | null>(null);
 
   function handlePay(payUserId: string) {
     setPayStatus((s) => ({ ...s, [payUserId]: "paying" }));
     startPaying(async () => {
       try {
         const toEnd = new Date(`${to}T23:59:59.999`);
-        await payUserViaWise({ userId: payUserId, from: new Date(`${from}T00:00:00`), to: toEnd });
+        await payUserViaWise({ userId: payUserId, from: new Date(`${from}T00:00:00`), to: toEnd, timeZone: timezone });
         setPayStatus((s) => ({ ...s, [payUserId]: "paid" }));
         toast.success("Payout sent via Wise");
       } catch (error) {
@@ -104,9 +118,14 @@ export function TimesheetReport({
           from: new Date(`${range.from}T00:00:00`),
           to: toEnd,
         };
-        const [rows, rawEntries] = await Promise.all([getTimesheetTotals(query), listTimeEntries(query)]);
+        const [rows, rawEntries, rawBreaks] = await Promise.all([
+          getTimesheetTotals({ ...query, timeZone: timezone }),
+          listTimeEntries(query),
+          listBreakDeductions(query),
+        ]);
         setTotals(rows);
         setEntries(rawEntries);
+        setBreaks(rawBreaks);
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to load totals");
       }
@@ -135,6 +154,22 @@ export function TimesheetReport({
         toast.error(error instanceof Error ? error.message : "Failed to delete entry");
       } finally {
         setDeletingId(null);
+      }
+    });
+  }
+
+  function handleDeleteBreak(id: string) {
+    if (!confirm("Remove this break deduction? Hours/pay for this range will recalculate without it.")) return;
+    setDeletingBreakId(id);
+    startTransition(async () => {
+      try {
+        await deleteBreakDeduction(id);
+        toast.success("Break deduction removed");
+        handlePreview();
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Failed to remove break deduction");
+      } finally {
+        setDeletingBreakId(null);
       }
     });
   }
@@ -181,7 +216,38 @@ export function TimesheetReport({
         {isAdmin && (
           <AddTimeEntryDialog users={users} accountTimezone={accountTimezone} onAdded={handlePreview} />
         )}
+        {isAdmin && (
+          <BreakDeductionDialog users={users} defaultUserId={userId} defaultFrom={from} defaultTo={to} onAdded={handlePreview} />
+        )}
       </div>
+
+      {breaks.length > 0 && (
+        <div className="space-y-1.5 rounded-lg border bg-muted/30 p-3">
+          <p className="text-xs font-medium text-muted-foreground uppercase">Break deductions in this range</p>
+          <ul className="space-y-1 text-sm">
+            {breaks.map((b) => (
+              <li key={b.id} className="flex items-center justify-between gap-2">
+                <span>
+                  <span className="font-medium">{b.user?.name ?? "All users"}</span> — {formatDuration(b.minutesPerDay / 60)}/day,{" "}
+                  {b.fromDate.toLocaleDateString()} – {b.toDate.toLocaleDateString()}
+                  {b.note && <span className="text-muted-foreground"> · {b.note}</span>}
+                  <span className="text-muted-foreground"> (added by {b.createdBy.name})</span>
+                </span>
+                {isAdmin && (
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    disabled={deletingBreakId === b.id}
+                    onClick={() => handleDeleteBreak(b.id)}
+                  >
+                    {deletingBreakId === b.id ? <Loader2 className="size-3 animate-spin" /> : <X className="size-3.5 text-destructive" />}
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {totals && (
         <Table>
@@ -204,7 +270,12 @@ export function TimesheetReport({
                   )}
                 </TableCell>
                 <TableCell>{t.hourlyRate != null ? `${formatMoney(t.hourlyRate)}/hr` : "—"}</TableCell>
-                <TableCell>{formatDuration(t.hours)}</TableCell>
+                <TableCell>
+                  {formatDuration(t.hours)}
+                  {t.breakHours > 0 && (
+                    <span className="ml-1 text-xs text-muted-foreground">(−{formatDuration(t.breakHours)} break)</span>
+                  )}
+                </TableCell>
                 <TableCell>{t.pay != null ? formatMoney(t.pay) : "—"}</TableCell>
                 {isAdmin && (
                   <TableCell>

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import { listTimeEntries } from "@/lib/actions/time-entries";
-import { hoursBetween, formatDuration, formatMoney, summarizeByUser } from "@/lib/time-entries";
+import { listTimeEntries, listBreakDeductions } from "@/lib/actions/time-entries";
+import { hoursBetween, formatDuration, formatMoney, summarizeByUser, type BreakDeductionRule } from "@/lib/time-entries";
 import { UnauthorizedError, ForbiddenError } from "@/lib/rbac";
 
 const PAGE_SIZE: [number, number] = [612, 792];
@@ -31,8 +31,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Invalid date range" }, { status: 400 });
     }
 
-    const entries = await listTimeEntries({ userId, from, to });
-    const totals = summarizeByUser(entries);
+    const [entries, deductions] = await Promise.all([
+      listTimeEntries({ userId, from, to }),
+      listBreakDeductions({ userId, from, to }),
+    ]);
+    const rules: BreakDeductionRule[] = deductions.map((d) => ({
+      userId: d.userId,
+      fromDate: d.fromDate,
+      toDate: d.toDate,
+      minutesPerDay: d.minutesPerDay,
+    }));
+    const totals = summarizeByUser(entries, rules, timeZone);
     const entriesByUser = new Map<string, typeof entries>();
     for (const entry of entries) {
       const list = entriesByUser.get(entry.userId) ?? [];
@@ -123,8 +132,9 @@ export async function GET(request: NextRequest) {
       }
 
       ensureRoom(1);
+      const breakLabel = total.breakHours > 0 ? ` (-${formatDuration(total.breakHours)} break)` : "";
       page.drawText(
-        `Subtotal: ${formatDuration(total.hours)}${total.pay != null ? ` · ${formatMoney(total.pay)}` : ""}`,
+        `Subtotal: ${formatDuration(total.hours)}${breakLabel}${total.pay != null ? ` · ${formatMoney(total.pay)}` : ""}`,
         { x: MARGIN, y, size: 9, font: boldFont }
       );
       y -= 26;
