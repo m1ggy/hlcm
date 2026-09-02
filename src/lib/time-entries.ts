@@ -217,6 +217,92 @@ function dayInRule(day: string, rule: BreakDeductionRule) {
   return day >= toDateInputValue(rule.fromDate, "UTC") && day <= toDateInputValue(rule.toDate, "UTC");
 }
 
+/** "yyyy-mm-dd" + net hours worked that day — one point on the hours-per-day
+ * chart (see HoursByDayChart). Summed across every user in `entries`, so
+ * pass entries already filtered to one user (own chart) or a chosen subset
+ * (admin report) — this doesn't break totals out by user the way
+ * summarizeByUser does, since the chart only ever plots one line. */
+export type DailyHours = { day: string; hours: number; breakHours: number };
+
+type EntryForDay = { userId: string; clockIn: Date; clockOut: Date | null };
+
+/** Same per-user-per-day break netting as summarizeByUser, just bucketed
+ * (and summed) by day instead of by user — kept as its own pass rather than
+ * sharing summarizeByUser's loop so neither risks the other's payroll math. */
+export function summarizeByDay(
+  entries: EntryForDay[],
+  breaks: BreakDeductionRule[] = [],
+  timeZone: string = DEFAULT_TIMEZONE
+): DailyHours[] {
+  const dayHoursByUser = new Map<string, Map<string, number>>();
+  for (const entry of entries) {
+    if (!entry.clockOut) continue;
+    const day = toDateInputValue(entry.clockIn, timeZone);
+    const hours = hoursBetween(entry.clockIn, entry.clockOut);
+    const days = dayHoursByUser.get(entry.userId) ?? new Map<string, number>();
+    days.set(day, (days.get(day) ?? 0) + hours);
+    dayHoursByUser.set(entry.userId, days);
+  }
+
+  const byDay = new Map<string, { hours: number; breakHours: number }>();
+  for (const [userId, days] of dayHoursByUser) {
+    for (const [day, dayHours] of days) {
+      const minutes = breaks
+        .filter((b) => (b.userId === null || b.userId === userId) && dayInRule(day, b))
+        .reduce((sum, b) => sum + b.minutesPerDay, 0);
+      const deducted = Math.min(dayHours, minutes / 60);
+      const existing = byDay.get(day) ?? { hours: 0, breakHours: 0 };
+      existing.hours += dayHours - deducted;
+      existing.breakHours += deducted;
+      byDay.set(day, existing);
+    }
+  }
+
+  return [...byDay.entries()]
+    .map(([day, v]) => ({ day, ...v }))
+    .sort((a, b) => a.day.localeCompare(b.day));
+}
+
+/** Fills every day between `from` and `to` (both "yyyy-mm-dd", inclusive)
+ * with a zero-hours entry where summarizeByDay had no sessions — so the
+ * chart's x-axis stays a continuous calendar, not just the days someone
+ * happened to clock in. */
+export function fillDailyRange(daily: DailyHours[], from: string, to: string): DailyHours[] {
+  const byDay = new Map(daily.map((d) => [d.day, d]));
+  const [fy, fm, fd] = from.split("-").map(Number);
+  const [ty, tm, td] = to.split("-").map(Number);
+  const end = Date.UTC(ty, tm - 1, td);
+  const result: DailyHours[] = [];
+  for (let cursor = Date.UTC(fy, fm - 1, fd); cursor <= end; cursor += 24 * 60 * 60 * 1000) {
+    const day = new Date(cursor).toISOString().slice(0, 10);
+    result.push(byDay.get(day) ?? { day, hours: 0, breakHours: 0 });
+  }
+  return result;
+}
+
+/** "yyyy-mm-dd" range for the `n` calendar days ending today, read in
+ * `timeZone` — the default window for a staff member's own hours-per-day
+ * chart (see MyTimeLog). */
+export function lastNDaysRange(n: number, timeZone: string = DEFAULT_TIMEZONE, now = new Date()) {
+  const [y, mo, d] = toDateInputValue(now, timeZone).split("-").map(Number);
+  const to = Date.UTC(y, mo - 1, d);
+  const from = to - (n - 1) * 24 * 60 * 60 * 1000;
+  return { from: toDateInputValue(new Date(from), "UTC"), to: toDateInputValue(new Date(to), "UTC") };
+}
+
+/** Converts a [from, to] pair of "yyyy-mm-dd" date-only strings into the UTC
+ * instants spanning that whole range's wall-clock days in `timeZone` — from
+ * midnight the first day through the last instant of the last day. For any
+ * *server-side* caller turning date-only input into a Prisma range: passing
+ * `new Date(\`${from}T00:00:00\`)\` directly would parse against the
+ * server's own local time instead of `timeZone` (the same bug fixed in the
+ * timesheet PDF export route's date-range display). */
+export function dayRangeToInstants(from: string, to: string, timeZone: string): { from: Date; to: Date } {
+  const fromInstant = new Date(zonedInputToISOString(`${from}T00:00`, timeZone));
+  const toInstant = new Date(new Date(zonedInputToISOString(`${to}T00:00`, timeZone)).getTime() + 24 * 60 * 60 * 1000 - 1);
+  return { from: fromInstant, to: toInstant };
+}
+
 /**
  * Groups a flat entry list into one totals row per user — used by the
  * report table, the PDF export, and the Wise payout amount alike, so all

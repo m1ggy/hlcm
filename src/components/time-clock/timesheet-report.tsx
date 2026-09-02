@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { FileDown, Loader2, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -25,11 +25,19 @@ import {
   formatMoney,
   hoursBetween,
   toDateInputValue,
+  summarizeByDay,
+  fillDailyRange,
   type TimesheetTotal,
+  type BreakDeductionRule,
 } from "@/lib/time-entries";
 import { AddTimeEntryDialog } from "@/components/time-clock/add-time-entry-dialog";
 import { EditTimeEntryDialog } from "@/components/time-clock/edit-time-entry-dialog";
 import { BreakDeductionDialog } from "@/components/time-clock/break-deduction-dialog";
+import { HoursByDayChart } from "@/components/time-clock/hours-by-day-chart";
+
+// Beyond this, a per-day bar chart gets too cramped to read — the table above
+// still covers longer ranges fine, this just stops trying to chart them.
+const MAX_CHARTABLE_DAYS = 62;
 
 type TimeEntryRow = {
   id: string;
@@ -177,6 +185,19 @@ export function TimesheetReport({
   const grandHours = totals?.reduce((sum, t) => sum + t.hours, 0) ?? 0;
   const grandPay = totals?.reduce((sum, t) => sum + (t.pay ?? 0), 0) ?? 0;
 
+  const dayCount = Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000) + 1;
+  const chartTooLong = Number.isFinite(dayCount) && dayCount > MAX_CHARTABLE_DAYS;
+  const dailyChartData = useMemo(() => {
+    if (!entries || chartTooLong || !Number.isFinite(dayCount) || dayCount <= 0) return null;
+    const rules: BreakDeductionRule[] = breaks.map((b) => ({
+      userId: b.userId,
+      fromDate: b.fromDate,
+      toDate: b.toDate,
+      minutesPerDay: b.minutesPerDay,
+    }));
+    return fillDailyRange(summarizeByDay(entries, rules, timezone), from, to);
+  }, [entries, breaks, timezone, from, to, chartTooLong, dayCount]);
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-3">
@@ -317,6 +338,17 @@ export function TimesheetReport({
             )}
           </TableBody>
         </Table>
+      )}
+
+      {totals && (
+        <div>
+          <p className="mb-2 text-sm font-medium">Hours per day</p>
+          {chartTooLong ? (
+            <p className="text-sm text-muted-foreground">Range too long to chart per day — narrow the dates to see a daily breakdown.</p>
+          ) : (
+            <HoursByDayChart data={dailyChartData ?? []} />
+          )}
+        </div>
       )}
 
       {entries && (

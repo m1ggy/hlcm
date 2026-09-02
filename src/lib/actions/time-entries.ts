@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireSession, requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
-import { TimeClockError, summarizeByUser, DEFAULT_TIMEZONE, type TimeEntryRangeInput, type BreakDeductionRule } from "@/lib/time-entries";
+import { TimeClockError, summarizeByUser, summarizeByDay, DEFAULT_TIMEZONE, type TimeEntryRangeInput, type BreakDeductionRule } from "@/lib/time-entries";
 
 export async function getMyActiveEntry() {
   const session = await requireSession();
@@ -69,6 +69,28 @@ export async function listMyTimeEntries(limit = 25) {
     orderBy: { clockIn: "desc" },
     take: limit,
   });
+}
+
+const dailyHoursSchema = z.object({ from: z.coerce.date(), to: z.coerce.date() });
+
+/** Own hours-per-day chart data — no role gate beyond being signed in, since
+ * it's scoped to the caller's own entries (unlike listTimeEntries/
+ * listBreakDeductions, which are admin/manager only because they can name
+ * any user). Break deductions aren't applied here: the raw session table
+ * this backs a chart for doesn't net them out either. */
+export async function getMyDailyHours(input: { from: Date; to: Date; timeZone?: string }) {
+  const session = await requireSession();
+  const { from, to } = dailyHoursSchema.parse(input);
+  const entries = await prisma.timeEntry.findMany({
+    where: {
+      userId: session.user.id,
+      clockIn: { lte: to },
+      OR: [{ clockOut: null }, { clockOut: { gte: from } }],
+    },
+    select: { userId: true, clockIn: true, clockOut: true },
+    orderBy: { clockIn: "asc" },
+  });
+  return summarizeByDay(entries, [], input.timeZone || DEFAULT_TIMEZONE);
 }
 
 const rangeSchema = z.object({
