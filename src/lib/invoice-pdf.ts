@@ -5,11 +5,57 @@
 // (src/app/api/invoices/[id]/pdf/route.ts) and the "Send invoice PDF"
 // email action (sendManualInvoicePdf in src/lib/actions/invoices.ts), so
 // the emailed copy and the downloaded copy are always identical.
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { displayInvoiceNumber } from "@/lib/invoice-format";
 
 const PAGE_SIZE: [number, number] = [612, 792];
 const MARGIN = 48;
+
+// pdf-lib's own `maxWidth` option wraps long text for you, but never tells
+// you how many lines that produced — every call site here used to advance
+// `y` by a fixed guess afterward, which was wrong (and silently
+// overlapping the next section) as soon as a note or footer was long
+// enough to wrap onto more lines than the guess assumed. Wrapping by hand
+// means the actual line count — and so the actual height consumed — is
+// always known.
+function wrapText(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
+  const lines: string[] = [];
+  for (const paragraph of text.split("\n")) {
+    if (paragraph.length === 0) {
+      lines.push("");
+      continue;
+    }
+    let current = "";
+    for (const word of paragraph.split(" ")) {
+      const candidate = current ? `${current} ${word}` : word;
+      if (current && font.widthOfTextAtSize(candidate, size) > maxWidth) {
+        lines.push(current);
+        current = word;
+      } else {
+        current = candidate;
+      }
+    }
+    lines.push(current);
+  }
+  return lines;
+}
+
+// Draws hand-wrapped text top-down from `y` and returns the total height
+// consumed, so the caller can advance `y` by the real amount rather than a
+// fixed guess.
+function drawWrappedText(
+  page: PDFPage,
+  text: string,
+  opts: { x: number; y: number; font: PDFFont; size: number; maxWidth: number; lineHeight: number; color?: ReturnType<typeof rgb> }
+): number {
+  const lines = wrapText(text, opts.font, opts.size, opts.maxWidth);
+  let cursorY = opts.y;
+  for (const line of lines) {
+    page.drawText(line, { x: opts.x, y: cursorY, size: opts.size, font: opts.font, color: opts.color });
+    cursorY -= opts.lineHeight;
+  }
+  return lines.length * opts.lineHeight;
+}
 
 export type InvoicePdfInput = {
   seq: number;
@@ -174,8 +220,15 @@ export async function generateInvoicePdf(invoice: InvoicePdfInput): Promise<Uint
   if (invoice.notes) {
     page.drawText("Notes", { x: MARGIN, y, size: 9, font, color: rgb(0.5, 0.5, 0.5) });
     y -= 14;
-    page.drawText(invoice.notes, { x: MARGIN, y, size: 10, font, maxWidth: PAGE_SIZE[0] - MARGIN * 2 });
-    y -= 40;
+    const notesHeight = drawWrappedText(page, invoice.notes, {
+      x: MARGIN,
+      y,
+      font,
+      size: 10,
+      maxWidth: PAGE_SIZE[0] - MARGIN * 2,
+      lineHeight: 14,
+    });
+    y -= notesHeight + 20;
   }
 
   // Org-wide boilerplate (see InvoiceProfile) — always last, distinct from
@@ -187,11 +240,11 @@ export async function generateInvoicePdf(invoice: InvoicePdfInput): Promise<Uint
       thickness: 0.5,
       color: rgb(0.85, 0.85, 0.85),
     });
-    page.drawText(invoice.footerText, {
+    drawWrappedText(page, invoice.footerText, {
       x: MARGIN,
       y,
-      size: 8,
       font,
+      size: 8,
       color: rgb(0.55, 0.55, 0.55),
       maxWidth: PAGE_SIZE[0] - MARGIN * 2,
       lineHeight: 11,
