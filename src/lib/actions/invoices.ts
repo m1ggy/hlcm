@@ -467,9 +467,14 @@ export async function sendReceiptEmail(receiptId: string) {
   const number = displayInvoiceNumber(invoice);
   const receiptNumber = displayReceiptNumber(receipt);
   const pdfBytes = await readStoredFile(receipt.storageKey);
+  // Same CC list the invoice profile's other emails (Send invoice PDF,
+  // the old auto thank-you) already used — see getInvoiceProfile/
+  // parseCcEmails in src/lib/invoice-profiles.ts.
+  const profile = await getInvoiceProfile(invoice.invoiceProfileId);
 
   await sendEmail({
     to: recipientEmail,
+    cc: parseCcEmails(profile?.ccEmails ?? null),
     subject: `Receipt ${receiptNumber} — payment for Invoice ${number}`,
     html: renderEmailLayout({
       heading: "Payment received",
