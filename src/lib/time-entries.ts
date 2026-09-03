@@ -217,65 +217,97 @@ function dayInRule(day: string, rule: BreakDeductionRule) {
   return day >= toDateInputValue(rule.fromDate, "UTC") && day <= toDateInputValue(rule.toDate, "UTC");
 }
 
-/** "yyyy-mm-dd" + net hours worked that day — one point on the hours-per-day
- * chart (see HoursByDayChart). Summed across every user in `entries`, so
- * pass entries already filtered to one user (own chart) or a chosen subset
- * (admin report) — this doesn't break totals out by user the way
- * summarizeByUser does, since the chart only ever plots one line. */
-export type DailyHours = { day: string; hours: number; breakHours: number };
+/** One clocked-in span within a single calendar day, as hours-since-local-
+ * midnight (0–24) — one highlighted bar segment on the 24-hour timeline
+ * chart (see DailyTimelineChart). A session that crosses local midnight is
+ * split into two (or more) of these, one per day it touches, so it never
+ * shows a session running past hour 24. */
+export type DaySegment = { startHour: number; endHour: number };
+export type DaySegments = { day: string; segments: DaySegment[] };
 
-type EntryForDay = { userId: string; clockIn: Date; clockOut: Date | null };
+type EntryForSegments = { clockIn: Date; clockOut: Date | null };
 
-/** Same per-user-per-day break netting as summarizeByUser, just bucketed
- * (and summed) by day instead of by user — kept as its own pass rather than
- * sharing summarizeByUser's loop so neither risks the other's payroll math. */
-export function summarizeByDay(
-  entries: EntryForDay[],
-  breaks: BreakDeductionRule[] = [],
-  timeZone: string = DEFAULT_TIMEZONE
-): DailyHours[] {
-  const dayHoursByUser = new Map<string, Map<string, number>>();
+/** This instant's hour-of-day (0–24, fractional) as read in `timeZone`. */
+function hourOfDay(date: Date, timeZone: string): number {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", { timeZone, hourCycle: "h23", hour: "2-digit", minute: "2-digit", second: "2-digit" })
+      .formatToParts(date)
+      .map((p) => [p.type, p.value])
+  );
+  return Number(parts.hour) + Number(parts.minute) / 60 + Number(parts.second) / 3600;
+}
+
+/** "yyyy-mm-dd" one calendar day after `day`, read as a plain UTC date (no
+ * timezone conversion — `day` is already a zone-agnostic digit string). */
+function nextDayString(day: string): string {
+  const [y, m, d] = day.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
+}
+
+/**
+ * Buckets entries into per-day clocked-in segments (hours since local
+ * midnight, in `timeZone`) for the 24-hour timeline chart. Unlike
+ * summarizeByUser/summarizeByDay this keeps every session as its own
+ * segment instead of summing into one number, so back-to-back sessions and
+ * the gaps between them (time not clocked in) stay visible on the chart.
+ * Summed across every user in `entries`, so pass entries already filtered
+ * to one user (own chart) or a chosen subset (admin report).
+ *
+ * A session spanning local midnight is split at each midnight it crosses
+ * into one segment per day. Open (still clocked-in) entries are clamped to
+ * `now` rather than dropped, so an in-progress session still shows on
+ * today's row.
+ */
+export function segmentsByDay(
+  entries: EntryForSegments[],
+  timeZone: string = DEFAULT_TIMEZONE,
+  now: Date = new Date()
+): DaySegments[] {
+  const byDay = new Map<string, DaySegment[]>();
+  const push = (day: string, startHour: number, endHour: number) => {
+    if (endHour <= startHour) return;
+    const segments = byDay.get(day) ?? [];
+    segments.push({ startHour, endHour });
+    byDay.set(day, segments);
+  };
+
   for (const entry of entries) {
-    if (!entry.clockOut) continue;
-    const day = toDateInputValue(entry.clockIn, timeZone);
-    const hours = hoursBetween(entry.clockIn, entry.clockOut);
-    const days = dayHoursByUser.get(entry.userId) ?? new Map<string, number>();
-    days.set(day, (days.get(day) ?? 0) + hours);
-    dayHoursByUser.set(entry.userId, days);
-  }
+    const clockOut = entry.clockOut ?? now;
+    if (clockOut <= entry.clockIn) continue;
 
-  const byDay = new Map<string, { hours: number; breakHours: number }>();
-  for (const [userId, days] of dayHoursByUser) {
-    for (const [day, dayHours] of days) {
-      const minutes = breaks
-        .filter((b) => (b.userId === null || b.userId === userId) && dayInRule(day, b))
-        .reduce((sum, b) => sum + b.minutesPerDay, 0);
-      const deducted = Math.min(dayHours, minutes / 60);
-      const existing = byDay.get(day) ?? { hours: 0, breakHours: 0 };
-      existing.hours += dayHours - deducted;
-      existing.breakHours += deducted;
-      byDay.set(day, existing);
+    let cursor = entry.clockIn;
+    // Cap the walk so a stuck-open entry from long ago can't spin through
+    // years of empty midnights before giving up.
+    for (let guard = 0; guard < 400; guard++) {
+      const day = toDateInputValue(cursor, timeZone);
+      const nextMidnight = new Date(zonedInputToISOString(`${nextDayString(day)}T00:00`, timeZone));
+      if (clockOut <= nextMidnight) {
+        push(day, hourOfDay(cursor, timeZone), hourOfDay(clockOut, timeZone));
+        break;
+      }
+      push(day, hourOfDay(cursor, timeZone), 24);
+      cursor = nextMidnight;
     }
   }
 
   return [...byDay.entries()]
-    .map(([day, v]) => ({ day, ...v }))
+    .map(([day, segments]) => ({ day, segments: segments.sort((a, b) => a.startHour - b.startHour) }))
     .sort((a, b) => a.day.localeCompare(b.day));
 }
 
 /** Fills every day between `from` and `to` (both "yyyy-mm-dd", inclusive)
- * with a zero-hours entry where summarizeByDay had no sessions — so the
- * chart's x-axis stays a continuous calendar, not just the days someone
- * happened to clock in. */
-export function fillDailyRange(daily: DailyHours[], from: string, to: string): DailyHours[] {
+ * with an empty-segments day where segmentsByDay had no sessions — so the
+ * chart shows one row per calendar day, not just the days someone happened
+ * to clock in. */
+export function fillSegmentsRange(daily: DaySegments[], from: string, to: string): DaySegments[] {
   const byDay = new Map(daily.map((d) => [d.day, d]));
   const [fy, fm, fd] = from.split("-").map(Number);
   const [ty, tm, td] = to.split("-").map(Number);
   const end = Date.UTC(ty, tm - 1, td);
-  const result: DailyHours[] = [];
+  const result: DaySegments[] = [];
   for (let cursor = Date.UTC(fy, fm - 1, fd); cursor <= end; cursor += 24 * 60 * 60 * 1000) {
     const day = new Date(cursor).toISOString().slice(0, 10);
-    result.push(byDay.get(day) ?? { day, hours: 0, breakHours: 0 });
+    result.push(byDay.get(day) ?? { day, segments: [] });
   }
   return result;
 }

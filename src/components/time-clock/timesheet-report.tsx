@@ -25,15 +25,14 @@ import {
   formatMoney,
   hoursBetween,
   toDateInputValue,
-  summarizeByDay,
-  fillDailyRange,
+  segmentsByDay,
+  fillSegmentsRange,
   type TimesheetTotal,
-  type BreakDeductionRule,
 } from "@/lib/time-entries";
 import { AddTimeEntryDialog } from "@/components/time-clock/add-time-entry-dialog";
 import { EditTimeEntryDialog } from "@/components/time-clock/edit-time-entry-dialog";
 import { BreakDeductionDialog } from "@/components/time-clock/break-deduction-dialog";
-import { HoursByDayChart } from "@/components/time-clock/hours-by-day-chart";
+import { DailyTimelineChart } from "@/components/time-clock/daily-timeline-chart";
 
 // Beyond this, a per-day bar chart gets too cramped to read — the table above
 // still covers longer ranges fine, this just stops trying to chart them.
@@ -189,14 +188,11 @@ export function TimesheetReport({
   const chartTooLong = Number.isFinite(dayCount) && dayCount > MAX_CHARTABLE_DAYS;
   const dailyChartData = useMemo(() => {
     if (!entries || chartTooLong || !Number.isFinite(dayCount) || dayCount <= 0) return null;
-    const rules: BreakDeductionRule[] = breaks.map((b) => ({
-      userId: b.userId,
-      fromDate: b.fromDate,
-      toDate: b.toDate,
-      minutesPerDay: b.minutesPerDay,
-    }));
-    return fillDailyRange(summarizeByDay(entries, rules, timezone), from, to);
-  }, [entries, breaks, timezone, from, to, chartTooLong, dayCount]);
+    // Break deductions are a flat per-day amount with no clock time of their
+    // own (see BreakDeductionRule), so unlike the totals table there's no
+    // specific span of the day to carve out of the timeline for them.
+    return fillSegmentsRange(segmentsByDay(entries, timezone), from, to);
+  }, [entries, timezone, from, to, chartTooLong, dayCount]);
 
   return (
     <div className="space-y-4">
@@ -342,11 +338,11 @@ export function TimesheetReport({
 
       {totals && (
         <div>
-          <p className="mb-2 text-sm font-medium">Hours per day</p>
+          <p className="mb-2 text-sm font-medium">Clock in/out per day</p>
           {chartTooLong ? (
             <p className="text-sm text-muted-foreground">Range too long to chart per day — narrow the dates to see a daily breakdown.</p>
           ) : (
-            <HoursByDayChart data={dailyChartData ?? []} />
+            <DailyTimelineChart data={dailyChartData ?? []} />
           )}
         </div>
       )}

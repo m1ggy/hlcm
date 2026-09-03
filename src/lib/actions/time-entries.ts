@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireSession, requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
-import { TimeClockError, summarizeByUser, summarizeByDay, DEFAULT_TIMEZONE, type TimeEntryRangeInput, type BreakDeductionRule } from "@/lib/time-entries";
+import { TimeClockError, summarizeByUser, DEFAULT_TIMEZONE, type TimeEntryRangeInput, type BreakDeductionRule } from "@/lib/time-entries";
 
 export async function getMyActiveEntry() {
   const session = await requireSession();
@@ -71,26 +71,26 @@ export async function listMyTimeEntries(limit = 25) {
   });
 }
 
-const dailyHoursSchema = z.object({ from: z.coerce.date(), to: z.coerce.date() });
+const entriesInRangeSchema = z.object({ from: z.coerce.date(), to: z.coerce.date() });
 
-/** Own hours-per-day chart data — no role gate beyond being signed in, since
- * it's scoped to the caller's own entries (unlike listTimeEntries/
- * listBreakDeductions, which are admin/manager only because they can name
- * any user). Break deductions aren't applied here: the raw session table
- * this backs a chart for doesn't net them out either. */
-export async function getMyDailyHours(input: { from: Date; to: Date; timeZone?: string }) {
+/** Own entries for the 24-hour timeline chart (see DailyTimelineChart) — no
+ * role gate beyond being signed in, since it's scoped to the caller's own
+ * entries (unlike listTimeEntries/listBreakDeductions, which are
+ * admin/manager only because they can name any user). Returns raw
+ * clockIn/clockOut pairs rather than a summary — the chart needs each
+ * session's actual times to draw it as a segment, not just a daily total. */
+export async function getMyEntriesInRange(input: { from: Date; to: Date }) {
   const session = await requireSession();
-  const { from, to } = dailyHoursSchema.parse(input);
-  const entries = await prisma.timeEntry.findMany({
+  const { from, to } = entriesInRangeSchema.parse(input);
+  return prisma.timeEntry.findMany({
     where: {
       userId: session.user.id,
       clockIn: { lte: to },
       OR: [{ clockOut: null }, { clockOut: { gte: from } }],
     },
-    select: { userId: true, clockIn: true, clockOut: true },
+    select: { id: true, clockIn: true, clockOut: true },
     orderBy: { clockIn: "asc" },
   });
-  return summarizeByDay(entries, [], input.timeZone || DEFAULT_TIMEZONE);
 }
 
 const rangeSchema = z.object({
