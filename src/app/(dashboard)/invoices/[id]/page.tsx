@@ -9,6 +9,7 @@ import { InvoiceStatusBadge, isInvoiceOverdue, isManualInvoice } from "@/compone
 import { InvoiceActions } from "@/components/invoices/invoice-actions";
 import { ManualInvoiceEditor } from "@/components/invoices/manual-invoice-editor";
 import { SendReceiptDialog } from "@/components/invoices/send-receipt-dialog";
+import { PaymentRowActions } from "@/components/invoices/payment-row-actions";
 import { AuditLogPanel } from "@/components/applications/audit-log-panel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -46,6 +47,10 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   // already been emailed a copy — and lock once PAID or VOID. See
   // updateManualInvoiceDraft in src/lib/actions/invoices.ts.
   const canEditManual = isManualInvoice(invoice) && (invoice.status === "SENT" || invoice.status === "PARTIALLY_PAID");
+  // Once VOID (whether from the plain Void or voidInvoiceWithPayments —
+  // see invoice-actions.tsx), a payment is history, not something left to
+  // correct — updatePayment/deletePayment both refuse it server-side too.
+  const canEditPayments = invoice.status !== "VOID";
 
   return (
     <div className="space-y-6">
@@ -80,6 +85,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           invoice={invoice}
           clients={clients.map((c) => ({ id: c.id, name: c.name }))}
           applications={applications.map((a) => ({ id: a.id, name: a.name, clientId: a.client.id }))}
+          paymentsCount={invoice.payments.length}
         />
       </div>
 
@@ -185,6 +191,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                       <th className="pb-2 font-normal">Method</th>
                       <th className="pb-2 text-right font-normal">Amount</th>
                       <th className="pb-2 text-right font-normal">Receipt</th>
+                      {canEditPayments && <th className="pb-2" />}
                     </tr>
                   </thead>
                   <tbody>
@@ -221,6 +228,16 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                             <span className="text-xs text-muted-foreground">No receipt</span>
                           )}
                         </td>
+                        {canEditPayments && (
+                          <td className="py-2 text-right">
+                            <PaymentRowActions
+                              paymentId={payment.id}
+                              amount={payment.amount}
+                              paidAt={payment.paidAt}
+                              paymentMethod={payment.paymentMethod}
+                            />
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>

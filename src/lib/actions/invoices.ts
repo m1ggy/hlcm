@@ -8,7 +8,7 @@ import { recordAudit } from "@/lib/audit";
 import { sendEmail, renderEmailLayout } from "@/lib/email";
 import { generateInvoicePdf } from "@/lib/invoice-pdf";
 import { generateReceiptPdf } from "@/lib/receipt-pdf";
-import { saveBuffer, readStoredFile } from "@/lib/storage";
+import { saveBuffer, readStoredFile, deleteStoredFile } from "@/lib/storage";
 import { getInvoiceProfile, getDefaultInvoiceProfile, getInvoiceLogo, parseCcEmails } from "@/lib/invoice-profiles";
 import { displayInvoiceNumber, displayReceiptNumber } from "@/lib/invoice-format";
 import {
@@ -25,7 +25,7 @@ import {
   findCustomersByEmail,
   listCustomerInvoices,
 } from "@/lib/stripe";
-import type { $Enums } from "@/generated/prisma/client";
+import type { $Enums, Prisma } from "@/generated/prisma/client";
 
 const MANAGE_ROLES: AppRole[] = ["ADMIN", "MANAGER"];
 
@@ -199,6 +199,43 @@ export async function voidInvoice(id: string) {
   if (before.stripeInvoiceId) await voidInvoiceRemote(before.stripeInvoiceId);
   await prisma.invoice.update({ where: { id }, data: { status: "VOID" } });
   await recordAudit({ entityType: "Invoice", entityId: id, action: "void", actorId: session.user.id });
+
+  revalidatePath("/invoices");
+  revalidatePath(`/invoices/${id}`);
+}
+
+/**
+ * Voids a manually-recorded invoice that already has money against it —
+ * PAID or PARTIALLY_PAID, the two statuses voidInvoice itself refuses.
+ * Meant for a test/sample invoice that shouldn't have counted at all.
+ * Resets the invoice back to a clean VOID/zero state, but deliberately
+ * leaves its Payment/Receipt rows alone — they keep showing on the
+ * invoice's Payments card afterward, as history, even though the invoice
+ * itself no longer counts them. Refuses a Stripe-bound invoice: real money
+ * moved there needs an actual refund, not a status flip.
+ */
+export async function voidInvoiceWithPayments(id: string) {
+  const session = await requireRole(MANAGE_ROLES);
+  const before = await prisma.invoice.findUniqueOrThrow({ where: { id } });
+  if (!isManual(before)) {
+    throw new Error("Only manually-recorded invoices can be voided this way — a Stripe-paid invoice needs a refund instead");
+  }
+  if (before.status !== "PAID" && before.status !== "PARTIALLY_PAID") {
+    throw new Error("This invoice has no payments recorded — use the regular Void instead");
+  }
+
+  await prisma.invoice.update({
+    where: { id },
+    data: { status: "VOID", amountPaid: 0, paidAt: null, paymentMethod: null },
+  });
+
+  await recordAudit({
+    entityType: "Invoice",
+    entityId: id,
+    action: "void_with_payments",
+    actorId: session.user.id,
+    oldValue: `${before.status}, $${(before.amountPaid ?? 0).toFixed(2)} recorded`,
+  });
 
   revalidatePath("/invoices");
   revalidatePath(`/invoices/${id}`);
@@ -439,6 +476,135 @@ export async function addManualPayment(id: string, input: z.infer<typeof additio
   revalidatePath("/invoices");
   revalidatePath(`/invoices/${id}`);
   return invoice;
+}
+
+// Shared by updatePayment/deletePayment below — after either, the
+// invoice's cumulative amountPaid/status/paidAt/paymentMethod (the
+// summary shown outside the Payments card) need to be recomputed from
+// whatever Payment rows are left, not just adjusted incrementally the way
+// addManualPayment can when it's only ever adding a new one.
+async function recomputeInvoiceFromPayments(tx: Prisma.TransactionClient, invoiceId: string, total: number) {
+  const payments = await tx.payment.findMany({ where: { invoiceId }, orderBy: { paidAt: "desc" } });
+  const amountPaid = payments.reduce((sum, p) => sum + p.amount, 0);
+  const latest = payments[0];
+  return tx.invoice.update({
+    where: { id: invoiceId },
+    data: {
+      amountPaid,
+      status: amountPaid <= 0 ? "SENT" : amountPaid >= total ? "PAID" : "PARTIALLY_PAID",
+      paidAt: latest?.paidAt ?? null,
+      paymentMethod: latest?.paymentMethod ?? null,
+    },
+    include: invoiceInclude,
+  });
+}
+
+/**
+ * Corrects a single payment already recorded against a manual invoice — a
+ * typo'd amount, the wrong date, whatever. Recomputes the invoice's
+ * cumulative totals from every remaining Payment row (see
+ * recomputeInvoiceFromPayments), not just this one, since others may
+ * exist. Regenerates the payment's own receipt PDF to match — the old one
+ * is now wrong — but that regeneration failing (a render bug, GCS hiccup)
+ * must not fail the edit itself, same reasoning as addManualPayment's own
+ * receipt generation. Refuses once the invoice is VOID.
+ */
+export async function updatePayment(paymentId: string, input: z.infer<typeof additionalPaymentInputSchema>) {
+  const session = await requireRole(MANAGE_ROLES);
+  const parsed = additionalPaymentInputSchema.parse(input);
+
+  const before = await prisma.payment.findUniqueOrThrow({
+    where: { id: paymentId },
+    include: { invoice: true, receipt: true },
+  });
+  if (before.invoice.status === "VOID") throw new Error("This invoice is void — nothing to update");
+
+  const paidAt = new Date(parsed.paidAt);
+  const total = before.invoice.total ?? 0;
+
+  const invoice = await prisma.$transaction(async (tx) => {
+    await tx.payment.update({
+      where: { id: paymentId },
+      data: { amount: parsed.amount, paidAt, paymentMethod: parsed.paymentMethod },
+    });
+    return recomputeInvoiceFromPayments(tx, before.invoiceId, total);
+  });
+
+  await recordAudit({
+    entityType: "Invoice",
+    entityId: before.invoiceId,
+    action: "update_manual_payment",
+    actorId: session.user.id,
+    oldValue: `${before.paymentMethod} $${before.amount.toFixed(2)} on ${before.paidAt.toISOString().slice(0, 10)}`,
+    newValue: `${parsed.paymentMethod} $${parsed.amount.toFixed(2)} on ${paidAt.toISOString().slice(0, 10)}`,
+  });
+
+  // A receipt-regeneration failure must not read as "the edit failed" —
+  // the payment's already been corrected above regardless of whether its
+  // PDF could be refreshed to match.
+  let receiptAlreadySent = false;
+  if (before.receipt) {
+    receiptAlreadySent = !!before.receipt.sentAt;
+    try {
+      const profile = await getInvoiceProfile(invoice.invoiceProfileId);
+      const logo = await getInvoiceLogo(profile);
+      const pdfBytes = await generateReceiptPdf({
+        seq: before.receipt.seq,
+        payment: { amount: parsed.amount, paidAt, paymentMethod: parsed.paymentMethod },
+        invoice,
+        client: invoice.client,
+        logo,
+        footerText: profile?.footerText ?? null,
+        profileName: profile?.name ?? null,
+      });
+      const { storageKey } = await saveBuffer(Buffer.from(pdfBytes), ".pdf");
+      if (before.receipt.storageKey) await deleteStoredFile(before.receipt.storageKey);
+      await prisma.receipt.update({ where: { id: before.receipt.id }, data: { storageKey } });
+    } catch (error) {
+      console.error(`Failed to regenerate receipt for payment ${paymentId}:`, error);
+    }
+  }
+
+  revalidatePath("/invoices");
+  revalidatePath(`/invoices/${before.invoiceId}`);
+  return { invoice, receiptAlreadySent };
+}
+
+/**
+ * Removes a single payment recorded against a manual invoice by mistake —
+ * genuinely deletes the row (and its receipt, via cascade), unlike
+ * voidInvoiceWithPayments above which deliberately preserves them for a
+ * whole-invoice void. Refuses once the invoice is VOID.
+ */
+export async function deletePayment(paymentId: string) {
+  const session = await requireRole(MANAGE_ROLES);
+
+  const before = await prisma.payment.findUniqueOrThrow({
+    where: { id: paymentId },
+    include: { invoice: true, receipt: true },
+  });
+  if (before.invoice.status === "VOID") throw new Error("This invoice is void — nothing to delete");
+
+  const receiptAlreadySent = !!before.receipt?.sentAt;
+  if (before.receipt?.storageKey) await deleteStoredFile(before.receipt.storageKey);
+
+  const total = before.invoice.total ?? 0;
+  const invoice = await prisma.$transaction(async (tx) => {
+    await tx.payment.delete({ where: { id: paymentId } }); // cascades the Receipt row
+    return recomputeInvoiceFromPayments(tx, before.invoiceId, total);
+  });
+
+  await recordAudit({
+    entityType: "Invoice",
+    entityId: before.invoiceId,
+    action: "delete_manual_payment",
+    actorId: session.user.id,
+    oldValue: `${before.paymentMethod} $${before.amount.toFixed(2)} on ${before.paidAt.toISOString().slice(0, 10)}`,
+  });
+
+  revalidatePath("/invoices");
+  revalidatePath(`/invoices/${before.invoiceId}`);
+  return { invoice, receiptAlreadySent };
 }
 
 const sendReceiptEmailInputSchema = z.string().min(1);

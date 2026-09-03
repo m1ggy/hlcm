@@ -4,7 +4,7 @@ import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Send, CheckCircle2, Ban, Download, ExternalLink, Trash2 } from "lucide-react";
-import { sendInvoice, markInvoicePaid, voidInvoice, deleteInvoice } from "@/lib/actions/invoices";
+import { sendInvoice, markInvoicePaid, voidInvoice, voidInvoiceWithPayments, deleteInvoice } from "@/lib/actions/invoices";
 import { Button } from "@/components/ui/button";
 import { InvoiceFormDialog } from "./invoice-form-dialog";
 import { AddManualPaymentDialog } from "./add-manual-payment-dialog";
@@ -17,6 +17,7 @@ export function InvoiceActions({
   invoice,
   clients,
   applications,
+  paymentsCount = 0,
 }: {
   invoice: {
     id: string;
@@ -36,6 +37,9 @@ export function InvoiceActions({
   };
   clients: { id: string; name: string }[];
   applications: { id: string; name: string; clientId: string }[];
+  /** How many Payment rows exist for this invoice — just for the "Void"
+   * confirmation's wording on a PAID/PARTIALLY_PAID manual invoice. */
+  paymentsCount?: number;
 }) {
   const router = useRouter();
   const [isSending, startSending] = useTransition();
@@ -83,6 +87,28 @@ export function InvoiceActions({
     });
   }
 
+  function handleVoidWithPayments() {
+    const amount = (invoice.amountPaid ?? 0).toFixed(2);
+    const paymentWord = paymentsCount === 1 ? "payment" : "payments";
+    if (
+      !confirm(
+        `Void this invoice? It's recorded $${amount} across ${paymentsCount} ${paymentWord} — those payment records ` +
+          `are kept for history, but this invoice will stop counting them (status Void, balance reset to $0).`
+      )
+    ) {
+      return;
+    }
+    startVoiding(async () => {
+      try {
+        await voidInvoiceWithPayments(invoice.id);
+        toast.success("Invoice voided");
+        router.refresh();
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Failed to void invoice");
+      }
+    });
+  }
+
   function handleDelete() {
     if (!confirm("Delete this draft invoice? This can't be undone.")) return;
     startDeleting(async () => {
@@ -113,6 +139,12 @@ export function InvoiceActions({
   // longer excluding manual invoices outright (an unpaid one can be
   // cancelled same as any other).
   const canVoid = invoice.status !== "PAID" && invoice.status !== "PARTIALLY_PAID" && invoice.status !== "VOID";
+  // The counterpart to canVoid above, for exactly the statuses it excludes
+  // (PAID/PARTIALLY_PAID) — only for a manual invoice, since a Stripe-paid
+  // one needs an actual refund rather than a status flip. See
+  // voidInvoiceWithPayments in src/lib/actions/invoices.ts: this preserves
+  // the Payment/Receipt rows rather than deleting them.
+  const canVoidWithPayments = isManual && (invoice.status === "PAID" || invoice.status === "PARTIALLY_PAID");
   const canMarkPaid = !isManual && invoice.status !== "PAID" && invoice.status !== "VOID";
   const canAddManualPayment = isManual && (invoice.status === "SENT" || invoice.status === "PARTIALLY_PAID");
   const remaining = (invoice.total ?? 0) - (invoice.amountPaid ?? 0);
@@ -175,6 +207,11 @@ export function InvoiceActions({
       )}
       {canVoid && (
         <Button variant="outline" onClick={handleVoid} disabled={isVoiding}>
+          <Ban className="size-3.5" /> Void
+        </Button>
+      )}
+      {canVoidWithPayments && (
+        <Button variant="outline" onClick={handleVoidWithPayments} disabled={isVoiding}>
           <Ban className="size-3.5" /> Void
         </Button>
       )}
