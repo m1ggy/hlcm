@@ -8,7 +8,7 @@
 // records the payment — never regenerated afterward, so a receipt's bytes
 // stay fixed even if the invoice is edited later.
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import { PAGE_SIZE, MARGIN, drawWrappedText, drawLogoOrName, money } from "@/lib/invoice-pdf";
+import { PAGE_SIZE, MARGIN, drawWrappedText, drawLogoOrName, money, projectLabel } from "@/lib/invoice-pdf";
 import { displayInvoiceNumber, displayReceiptNumber } from "@/lib/invoice-format";
 
 export type ReceiptPdfInput = {
@@ -32,6 +32,7 @@ export type ReceiptPdfInput = {
     billingCity: string | null;
     billingState: string | null;
     billingPostalCode: string | null;
+    projects: { name: string }[];
   };
   logo?: { bytes: Uint8Array; mimeType: string } | null;
   footerText?: string | null;
@@ -57,6 +58,12 @@ export async function generateReceiptPdf(receipt: ReceiptPdfInput): Promise<Uint
     color: rgb(0.4, 0.4, 0.4),
   });
   y -= 40;
+
+  const project = projectLabel(receipt.client);
+  if (project) {
+    page.drawText(`Project: ${project}`, { x: MARGIN, y, size: 9, font, color: rgb(0.5, 0.5, 0.5) });
+    y -= 16;
+  }
 
   // Paid by
   const billTo = receipt.client.businessName ?? receipt.client.name;

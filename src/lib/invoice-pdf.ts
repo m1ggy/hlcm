@@ -78,6 +78,7 @@ export type InvoicePdfInput = {
     billingCity: string | null;
     billingState: string | null;
     billingPostalCode: string | null;
+    projects: { name: string }[];
   };
   lineItems: { description: string; quantity: number; unitPrice: number }[];
   /** Which InvoiceProfile this invoice was billed under — see src/lib/invoice-profiles.ts. */
@@ -89,6 +90,14 @@ export type InvoicePdfInput = {
 
 export function money(n: number) {
   return `$${n.toFixed(2)}`;
+}
+
+/** "Acme Home Care" (joined, a client is occasionally in more than one
+ * Project) or null when the client isn't in any — shared by the invoice
+ * and receipt PDFs so a printed document always shows which project it's
+ * for, same as the Project column on the Invoices table. */
+export function projectLabel(client: { projects: { name: string }[] }): string | null {
+  return client.projects.length > 0 ? client.projects.map((p) => p.name).join(", ") : null;
 }
 
 /** Draws the org's logo (see InvoiceProfile) at (x, y) sized to `height`,
@@ -137,6 +146,12 @@ export async function generateInvoicePdf(invoice: InvoicePdfInput): Promise<Uint
     color: rgb(0.4, 0.4, 0.4),
   });
   y -= 40;
+
+  const project = projectLabel(invoice.client);
+  if (project) {
+    page.drawText(`Project: ${project}`, { x: MARGIN, y, size: 9, font, color: rgb(0.5, 0.5, 0.5) });
+    y -= 16;
+  }
 
   // Bill to
   const billTo = invoice.client.businessName ?? invoice.client.name;
