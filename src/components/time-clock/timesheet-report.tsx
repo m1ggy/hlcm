@@ -15,7 +15,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { getTimesheetTotals, listTimeEntries, listBreakDeductions, deleteBreakDeduction, deleteTimeEntry } from "@/lib/actions/time-entries";
+import {
+  getTimesheetTotals,
+  listTimeEntries,
+  listBreakEntries,
+  listBreakDeductions,
+  deleteBreakDeduction,
+  deleteTimeEntry,
+} from "@/lib/actions/time-entries";
 import { payUserViaWise } from "@/lib/actions/wise";
 import {
   effectiveTimezone,
@@ -27,6 +34,7 @@ import {
   toDateInputValue,
   segmentsByDay,
   fillSegmentsRange,
+  breakComplianceByDay,
   type TimesheetTotal,
 } from "@/lib/time-entries";
 import { AddTimeEntryDialog } from "@/components/time-clock/add-time-entry-dialog";
@@ -45,6 +53,8 @@ type TimeEntryRow = {
   clockOut: Date | null;
   user: { id: string; name: string; hourlyRate: number | null };
 };
+
+type BreakEntryRow = { id: string; userId: string; breakStart: Date; breakEnd: Date | null };
 
 type BreakDeductionRow = {
   id: string;
@@ -76,6 +86,7 @@ export function TimesheetReport({
   const [to, setTo] = useState(() => toDateInputValue(new Date(), timezone));
   const [totals, setTotals] = useState<TimesheetTotal[] | null>(null);
   const [entries, setEntries] = useState<TimeEntryRow[] | null>(null);
+  const [breakEntries, setBreakEntries] = useState<BreakEntryRow[]>([]);
   const [breaks, setBreaks] = useState<BreakDeductionRow[]>([]);
   const [isPending, startTransition] = useTransition();
   const [payStatus, setPayStatus] = useState<Record<string, "paying" | "paid">>({});
@@ -125,13 +136,15 @@ export function TimesheetReport({
           from: new Date(`${range.from}T00:00:00`),
           to: toEnd,
         };
-        const [rows, rawEntries, rawBreaks] = await Promise.all([
+        const [rows, rawEntries, rawBreakEntries, rawBreaks] = await Promise.all([
           getTimesheetTotals({ ...query, timeZone: timezone }),
           listTimeEntries(query),
+          listBreakEntries(query),
           listBreakDeductions(query),
         ]);
         setTotals(rows);
         setEntries(rawEntries);
+        setBreakEntries(rawBreakEntries);
         setBreaks(rawBreaks);
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to load totals");
@@ -184,15 +197,34 @@ export function TimesheetReport({
   const grandHours = totals?.reduce((sum, t) => sum + t.hours, 0) ?? 0;
   const grandPay = totals?.reduce((sum, t) => sum + (t.pay ?? 0), 0) ?? 0;
 
+  const openBreakUserIds = useMemo(() => new Set(breakEntries.filter((b) => !b.breakEnd).map((b) => b.userId)), [breakEntries]);
+
   const dayCount = Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000) + 1;
   const chartTooLong = Number.isFinite(dayCount) && dayCount > MAX_CHARTABLE_DAYS;
   const dailyChartData = useMemo(() => {
     if (!entries || chartTooLong || !Number.isFinite(dayCount) || dayCount <= 0) return null;
-    // Break deductions are a flat per-day amount with no clock time of their
-    // own (see BreakDeductionRule), so unlike the totals table there's no
-    // specific span of the day to carve out of the timeline for them.
+    // Break deductions (BreakDeductionRow) are a flat per-day amount with no
+    // clock time of their own, so unlike the totals table there's no
+    // specific span of the day to carve out of the timeline for them —
+    // actual BreakEntry sessions (below) are what render as break segments.
     return fillSegmentsRange(segmentsByDay(entries, timezone), from, to);
   }, [entries, timezone, from, to, chartTooLong, dayCount]);
+  const dailyBreakChartData = useMemo(() => {
+    if (chartTooLong || !Number.isFinite(dayCount) || dayCount <= 0) return null;
+    return fillSegmentsRange(
+      segmentsByDay(breakEntries.map((b) => ({ clockIn: b.breakStart, clockOut: b.breakEnd })), timezone),
+      from,
+      to
+    );
+  }, [breakEntries, timezone, from, to, chartTooLong, dayCount]);
+  // Break-policy compliance only means something for one person at a time —
+  // summed across "All users" a day's combined break minutes don't say
+  // whether any individual actually took theirs.
+  const compliance = useMemo(() => {
+    if (userId === "all" || !dailyChartData || !dailyBreakChartData) return null;
+    return breakComplianceByDay(dailyChartData, dailyBreakChartData);
+  }, [userId, dailyChartData, dailyBreakChartData]);
+  const missingBreakDays = compliance?.filter((c) => !c.meetsBreakPolicy).length ?? 0;
 
   return (
     <div className="space-y-4">
@@ -285,6 +317,9 @@ export function TimesheetReport({
                   {t.hasOpenEntry && (
                     <span className="ml-1.5 text-xs text-muted-foreground">(on the clock)</span>
                   )}
+                  {openBreakUserIds.has(t.userId) && (
+                    <span className="ml-1.5 text-xs text-amber-600 dark:text-amber-400">(on break)</span>
+                  )}
                 </TableCell>
                 <TableCell>{t.hourlyRate != null ? `${formatMoney(t.hourlyRate)}/hr` : "—"}</TableCell>
                 <TableCell>
@@ -342,7 +377,21 @@ export function TimesheetReport({
           {chartTooLong ? (
             <p className="text-sm text-muted-foreground">Range too long to chart per day — narrow the dates to see a daily breakdown.</p>
           ) : (
-            <DailyTimelineChart data={dailyChartData ?? []} />
+            <>
+              <DailyTimelineChart
+                data={dailyChartData ?? []}
+                breakData={dailyBreakChartData ?? undefined}
+                compliance={compliance ?? undefined}
+              />
+              {compliance && missingBreakDays > 0 && (
+                <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-400">
+                  {missingBreakDays} {missingBreakDays === 1 ? "day" : "days"} without the required 30-minute break.
+                </p>
+              )}
+              {userId === "all" && (
+                <p className="mt-1.5 text-xs text-muted-foreground">Select a single user to check the 30-minute break policy.</p>
+              )}
+            </>
           )}
         </div>
       )}

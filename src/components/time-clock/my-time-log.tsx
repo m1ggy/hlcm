@@ -1,4 +1,4 @@
-import { listMyTimeEntries, getMyEntriesInRange } from "@/lib/actions/time-entries";
+import { listMyTimeEntries, getMyEntriesInRange, getMyBreaksInRange } from "@/lib/actions/time-entries";
 import { getAccount } from "@/lib/actions/account";
 import {
   hoursBetween,
@@ -8,6 +8,7 @@ import {
   dayRangeToInstants,
   segmentsByDay,
   fillSegmentsRange,
+  breakComplianceByDay,
 } from "@/lib/time-entries";
 import { LocalDate, LocalTime } from "@/components/time-clock/local-time";
 import { DailyTimelineChart } from "@/components/time-clock/daily-timeline-chart";
@@ -27,14 +28,33 @@ export async function MyTimeLog({ limit = 25 }: { limit?: number }) {
   const timeZone = effectiveTimezone(account.timezone);
 
   const range = lastNDaysRange(CHART_DAYS, timeZone);
-  const chartEntries = await getMyEntriesInRange(dayRangeToInstants(range.from, range.to, timeZone));
+  const instants = dayRangeToInstants(range.from, range.to, timeZone);
+  const [chartEntries, chartBreaks] = await Promise.all([
+    getMyEntriesInRange(instants),
+    getMyBreaksInRange(instants),
+  ]);
   const daily = fillSegmentsRange(segmentsByDay(chartEntries, timeZone), range.from, range.to);
+  const dailyBreaks = fillSegmentsRange(
+    segmentsByDay(
+      chartBreaks.map((b: { breakStart: Date; breakEnd: Date | null }) => ({ clockIn: b.breakStart, clockOut: b.breakEnd })),
+      timeZone
+    ),
+    range.from,
+    range.to
+  );
+  const compliance = breakComplianceByDay(daily, dailyBreaks);
+  const missingBreakDays = compliance.filter((c) => !c.meetsBreakPolicy).length;
 
   return (
     <div className="space-y-4">
       <div>
         <p className="mb-2 text-sm font-medium">Clock in/out (last {CHART_DAYS} days)</p>
-        <DailyTimelineChart data={daily} />
+        <DailyTimelineChart data={daily} breakData={dailyBreaks} compliance={compliance} />
+        {missingBreakDays > 0 && (
+          <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-400">
+            {missingBreakDays} {missingBreakDays === 1 ? "day" : "days"} without the required 30-minute break.
+          </p>
+        )}
       </div>
       <Table>
         <TableHeader>
