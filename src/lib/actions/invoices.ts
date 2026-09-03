@@ -2,14 +2,15 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole, AppRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { sendEmail, renderEmailLayout } from "@/lib/email";
 import { generateInvoicePdf } from "@/lib/invoice-pdf";
+import { generateReceiptPdf } from "@/lib/receipt-pdf";
+import { saveBuffer, readStoredFile } from "@/lib/storage";
 import { getInvoiceProfile, getDefaultInvoiceProfile, getInvoiceLogo, parseCcEmails } from "@/lib/invoice-profiles";
-import { displayInvoiceNumber } from "@/lib/invoice-format";
+import { displayInvoiceNumber, displayReceiptNumber } from "@/lib/invoice-format";
 import {
   createCustomer,
   createDraftInvoice,
@@ -48,6 +49,10 @@ const invoiceInclude = {
   invoiceProfile: { select: { id: true, name: true } },
   createdBy: { select: { id: true, name: true } },
   lineItems: { orderBy: { sortOrder: "asc" as const } },
+  payments: {
+    include: { receipt: true, recordedBy: { select: { id: true, name: true } } },
+    orderBy: { paidAt: "asc" as const },
+  },
 } as const;
 
 export async function listInvoices(filters?: { status?: $Enums.InvoiceStatus; clientId?: string }) {
@@ -66,6 +71,18 @@ export async function listInvoices(filters?: { status?: $Enums.InvoiceStatus; cl
 export async function getInvoice(id: string) {
   await requireRole(MANAGE_ROLES);
   return prisma.invoice.findUniqueOrThrow({ where: { id }, include: invoiceInclude });
+}
+
+// A receipt's own PDF is generated once, at payment time, and its bytes
+// never change afterward (see addManualPayment) — so unlike getInvoice's
+// PDF, which is regenerated live from the invoice's current state every
+// time, the download route for this just streams the stored file back.
+export async function getReceipt(id: string) {
+  await requireRole(MANAGE_ROLES);
+  return prisma.receipt.findUniqueOrThrow({
+    where: { id },
+    include: { payment: true, invoice: { include: invoiceInclude } },
+  });
 }
 
 export async function getInvoiceAuditLog(invoiceId: string) {
@@ -344,11 +361,15 @@ const additionalPaymentInputSchema = z.object({
 
 // Records a payment against a manual invoice — the first one (bringing it
 // off SENT) or another installment on top of an existing PARTIALLY_PAID
-// balance; same action either way. Flips to PAID once the running total
-// covers the invoice, which fires the (idempotent, manual-invoices-only)
-// thank-you email — see sendManualPaymentThankYouEmail. Refuses anything
-// that isn't itself a manual invoice awaiting payment — a real Stripe-bound
-// invoice's paid state comes from the webhook, not this.
+// balance; same action either way, and each gets its own itemized Payment
+// row (amountPaid/paidAt/paymentMethod on Invoice stay too, as the
+// "current cumulative" summary shown elsewhere). A Receipt PDF is
+// generated and stored for every payment — not just the one that finally
+// reaches PAID — synchronously, before this returns, so "a receipt exists"
+// is a guarantee, not a best-effort background job. It is never emailed
+// automatically; that's the separate, explicit sendReceiptEmail below.
+// Refuses anything that isn't itself a manual invoice awaiting payment — a
+// real Stripe-bound invoice's paid state comes from the webhook, not this.
 export async function addManualPayment(id: string, input: z.infer<typeof additionalPaymentInputSchema>) {
   const session = await requireRole(MANAGE_ROLES);
   const parsed = additionalPaymentInputSchema.parse(input);
@@ -362,16 +383,23 @@ export async function addManualPayment(id: string, input: z.infer<typeof additio
   const amountPaid = (before.amountPaid ?? 0) + parsed.amount;
   const total = before.total ?? 0;
   const newStatus = amountPaid >= total ? "PAID" : "PARTIALLY_PAID";
+  const paidAt = new Date(parsed.paidAt);
 
-  const invoice = await prisma.invoice.update({
-    where: { id },
-    data: {
-      amountPaid,
-      paidAt: new Date(parsed.paidAt),
-      paymentMethod: parsed.paymentMethod,
-      status: newStatus,
-    },
-    include: invoiceInclude,
+  const { invoice, payment, receipt } = await prisma.$transaction(async (tx) => {
+    const invoice = await tx.invoice.update({
+      where: { id },
+      data: { amountPaid, paidAt, paymentMethod: parsed.paymentMethod, status: newStatus },
+      include: invoiceInclude,
+    });
+    const payment = await tx.payment.create({
+      data: { invoiceId: id, amount: parsed.amount, paidAt, paymentMethod: parsed.paymentMethod, recordedById: session.user.id },
+    });
+    // storageKey is filled in right after, once the PDF's been generated
+    // and uploaded (slow I/O that shouldn't hold this transaction open) —
+    // created here so its receipt number (seq) is assigned atomically
+    // alongside the payment, with the PDF itself able to print that number.
+    const receipt = await tx.receipt.create({ data: { paymentId: payment.id, invoiceId: id, storageKey: "" } });
+    return { invoice, payment, receipt };
   });
 
   await recordAudit({
@@ -382,49 +410,83 @@ export async function addManualPayment(id: string, input: z.infer<typeof additio
     newValue: `${parsed.paymentMethod} (+$${parsed.amount.toFixed(2)})`,
   });
 
-  if (newStatus === "PAID") after(() => sendManualPaymentThankYouEmail(invoice.id));
+  // The payment itself is already committed above — a failure past this
+  // point (a PDF render bug, GCS being briefly unreachable) must not make
+  // this action throw and read as "payment recording failed" when it
+  // didn't. storageKey stays "" if this fails, which the invoice detail
+  // page reads as "receipt failed to generate" rather than a real one.
+  try {
+    const profile = await getInvoiceProfile(invoice.invoiceProfileId);
+    const logo = await getInvoiceLogo(profile);
+    const pdfBytes = await generateReceiptPdf({
+      seq: receipt.seq,
+      payment,
+      invoice,
+      client: invoice.client,
+      logo,
+      footerText: profile?.footerText ?? null,
+      profileName: profile?.name ?? null,
+    });
+    const { storageKey } = await saveBuffer(Buffer.from(pdfBytes), ".pdf");
+    await prisma.receipt.update({ where: { id: receipt.id }, data: { storageKey } });
+  } catch (error) {
+    console.error(`Failed to generate/store receipt for payment ${payment.id}:`, error);
+  }
 
   revalidatePath("/invoices");
   revalidatePath(`/invoices/${id}`);
   return invoice;
 }
 
-// Fires once, ever, per invoice — paidEmailSentAt is checked immediately
-// before sending and only ever set right after a successful send, so a
-// retry (or two overlapping calls) can't double-email the client. Runs
-// after the response (see the `after()` call above) so a slow PDF
-// render/Resend call never delays the payment-recording action itself; a
-// failure here is logged, not thrown — the payment is already recorded
-// regardless of whether this email goes out.
-async function sendManualPaymentThankYouEmail(invoiceId: string) {
-  try {
-    const invoice = await prisma.invoice.findUniqueOrThrow({ where: { id: invoiceId }, include: invoiceInclude });
-    if (invoice.paidEmailSentAt) return;
+const sendReceiptEmailInputSchema = z.string().min(1);
 
-    const recipientEmail = invoice.client.businessEmail ?? invoice.client.ownerEmail;
-    if (!recipientEmail) return;
+// The only place a receipt email ever goes out — generation (addManualPayment
+// above) and sending are deliberately separate steps, so staff choose
+// per-receipt whether the client gets a copy. Safe to call more than once
+// (a "Resend" is just another send); sentAt/sentTo just track the most
+// recent one.
+export async function sendReceiptEmail(receiptId: string) {
+  const session = await requireRole(MANAGE_ROLES);
+  const id = sendReceiptEmailInputSchema.parse(receiptId);
 
-    const number = displayInvoiceNumber(invoice);
-    const profile = await getInvoiceProfile(invoice.invoiceProfileId);
-    const logo = await getInvoiceLogo(profile);
-    const pdfBytes = await generateInvoicePdf({ ...invoice, logo, footerText: profile?.footerText ?? null, profileName: profile?.name ?? null });
+  const receipt = await prisma.receipt.findUniqueOrThrow({
+    where: { id },
+    include: { payment: true, invoice: { include: invoiceInclude } },
+  });
+  const { invoice, payment } = receipt;
+  // storageKey stays "" if the PDF failed to generate/upload when the
+  // payment was recorded (see addManualPayment) — nothing to send yet.
+  if (!receipt.storageKey) throw new Error("This receipt's PDF failed to generate — try recording the payment again");
 
-    await sendEmail({
-      to: recipientEmail,
-      cc: parseCcEmails(profile?.ccEmails ?? null),
-      subject: `Thank you for your payment — Invoice ${number}`,
-      html: renderEmailLayout({
-        heading: "Payment received",
-        bodyHtml: `<p style="margin:0 0 8px">Thank you for your payment on invoice ${number} — $${(invoice.total ?? 0).toFixed(2)} received in full.</p><p style="margin:0">A copy of the invoice is attached for your records.</p>`,
-        preheader: `Payment received for invoice ${number}`,
-      }),
-      attachments: [{ filename: `invoice-${number}.pdf`, content: pdfBytes }],
-    });
+  const recipientEmail = invoice.client.businessEmail ?? invoice.client.ownerEmail;
+  if (!recipientEmail) throw new Error("Client has no email on file — add one before sending");
 
-    await prisma.invoice.update({ where: { id: invoiceId }, data: { paidEmailSentAt: new Date() } });
-  } catch (error) {
-    console.error("Failed to send payment thank-you email:", error);
-  }
+  const number = displayInvoiceNumber(invoice);
+  const receiptNumber = displayReceiptNumber(receipt);
+  const pdfBytes = await readStoredFile(receipt.storageKey);
+
+  await sendEmail({
+    to: recipientEmail,
+    subject: `Receipt ${receiptNumber} — payment for Invoice ${number}`,
+    html: renderEmailLayout({
+      heading: "Payment received",
+      bodyHtml: `<p style="margin:0 0 8px">Thank you for your payment of $${payment.amount.toFixed(2)} on invoice ${number}.</p><p style="margin:0">A copy of your receipt is attached for your records.</p>`,
+      preheader: `Receipt for your payment on invoice ${number}`,
+    }),
+    attachments: [{ filename: `receipt-${receiptNumber}.pdf`, content: pdfBytes }],
+  });
+
+  await prisma.receipt.update({ where: { id }, data: { sentAt: new Date(), sentTo: recipientEmail } });
+
+  await recordAudit({
+    entityType: "Receipt",
+    entityId: id,
+    action: "send_receipt",
+    actorId: session.user.id,
+    newValue: recipientEmail,
+  });
+
+  revalidatePath(`/invoices/${invoice.id}`);
 }
 
 // Extra files the sender can staple onto a single "Send invoice PDF"
@@ -456,12 +518,12 @@ async function readExtraAttachments(formData: FormData | undefined) {
   return attachments;
 }
 
-// A plain courtesy copy of the invoice PDF — separate from the automatic
-// thank-you-for-payment email above. Only while the invoice is still
-// awaiting payment (once PAID, the thank-you email is the one that goes
-// out); tracks lastSentAt so the invoice detail page can show when this
-// was last used. `formData` is optional and, when present, may carry
-// extra one-off attachments under the "attachments" field (see
+// A plain courtesy copy of the invoice PDF — separate from a receipt
+// (see sendReceiptEmail below), and only while the invoice is still
+// awaiting payment; once PAID, "Send receipt" from the Payments card is
+// the one that goes out. Tracks lastSentAt so the invoice detail page can
+// show when this was last used. `formData` is optional and, when present,
+// may carry extra one-off attachments under the "attachments" field (see
 // readExtraAttachments above) — nothing here persists them.
 export async function sendManualInvoicePdf(id: string, formData?: FormData) {
   const session = await requireRole(MANAGE_ROLES);

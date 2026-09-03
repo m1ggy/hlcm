@@ -10,3 +10,10 @@ export function displayInvoiceNumber(invoice: {
 }) {
   return invoice.stripeInvoiceNumber ?? invoice.invoiceNumber ?? `DRAFT-${String(invoice.seq).padStart(5, "0")}`;
 }
+
+/** "R-000123" for a Receipt's local seq counter — same padded-counter
+ * convention as displayInvoiceNumber's DRAFT-##### fallback, just always
+ * this shape since a Receipt has no Stripe/manually-typed number to prefer. */
+export function displayReceiptNumber(receipt: { seq: number }) {
+  return `R-${String(receipt.seq).padStart(6, "0")}`;
+}

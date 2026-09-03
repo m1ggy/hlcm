@@ -30,16 +30,26 @@ type InvoiceRow = {
 };
 
 const FILTER_KEY = "hclm:invoices-filter";
+const GROUP_KEY = "hclm:invoices-group-by-client";
 type Filter = "all" | InvoiceStatusValue;
+
+function clientLabel(client: InvoiceRow["client"]) {
+  return client.businessName ?? client.name;
+}
 
 export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
   const router = useRouter();
   const [filter, setFilter] = useState<Filter>("all");
+  // Grouped by client is the default — a flat "All" list (today's original
+  // view, still newest-first) stays one click away for anyone who prefers it.
+  const [groupByClient, setGroupByClient] = useState(true);
 
   useEffect(() => {
     const id = setTimeout(() => {
-      const saved = window.localStorage.getItem(FILTER_KEY);
-      if (saved) setFilter(saved as Filter);
+      const savedFilter = window.localStorage.getItem(FILTER_KEY);
+      if (savedFilter) setFilter(savedFilter as Filter);
+      const savedGroup = window.localStorage.getItem(GROUP_KEY);
+      if (savedGroup) setGroupByClient(savedGroup === "true");
     }, 0);
     return () => clearTimeout(id);
   }, []);
@@ -47,6 +57,11 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
   function changeFilter(next: Filter) {
     setFilter(next);
     window.localStorage.setItem(FILTER_KEY, next);
+  }
+
+  function changeGrouping(next: boolean) {
+    setGroupByClient(next);
+    window.localStorage.setItem(GROUP_KEY, String(next));
   }
 
   // "All" follows the same hide-by-default pattern as archived clients/
@@ -66,31 +81,26 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
     })),
   ];
 
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap gap-1.5">
-        {chips.map((chip) => (
-          <button
-            key={chip.key}
-            type="button"
-            onClick={() => changeFilter(chip.key)}
-            className={`flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs transition-colors ${
-              filter === chip.key
-                ? "border-primary bg-primary text-primary-foreground"
-                : "border-input bg-transparent text-muted-foreground hover:bg-muted"
-            }`}
-          >
-            {chip.label}
-            <span className="tabular-nums opacity-70">{chip.count}</span>
-          </button>
-        ))}
-      </div>
+  // Invoices already arrive newest-first (see listInvoices); grouping just
+  // buckets that same order by client, it doesn't re-sort within a group.
+  const groups = groupByClient
+    ? Object.values(
+        filtered.reduce<Record<string, { client: InvoiceRow["client"]; rows: InvoiceRow[] }>>((acc, invoice) => {
+          const bucket = acc[invoice.client.id] ?? { client: invoice.client, rows: [] };
+          bucket.rows.push(invoice);
+          acc[invoice.client.id] = bucket;
+          return acc;
+        }, {})
+      ).sort((a, b) => clientLabel(a.client).localeCompare(clientLabel(b.client)))
+    : null;
 
+  function renderTable(rows: InvoiceRow[], { showClient }: { showClient: boolean }) {
+    return (
       <Table>
         <TableHeader>
           <TableRow>
             <TableHead>Number</TableHead>
-            <TableHead>Client</TableHead>
+            {showClient && <TableHead>Client</TableHead>}
             <TableHead>Case</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Due</TableHead>
@@ -98,10 +108,10 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {filtered.map((invoice) => (
+          {rows.map((invoice) => (
             <TableRow key={invoice.id} className="cursor-pointer" onClick={() => router.push(`/invoices/${invoice.id}`)}>
               <TableCell className="font-medium tabular-nums">{displayInvoiceNumber(invoice)}</TableCell>
-              <TableCell>{invoice.client.businessName ?? invoice.client.name}</TableCell>
+              {showClient && <TableCell>{clientLabel(invoice.client)}</TableCell>}
               <TableCell className="text-muted-foreground">{invoice.application?.name ?? "—"}</TableCell>
               <TableCell>
                 <div className="flex items-center gap-1.5">
@@ -133,15 +143,80 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
               <TableCell className="text-right tabular-nums">{invoice.total != null ? `$${invoice.total.toFixed(2)}` : "—"}</TableCell>
             </TableRow>
           ))}
-          {filtered.length === 0 && (
+          {rows.length === 0 && (
             <TableRow>
-              <TableCell colSpan={6} className="text-center text-muted-foreground">
+              <TableCell colSpan={showClient ? 6 : 5} className="text-center text-muted-foreground">
                 No invoices match this filter.
               </TableCell>
             </TableRow>
           )}
         </TableBody>
       </Table>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap gap-1.5">
+          {chips.map((chip) => (
+            <button
+              key={chip.key}
+              type="button"
+              onClick={() => changeFilter(chip.key)}
+              className={`flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                filter === chip.key
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-input bg-transparent text-muted-foreground hover:bg-muted"
+              }`}
+            >
+              {chip.label}
+              <span className="tabular-nums opacity-70">{chip.count}</span>
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-1 rounded-full border border-input p-0.5 text-xs">
+          <button
+            type="button"
+            onClick={() => changeGrouping(true)}
+            className={`rounded-full px-2.5 py-1 transition-colors ${groupByClient ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+          >
+            By client
+          </button>
+          <button
+            type="button"
+            onClick={() => changeGrouping(false)}
+            className={`rounded-full px-2.5 py-1 transition-colors ${!groupByClient ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+          >
+            All
+          </button>
+        </div>
+      </div>
+
+      {groups ? (
+        <div className="space-y-3">
+          {groups.map((group) => {
+            const total = group.rows.reduce((sum, r) => sum + (r.total ?? 0), 0);
+            return (
+              <details key={group.client.id} className="group rounded-lg border" open>
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-4 py-2.5 text-sm font-medium select-none">
+                  <span>
+                    {clientLabel(group.client)}{" "}
+                    <span className="font-normal text-muted-foreground">
+                      ({group.rows.length} {group.rows.length === 1 ? "invoice" : "invoices"})
+                    </span>
+                  </span>
+                  <span className="tabular-nums text-muted-foreground">${total.toFixed(2)}</span>
+                </summary>
+                <div className="border-t px-4 pb-3">{renderTable(group.rows, { showClient: false })}</div>
+              </details>
+            );
+          })}
+          {groups.length === 0 && <p className="text-sm text-muted-foreground">No invoices match this filter.</p>}
+        </div>
+      ) : (
+        renderTable(filtered, { showClient: true })
+      )}
     </div>
   );
 }

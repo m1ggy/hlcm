@@ -7,6 +7,9 @@ import { listClientNotes } from "@/lib/actions/notes";
 import { listMcoCredentialsForClient, listReachableMcoStages } from "@/lib/actions/mco";
 import { listClientCredentials } from "@/lib/actions/client-credentials";
 import { listPipelineStages } from "@/lib/actions/stage";
+import { listInvoices } from "@/lib/actions/invoices";
+import { displayInvoiceNumber } from "@/lib/invoice-format";
+import { InvoiceStatusBadge, isInvoiceOverdue } from "@/components/invoices/invoice-status-badge";
 import { ClientDetailsForm } from "@/components/clients/client-details-form";
 import { ClientNotesPanel } from "@/components/clients/client-notes-panel";
 import { McoCredentialsCard } from "@/components/clients/mco-credentials-card";
@@ -49,16 +52,22 @@ export default async function ClientDetailPage({
     notFound();
   }
 
-  const [assignableUsers, notes, auditLog, session, mcoCredentials, credentials, mcoStages] = await Promise.all([
+  const session = await auth();
+  // listInvoices is ADMIN/MANAGER only (unlike getClient itself, which
+  // STAFF can also reach) — gate the fetch, not just the display, so a
+  // STAFF viewer never triggers a ForbiddenError just for loading this page.
+  const canManageInvoices = session?.user?.role === "ADMIN" || session?.user?.role === "MANAGER";
+  const canArchive = canManageInvoices;
+
+  const [assignableUsers, notes, auditLog, mcoCredentials, credentials, mcoStages, invoices] = await Promise.all([
     listAssignableUsers(),
     listClientNotes(id),
     getClientAuditLog(id),
-    auth(),
     listMcoCredentialsForClient(id),
     listClientCredentials(id),
     listPipelineStages("MCO", { includeExit: true }),
+    canManageInvoices ? listInvoices({ clientId: id }) : Promise.resolve([]),
   ]);
-  const canArchive = session?.user?.role === "ADMIN" || session?.user?.role === "MANAGER";
   const mcoCredentialsWithStages = await Promise.all(
     mcoCredentials.map(async (c) => ({ ...c, reachableStages: await listReachableMcoStages(c.id) }))
   );
@@ -175,6 +184,47 @@ export default async function ClientDetailPage({
           </Table>
         </CardContent>
       </Card>
+
+      {canManageInvoices && (
+        <Card>
+          <CardContent>
+            <h2 className="mb-3 text-base font-medium">Invoices</h2>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Number</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Total</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {invoices.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={3} className="text-center text-muted-foreground">
+                      No invoices for this client yet.
+                    </TableCell>
+                  </TableRow>
+                )}
+                {invoices.map((invoice) => (
+                  <TableRow key={invoice.id}>
+                    <TableCell className="font-medium tabular-nums">
+                      <Link href={`/invoices/${invoice.id}`} className="hover:underline">
+                        {displayInvoiceNumber(invoice)}
+                      </Link>
+                    </TableCell>
+                    <TableCell>
+                      <InvoiceStatusBadge status={isInvoiceOverdue(invoice) ? "OVERDUE" : invoice.status} />
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {invoice.total != null ? `$${invoice.total.toFixed(2)}` : "—"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       <McoCredentialsCard clientId={id} credentials={mcoCredentialsWithStages} mcoStages={mcoStages} />
 

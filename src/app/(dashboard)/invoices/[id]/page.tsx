@@ -1,15 +1,17 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { TriangleAlert, PenLine } from "lucide-react";
+import { TriangleAlert, PenLine, Download } from "lucide-react";
 import { getInvoice, getInvoiceAuditLog } from "@/lib/actions/invoices";
-import { displayInvoiceNumber } from "@/lib/invoice-format";
+import { displayInvoiceNumber, displayReceiptNumber } from "@/lib/invoice-format";
 import { listClients } from "@/lib/actions/clients";
 import { listApplications } from "@/lib/actions/applications";
 import { InvoiceStatusBadge, isInvoiceOverdue, isManualInvoice } from "@/components/invoices/invoice-status-badge";
 import { InvoiceActions } from "@/components/invoices/invoice-actions";
 import { ManualInvoiceEditor } from "@/components/invoices/manual-invoice-editor";
+import { SendReceiptDialog } from "@/components/invoices/send-receipt-dialog";
 import { AuditLogPanel } from "@/components/applications/audit-log-panel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -169,6 +171,63 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               )}
             </CardContent>
           </Card>
+
+          {isManualInvoice(invoice) && invoice.payments.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Payments</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-muted-foreground">
+                      <th className="pb-2 font-normal">Date</th>
+                      <th className="pb-2 font-normal">Method</th>
+                      <th className="pb-2 text-right font-normal">Amount</th>
+                      <th className="pb-2 text-right font-normal">Receipt</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {invoice.payments.map((payment) => (
+                      <tr key={payment.id} className="border-b last:border-0">
+                        <td className="py-2">{payment.paidAt.toLocaleDateString()}</td>
+                        <td className="py-2 text-muted-foreground">{payment.paymentMethod}</td>
+                        <td className="py-2 text-right tabular-nums">${payment.amount.toFixed(2)}</td>
+                        <td className="py-2">
+                          {payment.receipt && !payment.receipt.storageKey ? (
+                            <span className="text-xs text-destructive" title="The receipt PDF failed to generate — record the payment again">
+                              Receipt failed
+                            </span>
+                          ) : payment.receipt ? (
+                            <div className="flex flex-col items-end gap-1">
+                              <div className="flex items-center gap-1.5">
+                                <Button
+                                  size="xs"
+                                  variant="ghost"
+                                  nativeButton={false}
+                                  render={<a href={`/api/receipts/${payment.receipt.id}/pdf`} target="_blank" rel="noopener noreferrer" />}
+                                >
+                                  <Download className="size-3" /> {displayReceiptNumber(payment.receipt)}
+                                </Button>
+                                <SendReceiptDialog receiptId={payment.receipt.id} alreadySent={!!payment.receipt.sentAt} />
+                              </div>
+                              {payment.receipt.sentAt && (
+                                <span className="text-xs text-muted-foreground">
+                                  Sent to {payment.receipt.sentTo} on {payment.receipt.sentAt.toLocaleDateString()}
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">No receipt</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader>

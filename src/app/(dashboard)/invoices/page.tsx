@@ -39,8 +39,8 @@ export default async function InvoicesPage() {
               Billing without an online payment link? Use <strong>New Manual Invoice</strong> instead — no draft, no
               Send step. It creates the invoice awaiting payment; record what actually comes in (in full or
               partial) from the invoice&apos;s own page, whenever it arrives. A PDF is available to download or
-              email the client any time, and a thank-you email with the invoice attached goes out automatically
-              once it&apos;s paid in full.
+              email the client any time. Recording a payment generates a receipt automatically and saves it here —
+              emailing it to the client is a separate, deliberate step from the invoice&apos;s own page.
             </p>
             <p>
               Someone created an invoice straight in the Stripe Dashboard? Use <strong>Import from Stripe</strong> to

@@ -8,8 +8,10 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { displayInvoiceNumber } from "@/lib/invoice-format";
 
-const PAGE_SIZE: [number, number] = [612, 792];
-const MARGIN = 48;
+// Exported for receipt-pdf.ts to share — a receipt uses the same page
+// geometry and hand-wrapping helpers, just a much shorter layout.
+export const PAGE_SIZE: [number, number] = [612, 792];
+export const MARGIN = 48;
 
 // pdf-lib's own `maxWidth` option wraps long text for you, but never tells
 // you how many lines that produced — every call site here used to advance
@@ -18,7 +20,7 @@ const MARGIN = 48;
 // enough to wrap onto more lines than the guess assumed. Wrapping by hand
 // means the actual line count — and so the actual height consumed — is
 // always known.
-function wrapText(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
+export function wrapText(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
   const lines: string[] = [];
   for (const paragraph of text.split("\n")) {
     if (paragraph.length === 0) {
@@ -43,7 +45,7 @@ function wrapText(text: string, font: PDFFont, size: number, maxWidth: number): 
 // Draws hand-wrapped text top-down from `y` and returns the total height
 // consumed, so the caller can advance `y` by the real amount rather than a
 // fixed guess.
-function drawWrappedText(
+export function drawWrappedText(
   page: PDFPage,
   text: string,
   opts: { x: number; y: number; font: PDFFont; size: number; maxWidth: number; lineHeight: number; color?: ReturnType<typeof rgb> }
@@ -85,8 +87,35 @@ export type InvoicePdfInput = {
   profileName?: string | null;
 };
 
-function money(n: number) {
+export function money(n: number) {
   return `$${n.toFixed(2)}`;
+}
+
+/** Draws the org's logo (see InvoiceProfile) at (x, y) sized to `height`,
+ * or the profile's plain name as a bold wordmark when there isn't one —
+ * shared by both the invoice and receipt PDF headers. pdf-lib only embeds
+ * PNG/JPEG, which is all the admin upload form accepts. */
+export async function drawLogoOrName(
+  pdfDoc: PDFDocument,
+  page: PDFPage,
+  opts: {
+    x: number;
+    y: number;
+    boldFont: PDFFont;
+    logo?: { bytes: Uint8Array; mimeType: string } | null;
+    profileName?: string | null;
+    height?: number;
+  }
+) {
+  const height = opts.height ?? 56;
+  if (opts.logo) {
+    const image =
+      opts.logo.mimeType === "image/png" ? await pdfDoc.embedPng(opts.logo.bytes) : await pdfDoc.embedJpg(opts.logo.bytes);
+    const width = (image.width / image.height) * height;
+    page.drawImage(image, { x: opts.x, y: opts.y - height + 14, width, height });
+  } else {
+    page.drawText(opts.profileName ?? "CTK", { x: opts.x, y: opts.y, size: 20, font: opts.boldFont });
+  }
 }
 
 export async function generateInvoicePdf(invoice: InvoicePdfInput): Promise<Uint8Array> {
@@ -97,20 +126,7 @@ export async function generateInvoicePdf(invoice: InvoicePdfInput): Promise<Uint
   const page = pdfDoc.addPage(PAGE_SIZE);
   let y = PAGE_SIZE[1] - MARGIN;
 
-  // A custom logo (see InvoiceProfile) replaces the plain "CTK" wordmark
-  // when one's been uploaded; pdf-lib only embeds PNG/JPEG, which is all
-  // the admin upload form accepts.
-  if (invoice.logo) {
-    const image =
-      invoice.logo.mimeType === "image/png"
-        ? await pdfDoc.embedPng(invoice.logo.bytes)
-        : await pdfDoc.embedJpg(invoice.logo.bytes);
-    const height = 56;
-    const width = (image.width / image.height) * height;
-    page.drawImage(image, { x: MARGIN, y: y - height + 14, width, height });
-  } else {
-    page.drawText(invoice.profileName ?? "CTK", { x: MARGIN, y, size: 20, font: boldFont });
-  }
+  await drawLogoOrName(pdfDoc, page, { x: MARGIN, y, boldFont, logo: invoice.logo, profileName: invoice.profileName });
   page.drawText("INVOICE", { x: PAGE_SIZE[0] - MARGIN - 90, y, size: 20, font: boldFont });
   y -= 20;
   page.drawText(displayInvoiceNumber(invoice), {

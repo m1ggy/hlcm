@@ -168,6 +168,7 @@ model User {
   wisePayoutsReceived           WiseTransaction[]         @relation("WiseTransactionPayee")
   wisePayoutsInitiated          WiseTransaction[]         @relation("WiseTransactionInitiatedBy")
   invoicesCreated               Invoice[]                 @relation("InvoiceCreatedBy")
+  paymentsRecorded              Payment[]                 @relation("PaymentRecordedBy")
   breakDeductionsFor            TimesheetBreakDeduction[] @relation("TimesheetBreakDeductionUser")
   breakDeductionsCreated        TimesheetBreakDeduction[] @relation("TimesheetBreakDeductionCreatedBy")
 
@@ -980,13 +981,9 @@ model Invoice {
   // total actually received so far — only meaningful for these rows.
   paymentMethod     String?
   amountPaid        Float?    @default(0)
-  // Manual invoices only. lastSentAt tracks the "Send invoice PDF" button
-  // (a plain courtesy copy, before payment) — separate from paidEmailSentAt,
-  // which guards the automatic thank-you email so a status transition can
-  // never fire it twice (see recordManualPayment/addManualPayment in
-  // src/lib/actions/invoices.ts).
+  // Manual invoices only — tracks the "Send invoice PDF" button (a plain
+  // courtesy copy, before payment).
   lastSentAt        DateTime?
-  paidEmailSentAt   DateTime?
   // Set by updateManualInvoiceDraft whenever an edit lands after lastSentAt
   // is already set — i.e. the client may be holding a PDF that no longer
   // matches this invoice. Cleared back to null the next time "Send invoice
@@ -1016,9 +1013,58 @@ model Invoice {
   invoiceProfileId String?
 
   lineItems InvoiceLineItem[]
+  payments  Payment[]
+  receipts  Receipt[]
 
   @@index([clientId])
   @@map("invoices")
+}
+
+// One row per payment recorded against a manually-recorded invoice — the
+// history addManualPayment used to collapse into a single running
+// amountPaid total on Invoice (still kept, as the "current cumulative"
+// summary shown on the invoice itself). Each Payment gets its own Receipt,
+// generated the moment it's recorded — see addManualPayment in
+// src/lib/actions/invoices.ts.
+model Payment {
+  id            String   @id @default(cuid())
+  invoice       Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoiceId     String
+  amount        Float
+  paidAt        DateTime
+  paymentMethod String
+  recordedBy    User     @relation("PaymentRecordedBy", fields: [recordedById], references: [id])
+  recordedById  String
+  createdAt     DateTime @default(now())
+
+  receipt Receipt?
+
+  @@index([invoiceId])
+  @@map("payments")
+}
+
+// A generated PDF documenting one Payment — created automatically the
+// moment addManualPayment records that payment, but never emailed
+// automatically. Sending is a separate, explicit action (sendReceiptEmail
+// in src/lib/actions/invoices.ts) so staff decide per-receipt whether the
+// client gets a copy; sentAt/sentTo track whether/when that happened.
+model Receipt {
+  id         String    @id @default(cuid())
+  // Local counter for a human-readable receipt number ("R-000123", see
+  // displayReceiptNumber in src/lib/invoice-format.ts) — same pattern as
+  // Invoice.seq.
+  seq        Int       @default(autoincrement())
+  payment    Payment   @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  paymentId  String    @unique
+  invoice    Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoiceId  String
+  storageKey String
+  sentAt     DateTime?
+  sentTo     String?
+  createdAt  DateTime  @default(now())
+
+  @@index([invoiceId])
+  @@map("receipts")
 }
 
 model InvoiceLineItem {
