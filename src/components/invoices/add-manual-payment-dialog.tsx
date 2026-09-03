@@ -25,8 +25,10 @@ function todayInputValue() {
 // Records a payment against a manual invoice — the first one (bringing it
 // off Sent/unpaid) or another installment on a Partially Paid balance,
 // same dialog either way. Flips to Paid on its own once the running total
-// covers the invoice (which fires the thank-you email — see
-// addManualPayment in src/lib/actions/invoices.ts).
+// covers the invoice. A receipt is generated and saved automatically for
+// every payment, partial or not — see addManualPayment in
+// src/lib/actions/invoices.ts — but never emailed on its own; that's the
+// separate "Send receipt" action on the invoice's own page.
 export function AddManualPaymentDialog({ invoiceId, remaining }: { invoiceId: string; remaining: number }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
