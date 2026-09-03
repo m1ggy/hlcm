@@ -251,14 +251,6 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                   {invoice.client.businessName ?? invoice.client.name}
                 </Link>
               </div>
-              {invoice.application && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Case</span>
-                  <Link href={`/applications/${invoice.application.id}`} className="hover:underline">
-                    {invoice.application.name}
-                  </Link>
-                </div>
-              )}
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Issued</span>
                 <span>{invoice.issueDate.toLocaleDateString()}</span>

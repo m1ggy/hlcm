@@ -31,8 +31,8 @@ type InvoiceRow = {
     businessName: string | null;
     clientGroupId: string | null;
     clientGroup: { id: string; name: string } | null;
+    projects: { id: string; name: string }[];
   };
-  application: { id: string; name: string } | null;
 };
 
 const FILTER_KEY = "hclm:invoices-filter";
@@ -41,6 +41,13 @@ type Filter = "all" | InvoiceStatusValue;
 
 function clientLabel(client: InvoiceRow["client"]) {
   return client.businessName ?? client.name;
+}
+
+// A client is occasionally in more than one Project (see the comment on
+// Client.projects in prisma/schema.prisma) — joined rather than picking
+// just one, so this column never silently drops one.
+function projectLabel(client: InvoiceRow["client"]) {
+  return client.projects.length > 0 ? client.projects.map((p) => p.name).join(", ") : "—";
 }
 
 export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
@@ -116,9 +123,9 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
               <>
                 <TableHead>Business</TableHead>
                 <TableHead>Client</TableHead>
+                <TableHead>Project</TableHead>
               </>
             )}
-            <TableHead>Application</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Due</TableHead>
             <TableHead className="text-right">Total</TableHead>
@@ -132,9 +139,9 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
                 <>
                   <TableCell>{clientLabel(invoice.client)}</TableCell>
                   <TableCell>{invoice.client.name}</TableCell>
+                  <TableCell className="text-muted-foreground">{projectLabel(invoice.client)}</TableCell>
                 </>
               )}
-              <TableCell className="text-muted-foreground">{invoice.application?.name ?? "—"}</TableCell>
               <TableCell>
                 <div className="flex items-center gap-1.5">
                   <InvoiceStatusBadge status={isInvoiceOverdue(invoice) ? "OVERDUE" : invoice.status} />
@@ -167,7 +174,7 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
           ))}
           {rows.length === 0 && (
             <TableRow>
-              <TableCell colSpan={showClient ? 7 : 5} className="text-center text-muted-foreground">
+              <TableCell colSpan={showClient ? 7 : 4} className="text-center text-muted-foreground">
                 No invoices match this filter.
               </TableCell>
             </TableRow>
