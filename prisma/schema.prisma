@@ -163,6 +163,7 @@ model User {
   notifications                 Notification[]
   notesAuthored                 Note[]                    @relation("NoteAuthor")
   timeEntries                   TimeEntry[]
+  breakEntries                  BreakEntry[]
   wiseRecipient                 WiseRecipient?
   wisePayoutsReceived           WiseTransaction[]         @relation("WiseTransactionPayee")
   wisePayoutsInitiated          WiseTransaction[]         @relation("WiseTransactionInitiatedBy")
@@ -236,6 +237,26 @@ model TimeEntry {
 
   @@index([userId, clockIn])
   @@map("time_entries")
+}
+
+// One row per break, paired with a Start break/End break action that mirrors
+// clockIn/clockOut. Starting a break closes the caller's open TimeEntry (the
+// break is unpaid, same as any other gap between sessions already is) and
+// opens this row; ending it closes this row and opens a fresh TimeEntry to
+// resume work. `breakEnd` stays null while the break is in progress — the
+// same pattern TimeEntry uses for "currently clocked in" — which is how we
+// answer "is this user on a break right now".
+model BreakEntry {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id])
+  breakStart DateTime
+  breakEnd   DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([userId, breakStart])
+  @@map("break_entries")
 }
 
 // An unpaid-break policy applied retroactively to hours already worked —

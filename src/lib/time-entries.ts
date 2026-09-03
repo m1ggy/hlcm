@@ -312,6 +312,41 @@ export function fillSegmentsRange(daily: DaySegments[], from: string, to: string
   return result;
 }
 
+/** Company policy: any calendar day with worked hours needs at least this
+ * much accumulated break time. */
+export const REQUIRED_BREAK_MINUTES = 30;
+
+/** Total hours covered by a day's segments — shared by the chart (to size
+ * bars) and the break-policy check (to total up break/worked time). */
+export function sumSegmentHours(segments: DaySegment[]): number {
+  return segments.reduce((sum, s) => sum + (s.endHour - s.startHour), 0);
+}
+
+export type DayBreakStatus = { day: string; workedHours: number; breakMinutes: number; meetsBreakPolicy: boolean };
+
+/**
+ * Pairs a day's worked segments with that same day's break segments (both
+ * from segmentsByDay/fillSegmentsRange over the same range and user(s), so
+ * every day in `workDaily` has a same-day counterpart to look up here) to
+ * check the 30-minute break policy. A day with no worked hours trivially
+ * meets it — there's nothing to take a break from. Only meaningful for a
+ * single user's entries: summed across multiple users (like the "All
+ * users" timeline) a day's combined break minutes don't say anything about
+ * whether any one person took theirs.
+ */
+export function breakComplianceByDay(
+  workDaily: DaySegments[],
+  breakDaily: DaySegments[],
+  requiredMinutes: number = REQUIRED_BREAK_MINUTES
+): DayBreakStatus[] {
+  const breakSegmentsByDay = new Map(breakDaily.map((d) => [d.day, d.segments]));
+  return workDaily.map((w) => {
+    const workedHours = sumSegmentHours(w.segments);
+    const breakMinutes = Math.round(sumSegmentHours(breakSegmentsByDay.get(w.day) ?? []) * 60);
+    return { day: w.day, workedHours, breakMinutes, meetsBreakPolicy: workedHours <= 0 || breakMinutes >= requiredMinutes };
+  });
+}
+
 /** "yyyy-mm-dd" range for the `n` calendar days ending today, read in
  * `timeZone` — the default window for a staff member's own hours-per-day
  * chart (see MyTimeLog). */

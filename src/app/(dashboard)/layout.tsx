@@ -10,7 +10,7 @@ import { TimeClockWidget } from "@/components/time-clock/time-clock-widget";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { BookOpen } from "lucide-react";
-import { getMyActiveEntry } from "@/lib/actions/time-entries";
+import { getMyActiveEntry, getMyActiveBreak } from "@/lib/actions/time-entries";
 
 export default async function DashboardLayout({
   children,
@@ -19,7 +19,7 @@ export default async function DashboardLayout({
 }) {
   const session = await auth();
   if (session?.user?.role === "CLIENT") redirect("/portal");
-  const activeEntry = await getMyActiveEntry();
+  const [activeEntry, activeBreak] = await Promise.all([getMyActiveEntry(), getMyActiveBreak()]);
 
   return (
     <SidebarProvider>
@@ -31,7 +31,10 @@ export default async function DashboardLayout({
             <SearchBox />
           </div>
           <div className="flex items-center gap-1">
-            <TimeClockWidget initialClockIn={activeEntry ? activeEntry.clockIn.toISOString() : null} />
+            <TimeClockWidget
+              initialClockIn={activeEntry ? activeEntry.clockIn.toISOString() : null}
+              initialBreakStart={activeBreak ? activeBreak.breakStart.toISOString() : null}
+            />
             <Button
               variant="ghost"
               size="sm"

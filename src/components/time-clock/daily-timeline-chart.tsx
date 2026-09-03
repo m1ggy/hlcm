@@ -1,14 +1,17 @@
 // Plain SVG timeline — no charting library in this codebase yet, and one
 // chart doesn't need one. One row per day, spanning a full 24-hour track;
 // each clocked-in session is its own highlighted bar segment on that row,
-// so a gap in the highlight reads as time not clocked in (a break, or the
-// stretch between one shift ending and the next starting) rather than
-// being netted away into a single daily total.
+// so a gap in the highlight reads as time not clocked in (the stretch
+// between one shift ending and the next starting) rather than being netted
+// away into a single daily total. Breaks (see BreakEntry), when passed via
+// `breakData`, render as their own amber segment rather than just an
+// unlabeled gap — and `compliance` marks any worked day short of the
+// 30-minute break policy.
 //
 // Day/hour labels are plain HTML, not SVG <text> — the chart stretches
 // non-uniformly to fill its container (preserveAspectRatio="none"), which
 // is harmless for rects and lines but would visibly squish glyphs.
-import type { DaySegments } from "@/lib/time-entries";
+import type { DayBreakStatus, DaySegments } from "@/lib/time-entries";
 
 const ROW_HEIGHT = 18;
 const ROW_GAP = 6;
@@ -46,9 +49,15 @@ function axisLabel(hour: number) {
 
 export function DailyTimelineChart({
   data,
+  breakData,
+  compliance,
   emptyLabel = "No sessions in this range.",
 }: {
   data: DaySegments[];
+  /** Same days as `data` — rendered as amber segments instead of plain gaps. */
+  breakData?: DaySegments[];
+  /** Same days as `data` — flags a day's label when it fails the 30-minute break policy. */
+  compliance?: DayBreakStatus[];
   emptyLabel?: string;
 }) {
   if (data.length === 0) {
@@ -57,15 +66,27 @@ export function DailyTimelineChart({
 
   const plotHeight = data.length * ROW_HEIGHT + (data.length - 1) * ROW_GAP;
   const width = 24 * HOUR_WIDTH;
+  const breaksByDay = new Map((breakData ?? []).map((d) => [d.day, d.segments]));
+  const complianceByDay = new Map((compliance ?? []).map((c) => [c.day, c]));
 
   return (
     <div className="flex gap-2">
       <div className="flex flex-col text-[10px] text-muted-foreground" style={{ gap: ROW_GAP }}>
-        {data.map((d) => (
-          <div key={d.day} className="flex items-center" style={{ height: ROW_HEIGHT }}>
-            {shortDayLabel(d.day)}
-          </div>
-        ))}
+        {data.map((d) => {
+          const status = complianceByDay.get(d.day);
+          const flagged = status && !status.meetsBreakPolicy;
+          return (
+            <div key={d.day} className="flex items-center gap-1" style={{ height: ROW_HEIGHT }}>
+              {shortDayLabel(d.day)}
+              {flagged && (
+                <span
+                  className="size-1.5 shrink-0 rounded-full bg-amber-500"
+                  title={`No 30-minute break: worked ${Math.round(status.workedHours * 60)}m, only ${status.breakMinutes}m break`}
+                />
+              )}
+            </div>
+          );
+        })}
       </div>
       <div className="min-w-0 flex-1 space-y-1">
         <svg
@@ -105,6 +126,21 @@ export function DailyTimelineChart({
                   >
                     <title>
                       {`${shortDayLabel(d.day)}: ${hourLabel(s.startHour)} – ${hourLabel(s.endHour)}`}
+                    </title>
+                  </rect>
+                ))}
+                {(breaksByDay.get(d.day) ?? []).map((s, si) => (
+                  <rect
+                    key={si}
+                    x={s.startHour * HOUR_WIDTH}
+                    y={y}
+                    width={Math.max((s.endHour - s.startHour) * HOUR_WIDTH, 1.5)}
+                    height={ROW_HEIGHT}
+                    rx={3}
+                    className="fill-amber-500"
+                  >
+                    <title>
+                      {`${shortDayLabel(d.day)} break: ${hourLabel(s.startHour)} – ${hourLabel(s.endHour)}`}
                     </title>
                   </rect>
                 ))}

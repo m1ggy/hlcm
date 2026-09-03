@@ -15,6 +15,16 @@ export async function getMyActiveEntry() {
   });
 }
 
+/** The signed-in user's in-progress break, or null if they're not on one —
+ * same open-row pattern as getMyActiveEntry, mirrored for BreakEntry. */
+export async function getMyActiveBreak() {
+  const session = await requireSession();
+  return prisma.breakEntry.findFirst({
+    where: { userId: session.user.id, breakEnd: null },
+    orderBy: { breakStart: "desc" },
+  });
+}
+
 export async function clockIn() {
   const session = await requireSession();
   const open = await prisma.timeEntry.findFirst({
@@ -61,6 +71,90 @@ export async function clockOut() {
   return entry;
 }
 
+/**
+ * Starts a break: closes the caller's open TimeEntry (a break is unpaid,
+ * same as any other gap between sessions already is) and opens a
+ * BreakEntry. Requires being clocked in and not already on a break —
+ * mirrors clockIn's "already clocked in" guard.
+ */
+export async function startBreak() {
+  const session = await requireSession();
+  const [openEntry, openBreak] = await Promise.all([
+    prisma.timeEntry.findFirst({ where: { userId: session.user.id, clockOut: null } }),
+    prisma.breakEntry.findFirst({ where: { userId: session.user.id, breakEnd: null } }),
+  ]);
+  if (!openEntry) throw new TimeClockError("Not clocked in");
+  if (openBreak) throw new TimeClockError("Already on a break");
+
+  const now = new Date();
+  const [, breakEntry] = await prisma.$transaction([
+    prisma.timeEntry.update({ where: { id: openEntry.id }, data: { clockOut: now } }),
+    prisma.breakEntry.create({ data: { userId: session.user.id, breakStart: now } }),
+  ]);
+
+  await recordAudit({
+    entityType: "BreakEntry",
+    entityId: breakEntry.id,
+    action: "start_break",
+    actorId: session.user.id,
+  });
+
+  revalidatePath("/", "layout");
+  return breakEntry;
+}
+
+/** Ends a break and resumes work: closes the BreakEntry and opens a fresh
+ * TimeEntry. Use endBreakForDay instead if the break turned into being done
+ * for the day rather than a return to work. */
+export async function endBreak() {
+  const session = await requireSession();
+  const openBreak = await prisma.breakEntry.findFirst({
+    where: { userId: session.user.id, breakEnd: null },
+    orderBy: { breakStart: "desc" },
+  });
+  if (!openBreak) throw new TimeClockError("Not on a break");
+
+  const now = new Date();
+  const [, entry] = await prisma.$transaction([
+    prisma.breakEntry.update({ where: { id: openBreak.id }, data: { breakEnd: now } }),
+    prisma.timeEntry.create({ data: { userId: session.user.id, clockIn: now } }),
+  ]);
+
+  await recordAudit({
+    entityType: "BreakEntry",
+    entityId: openBreak.id,
+    action: "end_break",
+    actorId: session.user.id,
+  });
+
+  revalidatePath("/", "layout");
+  return entry;
+}
+
+/** Ends a break without resuming work — the break turned into being done
+ * for the day. Just closes the BreakEntry; the TimeEntry it started from
+ * stays closed, so no new session opens (unlike endBreak). */
+export async function endBreakForDay() {
+  const session = await requireSession();
+  const openBreak = await prisma.breakEntry.findFirst({
+    where: { userId: session.user.id, breakEnd: null },
+    orderBy: { breakStart: "desc" },
+  });
+  if (!openBreak) throw new TimeClockError("Not on a break");
+
+  const entry = await prisma.breakEntry.update({ where: { id: openBreak.id }, data: { breakEnd: new Date() } });
+
+  await recordAudit({
+    entityType: "BreakEntry",
+    entityId: openBreak.id,
+    action: "end_break_for_day",
+    actorId: session.user.id,
+  });
+
+  revalidatePath("/", "layout");
+  return entry;
+}
+
 /** Most recent sessions for the signed-in user — used on their own account page. */
 export async function listMyTimeEntries(limit = 25) {
   const session = await requireSession();
@@ -93,6 +187,22 @@ export async function getMyEntriesInRange(input: { from: Date; to: Date }) {
   });
 }
 
+/** Own breaks for the 24-hour timeline chart and break-policy check — same
+ * self-scoped shape as getMyEntriesInRange, just against BreakEntry. */
+export async function getMyBreaksInRange(input: { from: Date; to: Date }) {
+  const session = await requireSession();
+  const { from, to } = entriesInRangeSchema.parse(input);
+  return prisma.breakEntry.findMany({
+    where: {
+      userId: session.user.id,
+      breakStart: { lte: to },
+      OR: [{ breakEnd: null }, { breakEnd: { gte: from } }],
+    },
+    select: { id: true, breakStart: true, breakEnd: true },
+    orderBy: { breakStart: "asc" },
+  });
+}
+
 const rangeSchema = z.object({
   userId: z.string().optional(),
   from: z.coerce.date(),
@@ -118,6 +228,24 @@ export async function listTimeEntries(input: TimeEntryRangeInput) {
     },
     include: { user: { select: { id: true, name: true, hourlyRate: true } } },
     orderBy: [{ userId: "asc" }, { clockIn: "asc" }],
+  });
+}
+
+/** Admin/manager view of breaks in [from, to] — same overlap rule and role
+ * gate as listTimeEntries, for the Timesheet Report's timeline chart and
+ * 30-minute break-policy check. */
+export async function listBreakEntries(input: TimeEntryRangeInput) {
+  await requireRole(["ADMIN", "MANAGER"]);
+  const { userId, from, to } = rangeSchema.parse(input);
+
+  return prisma.breakEntry.findMany({
+    where: {
+      ...(userId ? { userId } : {}),
+      breakStart: { lte: to },
+      OR: [{ breakEnd: null }, { breakEnd: { gte: from } }],
+    },
+    select: { id: true, userId: true, breakStart: true, breakEnd: true },
+    orderBy: [{ userId: "asc" }, { breakStart: "asc" }],
   });
 }
 
