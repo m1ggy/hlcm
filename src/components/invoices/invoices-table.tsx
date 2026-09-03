@@ -100,8 +100,13 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
         <TableHeader>
           <TableRow>
             <TableHead>Number</TableHead>
-            {showClient && <TableHead>Client</TableHead>}
-            <TableHead>Case</TableHead>
+            {showClient && (
+              <>
+                <TableHead>Business</TableHead>
+                <TableHead>Client</TableHead>
+              </>
+            )}
+            <TableHead>Application</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Due</TableHead>
             <TableHead className="text-right">Total</TableHead>
@@ -111,7 +116,12 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
           {rows.map((invoice) => (
             <TableRow key={invoice.id} className="cursor-pointer" onClick={() => router.push(`/invoices/${invoice.id}`)}>
               <TableCell className="font-medium tabular-nums">{displayInvoiceNumber(invoice)}</TableCell>
-              {showClient && <TableCell>{clientLabel(invoice.client)}</TableCell>}
+              {showClient && (
+                <>
+                  <TableCell>{clientLabel(invoice.client)}</TableCell>
+                  <TableCell>{invoice.client.name}</TableCell>
+                </>
+              )}
               <TableCell className="text-muted-foreground">{invoice.application?.name ?? "—"}</TableCell>
               <TableCell>
                 <div className="flex items-center gap-1.5">
@@ -145,7 +155,7 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
           ))}
           {rows.length === 0 && (
             <TableRow>
-              <TableCell colSpan={showClient ? 6 : 5} className="text-center text-muted-foreground">
+              <TableCell colSpan={showClient ? 7 : 5} className="text-center text-muted-foreground">
                 No invoices match this filter.
               </TableCell>
             </TableRow>
