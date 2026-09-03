@@ -25,7 +25,13 @@ type InvoiceRow = {
   dueDate: Date | null;
   editedAfterSendAt: Date | null;
   importedAt: Date | null;
-  client: { id: string; name: string; businessName: string | null };
+  client: {
+    id: string;
+    name: string;
+    businessName: string | null;
+    clientGroupId: string | null;
+    clientGroup: { id: string; name: string } | null;
+  };
   application: { id: string; name: string } | null;
 };
 
@@ -82,16 +88,22 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
   ];
 
   // Invoices already arrive newest-first (see listInvoices); grouping just
-  // buckets that same order by client, it doesn't re-sort within a group.
+  // buckets that same order, it doesn't re-sort within a bucket. Bucketed
+  // by ClientGroup when the client belongs to one (see Client.clientGroup
+  // in prisma/schema.prisma — a client group merges several clients into
+  // one section, e.g. a holding company's separate locations), falling
+  // back to the individual client otherwise — same as before this existed.
   const groups = groupByClient
     ? Object.values(
-        filtered.reduce<Record<string, { client: InvoiceRow["client"]; rows: InvoiceRow[] }>>((acc, invoice) => {
-          const bucket = acc[invoice.client.id] ?? { client: invoice.client, rows: [] };
+        filtered.reduce<Record<string, { key: string; label: string; rows: InvoiceRow[] }>>((acc, invoice) => {
+          const key = invoice.client.clientGroupId ?? invoice.client.id;
+          const label = invoice.client.clientGroup?.name ?? clientLabel(invoice.client);
+          const bucket = acc[key] ?? { key, label, rows: [] };
           bucket.rows.push(invoice);
-          acc[invoice.client.id] = bucket;
+          acc[key] = bucket;
           return acc;
         }, {})
-      ).sort((a, b) => clientLabel(a.client).localeCompare(clientLabel(b.client)))
+      ).sort((a, b) => a.label.localeCompare(b.label))
     : null;
 
   function renderTable(rows: InvoiceRow[], { showClient }: { showClient: boolean }) {
@@ -205,20 +217,27 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
 
       {groups ? (
         <div className="space-y-3">
+          {/* Collapsed by default — just the client/group names and totals up
+              front, each one's invoices only load into view once clicked. */}
           {groups.map((group) => {
             const total = group.rows.reduce((sum, r) => sum + (r.total ?? 0), 0);
+            // A ClientGroup bucket can span more than one distinct Client —
+            // show the Business/Client columns inside it so rows stay
+            // distinguishable; a single-client bucket doesn't need them,
+            // same as before ClientGroup existed.
+            const distinctClients = new Set(group.rows.map((r) => r.client.id)).size;
             return (
-              <details key={group.client.id} className="group rounded-lg border" open>
+              <details key={group.key} className="group rounded-lg border">
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-4 py-2.5 text-sm font-medium select-none">
                   <span>
-                    {clientLabel(group.client)}{" "}
+                    {group.label}{" "}
                     <span className="font-normal text-muted-foreground">
                       ({group.rows.length} {group.rows.length === 1 ? "invoice" : "invoices"})
                     </span>
                   </span>
                   <span className="tabular-nums text-muted-foreground">${total.toFixed(2)}</span>
                 </summary>
-                <div className="border-t px-4 pb-3">{renderTable(group.rows, { showClient: false })}</div>
+                <div className="border-t px-4 pb-3">{renderTable(group.rows, { showClient: distinctClients > 1 })}</div>
               </details>
             );
           })}

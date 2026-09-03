@@ -43,6 +43,8 @@ const invoiceInclude = {
       billingState: true,
       billingPostalCode: true,
       billingCountry: true,
+      clientGroupId: true,
+      clientGroup: { select: { id: true, name: true } },
     },
   },
   application: { select: { id: true, name: true } },

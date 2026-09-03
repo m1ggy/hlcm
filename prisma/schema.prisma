@@ -169,6 +169,7 @@ model User {
   wisePayoutsInitiated          WiseTransaction[]         @relation("WiseTransactionInitiatedBy")
   invoicesCreated               Invoice[]                 @relation("InvoiceCreatedBy")
   paymentsRecorded              Payment[]                 @relation("PaymentRecordedBy")
+  clientGroupsCreated           ClientGroup[]             @relation("ClientGroupCreatedBy")
   breakDeductionsFor            TimesheetBreakDeduction[] @relation("TimesheetBreakDeductionUser")
   breakDeductionsCreated        TimesheetBreakDeduction[] @relation("TimesheetBreakDeductionCreatedBy")
 
@@ -373,13 +374,37 @@ model Client {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  // Which ClientGroup (if any) this client rolls up into on the Invoices
+  // page's "By client" view — e.g. several separate Client records for the
+  // same holding company/franchise that should show as one section instead
+  // of several. Purely a display/grouping concern, doesn't touch billing.
+  clientGroup   ClientGroup? @relation(fields: [clientGroupId], references: [id], onDelete: SetNull)
+  clientGroupId String?
+
   applications   Application[]
   notes          Note[]
   mcoCredentials McoCredential[]
   credentials    ClientCredential[]
   invoices       Invoice[]
 
+  @@index([clientGroupId])
   @@map("clients")
+}
+
+// A named bundle of Clients that should be treated as one section on the
+// Invoices page's "By client" grouping — see Client.clientGroup above.
+// Deleting a group never deletes or blocks on its clients; they just
+// revert to showing individually (onDelete: SetNull on Client.clientGroup).
+model ClientGroup {
+  id          String   @id @default(cuid())
+  name        String
+  createdBy   User     @relation("ClientGroupCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  createdAt   DateTime @default(now())
+
+  clients Client[]
+
+  @@map("client_groups")
 }
 
 // What kind of license this Application is for (CILA, IDPH, IDOA, ...).

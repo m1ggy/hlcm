@@ -8,6 +8,7 @@ import { listMcoCredentialsForClient, listReachableMcoStages } from "@/lib/actio
 import { listClientCredentials } from "@/lib/actions/client-credentials";
 import { listPipelineStages } from "@/lib/actions/stage";
 import { listInvoices } from "@/lib/actions/invoices";
+import { listClientGroups } from "@/lib/actions/client-groups";
 import { displayInvoiceNumber } from "@/lib/invoice-format";
 import { InvoiceStatusBadge, isInvoiceOverdue } from "@/components/invoices/invoice-status-badge";
 import { ClientDetailsForm } from "@/components/clients/client-details-form";
@@ -59,7 +60,7 @@ export default async function ClientDetailPage({
   const canManageInvoices = session?.user?.role === "ADMIN" || session?.user?.role === "MANAGER";
   const canArchive = canManageInvoices;
 
-  const [assignableUsers, notes, auditLog, mcoCredentials, credentials, mcoStages, invoices] = await Promise.all([
+  const [assignableUsers, notes, auditLog, mcoCredentials, credentials, mcoStages, invoices, clientGroups] = await Promise.all([
     listAssignableUsers(),
     listClientNotes(id),
     getClientAuditLog(id),
@@ -67,6 +68,7 @@ export default async function ClientDetailPage({
     listClientCredentials(id),
     listPipelineStages("MCO", { includeExit: true }),
     canManageInvoices ? listInvoices({ clientId: id }) : Promise.resolve([]),
+    listClientGroups(),
   ]);
   const mcoCredentialsWithStages = await Promise.all(
     mcoCredentials.map(async (c) => ({ ...c, reachableStages: await listReachableMcoStages(c.id) }))
@@ -119,6 +121,7 @@ export default async function ClientDetailPage({
 
       <ClientDetailsForm
         clientId={id}
+        groups={clientGroups.map((g) => ({ id: g.id, name: g.name }))}
         defaultValues={{
           name: client.name,
           contactInfo: client.contactInfo,
@@ -135,6 +138,7 @@ export default async function ClientDetailPage({
           billingState: client.billingState,
           billingPostalCode: client.billingPostalCode,
           billingCountry: client.billingCountry,
+          clientGroupId: client.clientGroupId,
         }}
       />
 

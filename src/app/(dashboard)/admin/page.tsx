@@ -8,6 +8,7 @@ const ADMIN_LINKS = [
   { href: "/admin/checklist-templates", label: "Checklist Templates", description: "Checklist items cloned onto new Applications" },
   { href: "/admin/document-templates", label: "Document Templates", description: "Merge-tag handbooks and policies generated per client" },
   { href: "/admin/invoice-profiles", label: "Invoice Profiles", description: "Billing identities (logo, CC recipients, footer text) for manual invoices" },
+  { href: "/admin/client-groups", label: "Client Groups", description: "Bundle related clients into one section on the Invoices page" },
 ];
 
 export default function AdminPage() {

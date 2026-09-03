@@ -69,7 +69,7 @@ export async function listClients(opts: { filter?: "active" | "archived" | "all"
   return prisma.client.findMany({
     where: filter === "all" ? {} : { active: filter === "active" },
     orderBy: { name: "asc" },
-    include: { projects: { include: { serviceType: true } } },
+    include: { projects: { include: { serviceType: true } }, clientGroup: { select: { id: true, name: true } } },
   });
 }
 
@@ -83,6 +83,7 @@ export async function getClient(id: string) {
         select: { id: true, name: true, status: true, stage: true },
         orderBy: { createdAt: "desc" },
       },
+      clientGroup: { select: { id: true, name: true } },
     },
   });
 }
@@ -129,6 +130,13 @@ export async function updateClient(id: string, formData: FormData) {
   const session = await requireRole(["ADMIN", "MANAGER", "STAFF"]);
   const parsed = updateClientSchema.parse(readClientFields(formData));
   const { ownerDateOfBirth, ...rest } = parsed;
+  // Unlike every other field here (omitted from the payload means "leave
+  // unchanged"), the Group select always submits a value — "" explicitly
+  // means "ungroup this client", not "don't touch clientGroupId" — so it's
+  // read directly rather than through readClientFields's `|| undefined`
+  // convention, and always set (to a real id or null) rather than spread
+  // in from `rest`.
+  const clientGroupId = formData.get("clientGroupId");
 
   const before = await prisma.client.findUniqueOrThrow({ where: { id } });
   const client = await prisma.client.update({
@@ -136,6 +144,7 @@ export async function updateClient(id: string, formData: FormData) {
     data: {
       ...rest,
       ownerDateOfBirth: ownerDateOfBirth ? new Date(ownerDateOfBirth) : null,
+      ...(clientGroupId !== null && { clientGroupId: (clientGroupId as string) || null }),
     },
   });
 

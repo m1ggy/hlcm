@@ -7,6 +7,7 @@ import { updateClient } from "@/lib/actions/clients";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type ClientDetails = {
   name: string;
@@ -24,7 +25,13 @@ type ClientDetails = {
   billingState: string | null;
   billingPostalCode: string | null;
   billingCountry: string | null;
+  clientGroupId: string | null;
 };
+
+// Sentinel for the Select's "no group" option — base-ui Select items need a
+// real (non-empty) value; mapped back to "" (which updateClient reads as
+// "ungroup this client") right before saving.
+const NO_GROUP = "__none__";
 
 type FieldKey = keyof ClientDetails;
 
@@ -60,7 +67,15 @@ function LabeledInput({
   );
 }
 
-export function ClientDetailsForm({ clientId, defaultValues }: { clientId: string; defaultValues: ClientDetails }) {
+export function ClientDetailsForm({
+  clientId,
+  defaultValues,
+  groups,
+}: {
+  clientId: string;
+  defaultValues: ClientDetails;
+  groups: { id: string; name: string }[];
+}) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [values, setValues] = useState({
@@ -79,6 +94,9 @@ export function ClientDetailsForm({ clientId, defaultValues }: { clientId: strin
     billingState: defaultValues.billingState ?? "",
     billingPostalCode: defaultValues.billingPostalCode ?? "",
     billingCountry: defaultValues.billingCountry ?? "US",
+    // "" means ungrouped — same empty-string-means-null convention
+    // updateClient itself reads (see src/lib/actions/clients.ts).
+    clientGroupId: defaultValues.clientGroupId ?? "",
   });
 
   function set(field: FieldKey, v: string) {
@@ -107,8 +125,34 @@ export function ClientDetailsForm({ clientId, defaultValues }: { clientId: strin
   return (
     <div className="space-y-4">
       <Card>
-        <CardContent className="pt-6">
+        <CardContent className="flex flex-wrap gap-4 pt-6">
           <LabeledInput id="name" label="Client name" value={values.name} onChange={(v) => set("name", v)} onBlur={() => save("name")} className="max-w-sm" />
+          <div className="space-y-1">
+            <Label htmlFor="clientGroupId" className="text-xs text-muted-foreground">
+              Group
+            </Label>
+            <Select
+              items={{ [NO_GROUP]: "No group", ...Object.fromEntries(groups.map((g) => [g.id, g.name])) }}
+              value={values.clientGroupId || NO_GROUP}
+              onValueChange={(v) => {
+                const next = v === NO_GROUP || !v ? "" : v;
+                set("clientGroupId", next);
+                save("clientGroupId", next);
+              }}
+            >
+              <SelectTrigger id="clientGroupId" size="sm" className="h-8 w-56">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_GROUP}>No group</SelectItem>
+                {groups.map((g) => (
+                  <SelectItem key={g.id} value={g.id}>
+                    {g.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </CardContent>
       </Card>
 
