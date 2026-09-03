@@ -1,4 +1,4 @@
-import { listMyTimeEntries, getMyDailyHours } from "@/lib/actions/time-entries";
+import { listMyTimeEntries, getMyEntriesInRange } from "@/lib/actions/time-entries";
 import { getAccount } from "@/lib/actions/account";
 import {
   hoursBetween,
@@ -6,10 +6,11 @@ import {
   effectiveTimezone,
   lastNDaysRange,
   dayRangeToInstants,
-  fillDailyRange,
+  segmentsByDay,
+  fillSegmentsRange,
 } from "@/lib/time-entries";
 import { LocalDate, LocalTime } from "@/components/time-clock/local-time";
-import { HoursByDayChart } from "@/components/time-clock/hours-by-day-chart";
+import { DailyTimelineChart } from "@/components/time-clock/daily-timeline-chart";
 import {
   Table,
   TableBody,
@@ -26,17 +27,14 @@ export async function MyTimeLog({ limit = 25 }: { limit?: number }) {
   const timeZone = effectiveTimezone(account.timezone);
 
   const range = lastNDaysRange(CHART_DAYS, timeZone);
-  const daily = fillDailyRange(
-    await getMyDailyHours({ ...dayRangeToInstants(range.from, range.to, timeZone), timeZone }),
-    range.from,
-    range.to
-  );
+  const chartEntries = await getMyEntriesInRange(dayRangeToInstants(range.from, range.to, timeZone));
+  const daily = fillSegmentsRange(segmentsByDay(chartEntries, timeZone), range.from, range.to);
 
   return (
     <div className="space-y-4">
       <div>
-        <p className="mb-2 text-sm font-medium">Hours per day (last {CHART_DAYS} days)</p>
-        <HoursByDayChart data={daily} />
+        <p className="mb-2 text-sm font-medium">Clock in/out (last {CHART_DAYS} days)</p>
+        <DailyTimelineChart data={daily} />
       </div>
       <Table>
         <TableHeader>
