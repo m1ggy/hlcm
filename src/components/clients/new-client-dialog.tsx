@@ -6,6 +6,7 @@ import { createClient } from "@/lib/actions/clients";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Dialog,
   DialogContent,
@@ -51,12 +52,29 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
   return <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{children}</p>;
 }
 
-export function NewClientDialog({ projectId }: { projectId: string }) {
+// projectId is fixed when this is opened from inside a Project's own page
+// (the common case — the new client is obviously for that project). Pass
+// `projects` instead from a context with no such project already in
+// scope (e.g. the global Clients list) to show a picker; exactly one of
+// the two should be given.
+export function NewClientDialog({
+  projectId,
+  projects,
+}: {
+  projectId?: string;
+  projects?: { id: string; name: string }[];
+}) {
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const [pickedProjectId, setPickedProjectId] = useState<string | null>(null);
 
   function handleSubmit(formData: FormData) {
-    formData.set("projectId", projectId);
+    const resolvedProjectId = projectId ?? pickedProjectId;
+    if (!resolvedProjectId) {
+      toast.error("Pick a project");
+      return;
+    }
+    formData.set("projectId", resolvedProjectId);
     startTransition(async () => {
       try {
         await createClient(formData);
@@ -87,6 +105,23 @@ export function NewClientDialog({ projectId }: { projectId: string }) {
             </Label>
             <Input id="name" name="name" required className="h-8" />
           </div>
+
+          {projects && (
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">
+                Project
+                <span className="text-destructive"> *</span>
+              </Label>
+              <SearchableSelect
+                items={Object.fromEntries(projects.map((p) => [p.id, p.name]))}
+                value={pickedProjectId}
+                onValueChange={setPickedProjectId}
+                placeholder="Select a project..."
+                searchPlaceholder="Search projects..."
+                className="flex h-8 w-full items-center justify-between gap-1.5 rounded-lg border border-input bg-transparent py-2 pr-2 pl-2.5 text-sm whitespace-nowrap transition-colors outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30 dark:hover:bg-input/50"
+              />
+            </div>
+          )}
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-3">
