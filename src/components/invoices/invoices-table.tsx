@@ -22,6 +22,7 @@ type InvoiceRow = {
   invoiceNumber: string | null;
   status: string;
   total: number | null;
+  amountPaid: number | null;
   dueDate: Date | null;
   editedAfterSendAt: Date | null;
   importedAt: Date | null;
@@ -48,6 +49,16 @@ function clientLabel(client: InvoiceRow["client"]) {
 // just one, so this column never silently drops one.
 function projectLabel(client: InvoiceRow["client"]) {
   return client.projects.length > 0 ? client.projects.map((p) => p.name).join(", ") : "—";
+}
+
+// Only SENT/PARTIALLY_PAID invoices actually have money still owed — a
+// Draft was never billed, and Paid/Void (including one voided via
+// voidInvoiceWithPayments, which resets amountPaid to 0 but not total)
+// never owe anything regardless of what total minus amountPaid would
+// otherwise compute to.
+function outstandingBalance(invoice: Pick<InvoiceRow, "status" | "total" | "amountPaid">): number {
+  if (invoice.status !== "SENT" && invoice.status !== "PARTIALLY_PAID") return 0;
+  return Math.max(0, (invoice.total ?? 0) - (invoice.amountPaid ?? 0));
 }
 
 export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
@@ -129,6 +140,7 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
             <TableHead>Status</TableHead>
             <TableHead>Due</TableHead>
             <TableHead className="text-right">Total</TableHead>
+            <TableHead className="text-right">Outstanding Balance</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -170,11 +182,14 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
                 {invoice.dueDate ? invoice.dueDate.toLocaleDateString() : "—"}
               </TableCell>
               <TableCell className="text-right tabular-nums">{invoice.total != null ? `$${invoice.total.toFixed(2)}` : "—"}</TableCell>
+              <TableCell className={`text-right tabular-nums ${isInvoiceOverdue(invoice) ? "text-destructive" : ""}`}>
+                {outstandingBalance(invoice) > 0 ? `$${outstandingBalance(invoice).toFixed(2)}` : "—"}
+              </TableCell>
             </TableRow>
           ))}
           {rows.length === 0 && (
             <TableRow>
-              <TableCell colSpan={showClient ? 7 : 4} className="text-center text-muted-foreground">
+              <TableCell colSpan={showClient ? 8 : 5} className="text-center text-muted-foreground">
                 No invoices match this filter.
               </TableCell>
             </TableRow>
