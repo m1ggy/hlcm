@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { LogoCropDialog } from "./logo-crop-dialog";
 
 export type InvoiceProfileSummary = {
   id: string;
@@ -46,10 +47,17 @@ export function InvoiceProfileCard({
   const [footerValue, setFooterValue] = useState(profile.footerText);
   const [isTextPending, startTextTransition] = useTransition();
   const [isActionPending, startActionTransition] = useTransition();
+  // Set the moment a file is picked, cleared once cropping is confirmed or
+  // cancelled — its presence alone drives whether LogoCropDialog is open.
+  const [pickedFile, setPickedFile] = useState<File | null>(null);
 
   function handleLogoChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    setPickedFile(file);
+  }
+
+  function uploadLogo(file: File) {
     const formData = new FormData();
     formData.set("logo", file);
     startLogoTransition(async () => {
@@ -64,6 +72,18 @@ export function InvoiceProfileCard({
         setLogoVersion((v) => v + 1);
       }
     });
+  }
+
+  function handleCropConfirm(cropped: File) {
+    setPickedFile(null);
+    uploadLogo(cropped);
+  }
+
+  function handleCropCancel() {
+    setPickedFile(null);
+    // The file input's own selection needs clearing too — otherwise
+    // re-picking the exact same file wouldn't fire a change event.
+    setLogoVersion((v) => v + 1);
   }
 
   function handleRemoveLogo() {
@@ -173,6 +193,7 @@ export function InvoiceProfileCard({
             )}
           </div>
           <p className="text-xs text-muted-foreground">PNG or JPEG. Displayed up to 56pt tall in the top-left of the PDF.</p>
+          <LogoCropDialog file={pickedFile} onConfirm={handleCropConfirm} onCancel={handleCropCancel} />
         </div>
 
         <div className="space-y-1">
