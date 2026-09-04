@@ -70,6 +70,43 @@ function newlyAdded(before: string[], after: string[]) {
   return after.filter((id) => !beforeSet.has(id));
 }
 
+/**
+ * Guarantees a task assignee can actually open the case their task is on —
+ * mirrors getApplicationAccessLevel's implicit-access rules (src/lib/rbac.ts)
+ * so this never creates a redundant grant for someone who already has
+ * access another way (ADMIN/MANAGER, or the application's own owner).
+ * Otherwise upserts an EDIT AccessGrant, upgrading an existing VIEW-only
+ * one if that's all they had — being assigned work should never leave
+ * someone stuck with view-only or no access at all, without anyone having
+ * to remember to grant it by hand.
+ */
+async function ensureTaskAssigneeAccess(applicationId: string, userId: string, grantedById: string) {
+  const [user, app, existingGrant] = await Promise.all([
+    prisma.user.findUnique({ where: { id: userId }, select: { role: true } }),
+    prisma.application.findUnique({ where: { id: applicationId }, select: { assignedUserId: true } }),
+    prisma.accessGrant.findUnique({ where: { applicationId_userId: { applicationId, userId } } }),
+  ]);
+  if (!user || !app) return;
+  if (user.role === "ADMIN" || user.role === "MANAGER") return;
+  if (app.assignedUserId === userId) return;
+  if (existingGrant?.permission === "EDIT") return;
+
+  await prisma.accessGrant.upsert({
+    where: { applicationId_userId: { applicationId, userId } },
+    create: { applicationId, userId, permission: "EDIT", grantedById },
+    update: { permission: "EDIT" },
+  });
+
+  await recordAudit({
+    entityType: "Application",
+    entityId: applicationId,
+    action: "share_via_task_assignment",
+    actorId: grantedById,
+    field: "accessGrant",
+    newValue: `${userId}:EDIT`,
+  });
+}
+
 async function assertCanEditTask(
   session: Awaited<ReturnType<typeof requireSession>>,
   task: { applicationId: string | null; assignedUserIds: string[] }
@@ -145,6 +182,7 @@ export async function createTask(formData: FormData) {
   });
 
   for (const userId of parsed.assignedUserIds) {
+    await ensureTaskAssigneeAccess(parsed.applicationId, userId, session.user.id);
     await notify(
       {
         userId,
@@ -245,6 +283,7 @@ export async function updateTask(taskId: string, formData: FormData) {
   });
 
   for (const userId of newlyAdded(beforeAssigneeIds, afterAssigneeIds)) {
+    if (task.applicationId) await ensureTaskAssigneeAccess(task.applicationId, userId, session.user.id);
     await notify(
       {
         userId,
