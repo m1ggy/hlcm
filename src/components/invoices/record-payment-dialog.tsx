@@ -61,6 +61,7 @@ export function RecordPaymentDialog({
   const [dueDate, setDueDate] = useState("");
   const [lineItems, setLineItems] = useState([emptyLineItem()]);
   const [notes, setNotes] = useState("");
+  const [internalTag, setInternalTag] = useState("");
 
   const selectedCase = selection.startsWith(CASE_PREFIX)
     ? applications.find((a) => a.id === selection.slice(CASE_PREFIX.length))
@@ -86,6 +87,7 @@ export function RecordPaymentDialog({
     setDueDate("");
     setLineItems([emptyLineItem()]);
     setNotes("");
+    setInternalTag("");
   }
 
   function handleSubmit() {
@@ -109,6 +111,7 @@ export function RecordPaymentDialog({
           issueDate: issueDate || undefined,
           dueDate: dueDate || undefined,
           notes: notes || undefined,
+          internalTag: internalTag || undefined,
           lineItems: cleanItems,
         });
         toast.success("Invoice created");
@@ -187,6 +190,16 @@ export function RecordPaymentDialog({
           <div className="space-y-1">
             <Label htmlFor="notes">Notes</Label>
             <Textarea id="notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional note printed on the invoice" />
+          </div>
+
+          <div className="space-y-1">
+            <Label htmlFor="internalTag">Internal Tag <span className="font-normal text-muted-foreground">(staff only — never shown to the client)</span></Label>
+            <Input
+              id="internalTag"
+              value={internalTag}
+              onChange={(e) => setInternalTag(e.target.value)}
+              placeholder="e.g. referred by Sarah, rush job"
+            />
           </div>
 
           <div className="flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2 text-sm">

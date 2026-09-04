@@ -30,6 +30,7 @@ export function InvoiceActions({
     applicationId: string | null;
     dueDate: Date | null;
     notes: string | null;
+    internalTag: string | null;
     total: number | null;
     amountPaid: number | null;
     lineItems: LineItem[];

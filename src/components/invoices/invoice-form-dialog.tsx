@@ -29,6 +29,7 @@ type ExistingInvoice = {
   applicationId: string | null;
   dueDate: Date | null;
   notes: string | null;
+  internalTag: string | null;
   lineItems: LineItem[];
 };
 
@@ -56,6 +57,7 @@ export function InvoiceFormDialog({
   const [applicationId, setApplicationId] = useState(invoice?.applicationId ?? NONE);
   const [dueDate, setDueDate] = useState(toDateInputValue(invoice?.dueDate ?? null));
   const [notes, setNotes] = useState(invoice?.notes ?? "");
+  const [internalTag, setInternalTag] = useState(invoice?.internalTag ?? "");
   const [lineItems, setLineItems] = useState<LineItem[]>(
     invoice?.lineItems.length ? invoice.lineItems : [emptyLineItem()]
   );
@@ -79,6 +81,7 @@ export function InvoiceFormDialog({
       applicationId: applicationId === NONE ? undefined : applicationId,
       dueDate: dueDate || undefined,
       notes: notes || undefined,
+      internalTag: internalTag || undefined,
       lineItems: cleanItems,
     };
 
@@ -141,6 +144,16 @@ export function InvoiceFormDialog({
           <div className="space-y-1">
             <Label htmlFor="notes">Notes</Label>
             <Textarea id="notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional note printed on the invoice" />
+          </div>
+
+          <div className="space-y-1">
+            <Label htmlFor="internalTag">Internal Tag <span className="font-normal text-muted-foreground">(staff only — never shown to the client)</span></Label>
+            <Input
+              id="internalTag"
+              value={internalTag}
+              onChange={(e) => setInternalTag(e.target.value)}
+              placeholder="e.g. referred by Sarah, rush job"
+            />
           </div>
 
           <div className="flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2 text-sm">

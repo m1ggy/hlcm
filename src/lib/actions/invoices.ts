@@ -108,6 +108,7 @@ const invoiceInputSchema = z.object({
   applicationId: z.string().optional(),
   dueDate: z.string().optional(),
   notes: z.string().optional(),
+  internalTag: z.string().optional(),
   lineItems: z.array(lineItemSchema).min(1, "At least one line item is required"),
 });
 
@@ -127,6 +128,7 @@ export async function createInvoice(input: z.infer<typeof invoiceInputSchema>) {
       applicationId: parsed.applicationId || undefined,
       dueDate: parsed.dueDate ? new Date(parsed.dueDate) : undefined,
       notes: parsed.notes,
+      internalTag: parsed.internalTag,
       total: subtotalOf(parsed.lineItems),
       createdById: session.user.id,
       lineItems: {
@@ -158,6 +160,7 @@ export async function updateInvoice(id: string, input: z.infer<typeof invoiceInp
         applicationId: parsed.applicationId || null,
         dueDate: parsed.dueDate ? new Date(parsed.dueDate) : null,
         notes: parsed.notes,
+        internalTag: parsed.internalTag,
         total: subtotalOf(parsed.lineItems),
         lineItems: {
           create: parsed.lineItems.map((li, index) => ({ ...li, sortOrder: index })),
@@ -287,6 +290,7 @@ const createManualInvoiceSchema = z.object({
   issueDate: z.string().optional(),
   dueDate: z.string().optional(),
   notes: z.string().optional(),
+  internalTag: z.string().optional(),
   lineItems: z.array(lineItemSchema).min(1, "At least one line item is required"),
 });
 
@@ -315,6 +319,7 @@ export async function createManualInvoice(input: z.infer<typeof createManualInvo
         issueDate: parsed.issueDate ? new Date(parsed.issueDate) : undefined,
         dueDate: parsed.dueDate ? new Date(parsed.dueDate) : undefined,
         notes: parsed.notes,
+        internalTag: parsed.internalTag,
         status: "SENT",
         total,
         taxAmount: 0,
@@ -335,6 +340,7 @@ export async function createManualInvoice(input: z.infer<typeof createManualInvo
 
 const updateManualInvoiceDraftSchema = z.object({
   notes: z.string().optional(),
+  internalTag: z.string().optional(),
   issueDate: z.string().optional(),
   dueDate: z.string().optional(),
   lineItems: z.array(lineItemSchema).min(1, "At least one line item is required"),
@@ -374,6 +380,7 @@ export async function updateManualInvoiceDraft(id: string, input: z.infer<typeof
       where: { id },
       data: {
         notes: parsed.notes,
+        internalTag: parsed.internalTag,
         issueDate: parsed.issueDate ? new Date(parsed.issueDate) : undefined,
         dueDate: parsed.dueDate ? new Date(parsed.dueDate) : null,
         total,

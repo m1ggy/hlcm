@@ -123,6 +123,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                 <ManualInvoiceEditor
                   invoiceId={invoice.id}
                   notes={invoice.notes}
+                  internalTag={invoice.internalTag}
                   issueDate={invoice.issueDate}
                   dueDate={invoice.dueDate}
                   lineItems={invoice.lineItems}
@@ -268,6 +269,14 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                   {invoice.client.businessName ?? invoice.client.name}
                 </Link>
               </div>
+              {invoice.internalTag && (
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground" title="Staff only — never shown to the client">
+                    Internal Tag
+                  </span>
+                  <span className="text-right">{invoice.internalTag}</span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Issued</span>
                 <span>{invoice.issueDate.toLocaleDateString()}</span>

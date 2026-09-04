@@ -975,6 +975,12 @@ model Invoice {
   issueDate     DateTime      @default(now())
   dueDate       DateTime?
   notes         String?
+  // Free text for whoever created the invoice — their own reference (e.g.
+  // "referred by Sarah", "rush job"). Unlike `notes`, never printed on the
+  // PDF, never included in any invoice/receipt email, and never sent to
+  // Stripe — see generateInvoicePdf/generateReceiptPdf and the send*
+  // actions in src/lib/actions/invoices.ts, none of which read this field.
+  internalTag   String?
 
   // Null until Stripe finalizes the invoice — Stripe computes the actual
   // tax (via Stripe Tax) and total at that point, not us.

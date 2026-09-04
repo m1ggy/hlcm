@@ -23,12 +23,14 @@ function toDateInputValue(date: Date | null) {
 export function ManualInvoiceEditor({
   invoiceId,
   notes,
+  internalTag,
   issueDate,
   dueDate,
   lineItems,
 }: {
   invoiceId: string;
   notes: string | null;
+  internalTag: string | null;
   issueDate: Date;
   dueDate: Date | null;
   lineItems: LineItem[];
@@ -36,6 +38,7 @@ export function ManualInvoiceEditor({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [notesValue, setNotesValue] = useState(notes ?? "");
+  const [internalTagValue, setInternalTagValue] = useState(internalTag ?? "");
   const [issueDateValue, setIssueDateValue] = useState(toDateInputValue(issueDate));
   const [dueDateValue, setDueDateValue] = useState(toDateInputValue(dueDate));
   const [items, setItems] = useState<LineItem[]>(lineItems.length ? lineItems : [emptyLineItem()]);
@@ -52,6 +55,7 @@ export function ManualInvoiceEditor({
       try {
         await updateManualInvoiceDraft(invoiceId, {
           notes: notesValue || undefined,
+          internalTag: internalTagValue || undefined,
           issueDate: issueDateValue || undefined,
           dueDate: dueDateValue || undefined,
           lineItems: cleanItems,
@@ -86,6 +90,16 @@ export function ManualInvoiceEditor({
           value={notesValue}
           onChange={(e) => setNotesValue(e.target.value)}
           placeholder="Optional note printed on the invoice"
+        />
+      </div>
+
+      <div className="space-y-1">
+        <Label htmlFor="editInternalTag">Internal Tag <span className="font-normal text-muted-foreground">(staff only — never shown to the client)</span></Label>
+        <Input
+          id="editInternalTag"
+          value={internalTagValue}
+          onChange={(e) => setInternalTagValue(e.target.value)}
+          placeholder="e.g. referred by Sarah, rush job"
         />
       </div>
 
