@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
+import { friendlyPrismaError } from "@/lib/prisma-errors";
 
 const credentialSchema = z.object({
   label: z.string().min(1, "Label is required"),
@@ -81,7 +82,9 @@ export async function updateClientCredential(id: string, formData: FormData) {
 export async function deleteClientCredential(id: string) {
   const session = await requireRole(["ADMIN", "MANAGER", "STAFF"]);
   const credential = await prisma.clientCredential.findUniqueOrThrow({ where: { id } });
-  await prisma.clientCredential.delete({ where: { id } });
+  await prisma.clientCredential
+    .delete({ where: { id } })
+    .catch((e) => friendlyPrismaError(e, { notFoundMessage: "That credential is already gone — someone else may have just removed it" }));
 
   await recordAudit({
     entityType: "Client",

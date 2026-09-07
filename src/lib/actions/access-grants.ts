@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireSession, assertApplicationAccess } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
+import { friendlyPrismaError } from "@/lib/prisma-errors";
 import { notify } from "@/lib/notifications";
 
 const GRANT_PERMISSIONS = ["VIEW", "EDIT"] as const;
@@ -53,14 +54,18 @@ export async function addAccessGrant(applicationId: string, formData: FormData) 
     permission: formData.get("permission") || "VIEW",
   });
 
-  const grant = await prisma.accessGrant.create({
-    data: {
-      applicationId,
-      userId: parsed.userId,
-      permission: parsed.permission,
-      grantedById: session.user.id,
-    },
-  });
+  const grant = await prisma.accessGrant
+    .create({
+      data: {
+        applicationId,
+        userId: parsed.userId,
+        permission: parsed.permission,
+        grantedById: session.user.id,
+      },
+    })
+    .catch((e) =>
+      friendlyPrismaError(e, { duplicateMessages: { "applicationId,userId": "That person already has access to this case" } })
+    );
 
   await recordAudit({
     entityType: "Application",
@@ -109,7 +114,9 @@ export async function removeAccessGrant(grantId: string, applicationId: string) 
   const session = await requireSession();
   await assertApplicationAccess(session, applicationId, "edit");
 
-  await prisma.accessGrant.delete({ where: { id: grantId } });
+  await prisma.accessGrant
+    .delete({ where: { id: grantId } })
+    .catch((e) => friendlyPrismaError(e, { notFoundMessage: "That access grant is already gone — someone else may have just removed it" }));
 
   await recordAudit({
     entityType: "Application",

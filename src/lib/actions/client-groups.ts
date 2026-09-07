@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
+import { friendlyPrismaError } from "@/lib/prisma-errors";
 
 const ADMIN_ONLY = ["ADMIN"] as const;
 
@@ -61,7 +62,9 @@ export async function deleteClientGroup(id: string) {
   const session = await requireRole([...ADMIN_ONLY]);
   const group = await prisma.clientGroup.findUniqueOrThrow({ where: { id } });
 
-  await prisma.clientGroup.delete({ where: { id } });
+  await prisma.clientGroup
+    .delete({ where: { id } })
+    .catch((e) => friendlyPrismaError(e, { notFoundMessage: "That group is already gone — someone else may have just removed it" }));
 
   await recordAudit({
     entityType: "ClientGroup",

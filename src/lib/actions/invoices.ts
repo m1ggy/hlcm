@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireRole, AppRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
+import { friendlyPrismaError } from "@/lib/prisma-errors";
 import { sendEmail, renderEmailLayout } from "@/lib/email";
 import { generateInvoicePdf } from "@/lib/invoice-pdf";
 import { generateReceiptPdf } from "@/lib/receipt-pdf";
@@ -189,7 +190,9 @@ export async function deleteInvoice(id: string) {
     throw new Error("Only draft invoices can be deleted");
   }
 
-  await prisma.invoice.delete({ where: { id } });
+  await prisma.invoice
+    .delete({ where: { id } })
+    .catch((e) => friendlyPrismaError(e, { notFoundMessage: "That invoice is already gone — someone else may have just deleted it" }));
   await recordAudit({ entityType: "Invoice", entityId: id, action: "delete", actorId: session.user.id });
 
   revalidatePath("/invoices");
@@ -276,19 +279,17 @@ export async function markInvoicePaid(id: string) {
 }
 
 // A duplicate typed invoiceNumber is the one way this insert can fail on a
-// constraint rather than validation — surfaced as a plain, readable error
-// instead of Prisma's raw P2002 (there's no existing convention for this in
-// the codebase to follow, so this is deliberately duck-typed on `.code`
-// rather than importing Prisma's error class).
+// constraint rather than validation — see friendlyPrismaError in
+// src/lib/prisma-errors.ts for the general pattern this follows.
 function friendlyInvoiceNumberError(error: unknown): never {
-  if (error && typeof error === "object" && "code" in error && error.code === "P2002") {
-    throw new Error(
-      "That invoice number is already in use on another invoice — including voided ones from before this " +
+  return friendlyPrismaError(error, {
+    duplicateMessages: {
+      invoiceNumber:
+        "That invoice number is already in use on another invoice — including voided ones from before this " +
         "was fixed, since voiding didn't used to free it up. Pick a different number, or leave it blank to " +
-        "auto-assign one."
-    );
-  }
-  throw error;
+        "auto-assign one.",
+    },
+  });
 }
 
 // A PAID or PARTIALLY_PAID invoice that never got a Stripe invoice — see
@@ -1041,42 +1042,47 @@ export async function importStripeInvoice(input: z.infer<typeof importStripeInvo
     );
   }
 
-  const created = await prisma.$transaction(async (tx) => {
-    if (!client.stripeCustomerId) {
-      await tx.client.update({ where: { id: client.id }, data: { stripeCustomerId: invoice.customer } });
-    }
-    return tx.invoice.create({
-      data: {
-        clientId: client.id,
-        applicationId: parsed.applicationId || undefined,
-        status,
-        issueDate: new Date(invoice.created * 1000),
-        dueDate: invoice.due_date ? new Date(invoice.due_date * 1000) : undefined,
-        total: invoice.total / 100,
-        taxAmount: (invoice.tax ?? 0) / 100,
-        stripeInvoiceId: invoice.id,
-        stripeInvoiceNumber: invoice.number,
-        hostedInvoiceUrl: invoice.hosted_invoice_url,
-        invoicePdfUrl: invoice.invoice_pdf,
-        sentAt: status !== "DRAFT" ? new Date(invoice.created * 1000) : undefined,
-        paidAt: invoice.status_transitions?.paid_at ? new Date(invoice.status_transitions.paid_at * 1000) : undefined,
-        importedAt: new Date(),
-        createdById: session.user.id,
-        lineItems: {
-          create: lines.map((li, index) => {
-            const quantity = li.quantity ?? 1;
-            return {
-              description: li.description || "Invoice item",
-              quantity,
-              unitPrice: li.amount / 100 / quantity,
-              sortOrder: index,
-            };
-          }),
+  const created = await prisma
+    .$transaction(async (tx) => {
+      if (!client.stripeCustomerId) {
+        await tx.client.update({ where: { id: client.id }, data: { stripeCustomerId: invoice.customer } });
+      }
+      return tx.invoice.create({
+        data: {
+          clientId: client.id,
+          applicationId: parsed.applicationId || undefined,
+          status,
+          issueDate: new Date(invoice.created * 1000),
+          dueDate: invoice.due_date ? new Date(invoice.due_date * 1000) : undefined,
+          total: invoice.total / 100,
+          taxAmount: (invoice.tax ?? 0) / 100,
+          stripeInvoiceId: invoice.id,
+          stripeInvoiceNumber: invoice.number,
+          hostedInvoiceUrl: invoice.hosted_invoice_url,
+          invoicePdfUrl: invoice.invoice_pdf,
+          sentAt: status !== "DRAFT" ? new Date(invoice.created * 1000) : undefined,
+          paidAt: invoice.status_transitions?.paid_at ? new Date(invoice.status_transitions.paid_at * 1000) : undefined,
+          importedAt: new Date(),
+          createdById: session.user.id,
+          lineItems: {
+            create: lines.map((li, index) => {
+              const quantity = li.quantity ?? 1;
+              return {
+                description: li.description || "Invoice item",
+                quantity,
+                unitPrice: li.amount / 100 / quantity,
+                sortOrder: index,
+              };
+            }),
+          },
         },
-      },
-      include: invoiceInclude,
-    });
-  });
+        include: invoiceInclude,
+      });
+    })
+    // Guards the narrow race between the findUnique check above and this
+    // insert (two people importing the same Stripe invoice at once) — the
+    // common case is already caught by that check with a clearer message.
+    .catch((e) => friendlyPrismaError(e, { duplicateMessages: { stripeInvoiceId: "This Stripe invoice has already been imported" } }));
 
   await recordAudit({
     entityType: "Invoice",

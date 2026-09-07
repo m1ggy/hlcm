@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireRole, requireSession } from "@/lib/rbac";
 import { recordAudit, recordFieldChanges } from "@/lib/audit";
+import { friendlyPrismaError } from "@/lib/prisma-errors";
 import { getInitialStage } from "@/lib/pipeline";
 import { resolveStageChange, isStructurallyReachable, daysInStage } from "@/lib/stage-transitions";
 
@@ -43,9 +44,13 @@ export async function createMcoCredential(clientId: string, mcoName: (typeof MCO
     throw new Error("No MCO pipeline stages configured — run the stage seed first.");
   }
 
-  const credential = await prisma.mcoCredential.create({
-    data: { clientId, mcoName, stageId: initialStage.id, createdById: session.user.id },
-  });
+  const credential = await prisma.mcoCredential
+    .create({
+      data: { clientId, mcoName, stageId: initialStage.id, createdById: session.user.id },
+    })
+    .catch((e) =>
+      friendlyPrismaError(e, { duplicateMessages: { "clientId,mcoName": "This client already has a credential in progress for that MCO" } })
+    );
 
   await prisma.stageHistory.create({
     data: { mcoCredentialId: credential.id, stageId: initialStage.id, actorId: session.user.id },

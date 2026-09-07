@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
+import { friendlyPrismaError } from "@/lib/prisma-errors";
 
 const ROLE_VALUES = ["ADMIN", "MANAGER", "STAFF", "CLIENT", "CAREGIVER"] as const;
 
@@ -55,7 +56,9 @@ export async function createChecklistItemTemplate(formData: FormData) {
 
 export async function deleteChecklistItemTemplate(id: string) {
   const session = await requireRole(["ADMIN"]);
-  await prisma.checklistItemTemplate.delete({ where: { id } });
+  await prisma.checklistItemTemplate
+    .delete({ where: { id } })
+    .catch((e) => friendlyPrismaError(e, { notFoundMessage: "That checklist item is already gone — someone else may have just removed it" }));
 
   await recordAudit({
     entityType: "ChecklistItemTemplate",
