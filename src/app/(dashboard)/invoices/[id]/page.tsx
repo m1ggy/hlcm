@@ -260,7 +260,14 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
             <CardHeader>
               <CardTitle>Attachments</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-3">
+              {!isManualInvoice(invoice) && (
+                <p className="text-xs text-muted-foreground">
+                  This is an online invoice — Stripe sends its own email for it, which can&apos;t include these.
+                  They&apos;re only ever emailed out if you use &quot;Send invoice PDF&quot;/&quot;Send receipt&quot;
+                  on a manually-recorded invoice.
+                </p>
+              )}
               <InvoiceAttachments invoiceId={invoice.id} attachments={attachments} canEdit />
             </CardContent>
           </Card>

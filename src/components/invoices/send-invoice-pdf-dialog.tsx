@@ -87,7 +87,8 @@ export function SendInvoicePdfDialog({
         </DialogHeader>
         <div className="space-y-4">
           <p className="text-xs text-muted-foreground">
-            The invoice PDF is attached automatically. Optionally attach anything else — PDF, XLSX, or DOCX.
+            The invoice PDF, plus anything saved on this invoice&apos;s Attachments card, is attached automatically.
+            Optionally attach something else just for this send — PDF, XLSX, or DOCX.
           </p>
 
           <EmailRecipientPicker businessEmail={businessEmail} ownerEmail={ownerEmail} onChange={setRecipientEmail} />

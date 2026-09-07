@@ -658,6 +658,34 @@ const sendReceiptEmailInputSchema = z.string().min(1);
 // per-receipt whether the client gets a copy. Safe to call more than once
 // (a "Resend" is just another send); sentAt/sentTo just track the most
 // recent one.
+// Resend's own cap is 40MB per email across all attachments combined —
+// capped lower here to leave headroom for the generated PDF plus
+// base64's ~33% size inflation, and to fail with a clear message before
+// even calling the email API rather than after.
+const MAX_TOTAL_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+
+function assertAttachmentsFitInEmail(attachments: { filename: string; content: Uint8Array }[]) {
+  const total = attachments.reduce((sum, a) => sum + a.content.byteLength, 0);
+  if (total > MAX_TOTAL_ATTACHMENT_BYTES) {
+    throw new Error(
+      `These attachments add up to too much for one email (${(total / 1024 / 1024).toFixed(1)}MB, limit ~${MAX_TOTAL_ATTACHMENT_BYTES / 1024 / 1024}MB) — remove one from the invoice's Attachments card, or from this send, and try again.`
+    );
+  }
+}
+
+// Persisted attachments (the invoice's own "Attachments" card — see
+// src/lib/actions/invoice-attachments.ts) go out with every email sent for
+// this invoice: the manual PDF courtesy copy and the receipt, both below.
+// Excluded from the online/Stripe-bound flow (sendInvoice) — Stripe sends
+// its own hosted-invoice email directly and has no way to attach arbitrary
+// files to it.
+async function loadInvoiceAttachments(invoiceId: string) {
+  const rows = await prisma.invoiceAttachment.findMany({ where: { invoiceId } });
+  return Promise.all(
+    rows.map(async (row) => ({ filename: row.fileName, content: await readStoredFile(row.storageKey) }))
+  );
+}
+
 export async function sendReceiptEmail(receiptId: string, recipientEmailOverride?: string) {
   const session = await requireRole(MANAGE_ROLES);
   const id = sendReceiptEmailInputSchema.parse(receiptId);
@@ -680,6 +708,9 @@ export async function sendReceiptEmail(receiptId: string, recipientEmailOverride
   // the old auto thank-you) already used — see getInvoiceProfile/
   // parseCcEmails in src/lib/invoice-profiles.ts.
   const profile = await getInvoiceProfile(invoice.invoiceProfileId);
+  const invoiceAttachments = await loadInvoiceAttachments(invoice.id);
+  const attachments = [{ filename: `receipt-${receiptNumber}.pdf`, content: pdfBytes }, ...invoiceAttachments];
+  assertAttachmentsFitInEmail(attachments);
 
   await sendEmail({
     to: recipientEmail,
@@ -690,7 +721,7 @@ export async function sendReceiptEmail(receiptId: string, recipientEmailOverride
       bodyHtml: `<p style="margin:0 0 8px">Thank you for your payment of $${payment.amount.toFixed(2)} on invoice ${number}.</p><p style="margin:0">A copy of your receipt is attached for your records.</p>`,
       preheader: `Receipt for your payment on invoice ${number}`,
     }),
-    attachments: [{ filename: `receipt-${receiptNumber}.pdf`, content: pdfBytes }],
+    attachments,
   });
 
   await prisma.receipt.update({ where: { id }, data: { sentAt: new Date(), sentTo: recipientEmail } });
@@ -739,9 +770,11 @@ async function readExtraAttachments(formData: FormData | undefined) {
 // (see sendReceiptEmail below), and only while the invoice is still
 // awaiting payment; once PAID, "Send receipt" from the Payments card is
 // the one that goes out. Tracks lastSentAt so the invoice detail page can
-// show when this was last used. `formData` is optional and, when present,
-// may carry extra one-off attachments under the "attachments" field (see
-// readExtraAttachments above) — nothing here persists them.
+// show when this was last used. Every persisted attachment on the invoice
+// (see loadInvoiceAttachments above) goes out too; `formData` is optional
+// and, when present, may also carry extra one-off attachments under the
+// "attachments" field (see readExtraAttachments above) that are never
+// persisted — picked fresh for this one send only.
 export async function sendManualInvoicePdf(id: string, formData?: FormData) {
   const session = await requireRole(MANAGE_ROLES);
   const invoice = await prisma.invoice.findUniqueOrThrow({ where: { id }, include: invoiceInclude });
@@ -753,13 +786,18 @@ export async function sendManualInvoicePdf(id: string, formData?: FormData) {
 
   const recipientEmail = resolveRecipientEmail(formData?.get("recipientEmail") as string | null, invoice.client);
 
-  const extraAttachments = await readExtraAttachments(formData);
+  const [extraAttachments, invoiceAttachments] = await Promise.all([
+    readExtraAttachments(formData),
+    loadInvoiceAttachments(id),
+  ]);
 
   const number = displayInvoiceNumber(invoice);
   const profile = await getInvoiceProfile(invoice.invoiceProfileId);
   const logo = await getInvoiceLogo(profile);
   const pdfBytes = await generateInvoicePdf({ ...invoice, logo, footerText: profile?.footerText ?? null, profileName: profile?.name ?? null });
   const amountDue = (invoice.total ?? 0) - (invoice.amountPaid ?? 0);
+  const attachments = [{ filename: `invoice-${number}.pdf`, content: pdfBytes }, ...invoiceAttachments, ...extraAttachments];
+  assertAttachmentsFitInEmail(attachments);
 
   await sendEmail({
     to: recipientEmail,
@@ -770,7 +808,7 @@ export async function sendManualInvoicePdf(id: string, formData?: FormData) {
       bodyHtml: `<p style="margin:0 0 8px">Please find invoice ${number} attached${invoice.dueDate ? ` — due ${invoice.dueDate.toLocaleDateString()}` : ""}.</p><p style="margin:0">Amount due: $${amountDue.toFixed(2)}</p>`,
       preheader: `Invoice ${number} — $${amountDue.toFixed(2)} due`,
     }),
-    attachments: [{ filename: `invoice-${number}.pdf`, content: pdfBytes }, ...extraAttachments],
+    attachments,
   });
 
   const updated = await prisma.invoice.update({

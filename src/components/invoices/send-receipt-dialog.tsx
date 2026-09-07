@@ -59,7 +59,10 @@ export function SendReceiptDialog({
           <DialogTitle>{verb} receipt</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          <p className="text-xs text-muted-foreground">The receipt PDF will be emailed to whoever you pick below.</p>
+          <p className="text-xs text-muted-foreground">
+            The receipt PDF, plus anything saved on this invoice&apos;s Attachments card, will be emailed to whoever
+            you pick below.
+          </p>
           <EmailRecipientPicker businessEmail={businessEmail} ownerEmail={ownerEmail} onChange={setRecipientEmail} />
           <Button onClick={handleSend} className="w-full" disabled={!recipientEmail} loading={isPending}>
             {isPending ? "Sending..." : `${verb} email`}
