@@ -201,8 +201,18 @@ export async function voidInvoice(id: string) {
   if (before.status === "PAID") throw new Error("A paid invoice can't be voided");
 
   if (before.stripeInvoiceId) await voidInvoiceRemote(before.stripeInvoiceId);
-  await prisma.invoice.update({ where: { id }, data: { status: "VOID" } });
-  await recordAudit({ entityType: "Invoice", entityId: id, action: "void", actorId: session.user.id });
+  // A typed invoiceNumber is @unique regardless of status — clearing it here
+  // frees it up for reuse on a future invoice instead of silently sitting on
+  // a voided one forever (see friendlyInvoiceNumberError below for what
+  // happens when it isn't freed and someone types the same number again).
+  await prisma.invoice.update({ where: { id }, data: { status: "VOID", invoiceNumber: null } });
+  await recordAudit({
+    entityType: "Invoice",
+    entityId: id,
+    action: "void",
+    actorId: session.user.id,
+    ...(before.invoiceNumber ? { field: "invoiceNumber", oldValue: before.invoiceNumber } : {}),
+  });
 
   revalidatePath("/invoices");
   revalidatePath(`/invoices/${id}`);
@@ -228,9 +238,11 @@ export async function voidInvoiceWithPayments(id: string) {
     throw new Error("This invoice has no payments recorded — use the regular Void instead");
   }
 
+  // Same reasoning as voidInvoice above — invoiceNumber is @unique
+  // regardless of status, so it's freed up for reuse here too.
   await prisma.invoice.update({
     where: { id },
-    data: { status: "VOID", amountPaid: 0, paidAt: null, paymentMethod: null },
+    data: { status: "VOID", amountPaid: 0, paidAt: null, paymentMethod: null, invoiceNumber: null },
   });
 
   await recordAudit({
@@ -238,7 +250,7 @@ export async function voidInvoiceWithPayments(id: string) {
     entityId: id,
     action: "void_with_payments",
     actorId: session.user.id,
-    oldValue: `${before.status}, $${(before.amountPaid ?? 0).toFixed(2)} recorded`,
+    oldValue: `${before.status}, $${(before.amountPaid ?? 0).toFixed(2)} recorded${before.invoiceNumber ? `, #${before.invoiceNumber}` : ""}`,
   });
 
   revalidatePath("/invoices");
@@ -270,7 +282,11 @@ export async function markInvoicePaid(id: string) {
 // rather than importing Prisma's error class).
 function friendlyInvoiceNumberError(error: unknown): never {
   if (error && typeof error === "object" && "code" in error && error.code === "P2002") {
-    throw new Error("That invoice number is already in use on another invoice");
+    throw new Error(
+      "That invoice number is already in use on another invoice — including voided ones from before this " +
+        "was fixed, since voiding didn't used to free it up. Pick a different number, or leave it blank to " +
+        "auto-assign one."
+    );
   }
   throw error;
 }
@@ -787,13 +803,19 @@ export async function sendInvoice(id: string, recipientEmailOverride?: string) {
 
   // Stripe emails go to the Customer object's email, not a per-invoice
   // address — a cached Customer (from an earlier send, to either this
-  // invoice or a prior one) only gets updated when the resolved recipient
-  // actually differs, so a plain Resend with no override never makes an
-  // extra Stripe call.
+  // invoice or a prior one) gets its email synced to match what was picked
+  // here. Best-effort: a stale/deleted Stripe customer id, or any other
+  // hiccup reaching Stripe for this step, must not block the send itself —
+  // that's what actually matters, and the invoice/finalize calls below
+  // will surface a clearer error if the customer id is genuinely bad.
   if (invoice.client.stripeCustomerId) {
-    const customer = await retrieveCustomer(invoice.client.stripeCustomerId);
-    if (customer.email !== recipientEmail) {
-      await updateCustomerEmail(invoice.client.stripeCustomerId, recipientEmail);
+    try {
+      const customer = await retrieveCustomer(invoice.client.stripeCustomerId);
+      if (customer.email !== recipientEmail) {
+        await updateCustomerEmail(invoice.client.stripeCustomerId, recipientEmail);
+      }
+    } catch (error) {
+      console.error(`sendInvoice: failed to sync Stripe customer email for client ${invoice.client.id}:`, error);
     }
   }
 
