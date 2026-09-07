@@ -1,9 +1,10 @@
 import { notFound } from "next/navigation";
 import { listInvoiceProfilesForAdmin } from "@/lib/actions/invoice-profiles";
 import { InvoiceProfilesManager } from "@/components/admin/invoice-profiles-manager";
-import { ForbiddenError } from "@/lib/rbac";
+import { ForbiddenError, blockCaregiverRoute } from "@/lib/rbac";
 
 export default async function InvoiceProfilesPage() {
+  await blockCaregiverRoute();
   let profiles;
   try {
     profiles = await listInvoiceProfilesForAdmin();

@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { auth } from "@/auth";
-import { listClients, archiveClient, restoreClient } from "@/lib/actions/clients";
+import { listClients, listCaregiverClients, archiveClient, restoreClient } from "@/lib/actions/clients";
 import { listProjects } from "@/lib/actions/projects";
 import { PageInfoButton } from "@/components/shared/page-info-button";
 import { ClientsTable } from "@/components/clients/clients-table";
+import { CaregiverClientsTable } from "@/components/clients/caregiver-clients-table";
 import { NewClientDialog } from "@/components/clients/new-client-dialog";
 
 export default async function ClientsPage({
@@ -15,6 +16,24 @@ export default async function ClientsPage({
   const showArchived = archived === "1";
   const session = await auth();
   const canArchive = session?.user?.role === "ADMIN" || session?.user?.role === "MANAGER";
+
+  // A Caregiver's client list is just the businesses behind their own task
+  // assignments — a much narrower, read-only view, so it gets its own
+  // fetch and table rather than reusing the admin-oriented one below.
+  if (session?.user?.role === "CAREGIVER") {
+    const clients = await listCaregiverClients();
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-1.5">
+          <h1 className="text-2xl font-semibold">Clients</h1>
+          <PageInfoButton title="Clients">
+            <p>The businesses behind your assigned tasks. Open one to see its details and your tasks there.</p>
+          </PageInfoButton>
+        </div>
+        <CaregiverClientsTable clients={clients} />
+      </div>
+    );
+  }
 
   const [clients, projects] = await Promise.all([
     listClients({ filter: showArchived ? "archived" : "active" }),

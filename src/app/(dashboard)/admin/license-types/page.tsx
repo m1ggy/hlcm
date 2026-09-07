@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { listLicenseTypes } from "@/lib/actions/license-types";
 import { NewLicenseTypeDialog } from "@/components/admin/new-license-type-dialog";
-import { ForbiddenError } from "@/lib/rbac";
+import { ForbiddenError, blockCaregiverRoute } from "@/lib/rbac";
 import {
   Table,
   TableBody,
@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/table";
 
 export default async function LicenseTypesPage() {
+  await blockCaregiverRoute();
   let licenseTypes;
   try {
     licenseTypes = await listLicenseTypes();

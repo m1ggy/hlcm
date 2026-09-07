@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { auth } from "@/auth";
+import { blockCaregiverRoute } from "@/lib/rbac";
 import { listProjects, archiveProject, restoreProject } from "@/lib/actions/projects";
 import { NewProjectDialog } from "@/components/projects/new-project-dialog";
 import { ArchiveButton } from "@/components/shared/archive-button";
@@ -18,6 +19,7 @@ export default async function ProjectsPage({
 }: {
   searchParams: Promise<{ archived?: string }>;
 }) {
+  await blockCaregiverRoute();
   const { archived } = await searchParams;
   const showArchived = archived === "1";
   const session = await auth();

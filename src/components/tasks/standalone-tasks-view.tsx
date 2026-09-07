@@ -39,10 +39,12 @@ export function MyTasksView({
   tasks,
   assignableUsers,
   isAdmin,
+  isCaregiver,
 }: {
   tasks: MyTask[];
   assignableUsers: Option[];
   isAdmin?: boolean;
+  isCaregiver?: boolean;
 }) {
   const [filter, setFilter] = useState<Filter>("all");
 
@@ -106,7 +108,7 @@ export function MyTasksView({
       </div>
       <div className="space-y-2">
         {filtered.map((task) => (
-          <MyTaskRow key={task.id} task={task} assignableUsers={assignableUsers} isAdmin={isAdmin} />
+          <MyTaskRow key={task.id} task={task} assignableUsers={assignableUsers} isAdmin={isAdmin} isCaregiver={isCaregiver} />
         ))}
         {filtered.length === 0 && <p className="text-sm text-muted-foreground">No tasks match this filter.</p>}
       </div>

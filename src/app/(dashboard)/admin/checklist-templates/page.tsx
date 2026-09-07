@@ -1,6 +1,7 @@
 import { listChecklistItemTemplates } from "@/lib/actions/checklist-templates";
 import { listLicenseTypes } from "@/lib/actions/license-types";
 import { listCaseTypes } from "@/lib/actions/case-types";
+import { blockCaregiverRoute } from "@/lib/rbac";
 import { NewChecklistItemDialog } from "@/components/admin/new-checklist-item-dialog";
 import { DeleteChecklistItemButton } from "@/components/admin/delete-checklist-item-button";
 import { PageInfoButton } from "@/components/shared/page-info-button";
@@ -14,6 +15,7 @@ import {
 } from "@/components/ui/table";
 
 export default async function ChecklistTemplatesPage() {
+  await blockCaregiverRoute();
   const [items, licenseTypes, caseTypes] = await Promise.all([
     listChecklistItemTemplates(),
     listLicenseTypes(),

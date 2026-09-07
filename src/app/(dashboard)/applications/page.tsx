@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Download } from "lucide-react";
 import { auth } from "@/auth";
+import { blockCaregiverRoute } from "@/lib/rbac";
 import { listApplications, listAssignableUsers, archiveApplication, restoreApplication } from "@/lib/actions/applications";
 import { listClients } from "@/lib/actions/clients";
 import { listLicenseTypes } from "@/lib/actions/license-types";
@@ -24,6 +25,7 @@ export default async function ApplicationsPage({
 }: {
   searchParams: Promise<{ archived?: string }>;
 }) {
+  await blockCaregiverRoute();
   const session = await auth();
   if (!session?.user) return null;
 

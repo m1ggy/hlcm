@@ -48,10 +48,12 @@ export function MyTaskRow({
   task,
   assignableUsers,
   isAdmin,
+  isCaregiver,
 }: {
   task: MyTask;
   assignableUsers: Option[];
   isAdmin?: boolean;
+  isCaregiver?: boolean;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -140,9 +142,11 @@ export function MyTaskRow({
         )}
         {task.recurrenceRule && <Badge variant="outline">Repeats {task.recurrenceRule}</Badge>}
         {overdue && <Badge variant="destructive">Overdue</Badge>}
-        <Button variant="ghost" size="icon-sm" className="size-6" onClick={addSubtask} disabled={isAdding} title="Add subtask">
-          {isAdding ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
-        </Button>
+        {!isCaregiver && (
+          <Button variant="ghost" size="icon-sm" className="size-6" onClick={addSubtask} disabled={isAdding} title="Add subtask">
+            {isAdding ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
+          </Button>
+        )}
         <TaskDetailDialog
           taskId={task.id}
           label={task.label}
@@ -154,6 +158,7 @@ export function MyTaskRow({
           reviewerIds={[]}
           hasReviewer={false}
           assignableUsers={assignableUsers}
+          isCaregiver={isCaregiver}
         />
         {isAdmin && (
           <Button
@@ -177,29 +182,35 @@ export function MyTaskRow({
             className="w-40"
           />
         </div>
-        <Input
-          type="date"
-          value={dueDate}
-          onChange={(e) => {
-            setDueDate(e.target.value);
-            save({ dueDate: e.target.value });
-          }}
-          className={overdue ? "w-36 border-destructive/50 text-destructive focus-visible:border-ring" : "w-36"}
-        />
+        {isCaregiver ? (
+          <span className={overdue ? "text-sm text-destructive" : "text-sm text-muted-foreground"}>{dueDate || "No due date"}</span>
+        ) : (
+          <Input
+            type="date"
+            value={dueDate}
+            onChange={(e) => {
+              setDueDate(e.target.value);
+              save({ dueDate: e.target.value });
+            }}
+            className={overdue ? "w-36 border-destructive/50 text-destructive focus-visible:border-ring" : "w-36"}
+          />
+        )}
       </div>
 
-      <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
-        <span className="text-muted-foreground">Assigned:</span>
-        <MultiUserSelect
-          items={Object.fromEntries(assignableUsers.map((u) => [u.id, u.name]))}
-          value={assignedUserIds}
-          onValueChange={(next) => {
-            setAssignedUserIds(next);
-            if (next.length > 0) save({ assignedUserIds: next });
-          }}
-          className="w-64"
-        />
-      </div>
+      {!isCaregiver && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-muted-foreground">Assigned:</span>
+          <MultiUserSelect
+            items={Object.fromEntries(assignableUsers.map((u) => [u.id, u.name]))}
+            value={assignedUserIds}
+            onValueChange={(next) => {
+              setAssignedUserIds(next);
+              if (next.length > 0) save({ assignedUserIds: next });
+            }}
+            className="w-64"
+          />
+        </div>
+      )}
 
       {status === "BLOCKED" && (
         <div className="mt-2">
@@ -216,7 +227,7 @@ export function MyTaskRow({
       {expanded && task.subtasks.length > 0 && (
         <div className="mt-3 space-y-2 border-t pt-3">
           {task.subtasks.map((subtask) => (
-            <SubtaskRow key={subtask.id} subtask={subtask} assignableUsers={assignableUsers} isAdmin={isAdmin} />
+            <SubtaskRow key={subtask.id} subtask={subtask} assignableUsers={assignableUsers} isAdmin={isAdmin} isCaregiver={isCaregiver} />
           ))}
         </div>
       )}
@@ -228,10 +239,12 @@ function SubtaskRow({
   subtask,
   assignableUsers,
   isAdmin,
+  isCaregiver,
 }: {
   subtask: Subtask;
   assignableUsers: Option[];
   isAdmin?: boolean;
+  isCaregiver?: boolean;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -285,6 +298,7 @@ function SubtaskRow({
         reviewerIds={[]}
         hasReviewer={false}
         assignableUsers={assignableUsers}
+        isCaregiver={isCaregiver}
       />
       <div className={status === "COMPLETED" ? "-m-1 rounded-lg bg-emerald-500/10 p-1 dark:bg-emerald-500/15" : undefined}>
         <TaskStatusSelect
@@ -296,24 +310,28 @@ function SubtaskRow({
           className="w-40"
         />
       </div>
-      <MultiUserSelect
-        items={Object.fromEntries(assignableUsers.map((u) => [u.id, u.name]))}
-        value={assignedUserIds}
-        onValueChange={(next) => {
-          setAssignedUserIds(next);
-          if (next.length > 0) save({ assignedUserIds: next });
-        }}
-        className="w-56"
-      />
-      <Input
-        type="date"
-        value={dueDate}
-        onChange={(e) => {
-          setDueDate(e.target.value);
-          save({ dueDate: e.target.value });
-        }}
-        className={overdue ? "w-36 border-destructive/50 text-destructive focus-visible:border-ring" : "w-36"}
-      />
+      {!isCaregiver && (
+        <>
+          <MultiUserSelect
+            items={Object.fromEntries(assignableUsers.map((u) => [u.id, u.name]))}
+            value={assignedUserIds}
+            onValueChange={(next) => {
+              setAssignedUserIds(next);
+              if (next.length > 0) save({ assignedUserIds: next });
+            }}
+            className="w-56"
+          />
+          <Input
+            type="date"
+            value={dueDate}
+            onChange={(e) => {
+              setDueDate(e.target.value);
+              save({ dueDate: e.target.value });
+            }}
+            className={overdue ? "w-36 border-destructive/50 text-destructive focus-visible:border-ring" : "w-36"}
+          />
+        </>
+      )}
       {isAdmin && (
         <Button
           variant="ghost"

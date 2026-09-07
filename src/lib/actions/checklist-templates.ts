@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 
-const ROLE_VALUES = ["ADMIN", "MANAGER", "STAFF", "CLIENT"] as const;
+const ROLE_VALUES = ["ADMIN", "MANAGER", "STAFF", "CLIENT", "CAREGIVER"] as const;
 
 const checklistItemTemplateSchema = z.object({
   licenseTypeTemplateId: z.string().optional(),

@@ -8,16 +8,20 @@ import { saveUploadedFile, deleteStoredFile, saveFileVersion, revertToGeneration
 
 const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20MB — keep well under bodySizeLimit's 25MB
 
+// Same CAREGIVER carve-out as assertCanEditTask/assertCanCommentOnTask
+// (src/lib/actions/tasks.ts / notes.ts) — never routes through
+// Application-level access, so TaskDetailDialog's file pool doesn't throw
+// when a Caregiver opens one of their case-tied tasks.
 async function assertCanAccessTask(
   session: Awaited<ReturnType<typeof requireSession>>,
   task: { applicationId: string | null; createdById: string; assignees: { userId: string }[] },
   level: "view" | "edit"
 ) {
-  if (task.applicationId) {
+  const role = session.user.role as AppRole;
+  if (role !== "CAREGIVER" && task.applicationId) {
     await assertApplicationAccess(session, task.applicationId, level);
     return;
   }
-  const role = session.user.role as AppRole;
   if (role === "ADMIN" || role === "MANAGER") return;
   const isAssignee = task.assignees.some((a) => a.userId === session.user.id);
   if (!isAssignee && task.createdById !== session.user.id) {

@@ -1,6 +1,6 @@
 import { auth } from "@/auth";
 import { listMyTasks } from "@/lib/actions/tasks";
-import { listAssignableUsers } from "@/lib/actions/applications";
+import { listAssignableUsers, listTaskAssignableUsers } from "@/lib/actions/applications";
 import { NewStandaloneTaskDialog } from "@/components/tasks/new-standalone-task-dialog";
 import { MyTasksView } from "@/components/tasks/standalone-tasks-view";
 import { PageInfoButton } from "@/components/shared/page-info-button";
@@ -9,9 +9,14 @@ export default async function TasksPage() {
   const session = await auth();
   if (!session?.user) return null;
 
+  // listAssignableUsers is ADMIN/MANAGER/STAFF-only (it also backs the
+  // Application owner/manager pickers) and would throw for a Caregiver —
+  // listTaskAssignableUsers covers the same task-assignee-name-resolution
+  // need without that restriction, and also includes other Caregivers.
+  const isCaregiver = session.user.role === "CAREGIVER";
   const [tasks, assignableUsers] = await Promise.all([
     listMyTasks(),
-    listAssignableUsers(),
+    isCaregiver ? listTaskAssignableUsers() : listAssignableUsers(),
   ]);
 
   return (
@@ -26,12 +31,17 @@ export default async function TasksPage() {
             </p>
           </PageInfoButton>
         </div>
-        <NewStandaloneTaskDialog assignableUsers={assignableUsers} currentUserId={session.user.id} />
+        {!isCaregiver && <NewStandaloneTaskDialog assignableUsers={assignableUsers} currentUserId={session.user.id} />}
       </div>
       {tasks.length === 0 ? (
         <p className="text-sm text-muted-foreground">No tasks assigned to you yet.</p>
       ) : (
-        <MyTasksView tasks={tasks} assignableUsers={assignableUsers} isAdmin={session.user.role === "ADMIN"} />
+        <MyTasksView
+          tasks={tasks}
+          assignableUsers={assignableUsers}
+          isAdmin={session.user.role === "ADMIN"}
+          isCaregiver={isCaregiver}
+        />
       )}
     </div>
   );

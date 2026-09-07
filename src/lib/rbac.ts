@@ -1,7 +1,8 @@
+import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 
-export const ROLES = ["ADMIN", "MANAGER", "STAFF", "CLIENT"] as const;
+export const ROLES = ["ADMIN", "MANAGER", "STAFF", "CLIENT", "CAREGIVER"] as const;
 export type AppRole = (typeof ROLES)[number];
 
 export class UnauthorizedError extends Error {
@@ -23,6 +24,17 @@ export async function requireSession() {
   const session = await auth();
   if (!session?.user) throw new UnauthorizedError();
   return session;
+}
+
+/**
+ * A Caregiver's dashboard is just My Tasks + Clients (see AppSidebarNav) —
+ * every other top-level page (Projects, Applications, Time, Invoices,
+ * Admin) calls this first so a typed-in URL redirects cleanly instead of
+ * crashing into a ForbiddenError from whatever data call comes next.
+ */
+export async function blockCaregiverRoute(fallback = "/tasks") {
+  const session = await auth();
+  if (session?.user?.role === "CAREGIVER") redirect(fallback);
 }
 
 /** Throws unless the current user's role is one of `allowed`. */

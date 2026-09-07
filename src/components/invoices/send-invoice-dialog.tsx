@@ -3,8 +3,8 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Mail } from "lucide-react";
-import { sendReceiptEmail } from "@/lib/actions/invoices";
+import { Send } from "lucide-react";
+import { sendInvoice } from "@/lib/actions/invoices";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -15,19 +15,20 @@ import {
 } from "@/components/ui/dialog";
 import { EmailRecipientPicker } from "./email-recipient-picker";
 
-// Generation (addManualPayment) and sending are deliberately separate
-// steps — a receipt always exists the moment a payment is recorded, but
-// nothing gets emailed until this dialog's button is clicked. Mirrors
-// SendInvoicePdfDialog, minus the extra-attachments picker (a receipt is
-// a fixed, already-generated PDF — there's nothing to attach it to).
-export function SendReceiptDialog({
-  receiptId,
-  alreadySent,
+// The online/Stripe-bound Send/Resend — unlike the manual PDF and receipt
+// emails, Stripe sends to its Customer object's email, not a per-invoice
+// address, so picking a different recipient here updates that Customer
+// going forward (see sendInvoice in src/lib/actions/invoices.ts) rather
+// than being a true one-off. Worth flagging in the copy below so that's
+// not a surprise.
+export function SendInvoiceDialog({
+  invoiceId,
+  isResend,
   businessEmail,
   ownerEmail,
 }: {
-  receiptId: string;
-  alreadySent: boolean;
+  invoiceId: string;
+  isResend: boolean;
   businessEmail: string | null;
   ownerEmail: string | null;
 }) {
@@ -36,33 +37,36 @@ export function SendReceiptDialog({
   const [isPending, startTransition] = useTransition();
   const [recipientEmail, setRecipientEmail] = useState("");
 
-  const verb = alreadySent ? "Resend" : "Send";
+  const verb = isResend ? "Resend" : "Send";
 
   function handleSend() {
     startTransition(async () => {
       try {
-        await sendReceiptEmail(receiptId, recipientEmail);
-        toast.success("Receipt sent");
+        await sendInvoice(invoiceId, recipientEmail);
+        toast.success("Invoice sent");
         setOpen(false);
         router.refresh();
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Failed to send receipt");
+        toast.error(error instanceof Error ? error.message : "Failed to send invoice");
       }
     });
   }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button size="xs" variant="outline"><Mail className="size-3" /> {verb} receipt</Button>} />
+      <DialogTrigger render={<Button><Send className="size-3.5" /> {verb}</Button>} />
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>{verb} receipt</DialogTitle>
+          <DialogTitle>{verb} invoice</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          <p className="text-xs text-muted-foreground">The receipt PDF will be emailed to whoever you pick below.</p>
+          <p className="text-xs text-muted-foreground">
+            Stripe emails this invoice to whoever&apos;s picked below. Choosing a different email updates this
+            client&apos;s billing email in Stripe going forward, not just for this one send.
+          </p>
           <EmailRecipientPicker businessEmail={businessEmail} ownerEmail={ownerEmail} onChange={setRecipientEmail} />
           <Button onClick={handleSend} className="w-full" disabled={isPending || !recipientEmail}>
-            {isPending ? "Sending..." : `${verb} email`}
+            {isPending ? "Sending..." : `${verb} invoice`}
           </Button>
         </div>
       </DialogContent>

@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/rbac";
 import { recordAudit, recordFieldChanges } from "@/lib/audit";
+import { caregiverClientScope } from "@/lib/caregiver-scope";
 
 const clientDetailFields = {
   name: z.string().min(1, "Name is required"),
@@ -86,6 +87,62 @@ export async function getClient(id: string) {
       clientGroup: { select: { id: true, name: true } },
     },
   });
+}
+
+// Both of these derive the caller's id from the session, never from a
+// caller-supplied parameter — as "use server" exports these are directly
+// callable, not just reachable through the page that normally renders
+// them, so trusting a passed-in userId would let anyone enumerate another
+// Caregiver's clients.
+export async function listCaregiverClients() {
+  const session = await requireRole(["CAREGIVER"]);
+  return prisma.client.findMany({
+    where: { active: true, ...caregiverClientScope(session.user.id) },
+    orderBy: { name: "asc" },
+  });
+}
+
+// Deliberately narrow compared to getClient — no billing fields, no
+// stripeCustomerId, and the caller (the Caregiver client-profile page)
+// never fetches MCO credentials/client credentials/invoices/audit log for
+// this role at all, rather than fetching and hiding them.
+export async function getCaregiverClient(clientId: string) {
+  const session = await requireRole(["CAREGIVER"]);
+  const userId = session.user.id;
+  const client = await prisma.client.findFirstOrThrow({
+    where: { id: clientId, ...caregiverClientScope(userId) },
+    select: {
+      id: true,
+      name: true,
+      contactInfo: true,
+      address: true,
+      businessName: true,
+      businessPhone: true,
+      businessEmail: true,
+      ownerName: true,
+      ownerPhone: true,
+      applications: {
+        select: {
+          id: true,
+          name: true,
+          tasks: {
+            where: { assignees: { some: { userId } }, parentTaskId: null, archived: false },
+            select: {
+              id: true,
+              label: true,
+              description: true,
+              status: true,
+              dueDate: true,
+              blockedReason: true,
+              assignees: { select: { user: { select: { id: true, name: true } } } },
+            },
+            orderBy: { createdAt: "desc" },
+          },
+        },
+      },
+    },
+  });
+  return client;
 }
 
 export async function getClientAuditLog(clientId: string) {

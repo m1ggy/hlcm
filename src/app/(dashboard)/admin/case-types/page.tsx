@@ -1,4 +1,5 @@
 import { listCaseTypes } from "@/lib/actions/case-types";
+import { blockCaregiverRoute } from "@/lib/rbac";
 import { NewCaseTypeDialog } from "@/components/admin/new-case-type-dialog";
 import {
   Table,
@@ -10,6 +11,7 @@ import {
 } from "@/components/ui/table";
 
 export default async function CaseTypesPage() {
+  await blockCaregiverRoute();
   const caseTypes = await listCaseTypes();
 
   return (

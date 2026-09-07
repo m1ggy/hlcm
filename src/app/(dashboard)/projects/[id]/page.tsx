@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { auth } from "@/auth";
+import { blockCaregiverRoute } from "@/lib/rbac";
 import { getProject, archiveProject, restoreProject, listServiceTypes } from "@/lib/actions/projects";
 import { listClients } from "@/lib/actions/clients";
 import { NewClientDialog } from "@/components/clients/new-client-dialog";
@@ -30,6 +31,7 @@ export default async function ProjectDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await blockCaregiverRoute();
   const { id } = await params;
   const [project, allClients, session, serviceTypes] = await Promise.all([
     getProject(id),

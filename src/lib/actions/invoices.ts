@@ -22,6 +22,7 @@ import {
   retrieveInvoice,
   listInvoiceLines,
   retrieveCustomer,
+  updateCustomerEmail,
   findCustomersByEmail,
   listCustomerInvoices,
 } from "@/lib/stripe";
@@ -614,6 +615,25 @@ export async function deletePayment(paymentId: string) {
   return { invoice, receiptAlreadySent };
 }
 
+// Shared by every "send" action below — whoever's sending can pick the
+// client's business email, their owner email, or type a one-off address
+// (see EmailRecipientPicker), instead of always defaulting to
+// businessEmail ?? ownerEmail. An override that's just whitespace is
+// treated the same as none, so a picker left on "business"/"owner"
+// doesn't need to special-case an empty custom-email field.
+function resolveRecipientEmail(
+  override: string | null | undefined,
+  client: { businessEmail: string | null; ownerEmail: string | null }
+) {
+  const trimmed = override?.trim() || undefined;
+  const email = trimmed ? z.string().email("Enter a valid email address").parse(trimmed) : undefined;
+  const recipientEmail = email ?? client.businessEmail ?? client.ownerEmail;
+  if (!recipientEmail) {
+    throw new Error("Client has no email on file — add one before sending, or type a different email for this send");
+  }
+  return recipientEmail;
+}
+
 const sendReceiptEmailInputSchema = z.string().min(1);
 
 // The only place a receipt email ever goes out — generation (addManualPayment
@@ -621,7 +641,7 @@ const sendReceiptEmailInputSchema = z.string().min(1);
 // per-receipt whether the client gets a copy. Safe to call more than once
 // (a "Resend" is just another send); sentAt/sentTo just track the most
 // recent one.
-export async function sendReceiptEmail(receiptId: string) {
+export async function sendReceiptEmail(receiptId: string, recipientEmailOverride?: string) {
   const session = await requireRole(MANAGE_ROLES);
   const id = sendReceiptEmailInputSchema.parse(receiptId);
 
@@ -634,8 +654,7 @@ export async function sendReceiptEmail(receiptId: string) {
   // payment was recorded (see addManualPayment) — nothing to send yet.
   if (!receipt.storageKey) throw new Error("This receipt's PDF failed to generate — try recording the payment again");
 
-  const recipientEmail = invoice.client.businessEmail ?? invoice.client.ownerEmail;
-  if (!recipientEmail) throw new Error("Client has no email on file — add one before sending");
+  const recipientEmail = resolveRecipientEmail(recipientEmailOverride, invoice.client);
 
   const number = displayInvoiceNumber(invoice);
   const receiptNumber = displayReceiptNumber(receipt);
@@ -715,8 +734,7 @@ export async function sendManualInvoicePdf(id: string, formData?: FormData) {
     throw new Error("This invoice is no longer awaiting payment");
   }
 
-  const recipientEmail = invoice.client.businessEmail ?? invoice.client.ownerEmail;
-  if (!recipientEmail) throw new Error("Client has no email on file — add one before sending");
+  const recipientEmail = resolveRecipientEmail(formData?.get("recipientEmail") as string | null, invoice.client);
 
   const extraAttachments = await readExtraAttachments(formData);
 
@@ -761,21 +779,32 @@ export async function sendManualInvoicePdf(id: string, formData?: FormData) {
 // Invoice + its line items, finalizes it (Stripe Tax computes the real tax
 // here), and stores everything back onto our row. Resend: the Stripe
 // invoice already exists — just re-trigger the email.
-export async function sendInvoice(id: string) {
+export async function sendInvoice(id: string, recipientEmailOverride?: string) {
   const session = await requireRole(MANAGE_ROLES);
   const invoice = await prisma.invoice.findUniqueOrThrow({ where: { id }, include: invoiceInclude });
+
+  const recipientEmail = resolveRecipientEmail(recipientEmailOverride, invoice.client);
+
+  // Stripe emails go to the Customer object's email, not a per-invoice
+  // address — a cached Customer (from an earlier send, to either this
+  // invoice or a prior one) only gets updated when the resolved recipient
+  // actually differs, so a plain Resend with no override never makes an
+  // extra Stripe call.
+  if (invoice.client.stripeCustomerId) {
+    const customer = await retrieveCustomer(invoice.client.stripeCustomerId);
+    if (customer.email !== recipientEmail) {
+      await updateCustomerEmail(invoice.client.stripeCustomerId, recipientEmail);
+    }
+  }
 
   if (invoice.stripeInvoiceId) {
     await sendInvoiceRemote(invoice.stripeInvoiceId);
     await prisma.invoice.update({ where: { id }, data: { sentAt: new Date() } });
-    await recordAudit({ entityType: "Invoice", entityId: id, action: "send", actorId: session.user.id });
+    await recordAudit({ entityType: "Invoice", entityId: id, action: "send", actorId: session.user.id, newValue: recipientEmail });
     revalidatePath("/invoices");
     revalidatePath(`/invoices/${id}`);
     return;
   }
-
-  const recipientEmail = invoice.client.businessEmail ?? invoice.client.ownerEmail;
-  if (!recipientEmail) throw new Error("Client has no email on file — add one before sending");
 
   const { billingAddressLine1, billingCity, billingState, billingPostalCode, billingCountry } = invoice.client;
   if (!billingState || !billingPostalCode) {

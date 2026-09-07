@@ -15,6 +15,7 @@ enum Role {
   MANAGER
   STAFF
   CLIENT
+  CAREGIVER
 }
 
 enum ApplicationStatus {

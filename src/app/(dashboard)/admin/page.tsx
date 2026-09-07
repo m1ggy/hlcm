@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { blockCaregiverRoute } from "@/lib/rbac";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const ADMIN_LINKS = [
@@ -11,7 +12,8 @@ const ADMIN_LINKS = [
   { href: "/admin/client-groups", label: "Client Groups", description: "Bundle related clients into one section on the Invoices page" },
 ];
 
-export default function AdminPage() {
+export default async function AdminPage() {
+  await blockCaregiverRoute();
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold">Admin</h1>

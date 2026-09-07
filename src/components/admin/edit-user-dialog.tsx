@@ -24,7 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-const ROLES = ["ADMIN", "MANAGER", "STAFF", "CLIENT"] as const;
+const ROLES = ["ADMIN", "MANAGER", "STAFF", "CLIENT", "CAREGIVER"] as const;
 
 type EditableUser = {
   id: string;
