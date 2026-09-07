@@ -49,7 +49,7 @@ export function ArchiveButton({
         size="icon-sm"
         title={archived ? "Restore" : "Archive"}
         onClick={handleClick}
-        disabled={isPending}
+        loading={isPending}
       >
         {archived ? <ArchiveRestore className="size-3.5" /> : <Archive className="size-3.5" />}
       </Button>

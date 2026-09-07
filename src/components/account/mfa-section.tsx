@@ -55,7 +55,7 @@ export function MfaSection({ initialEnabled }: { initialEnabled: boolean }) {
         <p className="text-sm text-muted-foreground">
           Multi-factor authentication is <span className="font-medium text-foreground">enabled</span> on your account.
         </p>
-        <Button variant="outline" onClick={handleDisable} disabled={isPending}>
+        <Button variant="outline" onClick={handleDisable} loading={isPending}>
           {isPending ? "Disabling..." : "Disable MFA"}
         </Button>
       </div>
@@ -68,7 +68,7 @@ export function MfaSection({ initialEnabled }: { initialEnabled: boolean }) {
         <p className="text-sm text-muted-foreground">
           Multi-factor authentication is not enabled. Add it for an extra layer of protection on your account.
         </p>
-        <Button onClick={handleStart} disabled={isPending}>
+        <Button onClick={handleStart} loading={isPending}>
           {isPending ? "Starting..." : "Enable MFA"}
         </Button>
       </div>
@@ -87,7 +87,7 @@ export function MfaSection({ initialEnabled }: { initialEnabled: boolean }) {
           <Label htmlFor="code">Enter the 6-digit code to confirm</Label>
           <Input id="code" name="code" inputMode="numeric" required maxLength={6} className="max-w-[10rem]" />
         </div>
-        <Button type="submit" disabled={isPending}>
+        <Button type="submit" loading={isPending}>
           {isPending ? "Verifying..." : "Verify & enable"}
         </Button>
       </form>

@@ -59,7 +59,7 @@ export function InvoiceProfilesManager({ profiles }: { profiles: InvoiceProfileS
                 placeholder="e.g. CTK, Sunrise Home Care"
               />
             </div>
-            <Button onClick={handleCreate} className="w-full" disabled={isPending}>
+            <Button onClick={handleCreate} className="w-full" loading={isPending}>
               {isPending ? "Creating..." : "Create"}
             </Button>
           </div>

@@ -73,7 +73,7 @@ export function ClientGroupRow({ group }: { group: ClientGroupSummary }) {
         {group.clientCount} {group.clientCount === 1 ? "client" : "clients"}
       </TableCell>
       <TableCell className="text-right">
-        <Button variant="ghost" size="sm" onClick={handleDelete} disabled={isDeleting}>
+        <Button variant="ghost" size="sm" onClick={handleDelete} loading={isDeleting}>
           <Trash2 className="size-3.5 text-destructive" />
         </Button>
       </TableCell>

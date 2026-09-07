@@ -38,10 +38,10 @@ export function OverdueTaskActions({ taskId, dueDate }: { taskId: string; dueDat
 
   return (
     <div className="flex items-center gap-1">
-      <Button variant="ghost" size="icon-sm" disabled={isPending} onClick={snooze} title="Snooze 1 week">
+      <Button variant="ghost" size="icon-sm" loading={isPending} onClick={snooze} title="Snooze 1 week">
         <Clock />
       </Button>
-      <Button variant="ghost" size="icon-sm" disabled={isPending} onClick={complete} title="Mark complete">
+      <Button variant="ghost" size="icon-sm" loading={isPending} onClick={complete} title="Mark complete">
         <Check />
       </Button>
     </div>

@@ -212,6 +212,7 @@ export function TaskDetailDialog({
                   save({ status: next });
                 }}
                 className="w-full"
+                loading={isSaving}
               />
             </div>
 

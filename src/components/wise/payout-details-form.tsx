@@ -134,8 +134,7 @@ export function PayoutDetailsForm({
         </div>
       )}
 
-      <Button onClick={handleSave} disabled={isSaving || !type}>
-        {isSaving ? <Loader2 className="size-3.5 animate-spin" /> : null}
+      <Button onClick={handleSave} loading={isSaving} disabled={!type}>
         Save payout details
       </Button>
     </div>

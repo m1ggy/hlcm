@@ -30,7 +30,7 @@ function toDateInputValue(date: Date | null) {
 // client-profile view so a task looks and behaves the same in both places.
 export function CaregiverTaskRow({ task }: { task: CaregiverTask }) {
   const router = useRouter();
-  const [, startTransition] = useTransition();
+  const [isPending, startTransition] = useTransition();
   const [status, setStatus] = useState(task.status);
   const dueDateValue = toDateInputValue(task.dueDate);
   const overdue = isTaskOverdue(dueDateValue, status);
@@ -72,7 +72,7 @@ export function CaregiverTaskRow({ task }: { task: CaregiverTask }) {
         isCaregiver
       />
       <div className={status === "COMPLETED" ? "-m-1 rounded-lg bg-emerald-500/10 p-1 dark:bg-emerald-500/15" : undefined}>
-        <TaskStatusSelect value={status} onValueChange={saveStatus} className="w-40" />
+        <TaskStatusSelect value={status} onValueChange={saveStatus} className="w-40" loading={isPending} />
       </div>
     </div>
   );

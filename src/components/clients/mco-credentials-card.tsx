@@ -91,7 +91,7 @@ function NewMcoCredentialDialog({ clientId, existing }: { clientId: string; exis
                 ))}
               </SelectContent>
             </Select>
-            <Button onClick={handleCreate} disabled={!mcoName || isPending} className="w-full">
+            <Button onClick={handleCreate} disabled={!mcoName} loading={isPending} className="w-full">
               Add
             </Button>
           </div>

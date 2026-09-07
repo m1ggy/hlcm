@@ -149,7 +149,7 @@ export function EditUserDialog({ user, isSelf = false }: { user: EditableUser; i
               You can&apos;t change your own role or deactivate yourself — ask another admin.
             </p>
           )}
-          <Button className="w-full" onClick={handleSave} disabled={isPending}>
+          <Button className="w-full" onClick={handleSave} loading={isPending}>
             {isPending ? "Saving..." : "Save changes"}
           </Button>
         </div>

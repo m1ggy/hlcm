@@ -29,7 +29,7 @@ export function RemoveFromProjectButton({ clientId, clientName, projectId }: { c
   }
 
   return (
-    <Button variant="ghost" size="icon-sm" title="Remove from project" onClick={handleClick} disabled={isPending}>
+    <Button variant="ghost" size="icon-sm" title="Remove from project" onClick={handleClick} loading={isPending}>
       <XIcon className="size-3.5" />
     </Button>
   );

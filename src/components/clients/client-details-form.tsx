@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { Loader2 } from "lucide-react";
 import { updateClient } from "@/lib/actions/clients";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -77,7 +78,7 @@ export function ClientDetailsForm({
   groups: { id: string; name: string }[];
 }) {
   const router = useRouter();
-  const [, startTransition] = useTransition();
+  const [isSaving, startTransition] = useTransition();
   const [values, setValues] = useState({
     name: defaultValues.name,
     contactInfo: defaultValues.contactInfo ?? "",
@@ -124,6 +125,11 @@ export function ClientDetailsForm({
 
   return (
     <div className="space-y-4">
+      {isSaving && (
+        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+          <Loader2 className="size-3 animate-spin" /> Saving...
+        </span>
+      )}
       <Card>
         <CardContent className="flex flex-wrap gap-4 pt-6">
           <LabeledInput id="name" label="Client name" value={values.name} onChange={(v) => set("name", v)} onBlur={() => save("name")} className="max-w-sm" />

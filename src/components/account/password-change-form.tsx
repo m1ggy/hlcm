@@ -37,7 +37,7 @@ export function PasswordChangeForm() {
         <Label htmlFor="confirmPassword">Confirm new password</Label>
         <Input id="confirmPassword" name="confirmPassword" type="password" required minLength={8} autoComplete="new-password" />
       </div>
-      <Button type="submit" disabled={isPending}>
+      <Button type="submit" loading={isPending}>
         {isPending ? "Changing..." : "Change password"}
       </Button>
     </form>

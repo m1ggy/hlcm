@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronDown, ChevronRight, Plus, Loader2, Briefcase, Archive } from "lucide-react";
+import { ChevronDown, ChevronRight, Plus, Briefcase, Archive } from "lucide-react";
 import { updateTask, createStandaloneTask, archiveTask } from "@/lib/actions/tasks";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -56,7 +56,7 @@ export function MyTaskRow({
   isCaregiver?: boolean;
 }) {
   const router = useRouter();
-  const [, startTransition] = useTransition();
+  const [isSaving, startTransition] = useTransition();
   const [isAdding, startAdding] = useTransition();
   const [isArchiving, startArchiving] = useTransition();
   const [status, setStatus] = useState(task.status);
@@ -143,8 +143,8 @@ export function MyTaskRow({
         {task.recurrenceRule && <Badge variant="outline">Repeats {task.recurrenceRule}</Badge>}
         {overdue && <Badge variant="destructive">Overdue</Badge>}
         {!isCaregiver && (
-          <Button variant="ghost" size="icon-sm" className="size-6" onClick={addSubtask} disabled={isAdding} title="Add subtask">
-            {isAdding ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
+          <Button variant="ghost" size="icon-sm" className="size-6" onClick={addSubtask} loading={isAdding} title="Add subtask">
+            <Plus className="size-3.5" />
           </Button>
         )}
         <TaskDetailDialog
@@ -166,10 +166,10 @@ export function MyTaskRow({
             size="icon-sm"
             className="size-6 text-muted-foreground hover:text-destructive"
             onClick={archive}
-            disabled={isArchiving}
+            loading={isArchiving}
             title="Archive task"
           >
-            {isArchiving ? <Loader2 className="size-3.5 animate-spin" /> : <Archive className="size-3.5" />}
+            <Archive className="size-3.5" />
           </Button>
         )}
         <div className={status === "COMPLETED" ? "-m-1 rounded-lg bg-emerald-500/10 p-1 dark:bg-emerald-500/15" : undefined}>
@@ -180,6 +180,7 @@ export function MyTaskRow({
               save({ status: next });
             }}
             className="w-40"
+            loading={isSaving}
           />
         </div>
         {isCaregiver ? (
@@ -247,7 +248,7 @@ function SubtaskRow({
   isCaregiver?: boolean;
 }) {
   const router = useRouter();
-  const [, startTransition] = useTransition();
+  const [isSaving, startTransition] = useTransition();
   const [isArchiving, startArchiving] = useTransition();
   const [status, setStatus] = useState(subtask.status);
   const [assignedUserIds, setAssignedUserIds] = useState(subtask.assignedUsers.map((u) => u.id));
@@ -308,6 +309,7 @@ function SubtaskRow({
             save({ status: next });
           }}
           className="w-40"
+          loading={isSaving}
         />
       </div>
       {!isCaregiver && (
@@ -338,10 +340,10 @@ function SubtaskRow({
           size="icon-sm"
           className="size-6 text-muted-foreground hover:text-destructive"
           onClick={archive}
-          disabled={isArchiving}
+          loading={isArchiving}
           title="Archive task"
         >
-          {isArchiving ? <Loader2 className="size-3.5 animate-spin" /> : <Archive className="size-3.5" />}
+          <Archive className="size-3.5" />
         </Button>
       )}
     </div>

@@ -71,7 +71,7 @@ export function PortalFilePool({
             required
             className="h-8 flex-1 rounded-lg border border-input bg-transparent text-sm file:mr-2 file:h-8 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground"
           />
-          <Button type="submit" size="sm" disabled={isPending}>
+          <Button type="submit" size="sm" loading={isPending}>
             <Upload className="size-3.5" /> Upload
           </Button>
         </form>

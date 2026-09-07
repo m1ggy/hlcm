@@ -109,10 +109,10 @@ export function TimeClockWidget({
         <span className="rounded-md border border-amber-500/40 px-2 py-1 text-xs font-medium text-amber-700 dark:text-amber-400">
           On break · {formatDuration(elapsedHours)}
         </span>
-        <Button variant="outline" size="sm" onClick={handleEndBreak} disabled={isPending}>
+        <Button variant="outline" size="sm" onClick={handleEndBreak} loading={isPending}>
           <Clock className="size-3.5" /> End break
         </Button>
-        <Button variant="ghost" size="sm" onClick={handleEndBreakForDay} disabled={isPending}>
+        <Button variant="ghost" size="sm" onClick={handleEndBreakForDay} loading={isPending}>
           <LogOut className="size-3.5" /> End day
         </Button>
       </div>
@@ -126,12 +126,12 @@ export function TimeClockWidget({
           variant="outline"
           size="sm"
           onClick={handleClockOut}
-          disabled={isPending}
+          loading={isPending}
           className="border-green-600/40 text-green-700 dark:text-green-400"
         >
           <LogOut className="size-3.5" /> Clock out · {formatDuration(elapsedHours)}
         </Button>
-        <Button variant="ghost" size="sm" onClick={handleStartBreak} disabled={isPending}>
+        <Button variant="ghost" size="sm" onClick={handleStartBreak} loading={isPending}>
           <Coffee className="size-3.5" /> Break
         </Button>
       </div>
@@ -139,7 +139,7 @@ export function TimeClockWidget({
   }
 
   return (
-    <Button variant="default" size="sm" onClick={handleClockIn} disabled={isPending} data-tour="time-clock">
+    <Button variant="default" size="sm" onClick={handleClockIn} loading={isPending} data-tour="time-clock">
       <Clock className="size-3.5" /> {isPending ? "Clocking in..." : "Clock in"}
     </Button>
   );

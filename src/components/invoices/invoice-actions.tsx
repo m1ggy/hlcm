@@ -190,7 +190,7 @@ export function InvoiceActions({
         </Button>
       )}
       {canMarkPaid && (
-        <Button variant="outline" onClick={handleMarkPaid} disabled={isMarking}>
+        <Button variant="outline" onClick={handleMarkPaid} loading={isMarking}>
           <CheckCircle2 className="size-3.5" /> Mark Paid
         </Button>
       )}
@@ -203,17 +203,17 @@ export function InvoiceActions({
         />
       )}
       {canVoid && (
-        <Button variant="outline" onClick={handleVoid} disabled={isVoiding}>
+        <Button variant="outline" onClick={handleVoid} loading={isVoiding}>
           <Ban className="size-3.5" /> Void
         </Button>
       )}
       {canVoidWithPayments && (
-        <Button variant="outline" onClick={handleVoidWithPayments} disabled={isVoiding}>
+        <Button variant="outline" onClick={handleVoidWithPayments} loading={isVoiding}>
           <Ban className="size-3.5" /> Void
         </Button>
       )}
       {canDelete && (
-        <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={handleDelete} disabled={isDeleting}>
+        <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={handleDelete} loading={isDeleting}>
           <Trash2 className="size-3.5" /> Delete
         </Button>
       )}

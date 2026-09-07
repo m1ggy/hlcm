@@ -108,7 +108,7 @@ export function DocumentTemplateRowActions({
           size="icon-sm"
           title="Deactivate"
           onClick={handleDeactivate}
-          disabled={isPending}
+          loading={isPending}
         >
           <Trash2 className="size-3.5" />
         </Button>

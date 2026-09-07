@@ -65,7 +65,7 @@ export function SendInvoiceDialog({
             client&apos;s billing email in Stripe going forward, not just for this one send.
           </p>
           <EmailRecipientPicker businessEmail={businessEmail} ownerEmail={ownerEmail} onChange={setRecipientEmail} />
-          <Button onClick={handleSend} className="w-full" disabled={isPending || !recipientEmail}>
+          <Button onClick={handleSend} className="w-full" disabled={!recipientEmail} loading={isPending}>
             {isPending ? "Sending..." : `${verb} invoice`}
           </Button>
         </div>

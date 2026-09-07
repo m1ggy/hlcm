@@ -121,7 +121,7 @@ export function SendInvoicePdfDialog({
             </ul>
           )}
 
-          <Button onClick={handleSend} className="w-full" disabled={isPending || !recipientEmail}>
+          <Button onClick={handleSend} className="w-full" disabled={!recipientEmail} loading={isPending}>
             {isPending ? "Sending..." : `${verb} email`}
           </Button>
         </div>

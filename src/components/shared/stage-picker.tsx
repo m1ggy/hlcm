@@ -125,10 +125,10 @@ export function StagePicker({
               </div>
             )}
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setPendingStage(null)} disabled={isPending}>
+              <Button variant="outline" onClick={() => setPendingStage(null)} loading={isPending}>
                 Back
               </Button>
-              <Button onClick={() => commit(pendingStage, { reason, followUpDate })} disabled={isPending}>
+              <Button onClick={() => commit(pendingStage, { reason, followUpDate })} loading={isPending}>
                 Confirm move
               </Button>
             </div>

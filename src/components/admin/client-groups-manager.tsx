@@ -67,7 +67,7 @@ export function ClientGroupsManager({ groups }: { groups: ClientGroupSummary[] }
                 placeholder="e.g. Sunrise Holdings"
               />
             </div>
-            <Button onClick={handleCreate} className="w-full" disabled={isPending}>
+            <Button onClick={handleCreate} className="w-full" loading={isPending}>
               {isPending ? "Creating..." : "Create"}
             </Button>
           </div>

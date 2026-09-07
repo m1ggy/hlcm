@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Download, Loader2, RotateCcw, Trash2, Upload } from "lucide-react";
+import { Download, RotateCcw, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -126,13 +126,12 @@ export function FileInfoDrawer({
                 <Button
                   variant="destructive"
                   size="sm"
-                  disabled={isDeleting}
+                  loading={isDeleting}
                   onClick={() => {
                     if (confirm(`Delete "${file.fileName}"? This can't be undone.`)) onDelete();
                   }}
                 >
-                  {isDeleting ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
-                  Delete
+                  <Trash2 className="size-3.5" /> Delete
                 </Button>
               )}
             </div>
@@ -151,16 +150,8 @@ export function FileInfoDrawer({
                   required
                   className="h-8 flex-1 rounded-lg border border-input bg-transparent text-sm file:mr-2 file:h-8 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground"
                 />
-                <Button type="submit" size="sm" disabled={isUploading}>
-                  {isUploading ? (
-                    <>
-                      <Loader2 className="size-3.5 animate-spin" /> Uploading...
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="size-3.5" /> New version
-                    </>
-                  )}
+                <Button type="submit" size="sm" loading={isUploading}>
+                  <Upload className="size-3.5" /> New version
                 </Button>
               </form>
             )}
@@ -199,14 +190,10 @@ export function FileInfoDrawer({
                         variant="ghost"
                         size="icon-sm"
                         title="Revert to this version"
-                        disabled={isPending && revertingId === v.id}
+                        loading={isPending && revertingId === v.id}
                         onClick={() => handleRevert(v.id)}
                       >
-                        {isPending && revertingId === v.id ? (
-                          <Loader2 className="size-3.5 animate-spin" />
-                        ) : (
-                          <RotateCcw className="size-3.5" />
-                        )}
+                        <RotateCcw className="size-3.5" />
                       </Button>
                     )}
                   </div>

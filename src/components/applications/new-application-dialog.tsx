@@ -155,7 +155,7 @@ export function NewApplicationDialog({
               </SelectContent>
             </Select>
           </div>
-          <Button type="submit" className="w-full" disabled={isPending || !clientId}>
+          <Button type="submit" className="w-full" disabled={!clientId} loading={isPending}>
             {isPending ? "Creating..." : "Create"}
           </Button>
         </form>

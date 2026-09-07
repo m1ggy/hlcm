@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { CloudDownload, Loader2, Search, ChevronDown, ChevronUp } from "lucide-react";
+import { CloudDownload, Search, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -171,8 +171,8 @@ export function ImportStripeInvoiceDialog({
                 }}
                 placeholder="in_1AbCdE... or https://invoice.stripe.com/i/..."
               />
-              <Button variant="outline" onClick={handleLookup} disabled={isLookingUp}>
-                {isLookingUp ? <Loader2 className="size-3.5 animate-spin" /> : <Search className="size-3.5" />}
+              <Button variant="outline" onClick={handleLookup} loading={isLookingUp}>
+                <Search className="size-3.5" />
                 Look up
               </Button>
             </div>
@@ -216,8 +216,8 @@ export function ImportStripeInvoiceDialog({
                   Uses the client&apos;s linked Stripe customer if it has one, otherwise an exact match on the email
                   typed above.
                 </p>
-                <Button variant="outline" size="sm" onClick={handleBrowse} disabled={isBrowsing}>
-                  {isBrowsing ? <Loader2 className="size-3.5 animate-spin" /> : <Search className="size-3.5" />}
+                <Button variant="outline" size="sm" onClick={handleBrowse} loading={isBrowsing}>
+                  <Search className="size-3.5" />
                   Find invoices
                 </Button>
 
@@ -298,8 +298,7 @@ export function ImportStripeInvoiceDialog({
                 />
               </div>
 
-              <Button onClick={handleImport} className="w-full" disabled={isImporting}>
-                {isImporting ? <Loader2 className="size-3.5 animate-spin" /> : null}
+              <Button onClick={handleImport} className="w-full" loading={isImporting}>
                 Import invoice
               </Button>
             </div>

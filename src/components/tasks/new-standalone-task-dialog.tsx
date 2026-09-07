@@ -102,7 +102,7 @@ export function NewStandaloneTaskDialog({
               </Select>
             </div>
           </div>
-          <Button type="submit" className="w-full" disabled={isPending || assignedUserIds.length === 0}>
+          <Button type="submit" className="w-full" disabled={assignedUserIds.length === 0} loading={isPending}>
             {isPending ? "Creating..." : "Create"}
           </Button>
         </form>

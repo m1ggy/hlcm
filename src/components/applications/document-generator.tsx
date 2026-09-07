@@ -106,7 +106,7 @@ export function DocumentGenerator({
         </div>
       ))}
 
-      <Button size="sm" className="w-full" onClick={handleGenerate} disabled={isPending}>
+      <Button size="sm" className="w-full" onClick={handleGenerate} loading={isPending}>
         <FileText className="size-3.5" /> {isPending ? "Generating..." : "Generate"}
       </Button>
     </div>

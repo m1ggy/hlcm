@@ -148,12 +148,12 @@ export function InvoiceProfileCard({
         </CardTitle>
         <div className="flex items-center gap-2">
           {!profile.isDefault && (
-            <Button variant="ghost" size="sm" onClick={handleSetDefault} disabled={isActionPending}>
+            <Button variant="ghost" size="sm" onClick={handleSetDefault} loading={isActionPending}>
               Set as default
             </Button>
           )}
           {canDelete && !profile.isDefault && (
-            <Button variant="ghost" size="sm" onClick={handleDelete} disabled={isActionPending}>
+            <Button variant="ghost" size="sm" onClick={handleDelete} loading={isActionPending}>
               <Trash2 className="size-3.5" />
             </Button>
           )}
@@ -187,7 +187,7 @@ export function InvoiceProfileCard({
               className="max-w-xs"
             />
             {logoPresent && (
-              <Button variant="outline" size="sm" onClick={handleRemoveLogo} disabled={isLogoPending}>
+              <Button variant="outline" size="sm" onClick={handleRemoveLogo} loading={isLogoPending}>
                 <Trash2 className="size-3.5" /> Remove
               </Button>
             )}
@@ -218,7 +218,7 @@ export function InvoiceProfileCard({
           />
         </div>
 
-        <Button onClick={handleSaveText} disabled={isTextPending}>
+        <Button onClick={handleSaveText} loading={isTextPending}>
           {isTextPending ? "Saving..." : "Save"}
         </Button>
       </CardContent>

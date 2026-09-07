@@ -2,7 +2,6 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { updateTimezone } from "@/lib/actions/account";
@@ -54,8 +53,7 @@ export function TimezoneSection({ initialTimezone }: { initialTimezone: string |
           {!timezone && " (default)"}
         </p>
         {timezone && (
-          <Button type="button" variant="ghost" size="xs" disabled={isPending} onClick={() => save(null)}>
-            {isPending ? <Loader2 className="size-3 animate-spin" /> : null}
+          <Button type="button" variant="ghost" size="xs" loading={isPending} onClick={() => save(null)}>
             Reset to default
           </Button>
         )}

@@ -140,7 +140,7 @@ export function NewChecklistItemDialog({
               <Input id="sortOrder" name="sortOrder" type="number" defaultValue={0} />
             </div>
           </div>
-          <Button type="submit" className="w-full" disabled={isPending || !caseTypeId}>
+          <Button type="submit" className="w-full" disabled={!caseTypeId} loading={isPending}>
             {isPending ? "Adding..." : "Add"}
           </Button>
         </form>

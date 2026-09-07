@@ -44,7 +44,7 @@ export function PaymentRowActions({
   return (
     <div className="flex items-center gap-0.5">
       <EditPaymentDialog paymentId={paymentId} amount={amount} paidAt={paidAt} paymentMethod={paymentMethod} />
-      <Button size="xs" variant="ghost" onClick={handleDelete} disabled={isDeleting}>
+      <Button size="xs" variant="ghost" onClick={handleDelete} loading={isDeleting}>
         <Trash2 className="size-3 text-destructive" />
       </Button>
     </div>

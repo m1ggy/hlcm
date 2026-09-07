@@ -207,7 +207,7 @@ export function RecordPaymentDialog({
             <span className="font-medium">${subtotal.toFixed(2)}</span>
           </div>
 
-          <Button onClick={handleSubmit} className="w-full" disabled={isPending}>
+          <Button onClick={handleSubmit} className="w-full" loading={isPending}>
             {isPending ? "Creating..." : "Create invoice"}
           </Button>
         </div>

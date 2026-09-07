@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { CoffeeIcon, Loader2 } from "lucide-react";
+import { CoffeeIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -148,8 +148,7 @@ export function BreakDeductionDialog({
             <Label htmlFor="breakNote">Note (optional)</Label>
             <Textarea id="breakNote" value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Unpaid lunch, added retroactively" />
           </div>
-          <Button onClick={handleSubmit} disabled={isPending} className="w-full">
-            {isPending ? <Loader2 className="size-3.5 animate-spin" /> : null}
+          <Button onClick={handleSubmit} loading={isPending} className="w-full">
             Add deduction
           </Button>
         </div>

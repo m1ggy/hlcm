@@ -56,6 +56,7 @@ export default function SignPdfDialogContent({
   const [typedName, setTypedName] = useState("");
   const [placement, setPlacement] = useState<{ xRatio: number; yRatio: number } | null>(null);
   const [widthRatio, setWidthRatio] = useState(DEFAULT_SIGNATURE_WIDTH_RATIO);
+  const [isLoadingSaved, setIsLoadingSaved] = useState(false);
 
   const pageWrapperRef = useRef<HTMLDivElement>(null);
   const padRef = useRef<SignaturePad | null>(null);
@@ -68,15 +69,20 @@ export default function SignPdfDialogContent({
   }
 
   async function handleUseSaved() {
-    const res = await fetch("/api/signatures/profile");
-    if (!res.ok) {
-      toast.error("No saved signature found");
-      return;
+    setIsLoadingSaved(true);
+    try {
+      const res = await fetch("/api/signatures/profile");
+      if (!res.ok) {
+        toast.error("No saved signature found");
+        return;
+      }
+      const blob = await res.blob();
+      const reader = new FileReader();
+      reader.onload = () => setSignatureImage(reader.result as string);
+      reader.readAsDataURL(blob);
+    } finally {
+      setIsLoadingSaved(false);
     }
-    const blob = await res.blob();
-    const reader = new FileReader();
-    reader.onload = () => setSignatureImage(reader.result as string);
-    reader.readAsDataURL(blob);
   }
 
   function handleUseDrawn() {
@@ -234,7 +240,7 @@ export default function SignPdfDialogContent({
           </div>
 
           {source === "saved" && (
-            <Button size="sm" variant="outline" className="w-full" onClick={handleUseSaved}>
+            <Button size="sm" variant="outline" className="w-full" onClick={handleUseSaved} loading={isLoadingSaved}>
               Use my saved signature
             </Button>
           )}
@@ -301,7 +307,7 @@ export default function SignPdfDialogContent({
             </div>
           )}
 
-          <Button className="w-full" onClick={handleFinalize} disabled={isPending || !signatureImage || !placement}>
+          <Button className="w-full" onClick={handleFinalize} disabled={!signatureImage || !placement} loading={isPending}>
             {isPending ? "Signing..." : "Finalize Signature"}
           </Button>
         </div>
