@@ -6,8 +6,9 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/rbac";
 import { recordAudit, recordFieldChanges } from "@/lib/audit";
+import { friendlyPrismaError } from "@/lib/prisma-errors";
 
-const ROLE_VALUES = ["ADMIN", "MANAGER", "STAFF", "CLIENT"] as const;
+const ROLE_VALUES = ["ADMIN", "MANAGER", "STAFF", "CLIENT", "CAREGIVER"] as const;
 
 const userSchema = z.object({
   name: z.string().min(1),
@@ -66,14 +67,16 @@ export async function createUser(formData: FormData) {
   });
 
   const passwordHash = await bcrypt.hash(parsed.password, 12);
-  const user = await prisma.user.create({
-    data: {
-      name: parsed.name,
-      email: parsed.email,
-      passwordHash,
-      role: parsed.role,
-    },
-  });
+  const user = await prisma.user
+    .create({
+      data: {
+        name: parsed.name,
+        email: parsed.email,
+        passwordHash,
+        role: parsed.role,
+      },
+    })
+    .catch((e) => friendlyPrismaError(e, { duplicateMessages: { email: "A user with that email already exists" } }));
 
   await recordAudit({
     entityType: "User",

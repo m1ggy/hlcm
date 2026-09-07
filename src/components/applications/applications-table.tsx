@@ -137,10 +137,10 @@ export function ApplicationsTable({
               ))}
             </SelectContent>
           </Select>
-          <Button size="sm" onClick={applyBulk} disabled={isPending}>
+          <Button size="sm" onClick={applyBulk} loading={isPending}>
             Apply
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())} disabled={isPending}>
+          <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())} loading={isPending}>
             Clear
           </Button>
         </div>

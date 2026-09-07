@@ -8,9 +8,10 @@ import { InvoiceFormDialog } from "@/components/invoices/invoice-form-dialog";
 import { RecordPaymentDialog } from "@/components/invoices/record-payment-dialog";
 import { ImportStripeInvoiceDialog } from "@/components/invoices/import-stripe-invoice-dialog";
 import { PageInfoButton } from "@/components/shared/page-info-button";
-import { ForbiddenError } from "@/lib/rbac";
+import { ForbiddenError, blockCaregiverRoute } from "@/lib/rbac";
 
 export default async function InvoicesPage() {
+  await blockCaregiverRoute();
   let invoices;
   try {
     invoices = await listInvoices();

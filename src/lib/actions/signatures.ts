@@ -7,6 +7,7 @@ import { PDFDocument } from "pdf-lib";
 import { prisma } from "@/lib/prisma";
 import { requireSession, assertApplicationAccess } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
+import { friendlyPrismaError } from "@/lib/prisma-errors";
 import { saveBuffer, readStoredFile, deleteStoredFile } from "@/lib/storage";
 
 function dataUrlToBuffer(dataUrl: string): Buffer {
@@ -45,7 +46,9 @@ export async function deleteSignatureProfile() {
   const existing = await prisma.signatureProfile.findUnique({ where: { userId: session.user.id } });
   if (!existing) return;
 
-  await prisma.signatureProfile.delete({ where: { userId: session.user.id } });
+  await prisma.signatureProfile
+    .delete({ where: { userId: session.user.id } })
+    .catch((e) => friendlyPrismaError(e, { notFoundMessage: "You don't have a saved signature to remove" }));
   await deleteStoredFile(existing.signatureImageKey);
   revalidatePath("/account");
 }

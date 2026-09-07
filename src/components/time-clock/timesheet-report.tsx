@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { FileDown, Loader2, Trash2, X } from "lucide-react";
+import { FileDown, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -247,15 +247,14 @@ export function TimesheetReport({
           <Label htmlFor="to">To</Label>
           <Input id="to" type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-40" />
         </div>
-        <Button variant="outline" onClick={handlePreview} disabled={isPending}>
-          {isPending ? <Loader2 className="size-3.5 animate-spin" /> : null}
+        <Button variant="outline" onClick={handlePreview} loading={isPending}>
           Preview
         </Button>
         <div className="flex items-center gap-1.5">
-          <Button variant="ghost" size="sm" onClick={() => applyPreset(currentPayPeriodRange(timezone))} disabled={isPending}>
+          <Button variant="ghost" size="sm" onClick={() => applyPreset(currentPayPeriodRange(timezone))} loading={isPending}>
             This pay period
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => applyPreset(currentMonthRange(timezone))} disabled={isPending}>
+          <Button variant="ghost" size="sm" onClick={() => applyPreset(currentMonthRange(timezone))} loading={isPending}>
             This month
           </Button>
         </div>
@@ -286,10 +285,10 @@ export function TimesheetReport({
                   <Button
                     size="xs"
                     variant="ghost"
-                    disabled={deletingBreakId === b.id}
+                    loading={deletingBreakId === b.id}
                     onClick={() => handleDeleteBreak(b.id)}
                   >
-                    {deletingBreakId === b.id ? <Loader2 className="size-3 animate-spin" /> : <X className="size-3.5 text-destructive" />}
+                    <X className="size-3.5 text-destructive" />
                   </Button>
                 )}
               </li>
@@ -337,14 +336,10 @@ export function TimesheetReport({
                       <Button
                         size="xs"
                         variant="outline"
-                        disabled={!t.pay || t.hours <= 0 || payStatus[t.userId] === "paying"}
+                        disabled={!t.pay || t.hours <= 0} loading={payStatus[t.userId] === "paying"}
                         onClick={() => handlePay(t.userId)}
                       >
-                        {payStatus[t.userId] === "paying" ? (
-                          <Loader2 className="size-3 animate-spin" />
-                        ) : (
-                          "Pay via Wise"
-                        )}
+                        Pay via Wise
                       </Button>
                     )}
                   </TableCell>
@@ -435,14 +430,10 @@ export function TimesheetReport({
                           <Button
                             size="xs"
                             variant="ghost"
-                            disabled={deletingId === entry.id}
+                            loading={deletingId === entry.id}
                             onClick={() => handleDelete(entry.id)}
                           >
-                            {deletingId === entry.id ? (
-                              <Loader2 className="size-3 animate-spin" />
-                            ) : (
-                              <Trash2 className="size-3.5 text-destructive" />
-                            )}
+                            <Trash2 className="size-3.5 text-destructive" />
                           </Button>
                         </div>
                       </TableCell>

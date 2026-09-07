@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
+import { friendlyPrismaError } from "@/lib/prisma-errors";
 import { saveUploadedFile, deleteStoredFile } from "@/lib/storage";
 import { extractMergeTags } from "@/lib/docx-merge";
 
@@ -70,25 +71,32 @@ export async function createDocumentTemplate(input: z.infer<typeof createSchema>
   const session = await requireRole(["ADMIN"]);
   const parsed = createSchema.parse(input);
 
-  const template = await prisma.documentTemplate.create({
-    data: {
-      name: parsed.name,
-      description: parsed.description || undefined,
-      licenseTypeTemplateId: parsed.licenseTypeTemplateId || undefined,
-      storageKey: parsed.storageKey,
-      fileName: parsed.fileName,
-      createdById: session.user.id,
-      fields: {
-        create: parsed.fields.map((f, i) => ({
-          key: f.key,
-          label: f.label,
-          source: f.source,
-          autoField: f.source === "AUTO" ? f.autoField : undefined,
-          sortOrder: i,
-        })),
+  const template = await prisma.documentTemplate
+    .create({
+      data: {
+        name: parsed.name,
+        description: parsed.description || undefined,
+        licenseTypeTemplateId: parsed.licenseTypeTemplateId || undefined,
+        storageKey: parsed.storageKey,
+        fileName: parsed.fileName,
+        createdById: session.user.id,
+        fields: {
+          create: parsed.fields.map((f, i) => ({
+            key: f.key,
+            label: f.label,
+            source: f.source,
+            autoField: f.source === "AUTO" ? f.autoField : undefined,
+            sortOrder: i,
+          })),
+        },
       },
-    },
-  });
+    })
+    // Two fields sharing a key is the one way this can fail on a
+    // constraint — a merge tag detected twice, or a custom field typed
+    // with the same key as an auto-detected one.
+    .catch((e) =>
+      friendlyPrismaError(e, { duplicateMessages: { "templateId,key": "Two fields have the same key — each field's key must be unique on this template" } })
+    );
 
   await recordAudit({
     entityType: "DocumentTemplate",

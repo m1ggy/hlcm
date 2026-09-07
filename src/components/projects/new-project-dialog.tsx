@@ -46,7 +46,7 @@ export function NewProjectDialog() {
             <Label htmlFor="description">Description</Label>
             <Input id="description" name="description" />
           </div>
-          <Button type="submit" className="w-full" disabled={isPending}>
+          <Button type="submit" className="w-full" loading={isPending}>
             {isPending ? "Creating..." : "Create"}
           </Button>
         </form>

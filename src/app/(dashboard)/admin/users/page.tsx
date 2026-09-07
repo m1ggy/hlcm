@@ -8,7 +8,7 @@ import { EditUserDialog } from "@/components/admin/edit-user-dialog";
 import { RateCell } from "@/components/admin/rate-cell";
 import { PageInfoButton } from "@/components/shared/page-info-button";
 import { Badge } from "@/components/ui/badge";
-import { ForbiddenError } from "@/lib/rbac";
+import { ForbiddenError, blockCaregiverRoute } from "@/lib/rbac";
 import {
   Table,
   TableBody,
@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/table";
 
 export default async function UsersPage() {
+  await blockCaregiverRoute();
   const session = await auth();
   let users;
   try {

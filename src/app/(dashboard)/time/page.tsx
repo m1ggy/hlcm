@@ -1,4 +1,5 @@
 import { auth } from "@/auth";
+import { blockCaregiverRoute } from "@/lib/rbac";
 import { listAssignableUsers } from "@/lib/actions/applications";
 import { getAccount } from "@/lib/actions/account";
 import { MyTimeLog } from "@/components/time-clock/my-time-log";
@@ -8,6 +9,7 @@ import { PageInfoButton } from "@/components/shared/page-info-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default async function TimePage() {
+  await blockCaregiverRoute();
   const session = await auth();
   const role = session?.user?.role;
   const canSeeAllUsers = role === "ADMIN" || role === "MANAGER";

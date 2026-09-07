@@ -21,7 +21,7 @@ export function DeleteChecklistItemButton({ id }: { id: string }) {
   }
 
   return (
-    <Button variant="ghost" size="sm" onClick={handleDelete} disabled={isPending}>
+    <Button variant="ghost" size="sm" onClick={handleDelete} loading={isPending}>
       Delete
     </Button>
   );

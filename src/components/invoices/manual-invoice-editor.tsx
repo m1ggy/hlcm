@@ -108,7 +108,7 @@ export function ManualInvoiceEditor({
         <span className="font-medium">${subtotal.toFixed(2)}</span>
       </div>
 
-      <Button onClick={handleSave} disabled={isPending}>
+      <Button onClick={handleSave} loading={isPending}>
         {isPending ? "Saving..." : "Save changes"}
       </Button>
     </div>

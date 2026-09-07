@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Plus, Loader2 } from "lucide-react";
+import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DateTimeInput } from "@/components/ui/datetime-input";
 import { Label } from "@/components/ui/label";
@@ -112,8 +112,7 @@ export function AddTimeEntryDialog({
               <a href="/account" className="underline">Change it</a>.
             </p>
           </div>
-          <Button onClick={handleSubmit} disabled={isPending} className="w-full">
-            {isPending ? <Loader2 className="size-3.5 animate-spin" /> : null}
+          <Button onClick={handleSubmit} loading={isPending} className="w-full">
             Add entry
           </Button>
         </div>

@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireSession, requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
+import { friendlyPrismaError } from "@/lib/prisma-errors";
 import { TimeClockError, summarizeByUser, DEFAULT_TIMEZONE, type TimeEntryRangeInput, type BreakDeductionRule } from "@/lib/time-entries";
 
 export async function getMyActiveEntry() {
@@ -339,7 +340,9 @@ export async function deleteBreakDeduction(id: string) {
   const session = await requireRole(["ADMIN"]);
   const deduction = await prisma.timesheetBreakDeduction.findUniqueOrThrow({ where: { id } });
 
-  await prisma.timesheetBreakDeduction.delete({ where: { id } });
+  await prisma.timesheetBreakDeduction
+    .delete({ where: { id } })
+    .catch((e) => friendlyPrismaError(e, { notFoundMessage: "That deduction is already gone — someone else may have just removed it" }));
 
   await recordAudit({
     entityType: "TimesheetBreakDeduction",
@@ -435,7 +438,9 @@ export async function deleteTimeEntry(id: string) {
   const session = await requireRole(["ADMIN"]);
   const entry = await prisma.timeEntry.findUniqueOrThrow({ where: { id } });
 
-  await prisma.timeEntry.delete({ where: { id } });
+  await prisma.timeEntry
+    .delete({ where: { id } })
+    .catch((e) => friendlyPrismaError(e, { notFoundMessage: "That time entry is already gone — someone else may have just removed it" }));
 
   await recordAudit({
     entityType: "TimeEntry",

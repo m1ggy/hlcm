@@ -13,23 +13,35 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { EmailRecipientPicker } from "./email-recipient-picker";
 
 // Generation (addManualPayment) and sending are deliberately separate
 // steps — a receipt always exists the moment a payment is recorded, but
 // nothing gets emailed until this dialog's button is clicked. Mirrors
 // SendInvoicePdfDialog, minus the extra-attachments picker (a receipt is
 // a fixed, already-generated PDF — there's nothing to attach it to).
-export function SendReceiptDialog({ receiptId, alreadySent }: { receiptId: string; alreadySent: boolean }) {
+export function SendReceiptDialog({
+  receiptId,
+  alreadySent,
+  businessEmail,
+  ownerEmail,
+}: {
+  receiptId: string;
+  alreadySent: boolean;
+  businessEmail: string | null;
+  ownerEmail: string | null;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const [recipientEmail, setRecipientEmail] = useState("");
 
   const verb = alreadySent ? "Resend" : "Send";
 
   function handleSend() {
     startTransition(async () => {
       try {
-        await sendReceiptEmail(receiptId);
+        await sendReceiptEmail(receiptId, recipientEmail);
         toast.success("Receipt sent");
         setOpen(false);
         router.refresh();
@@ -47,10 +59,9 @@ export function SendReceiptDialog({ receiptId, alreadySent }: { receiptId: strin
           <DialogTitle>{verb} receipt</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          <p className="text-xs text-muted-foreground">
-            The receipt PDF will be emailed to the client on file for this invoice.
-          </p>
-          <Button onClick={handleSend} className="w-full" disabled={isPending}>
+          <p className="text-xs text-muted-foreground">The receipt PDF will be emailed to whoever you pick below.</p>
+          <EmailRecipientPicker businessEmail={businessEmail} ownerEmail={ownerEmail} onChange={setRecipientEmail} />
+          <Button onClick={handleSend} className="w-full" disabled={!recipientEmail} loading={isPending}>
             {isPending ? "Sending..." : `${verb} email`}
           </Button>
         </div>

@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireSession, assertApplicationAccess } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
+import { friendlyPrismaError } from "@/lib/prisma-errors";
 import { readStoredFile, saveBuffer, deleteStoredFile } from "@/lib/storage";
 import { mergeDocx } from "@/lib/docx-merge";
 import { resolveAutoField } from "@/lib/merge-fields";
@@ -131,7 +132,9 @@ export async function deleteGeneratedDocument(id: string, applicationId: string)
   await assertApplicationAccess(session, applicationId, "edit");
 
   const doc = await prisma.generatedDocument.findUniqueOrThrow({ where: { id } });
-  await prisma.generatedDocument.delete({ where: { id } });
+  await prisma.generatedDocument
+    .delete({ where: { id } })
+    .catch((e) => friendlyPrismaError(e, { notFoundMessage: "That document is already gone — someone else may have just removed it" }));
   await deleteStoredFile(doc.storageKey);
 
   await recordAudit({

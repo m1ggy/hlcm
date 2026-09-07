@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { TriangleAlert, PenLine, Download } from "lucide-react";
 import { getInvoice, getInvoiceAuditLog } from "@/lib/actions/invoices";
+import { listInvoiceAttachments } from "@/lib/actions/invoice-attachments";
 import { displayInvoiceNumber, displayReceiptNumber } from "@/lib/invoice-format";
 import { listClients } from "@/lib/actions/clients";
 import { listApplications } from "@/lib/actions/applications";
@@ -10,6 +11,7 @@ import { InvoiceActions } from "@/components/invoices/invoice-actions";
 import { ManualInvoiceEditor } from "@/components/invoices/manual-invoice-editor";
 import { SendReceiptDialog } from "@/components/invoices/send-receipt-dialog";
 import { PaymentRowActions } from "@/components/invoices/payment-row-actions";
+import { InvoiceAttachments } from "@/components/invoices/invoice-attachments";
 import { AuditLogPanel } from "@/components/applications/audit-log-panel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,9 +23,10 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
-import { ForbiddenError } from "@/lib/rbac";
+import { ForbiddenError, blockCaregiverRoute } from "@/lib/rbac";
 
 export default async function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  await blockCaregiverRoute();
   const { id } = await params;
 
   let invoice;
@@ -34,10 +37,11 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
     throw error;
   }
 
-  const [auditLog, clients, applications] = await Promise.all([
+  const [auditLog, clients, applications, attachments] = await Promise.all([
     getInvoiceAuditLog(id),
     listClients({ filter: "all" }),
     listApplications(),
+    listInvoiceAttachments(id),
   ]);
 
   const number = displayInvoiceNumber(invoice);
@@ -82,7 +86,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           )}
         </div>
         <InvoiceActions
-          invoice={invoice}
+          invoice={{ ...invoice, businessEmail: invoice.client.businessEmail, ownerEmail: invoice.client.ownerEmail }}
           clients={clients.map((c) => ({ id: c.id, name: c.name }))}
           applications={applications.map((a) => ({ id: a.id, name: a.name, clientId: a.client.id }))}
           paymentsCount={invoice.payments.length}
@@ -103,11 +107,11 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         <div className="flex items-center gap-2 rounded-lg border border-amber-500/50 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-400">
           <TriangleAlert className="size-4 shrink-0" />
           <span>
-            This client has no email on file — sending this invoice will fail.{" "}
+            This client has no email on file — you can still type one when sending, but it&apos;s worth{" "}
             <Link href={`/clients/${invoice.client.id}`} className="underline">
-              Add one on the client&apos;s page
-            </Link>
-            .
+              adding one on the client&apos;s page
+            </Link>{" "}
+            so it&apos;s there by default next time.
           </span>
         </div>
       )}
@@ -217,7 +221,12 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                                 >
                                   <Download className="size-3" /> {displayReceiptNumber(payment.receipt)}
                                 </Button>
-                                <SendReceiptDialog receiptId={payment.receipt.id} alreadySent={!!payment.receipt.sentAt} />
+                                <SendReceiptDialog
+                                  receiptId={payment.receipt.id}
+                                  alreadySent={!!payment.receipt.sentAt}
+                                  businessEmail={invoice.client.businessEmail}
+                                  ownerEmail={invoice.client.ownerEmail}
+                                />
                               </div>
                               {payment.receipt.sentAt && (
                                 <span className="text-xs text-muted-foreground">
@@ -246,6 +255,15 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               </CardContent>
             </Card>
           )}
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Attachments</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <InvoiceAttachments invoiceId={invoice.id} attachments={attachments} canEdit />
+            </CardContent>
+          </Card>
 
           <Card>
             <CardHeader>

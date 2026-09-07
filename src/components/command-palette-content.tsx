@@ -11,6 +11,7 @@ import {
   UserCog,
   UserCircle,
   Clock,
+  Loader2,
 } from "lucide-react";
 import {
   Command,
@@ -47,7 +48,7 @@ export default function CommandPaletteContent({
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResults>({ applications: [], clients: [], tasks: [] });
-  const [, startTransition] = useTransition();
+  const [isSearching, startTransition] = useTransition();
 
   useEffect(() => {
     const id = setTimeout(() => {
@@ -81,6 +82,11 @@ export default function CommandPaletteContent({
       <Command>
         <CommandInput placeholder="Search or jump to..." value={query} onValueChange={setQuery} />
         <CommandList>
+          {isSearching && query.trim() && (
+            <div className="flex items-center gap-1.5 px-3 py-2 text-xs text-muted-foreground">
+              <Loader2 className="size-3 animate-spin" /> Searching...
+            </div>
+          )}
           <CommandEmpty>No results found.</CommandEmpty>
 
           {recents.length > 0 && (

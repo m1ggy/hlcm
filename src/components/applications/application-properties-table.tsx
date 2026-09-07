@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { Loader2 } from "lucide-react";
 import { updateApplication, updateApplicationCaseFields, updateApplicationLicenseType } from "@/lib/actions/applications";
 import { ApplicationStagePicker } from "@/components/applications/application-stage-picker";
 import type { PickerStage } from "@/components/shared/stage-picker";
@@ -83,7 +84,7 @@ export function ApplicationPropertiesTable({
   stepInfo: { index: number; total: number } | null;
 }) {
   const router = useRouter();
-  const [, startTransition] = useTransition();
+  const [isSaving, startTransition] = useTransition();
   const [name, setName] = useState(defaultValues.name);
   const [clientId, setClientId] = useState(defaultValues.clientId);
   const [assignedUserId, setAssignedUserId] = useState(defaultValues.assignedUserId);
@@ -183,7 +184,15 @@ export function ApplicationPropertiesTable({
   }
 
   return (
-    <Table>
+    <div>
+      <div className="flex justify-end">
+        {isSaving && (
+          <span className="flex items-center gap-1 pb-1 text-xs text-muted-foreground">
+            <Loader2 className="size-3 animate-spin" /> Saving...
+          </span>
+        )}
+      </div>
+      <Table>
       <TableBody>
         <TableRow>
           <TableCell className="w-40 text-muted-foreground">Name</TableCell>
@@ -454,6 +463,7 @@ export function ApplicationPropertiesTable({
           </TableCell>
         </TableRow>
       </TableBody>
-    </Table>
+      </Table>
+    </div>
   );
 }

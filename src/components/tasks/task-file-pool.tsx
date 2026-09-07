@@ -2,7 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Loader2, Upload } from "lucide-react";
+import { Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { uploadTaskFile, deleteTaskFile, listTaskFiles } from "@/lib/actions/files";
 import { FileCard } from "@/components/files/file-card";
@@ -71,16 +71,8 @@ export function TaskFilePool({
           required
           className="h-8 flex-1 rounded-lg border border-input bg-transparent text-sm file:mr-2 file:h-8 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground"
         />
-        <Button type="submit" size="sm" disabled={isUploading}>
-          {isUploading ? (
-            <>
-              <Loader2 className="size-3.5 animate-spin" /> Uploading...
-            </>
-          ) : (
-            <>
-              <Upload className="size-3.5" /> Upload
-            </>
-          )}
+        <Button type="submit" size="sm" loading={isUploading}>
+          <Upload className="size-3.5" /> Upload
         </Button>
       </form>
 

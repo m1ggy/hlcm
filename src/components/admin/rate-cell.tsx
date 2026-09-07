@@ -63,7 +63,7 @@ export function RateCell({ userId, initialRate }: { userId: string; initialRate:
         }}
         className="h-7 w-24"
       />
-      <Button size="icon-sm" variant="ghost" onClick={save} disabled={isPending}>
+      <Button size="icon-sm" variant="ghost" onClick={save} loading={isPending}>
         <Check className="size-3.5" />
       </Button>
     </div>

@@ -15,6 +15,7 @@ enum Role {
   MANAGER
   STAFF
   CLIENT
+  CAREGIVER
 }
 
 enum ApplicationStatus {
@@ -156,6 +157,7 @@ model User {
   accessGrantsGiven             AccessGrant[]             @relation("AccessGrantGrantedBy")
   filesUploaded                 FileAsset[]               @relation("FileUploadedBy")
   fileVersionsUploaded          FileVersion[]             @relation("FileVersionUploadedBy")
+  invoiceAttachmentsUploaded    InvoiceAttachment[]       @relation("InvoiceAttachmentUploadedBy")
   documentTemplatesCreated      DocumentTemplate[]        @relation("DocumentTemplateCreatedBy")
   documentsGenerated            GeneratedDocument[]       @relation("GeneratedDocumentGeneratedBy")
   signatureProfile              SignatureProfile?
@@ -1043,12 +1045,36 @@ model Invoice {
   invoiceProfile   InvoiceProfile? @relation(fields: [invoiceProfileId], references: [id], onDelete: SetNull)
   invoiceProfileId String?
 
-  lineItems InvoiceLineItem[]
-  payments  Payment[]
-  receipts  Receipt[]
+  lineItems   InvoiceLineItem[]
+  payments    Payment[]
+  receipts    Receipt[]
+  attachments InvoiceAttachment[]
 
   @@index([clientId])
   @@map("invoices")
+}
+
+// A supporting document attached to an invoice — a signed contract, a
+// receipt from a third party, a photo, whatever's relevant — separate from
+// the invoice's own generated PDF (invoicePdfUrl) and a payment's Receipt.
+// Unlike FileAsset (Applications/Tasks), there's no versioning or signing
+// here: just upload/download/delete. mimeType is validated against
+// ALLOWED_ATTACHMENT_TYPES in src/lib/actions/invoice-attachments.ts at
+// upload time — images, PDF, .xlsx, .docx.
+model InvoiceAttachment {
+  id           String   @id @default(cuid())
+  invoice      Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoiceId    String
+  fileName     String
+  storageKey   String
+  mimeType     String
+  sizeBytes    Int
+  uploadedBy   User     @relation("InvoiceAttachmentUploadedBy", fields: [uploadedById], references: [id])
+  uploadedById String
+  createdAt    DateTime @default(now())
+
+  @@index([invoiceId])
+  @@map("invoice_attachments")
 }
 
 // One row per payment recorded against a manually-recorded invoice — the

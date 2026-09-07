@@ -28,7 +28,7 @@ export function NotificationBell({ variant = "staff" }: { variant?: EntityLinkVa
   const [unread, setUnread] = useState(0);
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
   const [open, setOpen] = useState(false);
-  const [, startTransition] = useTransition();
+  const [isPending, startTransition] = useTransition();
 
   async function refresh(options?: { silent?: boolean }) {
     try {
@@ -98,7 +98,7 @@ export function NotificationBell({ variant = "staff" }: { variant?: EntityLinkVa
         <div className="flex items-center justify-between border-b px-3 py-2">
           <span className="text-sm font-medium">Notifications</span>
           {unread > 0 && (
-            <Button variant="ghost" size="xs" onClick={handleMarkAll}>
+            <Button variant="ghost" size="xs" onClick={handleMarkAll} loading={isPending}>
               Mark all read
             </Button>
           )}

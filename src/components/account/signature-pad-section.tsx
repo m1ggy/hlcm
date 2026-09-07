@@ -55,7 +55,7 @@ export function SignaturePadSection({ initialImageUrl }: { initialImageUrl: stri
           <p className="text-sm text-muted-foreground">Saved signature:</p>
           {/* eslint-disable-next-line @next/next/no-img-element -- signature image is a locally stored data blob, not an optimizable remote asset */}
           <img src={savedImageUrl} alt="Your saved signature" className="h-16 rounded border bg-white" />
-          <Button variant="outline" size="sm" onClick={handleDelete} disabled={isPending}>
+          <Button variant="outline" size="sm" onClick={handleDelete} loading={isPending}>
             Remove signature
           </Button>
         </div>
@@ -72,10 +72,10 @@ export function SignaturePadSection({ initialImageUrl }: { initialImageUrl: stri
           className="rounded border bg-white"
         />
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={handleClear} disabled={isPending}>
+          <Button variant="outline" size="sm" onClick={handleClear} loading={isPending}>
             Clear
           </Button>
-          <Button size="sm" onClick={handleSave} disabled={isPending}>
+          <Button size="sm" onClick={handleSave} loading={isPending}>
             Save Signature
           </Button>
         </div>

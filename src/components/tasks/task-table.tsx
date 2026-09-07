@@ -274,7 +274,7 @@ function InlineRow({
   isAdmin?: boolean;
 }) {
   const router = useRouter();
-  const [, startTransition] = useTransition();
+  const [isSaving, startTransition] = useTransition();
   const [isArchiving, startArchiving] = useTransition();
   const [label, setLabel] = useState(task.label);
   const [status, setStatus] = useState(task.status);
@@ -353,10 +353,10 @@ function InlineRow({
               size="icon-sm"
               className="size-6 shrink-0 text-muted-foreground hover:text-destructive"
               onClick={archive}
-              disabled={isArchiving}
+              loading={isArchiving}
               title="Archive task"
             >
-              {isArchiving ? <Loader2 className="size-3.5 animate-spin" /> : <Archive className="size-3.5" />}
+              <Archive className="size-3.5" />
             </Button>
           )}
         </div>
@@ -370,6 +370,7 @@ function InlineRow({
               save({ status: next });
             }}
             className="w-full"
+            loading={isSaving}
           />
           {status === "BLOCKED" && (
             <Input

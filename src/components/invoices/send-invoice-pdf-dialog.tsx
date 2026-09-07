@@ -15,6 +15,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { EmailRecipientPicker } from "./email-recipient-picker";
 
 // PDF/XLSX/DOCX extensions for the file picker's own filter — the real
 // gate is the MIME whitelist server-side (readExtraAttachments in
@@ -25,11 +26,22 @@ const ACCEPT = ".pdf,.xlsx,.docx";
 // One-off attachments picked fresh for this single send — nothing here
 // is persisted on the invoice, so they need re-attaching next time if
 // they should go out again.
-export function SendInvoicePdfDialog({ invoiceId, alreadySent }: { invoiceId: string; alreadySent: boolean }) {
+export function SendInvoicePdfDialog({
+  invoiceId,
+  alreadySent,
+  businessEmail,
+  ownerEmail,
+}: {
+  invoiceId: string;
+  alreadySent: boolean;
+  businessEmail: string | null;
+  ownerEmail: string | null;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [files, setFiles] = useState<File[]>([]);
+  const [recipientEmail, setRecipientEmail] = useState("");
 
   const verb = alreadySent ? "Resend" : "Send";
 
@@ -47,6 +59,7 @@ export function SendInvoicePdfDialog({ invoiceId, alreadySent }: { invoiceId: st
     startTransition(async () => {
       try {
         const formData = new FormData();
+        formData.set("recipientEmail", recipientEmail);
         files.forEach((file) => formData.append("attachments", file));
         await sendManualInvoicePdf(invoiceId, formData);
         toast.success("Invoice PDF sent");
@@ -77,6 +90,8 @@ export function SendInvoicePdfDialog({ invoiceId, alreadySent }: { invoiceId: st
             The invoice PDF is attached automatically. Optionally attach anything else — PDF, XLSX, or DOCX.
           </p>
 
+          <EmailRecipientPicker businessEmail={businessEmail} ownerEmail={ownerEmail} onChange={setRecipientEmail} />
+
           <div className="space-y-1">
             <Label htmlFor="extra-attachments">Additional attachments (optional)</Label>
             <Input id="extra-attachments" type="file" accept={ACCEPT} multiple onChange={handleFilesChange} />
@@ -106,7 +121,7 @@ export function SendInvoicePdfDialog({ invoiceId, alreadySent }: { invoiceId: st
             </ul>
           )}
 
-          <Button onClick={handleSend} className="w-full" disabled={isPending}>
+          <Button onClick={handleSend} className="w-full" disabled={!recipientEmail} loading={isPending}>
             {isPending ? "Sending..." : `${verb} email`}
           </Button>
         </div>

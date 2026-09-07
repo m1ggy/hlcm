@@ -100,6 +100,18 @@ export async function createCustomer(params: {
   return stripeFetch<StripeCustomer>("customers", "POST", toParams(params));
 }
 
+// A Client's Stripe Customer is cached/reused across every invoice sent to
+// them (see stripeCustomerId on Client) — there's no per-invoice recipient
+// on Stripe's side, so sending to a different address than what's on file
+// means updating the shared Customer's email itself. Called only when the
+// chosen recipient actually differs from the Customer's current email
+// (see sendInvoice in src/lib/actions/invoices.ts) — this changes where
+// every future Stripe email for this client goes, not just the one being
+// sent right now.
+export async function updateCustomerEmail(customerId: string, email: string): Promise<StripeCustomer> {
+  return stripeFetch<StripeCustomer>(`customers/${customerId}`, "POST", { email });
+}
+
 type StripeInvoice = {
   id: string;
   status: string;

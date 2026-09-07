@@ -88,6 +88,10 @@ async function ensureTaskAssigneeAccess(applicationId: string, userId: string, g
   ]);
   if (!user || !app) return;
   if (user.role === "ADMIN" || user.role === "MANAGER") return;
+  // Caregivers never get case-level access, however they're assigned — see
+  // assertCanEditTask/assertCanCommentOnTask, which check task assignment
+  // directly instead of routing through this Application-wide grant.
+  if (user.role === "CAREGIVER") return;
   if (app.assignedUserId === userId) return;
   if (existingGrant?.permission === "EDIT") return;
 
@@ -107,17 +111,21 @@ async function ensureTaskAssigneeAccess(applicationId: string, userId: string, g
   });
 }
 
+// Caregivers never hold an Application-level AccessGrant (see
+// ensureTaskAssigneeAccess) — they always take the assignee-only branch
+// below, even for a task tied to a case, so editing a task never implies
+// broader access to the case it's on.
 async function assertCanEditTask(
   session: Awaited<ReturnType<typeof requireSession>>,
   task: { applicationId: string | null; assignedUserIds: string[] }
 ) {
-  if (task.applicationId) {
+  const role = session.user.role as AppRole;
+  if (role !== "CAREGIVER" && task.applicationId) {
     await assertApplicationAccess(session, task.applicationId, "edit");
-  } else {
-    const role = session.user.role as AppRole;
-    if (role === "ADMIN" || role === "MANAGER") return;
-    if (!task.assignedUserIds.includes(session.user.id)) throw new ForbiddenError("Not your task");
+    return;
   }
+  if (role === "ADMIN" || role === "MANAGER") return;
+  if (!task.assignedUserIds.includes(session.user.id)) throw new ForbiddenError("Not your task");
 }
 
 export async function listTasksForApplication(applicationId: string) {
@@ -148,6 +156,13 @@ const createTaskSchema = z.object({
 
 export async function createTask(formData: FormData) {
   const session = await requireSession();
+  // Caregivers can't create case tasks — without this, assertCanEditTask
+  // below would pass trivially (it checks the actor is their own assignee,
+  // and createTask always passes assignedUserIds: [session.user.id] as a
+  // stand-in for "can I add tasks here", not a real assignment check).
+  if ((session.user.role as AppRole) === "CAREGIVER") {
+    throw new ForbiddenError("Caregivers can't create tasks");
+  }
   const parsed = createTaskSchema.parse({
     applicationId: formData.get("applicationId"),
     phaseId: formData.get("phaseId") || undefined,
@@ -219,14 +234,18 @@ export async function updateTask(taskId: string, formData: FormData) {
     assignedUserIds: before.assignees.map((a) => a.userId),
   });
 
+  // Caregivers only get to touch a task's status/blockedReason — everything
+  // else here is silently dropped rather than trusted from the request,
+  // regardless of what the UI sends.
+  const isCaregiver = (session.user.role as AppRole) === "CAREGIVER";
   const rawAssignedUserIds = uniqueIds(formData.getAll("assignedUserId").map(String).filter(Boolean));
   const parsed = updateTaskSchema.parse({
-    label: formData.get("label") || undefined,
-    description: formData.get("description") ?? undefined,
-    assignedUserIds: rawAssignedUserIds.length ? rawAssignedUserIds : undefined,
+    label: isCaregiver ? undefined : formData.get("label") || undefined,
+    description: isCaregiver ? undefined : formData.get("description") ?? undefined,
+    assignedUserIds: isCaregiver ? undefined : rawAssignedUserIds.length ? rawAssignedUserIds : undefined,
     status: formData.get("status") || undefined,
     blockedReason: formData.get("blockedReason") ?? undefined,
-    dueDate: formData.get("dueDate") ?? undefined,
+    dueDate: isCaregiver ? undefined : formData.get("dueDate") ?? undefined,
   });
 
   await prisma.$transaction(async (tx) => {
@@ -320,6 +339,9 @@ export async function updateTask(taskId: string, formData: FormData) {
 // single group, sortOrder just becomes each id's index in the array.
 export async function reorderTasks(applicationId: string, orderedTaskIds: string[]) {
   const session = await requireSession();
+  if ((session.user.role as AppRole) === "CAREGIVER") {
+    throw new ForbiddenError("Caregivers can't reorder tasks");
+  }
   await assertApplicationAccess(session, applicationId, "edit");
 
   await prisma.$transaction(
@@ -337,10 +359,13 @@ export async function getTaskAuditLog(taskId: string) {
     where: { id: taskId },
     include: { assignees: { select: { userId: true } } },
   });
-  if (task.applicationId) {
+  const role = session.user.role as AppRole;
+  // Same CAREGIVER carve-out as assertCanEditTask — never routes through
+  // Application-level access, always checked against this task's own
+  // assignees.
+  if (role !== "CAREGIVER" && task.applicationId) {
     await assertApplicationAccess(session, task.applicationId, "view");
   } else {
-    const role = session.user.role as AppRole;
     const isAssignee = task.assignees.some((a) => a.userId === session.user.id);
     if (!(role === "ADMIN" || role === "MANAGER" || isAssignee)) {
       throw new ForbiddenError("Not your task");
@@ -356,6 +381,9 @@ export async function getTaskAuditLog(taskId: string) {
 
 export async function setTaskReviewers(taskId: string, reviewerUserIds: string[]) {
   const session = await requireSession();
+  if ((session.user.role as AppRole) === "CAREGIVER") {
+    throw new ForbiddenError("Caregivers can't set reviewers");
+  }
   const task = await prisma.task.findUniqueOrThrow({
     where: { id: taskId },
     include: { assignees: { select: { userId: true } }, reviewers: { select: { userId: true } } },

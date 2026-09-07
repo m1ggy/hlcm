@@ -3,12 +3,13 @@
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Send, CheckCircle2, Ban, Download, ExternalLink, Trash2 } from "lucide-react";
-import { sendInvoice, markInvoicePaid, voidInvoice, voidInvoiceWithPayments, deleteInvoice } from "@/lib/actions/invoices";
+import { CheckCircle2, Ban, Download, ExternalLink, Trash2 } from "lucide-react";
+import { markInvoicePaid, voidInvoice, voidInvoiceWithPayments, deleteInvoice } from "@/lib/actions/invoices";
 import { Button } from "@/components/ui/button";
 import { InvoiceFormDialog } from "./invoice-form-dialog";
 import { AddManualPaymentDialog } from "./add-manual-payment-dialog";
 import { SendInvoicePdfDialog } from "./send-invoice-pdf-dialog";
+import { SendInvoiceDialog } from "./send-invoice-dialog";
 import { isManualInvoice } from "./invoice-status-badge";
 
 type LineItem = { description: string; quantity: number; unitPrice: number };
@@ -35,6 +36,8 @@ export function InvoiceActions({
     amountPaid: number | null;
     lineItems: LineItem[];
     importedAt: Date | null;
+    businessEmail: string | null;
+    ownerEmail: string | null;
   };
   clients: { id: string; name: string }[];
   applications: { id: string; name: string; clientId: string }[];
@@ -43,24 +46,9 @@ export function InvoiceActions({
   paymentsCount?: number;
 }) {
   const router = useRouter();
-  const [isSending, startSending] = useTransition();
   const [isMarking, startMarking] = useTransition();
   const [isVoiding, startVoiding] = useTransition();
   const [isDeleting, startDeleting] = useTransition();
-
-  function handleSend() {
-    const verb = invoice.status === "DRAFT" ? "Send" : "Resend";
-    if (!confirm(`${verb} this invoice by email now?`)) return;
-    startSending(async () => {
-      try {
-        await sendInvoice(invoice.id);
-        toast.success("Invoice sent");
-        router.refresh();
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Failed to send invoice");
-      }
-    });
-  }
 
   function handleMarkPaid() {
     if (!confirm("Mark this invoice paid? Use this only if the client paid outside Stripe.")) return;
@@ -153,14 +141,22 @@ export function InvoiceActions({
   return (
     <div className="flex flex-wrap items-center gap-2">
       {canSend && (
-        <Button onClick={handleSend} disabled={isSending}>
-          <Send className="size-3.5" /> {invoice.status === "DRAFT" ? "Send" : "Resend"}
-        </Button>
+        <SendInvoiceDialog
+          invoiceId={invoice.id}
+          isResend={invoice.status !== "DRAFT"}
+          businessEmail={invoice.businessEmail}
+          ownerEmail={invoice.ownerEmail}
+        />
       )}
       {canAddManualPayment && <AddManualPaymentDialog invoiceId={invoice.id} remaining={remaining} />}
       {canSendPdf && (
         <div className="flex items-center gap-1.5">
-          <SendInvoicePdfDialog invoiceId={invoice.id} alreadySent={!!invoice.lastSentAt} />
+          <SendInvoicePdfDialog
+            invoiceId={invoice.id}
+            alreadySent={!!invoice.lastSentAt}
+            businessEmail={invoice.businessEmail}
+            ownerEmail={invoice.ownerEmail}
+          />
           {invoice.lastSentAt && (
             <span className="text-xs text-muted-foreground">Last sent {invoice.lastSentAt.toLocaleDateString()}</span>
           )}
@@ -194,7 +190,7 @@ export function InvoiceActions({
         </Button>
       )}
       {canMarkPaid && (
-        <Button variant="outline" onClick={handleMarkPaid} disabled={isMarking}>
+        <Button variant="outline" onClick={handleMarkPaid} loading={isMarking}>
           <CheckCircle2 className="size-3.5" /> Mark Paid
         </Button>
       )}
@@ -207,17 +203,17 @@ export function InvoiceActions({
         />
       )}
       {canVoid && (
-        <Button variant="outline" onClick={handleVoid} disabled={isVoiding}>
+        <Button variant="outline" onClick={handleVoid} loading={isVoiding}>
           <Ban className="size-3.5" /> Void
         </Button>
       )}
       {canVoidWithPayments && (
-        <Button variant="outline" onClick={handleVoidWithPayments} disabled={isVoiding}>
+        <Button variant="outline" onClick={handleVoidWithPayments} loading={isVoiding}>
           <Ban className="size-3.5" /> Void
         </Button>
       )}
       {canDelete && (
-        <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={handleDelete} disabled={isDeleting}>
+        <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={handleDelete} loading={isDeleting}>
           <Trash2 className="size-3.5" /> Delete
         </Button>
       )}

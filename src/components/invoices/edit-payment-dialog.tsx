@@ -93,7 +93,7 @@ export function EditPaymentDialog({
             <Input id="edit-paidAt" type="date" value={paidAtValue} onChange={(e) => setPaidAtValue(e.target.value)} />
           </div>
           <PaymentMethodSelect value={methodValue} onChange={setMethodValue} />
-          <Button onClick={handleSubmit} className="w-full" disabled={isPending}>
+          <Button onClick={handleSubmit} className="w-full" loading={isPending}>
             {isPending ? "Saving..." : "Save changes"}
           </Button>
         </div>

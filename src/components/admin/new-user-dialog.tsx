@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-const ROLES = ["ADMIN", "MANAGER", "STAFF", "CLIENT"] as const;
+const ROLES = ["ADMIN", "MANAGER", "STAFF", "CLIENT", "CAREGIVER"] as const;
 
 export function NewUserDialog() {
   const [open, setOpen] = useState(false);
@@ -76,7 +76,7 @@ export function NewUserDialog() {
               </SelectContent>
             </Select>
           </div>
-          <Button type="submit" className="w-full" disabled={isPending}>
+          <Button type="submit" className="w-full" loading={isPending}>
             {isPending ? "Creating..." : "Create"}
           </Button>
         </form>

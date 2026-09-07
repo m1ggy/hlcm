@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
+import { friendlyPrismaError } from "@/lib/prisma-errors";
 import { saveUploadedFile, deleteStoredFile } from "@/lib/storage";
 
 // Structural org config, same tier as license types / case types — Admin
@@ -171,7 +172,9 @@ export async function deleteInvoiceProfile(id: string) {
   // under regardless — the FK is onDelete: SetNull, so this never blocks
   // on or destroys an existing invoice.
   if (profile.logoStorageKey) await deleteStoredFile(profile.logoStorageKey);
-  await prisma.invoiceProfile.delete({ where: { id } });
+  await prisma.invoiceProfile
+    .delete({ where: { id } })
+    .catch((e) => friendlyPrismaError(e, { notFoundMessage: "That profile is already gone — someone else may have just removed it" }));
 
   await recordAudit({
     entityType: "InvoiceProfile",

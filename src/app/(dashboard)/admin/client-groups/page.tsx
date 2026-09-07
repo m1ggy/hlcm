@@ -1,8 +1,10 @@
 import { listClientGroups } from "@/lib/actions/client-groups";
+import { blockCaregiverRoute } from "@/lib/rbac";
 import { ClientGroupsManager } from "@/components/admin/client-groups-manager";
 import { PageInfoButton } from "@/components/shared/page-info-button";
 
 export default async function ClientGroupsPage() {
+  await blockCaregiverRoute();
   const groups = await listClientGroups();
 
   return (

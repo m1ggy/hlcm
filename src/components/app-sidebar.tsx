@@ -25,6 +25,7 @@ export async function AppSidebar() {
         <AppSidebarNav
           isAdmin={session.user.role === "ADMIN"}
           canManageInvoices={session.user.role === "ADMIN" || session.user.role === "MANAGER"}
+          isCaregiver={session.user.role === "CAREGIVER"}
         />
       </SidebarContent>
       <SidebarFooter className="gap-2 border-t px-3 py-3">

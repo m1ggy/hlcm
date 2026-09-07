@@ -38,6 +38,7 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { STATUS_BADGE_VARIANT, STATUS_LABELS, ApplicationStatus } from "@/lib/status";
+import { CaregiverClientProfile } from "@/components/clients/caregiver-client-profile";
 
 export default async function ClientDetailPage({
   params,
@@ -45,6 +46,15 @@ export default async function ClientDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+
+  // A Caregiver's client profile is a much narrower, read-only view (own
+  // tasks only, no billing/credentials/audit log) — routed to its own
+  // component rather than threading role checks through the ~250 lines
+  // below, which are all ADMIN/MANAGER/STAFF territory.
+  const earlySession = await auth();
+  if (earlySession?.user?.role === "CAREGIVER") {
+    return <CaregiverClientProfile clientId={id} />;
+  }
 
   let client;
   try {

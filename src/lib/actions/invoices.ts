@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireRole, AppRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
+import { friendlyPrismaError } from "@/lib/prisma-errors";
 import { sendEmail, renderEmailLayout } from "@/lib/email";
 import { generateInvoicePdf } from "@/lib/invoice-pdf";
 import { generateReceiptPdf } from "@/lib/receipt-pdf";
@@ -22,6 +23,7 @@ import {
   retrieveInvoice,
   listInvoiceLines,
   retrieveCustomer,
+  updateCustomerEmail,
   findCustomersByEmail,
   listCustomerInvoices,
 } from "@/lib/stripe";
@@ -188,7 +190,9 @@ export async function deleteInvoice(id: string) {
     throw new Error("Only draft invoices can be deleted");
   }
 
-  await prisma.invoice.delete({ where: { id } });
+  await prisma.invoice
+    .delete({ where: { id } })
+    .catch((e) => friendlyPrismaError(e, { notFoundMessage: "That invoice is already gone — someone else may have just deleted it" }));
   await recordAudit({ entityType: "Invoice", entityId: id, action: "delete", actorId: session.user.id });
 
   revalidatePath("/invoices");
@@ -200,8 +204,18 @@ export async function voidInvoice(id: string) {
   if (before.status === "PAID") throw new Error("A paid invoice can't be voided");
 
   if (before.stripeInvoiceId) await voidInvoiceRemote(before.stripeInvoiceId);
-  await prisma.invoice.update({ where: { id }, data: { status: "VOID" } });
-  await recordAudit({ entityType: "Invoice", entityId: id, action: "void", actorId: session.user.id });
+  // A typed invoiceNumber is @unique regardless of status — clearing it here
+  // frees it up for reuse on a future invoice instead of silently sitting on
+  // a voided one forever (see friendlyInvoiceNumberError below for what
+  // happens when it isn't freed and someone types the same number again).
+  await prisma.invoice.update({ where: { id }, data: { status: "VOID", invoiceNumber: null } });
+  await recordAudit({
+    entityType: "Invoice",
+    entityId: id,
+    action: "void",
+    actorId: session.user.id,
+    ...(before.invoiceNumber ? { field: "invoiceNumber", oldValue: before.invoiceNumber } : {}),
+  });
 
   revalidatePath("/invoices");
   revalidatePath(`/invoices/${id}`);
@@ -227,9 +241,11 @@ export async function voidInvoiceWithPayments(id: string) {
     throw new Error("This invoice has no payments recorded — use the regular Void instead");
   }
 
+  // Same reasoning as voidInvoice above — invoiceNumber is @unique
+  // regardless of status, so it's freed up for reuse here too.
   await prisma.invoice.update({
     where: { id },
-    data: { status: "VOID", amountPaid: 0, paidAt: null, paymentMethod: null },
+    data: { status: "VOID", amountPaid: 0, paidAt: null, paymentMethod: null, invoiceNumber: null },
   });
 
   await recordAudit({
@@ -237,7 +253,7 @@ export async function voidInvoiceWithPayments(id: string) {
     entityId: id,
     action: "void_with_payments",
     actorId: session.user.id,
-    oldValue: `${before.status}, $${(before.amountPaid ?? 0).toFixed(2)} recorded`,
+    oldValue: `${before.status}, $${(before.amountPaid ?? 0).toFixed(2)} recorded${before.invoiceNumber ? `, #${before.invoiceNumber}` : ""}`,
   });
 
   revalidatePath("/invoices");
@@ -263,15 +279,17 @@ export async function markInvoicePaid(id: string) {
 }
 
 // A duplicate typed invoiceNumber is the one way this insert can fail on a
-// constraint rather than validation — surfaced as a plain, readable error
-// instead of Prisma's raw P2002 (there's no existing convention for this in
-// the codebase to follow, so this is deliberately duck-typed on `.code`
-// rather than importing Prisma's error class).
+// constraint rather than validation — see friendlyPrismaError in
+// src/lib/prisma-errors.ts for the general pattern this follows.
 function friendlyInvoiceNumberError(error: unknown): never {
-  if (error && typeof error === "object" && "code" in error && error.code === "P2002") {
-    throw new Error("That invoice number is already in use on another invoice");
-  }
-  throw error;
+  return friendlyPrismaError(error, {
+    duplicateMessages: {
+      invoiceNumber:
+        "That invoice number is already in use on another invoice — including voided ones from before this " +
+        "was fixed, since voiding didn't used to free it up. Pick a different number, or leave it blank to " +
+        "auto-assign one.",
+    },
+  });
 }
 
 // A PAID or PARTIALLY_PAID invoice that never got a Stripe invoice — see
@@ -614,6 +632,25 @@ export async function deletePayment(paymentId: string) {
   return { invoice, receiptAlreadySent };
 }
 
+// Shared by every "send" action below — whoever's sending can pick the
+// client's business email, their owner email, or type a one-off address
+// (see EmailRecipientPicker), instead of always defaulting to
+// businessEmail ?? ownerEmail. An override that's just whitespace is
+// treated the same as none, so a picker left on "business"/"owner"
+// doesn't need to special-case an empty custom-email field.
+function resolveRecipientEmail(
+  override: string | null | undefined,
+  client: { businessEmail: string | null; ownerEmail: string | null }
+) {
+  const trimmed = override?.trim() || undefined;
+  const email = trimmed ? z.string().email("Enter a valid email address").parse(trimmed) : undefined;
+  const recipientEmail = email ?? client.businessEmail ?? client.ownerEmail;
+  if (!recipientEmail) {
+    throw new Error("Client has no email on file — add one before sending, or type a different email for this send");
+  }
+  return recipientEmail;
+}
+
 const sendReceiptEmailInputSchema = z.string().min(1);
 
 // The only place a receipt email ever goes out — generation (addManualPayment
@@ -621,7 +658,7 @@ const sendReceiptEmailInputSchema = z.string().min(1);
 // per-receipt whether the client gets a copy. Safe to call more than once
 // (a "Resend" is just another send); sentAt/sentTo just track the most
 // recent one.
-export async function sendReceiptEmail(receiptId: string) {
+export async function sendReceiptEmail(receiptId: string, recipientEmailOverride?: string) {
   const session = await requireRole(MANAGE_ROLES);
   const id = sendReceiptEmailInputSchema.parse(receiptId);
 
@@ -634,8 +671,7 @@ export async function sendReceiptEmail(receiptId: string) {
   // payment was recorded (see addManualPayment) — nothing to send yet.
   if (!receipt.storageKey) throw new Error("This receipt's PDF failed to generate — try recording the payment again");
 
-  const recipientEmail = invoice.client.businessEmail ?? invoice.client.ownerEmail;
-  if (!recipientEmail) throw new Error("Client has no email on file — add one before sending");
+  const recipientEmail = resolveRecipientEmail(recipientEmailOverride, invoice.client);
 
   const number = displayInvoiceNumber(invoice);
   const receiptNumber = displayReceiptNumber(receipt);
@@ -715,8 +751,7 @@ export async function sendManualInvoicePdf(id: string, formData?: FormData) {
     throw new Error("This invoice is no longer awaiting payment");
   }
 
-  const recipientEmail = invoice.client.businessEmail ?? invoice.client.ownerEmail;
-  if (!recipientEmail) throw new Error("Client has no email on file — add one before sending");
+  const recipientEmail = resolveRecipientEmail(formData?.get("recipientEmail") as string | null, invoice.client);
 
   const extraAttachments = await readExtraAttachments(formData);
 
@@ -761,21 +796,38 @@ export async function sendManualInvoicePdf(id: string, formData?: FormData) {
 // Invoice + its line items, finalizes it (Stripe Tax computes the real tax
 // here), and stores everything back onto our row. Resend: the Stripe
 // invoice already exists — just re-trigger the email.
-export async function sendInvoice(id: string) {
+export async function sendInvoice(id: string, recipientEmailOverride?: string) {
   const session = await requireRole(MANAGE_ROLES);
   const invoice = await prisma.invoice.findUniqueOrThrow({ where: { id }, include: invoiceInclude });
+
+  const recipientEmail = resolveRecipientEmail(recipientEmailOverride, invoice.client);
+
+  // Stripe emails go to the Customer object's email, not a per-invoice
+  // address — a cached Customer (from an earlier send, to either this
+  // invoice or a prior one) gets its email synced to match what was picked
+  // here. Best-effort: a stale/deleted Stripe customer id, or any other
+  // hiccup reaching Stripe for this step, must not block the send itself —
+  // that's what actually matters, and the invoice/finalize calls below
+  // will surface a clearer error if the customer id is genuinely bad.
+  if (invoice.client.stripeCustomerId) {
+    try {
+      const customer = await retrieveCustomer(invoice.client.stripeCustomerId);
+      if (customer.email !== recipientEmail) {
+        await updateCustomerEmail(invoice.client.stripeCustomerId, recipientEmail);
+      }
+    } catch (error) {
+      console.error(`sendInvoice: failed to sync Stripe customer email for client ${invoice.client.id}:`, error);
+    }
+  }
 
   if (invoice.stripeInvoiceId) {
     await sendInvoiceRemote(invoice.stripeInvoiceId);
     await prisma.invoice.update({ where: { id }, data: { sentAt: new Date() } });
-    await recordAudit({ entityType: "Invoice", entityId: id, action: "send", actorId: session.user.id });
+    await recordAudit({ entityType: "Invoice", entityId: id, action: "send", actorId: session.user.id, newValue: recipientEmail });
     revalidatePath("/invoices");
     revalidatePath(`/invoices/${id}`);
     return;
   }
-
-  const recipientEmail = invoice.client.businessEmail ?? invoice.client.ownerEmail;
-  if (!recipientEmail) throw new Error("Client has no email on file — add one before sending");
 
   const { billingAddressLine1, billingCity, billingState, billingPostalCode, billingCountry } = invoice.client;
   if (!billingState || !billingPostalCode) {
@@ -990,42 +1042,47 @@ export async function importStripeInvoice(input: z.infer<typeof importStripeInvo
     );
   }
 
-  const created = await prisma.$transaction(async (tx) => {
-    if (!client.stripeCustomerId) {
-      await tx.client.update({ where: { id: client.id }, data: { stripeCustomerId: invoice.customer } });
-    }
-    return tx.invoice.create({
-      data: {
-        clientId: client.id,
-        applicationId: parsed.applicationId || undefined,
-        status,
-        issueDate: new Date(invoice.created * 1000),
-        dueDate: invoice.due_date ? new Date(invoice.due_date * 1000) : undefined,
-        total: invoice.total / 100,
-        taxAmount: (invoice.tax ?? 0) / 100,
-        stripeInvoiceId: invoice.id,
-        stripeInvoiceNumber: invoice.number,
-        hostedInvoiceUrl: invoice.hosted_invoice_url,
-        invoicePdfUrl: invoice.invoice_pdf,
-        sentAt: status !== "DRAFT" ? new Date(invoice.created * 1000) : undefined,
-        paidAt: invoice.status_transitions?.paid_at ? new Date(invoice.status_transitions.paid_at * 1000) : undefined,
-        importedAt: new Date(),
-        createdById: session.user.id,
-        lineItems: {
-          create: lines.map((li, index) => {
-            const quantity = li.quantity ?? 1;
-            return {
-              description: li.description || "Invoice item",
-              quantity,
-              unitPrice: li.amount / 100 / quantity,
-              sortOrder: index,
-            };
-          }),
+  const created = await prisma
+    .$transaction(async (tx) => {
+      if (!client.stripeCustomerId) {
+        await tx.client.update({ where: { id: client.id }, data: { stripeCustomerId: invoice.customer } });
+      }
+      return tx.invoice.create({
+        data: {
+          clientId: client.id,
+          applicationId: parsed.applicationId || undefined,
+          status,
+          issueDate: new Date(invoice.created * 1000),
+          dueDate: invoice.due_date ? new Date(invoice.due_date * 1000) : undefined,
+          total: invoice.total / 100,
+          taxAmount: (invoice.tax ?? 0) / 100,
+          stripeInvoiceId: invoice.id,
+          stripeInvoiceNumber: invoice.number,
+          hostedInvoiceUrl: invoice.hosted_invoice_url,
+          invoicePdfUrl: invoice.invoice_pdf,
+          sentAt: status !== "DRAFT" ? new Date(invoice.created * 1000) : undefined,
+          paidAt: invoice.status_transitions?.paid_at ? new Date(invoice.status_transitions.paid_at * 1000) : undefined,
+          importedAt: new Date(),
+          createdById: session.user.id,
+          lineItems: {
+            create: lines.map((li, index) => {
+              const quantity = li.quantity ?? 1;
+              return {
+                description: li.description || "Invoice item",
+                quantity,
+                unitPrice: li.amount / 100 / quantity,
+                sortOrder: index,
+              };
+            }),
+          },
         },
-      },
-      include: invoiceInclude,
-    });
-  });
+        include: invoiceInclude,
+      });
+    })
+    // Guards the narrow race between the findUnique check above and this
+    // insert (two people importing the same Stripe invoice at once) — the
+    // common case is already caught by that check with a clearer message.
+    .catch((e) => friendlyPrismaError(e, { duplicateMessages: { stripeInvoiceId: "This Stripe invoice has already been imported" } }));
 
   await recordAudit({
     entityType: "Invoice",

@@ -52,6 +52,7 @@ export function TaskDetailDialog({
   reviewerIds,
   hasReviewer,
   assignableUsers,
+  isCaregiver,
 }: {
   taskId: string;
   label: string;
@@ -63,6 +64,12 @@ export function TaskDetailDialog({
   reviewerIds: string[];
   hasReviewer: boolean;
   assignableUsers: Option[];
+  // Caregivers only get to touch status + comments here — label,
+  // description, due date, and assignees render as plain text. updateTask
+  // (src/lib/actions/tasks.ts) enforces the same restriction server-side
+  // regardless of what this prop is set to, so this only controls what
+  // the dialog offers to edit, not what's actually permitted.
+  isCaregiver?: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -157,12 +164,16 @@ export function TaskDetailDialog({
       >
         <SheetHeader className="pb-0">
           <SheetTitle className="flex items-center gap-2 pr-6">
-            <Input
-              value={localLabel}
-              onChange={(e) => setLocalLabel(e.target.value)}
-              onBlur={() => localLabel.trim() && save({ label: localLabel })}
-              className="h-9 flex-1 border-transparent px-0 text-lg font-semibold hover:border-input focus-visible:border-ring"
-            />
+            {isCaregiver ? (
+              <span className="h-9 flex-1 py-1.5 text-lg font-semibold">{localLabel}</span>
+            ) : (
+              <Input
+                value={localLabel}
+                onChange={(e) => setLocalLabel(e.target.value)}
+                onBlur={() => localLabel.trim() && save({ label: localLabel })}
+                className="h-9 flex-1 border-transparent px-0 text-lg font-semibold hover:border-input focus-visible:border-ring"
+              />
+            )}
             {isSaving && (
               <span className="flex shrink-0 items-center gap-1 text-xs font-normal text-muted-foreground">
                 <Loader2 className="size-3 animate-spin" /> Saving...
@@ -175,14 +186,20 @@ export function TaskDetailDialog({
           <div className="min-h-0 min-w-0 flex-1 overflow-y-auto px-4 pb-4 space-y-4">
             <div className="space-y-1">
               <label className="text-xs text-muted-foreground">Description</label>
-              <textarea
-                value={localDescription}
-                onChange={(e) => setLocalDescription(e.target.value)}
-                onBlur={() => save({ description: localDescription })}
-                rows={3}
-                placeholder="Add more detail..."
-                className="w-full rounded-lg border border-input bg-transparent p-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-              />
+              {isCaregiver ? (
+                <p className="whitespace-pre-wrap p-2.5 text-sm text-muted-foreground">
+                  {localDescription || "No description"}
+                </p>
+              ) : (
+                <textarea
+                  value={localDescription}
+                  onChange={(e) => setLocalDescription(e.target.value)}
+                  onBlur={() => save({ description: localDescription })}
+                  rows={3}
+                  placeholder="Add more detail..."
+                  className="w-full rounded-lg border border-input bg-transparent p-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                />
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -195,35 +212,46 @@ export function TaskDetailDialog({
                   save({ status: next });
                 }}
                 className="w-full"
+                loading={isSaving}
               />
             </div>
 
             <div className="space-y-1">
               <label className="text-xs text-muted-foreground">Assigned</label>
-              <MultiUserSelect
-                items={Object.fromEntries(assignableUsers.map((u) => [u.id, u.name]))}
-                value={localAssignedUserIds}
-                onValueChange={(next) => {
-                  setLocalAssignedUserIds(next);
-                  if (next.length > 0) save({ assignedUserIds: next });
-                }}
-              />
+              {isCaregiver ? (
+                <p className="py-1.5 text-sm">
+                  {assignableUsers.filter((u) => localAssignedUserIds.includes(u.id)).map((u) => u.name).join(", ") || "—"}
+                </p>
+              ) : (
+                <MultiUserSelect
+                  items={Object.fromEntries(assignableUsers.map((u) => [u.id, u.name]))}
+                  value={localAssignedUserIds}
+                  onValueChange={(next) => {
+                    setLocalAssignedUserIds(next);
+                    if (next.length > 0) save({ assignedUserIds: next });
+                  }}
+                />
+              )}
             </div>
 
             <div className="space-y-1">
               <label className="text-xs text-muted-foreground">Due date</label>
-              <Input
-                type="date"
-                value={localDueDate}
-                onChange={(e) => {
-                  setLocalDueDate(e.target.value);
-                  save({ dueDate: e.target.value });
-                }}
-                className="h-8"
-              />
+              {isCaregiver ? (
+                <p className="py-1.5 text-sm">{localDueDate || "No due date"}</p>
+              ) : (
+                <Input
+                  type="date"
+                  value={localDueDate}
+                  onChange={(e) => {
+                    setLocalDueDate(e.target.value);
+                    save({ dueDate: e.target.value });
+                  }}
+                  className="h-8"
+                />
+              )}
             </div>
 
-            {hasReviewer && (
+            {hasReviewer && !isCaregiver && (
               <div className="space-y-1">
                 <label className="text-xs text-muted-foreground">Reviewers</label>
                 <MultiUserSelect

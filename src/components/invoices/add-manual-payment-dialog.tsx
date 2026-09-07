@@ -77,7 +77,7 @@ export function AddManualPaymentDialog({ invoiceId, remaining }: { invoiceId: st
             <Input id="add-paidAt" type="date" value={paidAt} onChange={(e) => setPaidAt(e.target.value)} />
           </div>
           <PaymentMethodSelect value={paymentMethod} onChange={setPaymentMethod} />
-          <Button onClick={handleSubmit} className="w-full" disabled={isPending}>
+          <Button onClick={handleSubmit} className="w-full" loading={isPending}>
             {isPending ? "Recording..." : "Record payment"}
           </Button>
         </div>

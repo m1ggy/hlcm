@@ -6,15 +6,19 @@ import { prisma } from "@/lib/prisma";
 import { requireSession, requireRole, assertApplicationAccess, ForbiddenError, AppRole } from "@/lib/rbac";
 import { notify } from "@/lib/notifications";
 
+// Caregivers never hold an Application-level AccessGrant (see
+// ensureTaskAssigneeAccess in tasks.ts) — they always take the
+// assignee-only branch below, even for a task tied to a case, so
+// commenting on a task never implies broader access to its case.
 async function assertCanCommentOnTask(
   session: Awaited<ReturnType<typeof requireSession>>,
   task: { applicationId: string | null; createdById: string; assignees: { userId: string }[] }
 ) {
-  if (task.applicationId) {
+  const role = session.user.role as AppRole;
+  if (role !== "CAREGIVER" && task.applicationId) {
     await assertApplicationAccess(session, task.applicationId, "view");
     return;
   }
-  const role = session.user.role as AppRole;
   if (role === "ADMIN" || role === "MANAGER") return;
   const isAssignee = task.assignees.some((a) => a.userId === session.user.id);
   if (!isAssignee && task.createdById !== session.user.id) {

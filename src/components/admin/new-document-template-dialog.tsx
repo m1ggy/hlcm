@@ -173,7 +173,7 @@ export function NewDocumentTemplateDialog({ licenseTypes }: { licenseTypes: Lice
                 className="h-9 w-full rounded-lg border border-input bg-transparent text-sm file:mr-2 file:h-9 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground"
               />
             </div>
-            <Button type="submit" className="w-full" disabled={isPending}>
+            <Button type="submit" className="w-full" loading={isPending}>
               {isPending ? "Scanning..." : "Next: Map Fields"}
             </Button>
           </form>
@@ -243,10 +243,10 @@ export function NewDocumentTemplateDialog({ licenseTypes }: { licenseTypes: Lice
               ))}
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" className="flex-1" onClick={() => setStep(1)} disabled={isPending}>
+              <Button variant="outline" className="flex-1" onClick={() => setStep(1)} loading={isPending}>
                 Back
               </Button>
-              <Button className="flex-1" onClick={handleCreate} disabled={isPending}>
+              <Button className="flex-1" onClick={handleCreate} loading={isPending}>
                 {isPending ? "Creating..." : "Create Template"}
               </Button>
             </div>

@@ -43,7 +43,7 @@ export function GeneratedDocumentsTable({
   canEdit: boolean;
 }) {
   const router = useRouter();
-  const [, startTransition] = useTransition();
+  const [isChangingStatus, startTransition] = useTransition();
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   function handleStatusChange(id: string, status: "DRAFT" | "APPROVED" | "SENT") {
@@ -102,6 +102,7 @@ export function GeneratedDocumentsTable({
                     items={STATUS_LABELS}
                     value={doc.status}
                     onValueChange={(v) => handleStatusChange(doc.id, (v ?? "DRAFT") as "DRAFT" | "APPROVED" | "SENT")}
+                    disabled={isChangingStatus}
                   >
                     <SelectTrigger size="sm" className="w-[8.5rem]">
                       <SelectValue />
@@ -132,7 +133,7 @@ export function GeneratedDocumentsTable({
                     <Button
                       variant="ghost"
                       size="icon-sm"
-                      disabled={deletingId === doc.id}
+                      loading={deletingId === doc.id}
                       onClick={() => handleDelete(doc.id)}
                     >
                       <Trash2 className="size-3.5" />

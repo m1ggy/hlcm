@@ -84,8 +84,8 @@ function NewCredentialDialog({ clientId }: { clientId: string }) {
         </DialogHeader>
         <form action={handleSubmit} className="space-y-4">
           <CredentialFields />
-          <Button type="submit" className="w-full" disabled={isPending}>
-            {isPending ? "Adding..." : "Add"}
+          <Button type="submit" className="w-full" loading={isPending}>
+            Add
           </Button>
         </form>
       </DialogContent>
@@ -118,8 +118,8 @@ function EditCredentialDialog({ credential }: { credential: ClientCredential }) 
         </DialogHeader>
         <form action={handleSubmit} className="space-y-4">
           <CredentialFields defaultValues={credential} />
-          <Button type="submit" className="w-full" disabled={isPending}>
-            {isPending ? "Saving..." : "Save"}
+          <Button type="submit" className="w-full" loading={isPending}>
+            Save
           </Button>
         </form>
       </DialogContent>
@@ -143,7 +143,7 @@ function DeleteCredentialButton({ credential }: { credential: ClientCredential }
   }
 
   return (
-    <Button variant="ghost" size="sm" onClick={handleDelete} disabled={isPending}>
+    <Button variant="ghost" size="sm" onClick={handleDelete} loading={isPending}>
       Remove
     </Button>
   );

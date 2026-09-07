@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { requireSession, applicationVisibilityFilter, AppRole } from "@/lib/rbac";
+import { caregiverClientScope } from "@/lib/caregiver-scope";
 
 export async function searchAll(query: string) {
   const session = await requireSession();
@@ -27,7 +28,12 @@ export async function searchAll(query: string) {
           where: { name: { contains: q, mode: "insensitive" }, active: true },
           take: 10,
         })
-      : [];
+      : role === "CAREGIVER"
+        ? await prisma.client.findMany({
+            where: { name: { contains: q, mode: "insensitive" }, active: true, ...caregiverClientScope(session.user.id) },
+            take: 10,
+          })
+        : [];
 
   const taskWhere =
     role === "ADMIN" || role === "MANAGER"

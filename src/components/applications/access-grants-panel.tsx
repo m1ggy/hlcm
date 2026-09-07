@@ -44,7 +44,7 @@ export function AccessGrantsPanel({
   canManage: boolean;
 }) {
   const router = useRouter();
-  const [, startTransition] = useTransition();
+  const [isPending, startTransition] = useTransition();
   const [selectedUserId, setSelectedUserId] = useState<string>(grantableUsers[0]?.id ?? "");
   const [selectedPermission, setSelectedPermission] = useState<"VIEW" | "EDIT">("VIEW");
 
@@ -121,7 +121,7 @@ export function AccessGrantsPanel({
               <SelectItem value="EDIT">Can edit</SelectItem>
             </SelectContent>
           </Select>
-          <Button size="sm" onClick={handleAdd}>
+          <Button size="sm" onClick={handleAdd} loading={isPending}>
             Share
           </Button>
         </div>
@@ -171,7 +171,7 @@ export function AccessGrantsPanel({
                 </TableCell>
                 <TableCell>
                   {canManage && (
-                    <Button variant="ghost" size="icon-sm" onClick={() => handleRemove(grant.id)}>
+                    <Button variant="ghost" size="icon-sm" onClick={() => handleRemove(grant.id)} loading={isPending}>
                       <X className="size-3.5" />
                     </Button>
                   )}

@@ -23,7 +23,7 @@ import {
 
 type Option = { id: string; name: string };
 
-const ROLES = ["ADMIN", "MANAGER", "STAFF", "CLIENT"] as const;
+const ROLES = ["ADMIN", "MANAGER", "STAFF", "CLIENT", "CAREGIVER"] as const;
 const NONE = "__none__";
 
 export function NewChecklistItemDialog({
@@ -140,7 +140,7 @@ export function NewChecklistItemDialog({
               <Input id="sortOrder" name="sortOrder" type="number" defaultValue={0} />
             </div>
           </div>
-          <Button type="submit" className="w-full" disabled={isPending || !caseTypeId}>
+          <Button type="submit" className="w-full" disabled={!caseTypeId} loading={isPending}>
             {isPending ? "Adding..." : "Add"}
           </Button>
         </form>

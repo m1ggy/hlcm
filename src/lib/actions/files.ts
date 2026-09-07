@@ -4,20 +4,25 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireSession, assertApplicationAccess, ForbiddenError, AppRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
+import { friendlyPrismaError } from "@/lib/prisma-errors";
 import { saveUploadedFile, deleteStoredFile, saveFileVersion, revertToGeneration } from "@/lib/storage";
 
 const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20MB — keep well under bodySizeLimit's 25MB
 
+// Same CAREGIVER carve-out as assertCanEditTask/assertCanCommentOnTask
+// (src/lib/actions/tasks.ts / notes.ts) — never routes through
+// Application-level access, so TaskDetailDialog's file pool doesn't throw
+// when a Caregiver opens one of their case-tied tasks.
 async function assertCanAccessTask(
   session: Awaited<ReturnType<typeof requireSession>>,
   task: { applicationId: string | null; createdById: string; assignees: { userId: string }[] },
   level: "view" | "edit"
 ) {
-  if (task.applicationId) {
+  const role = session.user.role as AppRole;
+  if (role !== "CAREGIVER" && task.applicationId) {
     await assertApplicationAccess(session, task.applicationId, level);
     return;
   }
-  const role = session.user.role as AppRole;
   if (role === "ADMIN" || role === "MANAGER") return;
   const isAssignee = task.assignees.some((a) => a.userId === session.user.id);
   if (!isAssignee && task.createdById !== session.user.id) {
@@ -46,10 +51,13 @@ async function assertCanAccessFileAsset(
 
 // Signed PDFs (SignatureEvent points at exact page/ratio coordinates on this
 // file's current bytes) can't be re-versioned — overwriting or reverting the
-// object would silently invalidate where the signature was flattened.
-function assertNotSigned(asset: { signatureEvents: { id: string }[] }) {
+// object would silently invalidate where the signature was flattened. Also
+// guards deletion: SignatureEvent.fileAssetId has no onDelete behavior, so
+// without this check deleting a signed file would fail on a raw foreign-key
+// error instead of a plain one.
+function assertNotSigned(asset: { signatureEvents: { id: string }[] }, action: "have new versions" | "be deleted" = "have new versions") {
   if (asset.signatureEvents.length > 0) {
-    throw new Error("This file has been signed and can't have new versions");
+    throw new Error(`This file has been signed and can't ${action}`);
   }
 }
 
@@ -123,8 +131,19 @@ export async function deleteFile(fileId: string, applicationId: string) {
   const session = await requireSession();
   await assertApplicationAccess(session, applicationId, "edit");
 
-  const asset = await prisma.fileAsset.findUniqueOrThrow({ where: { id: fileId } });
-  await prisma.fileAsset.delete({ where: { id: fileId } });
+  const asset = await prisma.fileAsset.findUniqueOrThrow({
+    where: { id: fileId },
+    include: { signatureEvents: { select: { id: true } } },
+  });
+  assertNotSigned(asset, "be deleted");
+  await prisma.fileAsset
+    .delete({ where: { id: fileId } })
+    .catch((e) =>
+      friendlyPrismaError(e, {
+        notFoundMessage: "That file is already gone — someone else may have just deleted it",
+        referencedMessage: "This file has been signed and can't be deleted",
+      })
+    );
   await deleteStoredFile(asset.storageKey);
 
   await recordAudit({
@@ -218,8 +237,19 @@ export async function deleteTaskFile(fileId: string, taskId: string) {
   });
   await assertCanAccessTask(session, task, "edit");
 
-  const asset = await prisma.fileAsset.findUniqueOrThrow({ where: { id: fileId } });
-  await prisma.fileAsset.delete({ where: { id: fileId } });
+  const asset = await prisma.fileAsset.findUniqueOrThrow({
+    where: { id: fileId },
+    include: { signatureEvents: { select: { id: true } } },
+  });
+  assertNotSigned(asset, "be deleted");
+  await prisma.fileAsset
+    .delete({ where: { id: fileId } })
+    .catch((e) =>
+      friendlyPrismaError(e, {
+        notFoundMessage: "That file is already gone — someone else may have just deleted it",
+        referencedMessage: "This file has been signed and can't be deleted",
+      })
+    );
   await deleteStoredFile(asset.storageKey);
 
   await recordAudit({

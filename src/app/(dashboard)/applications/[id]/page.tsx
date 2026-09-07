@@ -4,6 +4,7 @@ import {
   getApplication,
   getApplicationAuditLog,
   listAssignableUsers,
+  listTaskAssignableUsers,
   archiveApplication,
   restoreApplication,
 } from "@/lib/actions/applications";
@@ -45,13 +46,14 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { ApplicationStatus } from "@/lib/status";
-import { ForbiddenError, requireSession, getApplicationAccessLevel } from "@/lib/rbac";
+import { ForbiddenError, requireSession, getApplicationAccessLevel, blockCaregiverRoute } from "@/lib/rbac";
 
 export default async function ApplicationDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await blockCaregiverRoute();
   const { id } = await params;
 
   let application;
@@ -71,6 +73,7 @@ export default async function ApplicationDetailPage({
   const [
     clients,
     assignableUsers,
+    taskAssignableUsers,
     auditLog,
     taskData,
     files,
@@ -87,6 +90,7 @@ export default async function ApplicationDetailPage({
   ] = await Promise.all([
     listClients({ filter: "all" }),
     listAssignableUsers(),
+    listTaskAssignableUsers(),
     getApplicationAuditLog(id),
     listTasksForApplication(id),
     listFiles(id),
@@ -106,7 +110,10 @@ export default async function ApplicationDetailPage({
   const stepInfo = stepIndex === -1 ? null : { index: stepIndex + 1, total: forwardStages.length };
 
   const clientLookup = Object.fromEntries(clients.map((c) => [c.id, c.name]));
-  const userLookup = Object.fromEntries(assignableUsers.map((u) => [u.id, u.name]));
+  // Merged so a Caregiver task-assignee still resolves to a name in the
+  // audit log, even though they're excluded from the owner/manager
+  // pickers that use `assignableUsers` alone.
+  const userLookup = Object.fromEntries([...assignableUsers, ...taskAssignableUsers].map((u) => [u.id, u.name]));
   const licenseTypeLookup = Object.fromEntries(licenseTypes.map((l) => [l.id, l.name]));
   const caseTypeLookup = Object.fromEntries(caseTypes.map((c) => [c.id, c.name]));
 
@@ -167,7 +174,7 @@ export default async function ApplicationDetailPage({
                   ...task,
                   subtasks: task.subtasks.map((subtask) => ({ ...subtask, subtasks: [] })),
                 }))}
-                assignableUsers={assignableUsers}
+                assignableUsers={taskAssignableUsers}
                 defaultAssignedUserId={application.assignedUserId}
                 isAdmin={session.user.role === "ADMIN"}
               />

@@ -78,6 +78,8 @@ const ACTION_VERBS: Record<string, string> = {
   unshare: "Removed shared access",
   upload_file: "Uploaded a file",
   delete_file: "Deleted a file",
+  upload_attachment: "Uploaded an attachment",
+  delete_attachment: "Deleted an attachment",
   generate_document: "Generated a document",
   update_document_status: "Updated document status",
   delete_document: "Deleted a document",
@@ -117,6 +119,8 @@ const EVENT_ACTIONS = new Set([
   "unshare",
   "upload_file",
   "delete_file",
+  "upload_attachment",
+  "delete_attachment",
   "generate_document",
   "update_document_status",
   "delete_document",
@@ -154,6 +158,8 @@ export function formatEventDescription(
   if (action === "unshare") return "Removed a shared access grant";
   if (action === "upload_file" && newValue) return `Uploaded "${newValue}"`;
   if (action === "delete_file" && oldValue) return `Deleted "${oldValue}"`;
+  if (action === "upload_attachment" && newValue) return `Uploaded "${newValue}"`;
+  if (action === "delete_attachment" && oldValue) return `Deleted "${oldValue}"`;
   if (action === "generate_document" && newValue) return `Generated "${newValue}"`;
   if (action === "update_document_status" && newValue) {
     const [fileName, status] = newValue.split(":");

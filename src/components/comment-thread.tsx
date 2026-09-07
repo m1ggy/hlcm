@@ -2,7 +2,6 @@
 
 import { useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
 import { AvatarInitials } from "@/components/ui/avatar-initials";
 import { Button } from "@/components/ui/button";
 
@@ -121,8 +120,7 @@ export function CommentThread({
           rows={3}
           className="w-full rounded-lg border border-input bg-transparent p-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
         />
-        <Button size="sm" onClick={handleSubmit} disabled={isPending}>
-          {isPending && <Loader2 className="size-3.5 animate-spin" />}
+        <Button size="sm" onClick={handleSubmit} loading={isPending}>
           Comment
         </Button>
       </div>
