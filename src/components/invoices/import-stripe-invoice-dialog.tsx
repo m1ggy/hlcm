@@ -190,7 +190,7 @@ export function ImportStripeInvoiceDialog({
 
             {browseOpen && (
               <div className="space-y-3 rounded-lg border p-3">
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid sm:grid-cols-2 gap-2">
                   <div className="space-y-1">
                     <Label>Client</Label>
                     <SearchableSelect
@@ -250,7 +250,7 @@ export function ImportStripeInvoiceDialog({
 
           {preview && (
             <div className="space-y-3 rounded-lg border p-3">
-              <div className="grid grid-cols-2 gap-2 text-sm">
+              <div className="grid sm:grid-cols-2 gap-2 text-sm">
                 <div>
                   <p className="text-xs text-muted-foreground">Stripe customer</p>
                   <p>{preview.customerName ?? preview.customerEmail ?? preview.customerId}</p>

@@ -41,7 +41,7 @@ function CredentialFields({ defaultValues }: { defaultValues?: ClientCredential 
         <Label htmlFor="url">URL</Label>
         <Input id="url" name="url" placeholder="https://…" defaultValue={defaultValues?.url ?? ""} />
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid sm:grid-cols-2 gap-3">
         <div className="space-y-1">
           <Label htmlFor="username">Username</Label>
           <Input id="username" name="username" defaultValue={defaultValues?.username ?? ""} />

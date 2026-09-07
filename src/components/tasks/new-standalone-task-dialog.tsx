@@ -76,7 +76,7 @@ export function NewStandaloneTaskDialog({
               onValueChange={setAssignedUserIds}
             />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid sm:grid-cols-2 gap-4">
             <div className="space-y-1">
               <Label htmlFor="dueDate">Due date</Label>
               <Input id="dueDate" name="dueDate" type="date" />

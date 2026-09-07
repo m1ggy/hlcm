@@ -83,7 +83,7 @@ export function PayoutDetailsForm({
           {saved.currency} · saved {saved.updatedAt.toLocaleDateString()}
         </p>
       )}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid sm:grid-cols-2 gap-3">
         <div className="space-y-1">
           <Label>Payout currency</Label>
           <Select value={currency} onValueChange={(v) => v && loadFields(v)}>
@@ -116,7 +116,7 @@ export function PayoutDetailsForm({
       )}
 
       {!isLoadingFields && fields.length > 0 && (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid sm:grid-cols-2 gap-3">
           {fields.map((field) => (
             <div key={field.key} className="space-y-1">
               <Label htmlFor={field.key}>

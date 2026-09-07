@@ -20,13 +20,14 @@ export default async function PortalLayout({
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="flex items-center justify-between border-b px-4 py-3 md:px-6">
-        <Link href="/portal" className="text-lg font-semibold tracking-tight">
-          HCLM Client Portal
+      <header className="flex flex-wrap items-center justify-between gap-y-2 border-b px-4 py-3 md:px-6">
+        <Link href="/portal" className="shrink-0 text-lg font-semibold tracking-tight">
+          <span className="sm:hidden">HCLM</span>
+          <span className="hidden sm:inline">HCLM Client Portal</span>
         </Link>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center justify-end gap-3">
           <EmailNotificationsToggle initialEnabled={account.emailNotificationsEnabled} />
-          <span className="text-sm text-muted-foreground">{session.user.email}</span>
+          <span className="hidden text-sm text-muted-foreground sm:inline">{session.user.email}</span>
           <NotificationBell variant="portal" />
           <ThemeToggle />
           <form

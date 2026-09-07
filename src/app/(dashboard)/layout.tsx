@@ -25,12 +25,12 @@ export default async function DashboardLayout({
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset>
-        <header className="flex items-center justify-between gap-2 border-b px-4 py-3">
-          <div className="flex items-center gap-3">
+        <header className="flex flex-wrap items-center justify-between gap-x-2 gap-y-2 border-b px-4 py-3">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
             <SidebarTrigger />
             <SearchBox />
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex flex-wrap items-center justify-end gap-1">
             <TimeClockWidget
               initialClockIn={activeEntry ? activeEntry.clockIn.toISOString() : null}
               initialBreakStart={activeBreak ? activeBreak.breakStart.toISOString() : null}
@@ -42,9 +42,11 @@ export default async function DashboardLayout({
               data-tour="handbook-link"
               render={<a href="/handbook" target="_blank" rel="noopener noreferrer" />}
             >
-              <BookOpen className="size-3.5" /> Handbook
+              <BookOpen className="size-3.5" /> <span className="hidden sm:inline">Handbook</span>
             </Button>
-            <ProductTour role={session?.user?.role} />
+            <div className="hidden sm:block">
+              <ProductTour role={session?.user?.role} />
+            </div>
             <NotificationBell />
           </div>
         </header>

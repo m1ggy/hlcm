@@ -110,7 +110,7 @@ export function InvoiceFormDialog({
           <DialogTitle>{isEdit ? "Edit Invoice" : "New Invoice"}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid sm:grid-cols-2 gap-4">
             <div className="space-y-1">
               <Label>Client</Label>
               <SearchableSelect

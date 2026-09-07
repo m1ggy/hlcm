@@ -165,7 +165,7 @@ export function RecordPaymentDialog({
             </div>
           )}
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid sm:grid-cols-3 gap-4">
             <div className="space-y-1">
               <Label htmlFor="invoiceNumber">Invoice number (optional)</Label>
               <Input

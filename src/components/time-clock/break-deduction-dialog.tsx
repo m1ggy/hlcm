@@ -119,7 +119,7 @@ export function BreakDeductionDialog({
               searchPlaceholder="Search users..."
             />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid sm:grid-cols-2 gap-3">
             <div className="space-y-1">
               <Label htmlFor="breakFrom">From</Label>
               <Input id="breakFrom" type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />

@@ -72,7 +72,7 @@ export function ManualInvoiceEditor({
     <div className="space-y-4">
       <InvoiceLineItemsEditor lineItems={items} onChange={setItems} />
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid sm:grid-cols-2 gap-4">
         <div className="space-y-1">
           <Label htmlFor="editIssueDate">Issue date</Label>
           <Input id="editIssueDate" type="date" value={issueDateValue} onChange={(e) => setIssueDateValue(e.target.value)} />

@@ -60,7 +60,7 @@ export default async function ProjectDetailPage({
         </BreadcrumbList>
       </Breadcrumb>
 
-      <div className="flex items-start justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h1 className="text-2xl font-semibold">
             {project.name}
@@ -93,7 +93,7 @@ export default async function ProjectDetailPage({
         )}
       </div>
 
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-medium">Clients</h2>
         <div className="flex items-center gap-2">
           <ImportClientDialog projectId={project.id} clients={importableClients} />

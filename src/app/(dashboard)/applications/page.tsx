@@ -61,7 +61,7 @@ export default async function ApplicationsPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h1 className="text-2xl font-semibold">{showArchived ? "Archived Applications" : "Applications"}</h1>
           <Link

@@ -114,7 +114,7 @@ export function NewChecklistItemDialog({
             <Label htmlFor="phaseName">Phase (optional)</Label>
             <Input id="phaseName" name="phaseName" placeholder="e.g. Phase 1 — leave blank for a flat checklist" />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid sm:grid-cols-2 gap-4">
             <div className="space-y-1">
               <Label>Default role (optional)</Label>
               <Select

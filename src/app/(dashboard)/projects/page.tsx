@@ -29,7 +29,7 @@ export default async function ProjectsPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h1 className="text-2xl font-semibold">{showArchived ? "Archived Projects" : "Projects"}</h1>
           <Link href={showArchived ? "/projects" : "/projects?archived=1"} className="text-sm text-muted-foreground hover:underline">

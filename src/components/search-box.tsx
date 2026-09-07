@@ -32,7 +32,7 @@ export function SearchBox() {
         const q = new FormData(e.currentTarget).get("q");
         if (q) router.push(`/search?q=${encodeURIComponent(q.toString())}`);
       }}
-      className="relative w-full max-w-xs"
+      className="relative w-full min-w-0 max-w-40 sm:max-w-xs"
       data-tour="search"
     >
       <Search className="absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />

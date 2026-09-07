@@ -88,7 +88,7 @@ export function NewApplicationDialog({
             <Label htmlFor="description">Description</Label>
             <Input id="description" name="description" />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid sm:grid-cols-2 gap-4">
             <div className="space-y-1">
               <Label>License type (optional)</Label>
               <Select
