@@ -163,8 +163,12 @@ export function ClientsTable({
                   ))}
                 </div>
               </TableCell>
-              <TableCell>{client.contactInfo ?? "—"}</TableCell>
-              <TableCell>{client.address ?? "—"}</TableCell>
+              <TableCell className="max-w-[14rem] truncate" title={client.contactInfo ?? undefined}>
+                {client.contactInfo ?? "—"}
+              </TableCell>
+              <TableCell className="max-w-[14rem] truncate" title={client.address ?? undefined}>
+                {client.address ?? "—"}
+              </TableCell>
               {canArchive && (
                 <TableCell className="text-right">
                   <ArchiveButton
