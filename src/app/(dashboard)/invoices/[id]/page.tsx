@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { TriangleAlert, PenLine, Download } from "lucide-react";
 import { getInvoice, getInvoiceAuditLog } from "@/lib/actions/invoices";
+import { listInvoiceAttachments } from "@/lib/actions/invoice-attachments";
 import { displayInvoiceNumber, displayReceiptNumber } from "@/lib/invoice-format";
 import { listClients } from "@/lib/actions/clients";
 import { listApplications } from "@/lib/actions/applications";
@@ -10,6 +11,7 @@ import { InvoiceActions } from "@/components/invoices/invoice-actions";
 import { ManualInvoiceEditor } from "@/components/invoices/manual-invoice-editor";
 import { SendReceiptDialog } from "@/components/invoices/send-receipt-dialog";
 import { PaymentRowActions } from "@/components/invoices/payment-row-actions";
+import { InvoiceAttachments } from "@/components/invoices/invoice-attachments";
 import { AuditLogPanel } from "@/components/applications/audit-log-panel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -35,10 +37,11 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
     throw error;
   }
 
-  const [auditLog, clients, applications] = await Promise.all([
+  const [auditLog, clients, applications, attachments] = await Promise.all([
     getInvoiceAuditLog(id),
     listClients({ filter: "all" }),
     listApplications(),
+    listInvoiceAttachments(id),
   ]);
 
   const number = displayInvoiceNumber(invoice);
@@ -252,6 +255,15 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               </CardContent>
             </Card>
           )}
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Attachments</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <InvoiceAttachments invoiceId={invoice.id} attachments={attachments} canEdit />
+            </CardContent>
+          </Card>
 
           <Card>
             <CardHeader>
