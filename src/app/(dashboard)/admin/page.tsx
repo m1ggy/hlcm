@@ -10,6 +10,7 @@ const ADMIN_LINKS = [
   { href: "/admin/document-templates", label: "Document Templates", description: "Merge-tag handbooks and policies generated per client" },
   { href: "/admin/invoice-profiles", label: "Invoice Profiles", description: "Billing identities (logo, CC recipients, footer text) for manual invoices" },
   { href: "/admin/client-groups", label: "Client Groups", description: "Bundle related clients into one section on the Invoices page" },
+  { href: "/admin/forms", label: "Forms", description: "Public intake forms — build one and share its link, no login required to fill it out" },
 ];
 
 export default async function AdminPage() {
