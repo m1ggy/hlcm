@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { applicationVisibilityFilter } from "@/lib/rbac";
+import { applicationVisibilityFilter, blockCaregiverRoute } from "@/lib/rbac";
 import { getDashboardStats } from "@/lib/actions/dashboard";
 import { listApplicationAlerts, listMcoAlerts } from "@/lib/actions/alerts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,6 +28,14 @@ function StatCard({ href, label, count }: { href: string; label: string; count: 
 }
 
 export default async function HomePage() {
+  // Not a page a Caregiver would ever navigate to on purpose (no "Home"
+  // link in their sidebar — see CAREGIVER_LINKS in app-sidebar-nav.tsx),
+  // but login lands everyone here by default. Without this, the alerts
+  // calls below throw ForbiddenError (ADMIN/MANAGER/STAFF-only) and crash
+  // the page instead of redirecting cleanly, same failure mode this guard
+  // already prevents on every other top-level page.
+  await blockCaregiverRoute();
+
   const session = await auth();
   if (!session?.user) return null;
 

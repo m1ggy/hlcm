@@ -159,8 +159,11 @@ export async function listAssignableUsers() {
 // Same shape as listAssignableUsers, plus CAREGIVER — for task-assignee
 // pickers specifically (a Caregiver can be handed a checklist item), not
 // for the Application owner/manager pickers, which stay internal-staff-only.
+// A Caregiver must be able to call this themselves (it's what backs their
+// own /tasks page), so CAREGIVER has to be in the gate here too, not just
+// in the query below.
 export async function listTaskAssignableUsers() {
-  await requireRole(["ADMIN", "MANAGER", "STAFF"]);
+  await requireRole(["ADMIN", "MANAGER", "STAFF", "CAREGIVER"]);
   return prisma.user.findMany({
     where: { active: true, role: { in: ["ADMIN", "MANAGER", "STAFF", "CAREGIVER"] } },
     orderBy: { name: "asc" },
