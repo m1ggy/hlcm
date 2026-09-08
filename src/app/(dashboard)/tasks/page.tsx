@@ -33,16 +33,18 @@ export default async function TasksPage() {
         </div>
         {!isCaregiver && <NewStandaloneTaskDialog assignableUsers={assignableUsers} currentUserId={session.user.id} />}
       </div>
-      {tasks.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No tasks assigned to you yet.</p>
-      ) : (
-        <MyTasksView
-          tasks={tasks}
-          assignableUsers={assignableUsers}
-          isAdmin={session.user.role === "ADMIN"}
-          isCaregiver={isCaregiver}
-        />
-      )}
+      <div data-tour="task-list">
+        {tasks.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No tasks assigned to you yet.</p>
+        ) : (
+          <MyTasksView
+            tasks={tasks}
+            assignableUsers={assignableUsers}
+            isAdmin={session.user.role === "ADMIN"}
+            isCaregiver={isCaregiver}
+          />
+        )}
+      </div>
     </div>
   );
 }

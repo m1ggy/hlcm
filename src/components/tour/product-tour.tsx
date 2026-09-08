@@ -7,15 +7,23 @@ import "driver.js/dist/driver.css";
 import { Compass } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-// The tour walks across a handful of pages (Applications → Clients → Time →
-// Account → Admin) rather than staying on one screen — each step carries the
-// route it needs via `data.path`. onNextClick/onPrevClick below check
-// whether the next/previous step lives on a different route and navigate
-// there before repositioning driver.js, instead of just calling
-// moveNext()/movePrevious() like a same-page tour would.
+// The tour walks across a handful of pages rather than staying on one
+// screen — each step carries the route it needs via `data.path`.
+// onNextClick/onPrevClick below check whether the next/previous step lives
+// on a different route and navigate there before repositioning driver.js,
+// instead of just calling moveNext()/movePrevious() like a same-page tour
+// would.
 type TourStep = DriveStep & { data: { path: string } };
 
-function buildSteps(role: string | undefined): TourStep[] {
+// Every role that reaches this component gets its own step list, built to
+// match exactly what that role's own sidebar/layout shows — a shared list
+// with steps silently skipped for missing elements looked right for
+// ADMIN/MANAGER/STAFF (who differ by a few extra sections each) but fell
+// apart for CAREGIVER and CLIENT, whose UIs aren't a subset of the staff
+// layout at all (different pages, different — or no — sidebar, no
+// Applications/Projects/Time/Invoices/Admin to skip past).
+
+function buildStaffSteps(role: string | undefined): TourStep[] {
   const isAdmin = role === "ADMIN";
   const canSeeAllUsersTime = isAdmin || role === "MANAGER";
   const canManageInvoices = isAdmin || role === "MANAGER";
@@ -63,6 +71,15 @@ function buildSteps(role: string | undefined): TourStep[] {
       popover: {
         title: "My Tasks",
         description: "Recurring or one-off work that isn't tied to any case — ops jobs, credential renewals, that kind of thing. Anything with subtasks expands right in the list.",
+        side: "right",
+      },
+    },
+    {
+      data: { path: "/applications" },
+      element: '[data-tour="nav-form-submissions"]',
+      popover: {
+        title: "Form Submissions",
+        description: "The review queue for anyone who filled out one of your public intake forms. Create a new Client from a submission's answers, attach it to an existing one, or dismiss it as spam — nothing becomes a Client until you say so.",
         side: "right",
       },
     },
@@ -282,6 +299,150 @@ function buildSteps(role: string | undefined): TourStep[] {
   return steps;
 }
 
+// A Caregiver's whole UI is My Tasks + Clients + Account (see
+// CAREGIVER_LINKS in app-sidebar-nav.tsx) — everything else in the staff
+// tour above (Projects, Applications, pipeline board, Invoices, Admin)
+// doesn't exist for this role at all, so it gets its own short list rather
+// than reusing the staff one with steps skipped.
+function buildCaregiverSteps(): TourStep[] {
+  return [
+    {
+      data: { path: "/tasks" },
+      element: '[data-tour="task-list"]',
+      popover: {
+        title: "My Tasks",
+        description: "Everything assigned to you — checklist items from cases you're helping with, plus any one-off task someone hands you directly. Anything with subtasks expands right in the list.",
+        side: "top",
+      },
+    },
+    {
+      data: { path: "/tasks" },
+      element: '[data-tour="nav-clients"]',
+      popover: {
+        title: "Clients",
+        description: "The businesses behind your own task assignments — read-only, just contact details and your tasks there. No billing, no other clients' cases.",
+        side: "right",
+      },
+    },
+    {
+      data: { path: "/tasks" },
+      element: '[data-tour="nav-settings"]',
+      popover: {
+        title: "Account",
+        description: "Password, MFA, your signature, notification preferences, and payout details for Wise — add your bank details here so a payroll run has somewhere to send your pay.",
+        side: "right",
+      },
+    },
+    {
+      data: { path: "/tasks" },
+      element: '[data-tour="time-clock"]',
+      popover: {
+        title: "Clock in / out",
+        description: "Stays in the header on every page. Clock in when you start, clock out when you're done — a manager or admin pulls your hours from their own report.",
+        side: "bottom",
+      },
+    },
+    {
+      data: { path: "/tasks" },
+      element: '[data-tour="handbook-link"]',
+      popover: {
+        title: "Handbook",
+        description: "A written walkthrough, including a section written specifically for Caregiver accounts — opens in a new tab, no login needed.",
+        side: "bottom",
+      },
+    },
+    {
+      data: { path: "/tasks" },
+      element: '[data-tour="search"]',
+      popover: {
+        title: "Quick search",
+        description: "Jump straight to a client or case by name. Ctrl+K (⌘K on a Mac) does the same thing from anywhere.",
+        side: "bottom",
+      },
+    },
+    {
+      data: { path: "/tasks" },
+      element: '[data-tour="notifications"]',
+      popover: {
+        title: "Notifications",
+        description: "New task assignments and reassignments land here.",
+        side: "bottom",
+        align: "end",
+      },
+    },
+    {
+      data: { path: "/clients" },
+      element: '[data-slot="table-container"]',
+      popover: {
+        title: "Your clients",
+        description: "Click one for its contact details and your own tasks there — each still editable for status and notes.",
+        side: "top",
+      },
+      // Empty for a Caregiver with no assignments yet.
+      skipMissingElement: true,
+      waitForElement: 0,
+    },
+    {
+      data: { path: "/account" },
+      element: '[data-tour="payout-details"]',
+      popover: {
+        title: "Payout details",
+        description: "The fields change based on country — a US routing number, an Indian IFSC code, a Pakistani IBAN — pulled live from Wise, not hardcoded.",
+        side: "top",
+      },
+    },
+  ];
+}
+
+// The client portal (src/app/(portal)/) is a separate, single-page layout
+// with no sidebar at all — nothing in the staff or Caregiver lists above
+// applies, so this is built from scratch around the one page a CLIENT
+// session ever lands on.
+function buildClientSteps(): TourStep[] {
+  return [
+    {
+      data: { path: "/portal" },
+      element: '[data-tour="portal-applications"]',
+      popover: {
+        title: "Your Applications",
+        description: "Every case that's been shared with you, each showing its current stage or status. Click a card to open its Checklist, Files, and Documents tabs — the same checklist phases staff work from, any documents once they're sent to you, and files you can download (or upload to, if you've been given edit access).",
+        side: "bottom",
+      },
+    },
+    {
+      data: { path: "/portal" },
+      element: '[data-tour="email-notifications"]',
+      popover: {
+        title: "Email notifications",
+        description: "On by default — you'll get an email whenever a shared case's status changes. Turn it off here if you'd rather just check the bell.",
+        side: "bottom",
+      },
+    },
+    {
+      data: { path: "/portal" },
+      element: '[data-tour="notifications"]',
+      popover: {
+        title: "Notifications",
+        description: "Status changes and new shares land here. Click one to jump straight to that case.",
+        side: "bottom",
+        align: "end",
+      },
+    },
+  ];
+}
+
+function buildSteps(role: string | undefined): TourStep[] {
+  if (role === "CAREGIVER") return buildCaregiverSteps();
+  if (role === "CLIENT") return buildClientSteps();
+  return buildStaffSteps(role);
+}
+
+function firstPathFor(role: string | undefined): string {
+  if (role === "CAREGIVER") return "/tasks";
+  if (role === "CLIENT") return "/portal";
+  return "/applications";
+}
+
 export function ProductTour({ role }: { role?: string }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -347,7 +508,7 @@ export function ProductTour({ role }: { role?: string }) {
   }, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleClick() {
-    const firstPath = steps[0]?.data.path ?? "/applications";
+    const firstPath = steps[0]?.data.path ?? firstPathFor(role);
     if (pathname === firstPath) {
       start(0);
     } else {

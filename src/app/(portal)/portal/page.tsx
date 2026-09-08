@@ -10,34 +10,36 @@ export default async function PortalHomePage() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold">Your Applications</h1>
-      {applications.length === 0 && (
-        <p className="text-muted-foreground">No applications have been shared with you yet.</p>
-      )}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {applications.map((app) => (
-          <Link key={app.id} href={`/portal/applications/${app.id}`}>
-            <Card className="h-full transition-colors hover:bg-muted/50">
-              <CardHeader>
-                <CardTitle className="text-base">{app.name}</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <p className="text-sm text-muted-foreground">{app.client.name}</p>
-                {app.stage ? (
-                  <span
-                    className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
-                    style={{ backgroundColor: app.stage.hex, color: "#fff" }}
-                  >
-                    {app.stage.name}
-                  </span>
-                ) : (
-                  <Badge variant={STATUS_BADGE_VARIANT[app.status as ApplicationStatus]}>
-                    {STATUS_LABELS[app.status as ApplicationStatus]}
-                  </Badge>
-                )}
-              </CardContent>
-            </Card>
-          </Link>
-        ))}
+      <div data-tour="portal-applications" className="space-y-4">
+        {applications.length === 0 && (
+          <p className="text-muted-foreground">No applications have been shared with you yet.</p>
+        )}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {applications.map((app) => (
+            <Link key={app.id} href={`/portal/applications/${app.id}`}>
+              <Card className="h-full transition-colors hover:bg-muted/50">
+                <CardHeader>
+                  <CardTitle className="text-base">{app.name}</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <p className="text-sm text-muted-foreground">{app.client.name}</p>
+                  {app.stage ? (
+                    <span
+                      className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
+                      style={{ backgroundColor: app.stage.hex, color: "#fff" }}
+                    >
+                      {app.stage.name}
+                    </span>
+                  ) : (
+                    <Badge variant={STATUS_BADGE_VARIANT[app.status as ApplicationStatus]}>
+                      {STATUS_LABELS[app.status as ApplicationStatus]}
+                    </Badge>
+                  )}
+                </CardContent>
+              </Card>
+            </Link>
+          ))}
+        </div>
       </div>
     </div>
   );

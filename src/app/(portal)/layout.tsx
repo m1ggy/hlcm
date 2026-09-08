@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { EmailNotificationsToggle } from "@/components/account/email-notifications-toggle";
+import { ProductTour } from "@/components/tour/product-tour";
 
 export default async function PortalLayout({
   children,
@@ -29,6 +30,9 @@ export default async function PortalLayout({
           <EmailNotificationsToggle initialEnabled={account.emailNotificationsEnabled} />
           <span className="hidden text-sm text-muted-foreground sm:inline">{session.user.email}</span>
           <NotificationBell variant="portal" />
+          <div className="hidden sm:block">
+            <ProductTour role={session.user.role} />
+          </div>
           <ThemeToggle />
           <form
             action={async () => {
