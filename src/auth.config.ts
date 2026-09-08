@@ -21,7 +21,13 @@ export const authConfig = {
         // by signature (see verifyWebhookSignature), not by cookie. Without
         // this, the proxy 307-redirects every webhook POST to /login before
         // it ever reaches the route handler.
-        pathname.startsWith("/api/webhooks");
+        pathname.startsWith("/api/webhooks") ||
+        // The public intake-form fill/submit page — the one place in the
+        // app anyone can write to with no session at all (see
+        // src/lib/actions/public-forms.ts). Everything else under /forms
+        // (the admin builder, the submissions inbox) lives under
+        // (dashboard) and stays behind the normal auth check.
+        pathname.startsWith("/forms/");
       if (isPublicPath) return true;
       return isLoggedIn;
     },

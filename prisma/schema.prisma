@@ -174,6 +174,8 @@ model User {
   clientGroupsCreated           ClientGroup[]             @relation("ClientGroupCreatedBy")
   breakDeductionsFor            TimesheetBreakDeduction[] @relation("TimesheetBreakDeductionUser")
   breakDeductionsCreated        TimesheetBreakDeduction[] @relation("TimesheetBreakDeductionCreatedBy")
+  formTemplatesCreated          FormTemplate[]            @relation("FormTemplateCreatedBy")
+  formSubmissionsReviewed       FormSubmission[]          @relation("FormSubmissionReviewedBy")
 
   @@map("users")
 }
@@ -383,11 +385,12 @@ model Client {
   clientGroup   ClientGroup? @relation(fields: [clientGroupId], references: [id], onDelete: SetNull)
   clientGroupId String?
 
-  applications   Application[]
-  notes          Note[]
-  mcoCredentials McoCredential[]
-  credentials    ClientCredential[]
-  invoices       Invoice[]
+  applications    Application[]
+  notes           Note[]
+  mcoCredentials  McoCredential[]
+  credentials     ClientCredential[]
+  invoices        Invoice[]
+  formSubmissions FormSubmission[]
 
   @@index([clientGroupId])
   @@map("clients")
@@ -1168,4 +1171,111 @@ model InvoiceProfile {
   invoices Invoice[]
 
   @@map("invoice_profiles")
+}
+
+// --- Form builder / public intake forms ------------------------------------
+// A public, unauthenticated surface (see isPublicPath in src/auth.config.ts)
+// — the one place in the app anyone can write to without a session. Every
+// submission lands as PENDING for staff to triage; nothing here ever
+// creates or touches a Client on its own (see createClientFromSubmission /
+// attachSubmissionToClient in src/lib/actions/form-submissions.ts).
+
+enum FormFieldType {
+  TEXT
+  LONG_TEXT
+  EMAIL
+  PHONE
+  DATE
+  SELECT
+  CHECKBOX
+  FILE
+}
+
+enum FormSubmissionStatus {
+  PENDING
+  REVIEWED
+  DISMISSED
+}
+
+model FormTemplate {
+  id          String   @id @default(cuid())
+  name        String
+  // URL-friendly and unique — the public link is /forms/{slug}, so this is
+  // effectively load-bearing (share it wrong and the form 404s), not just
+  // cosmetic.
+  slug        String   @unique
+  description String?
+  active      Boolean  @default(true)
+  createdBy   User     @relation("FormTemplateCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  fields      FormField[]
+  submissions FormSubmission[]
+
+  @@map("form_templates")
+}
+
+// One field in a template. `key` is what the submitted answers JSON is
+// keyed by (see FormSubmission.answers) — stable even if `label` is edited
+// later. `clientField` is this field's optional mapping onto a Client
+// column (e.g. "businessEmail") for pre-filling "Create client from this"
+// in the review queue; left null, the answer is still shown for reference
+// but never auto-filled anywhere.
+model FormField {
+  id          String        @id @default(cuid())
+  template    FormTemplate  @relation(fields: [templateId], references: [id])
+  templateId  String
+  key         String
+  label       String
+  type        FormFieldType
+  required    Boolean       @default(false)
+  options     String[]      // SELECT only
+  clientField String?
+  sortOrder   Int           @default(0)
+
+  @@unique([templateId, key])
+  @@map("form_fields")
+}
+
+// One filled-out form. `ipAddress` is spam triage only — deliberately never
+// surfaced as "who submitted this" anywhere in the UI, since it identifies
+// a request, not a person. `client`/`reviewedBy` stay null until staff acts
+// on it (see PENDING in FormSubmissionStatus).
+model FormSubmission {
+  id           String               @id @default(cuid())
+  template     FormTemplate         @relation(fields: [templateId], references: [id])
+  templateId   String
+  answers      Json
+  status       FormSubmissionStatus @default(PENDING)
+  client       Client?              @relation(fields: [clientId], references: [id])
+  clientId     String?
+  reviewedBy   User?                @relation("FormSubmissionReviewedBy", fields: [reviewedById], references: [id])
+  reviewedById String?
+  reviewedAt   DateTime?
+  ipAddress    String?
+  createdAt    DateTime             @default(now())
+
+  files FormSubmissionFile[]
+
+  @@map("form_submissions")
+}
+
+// A FILE-type field's upload — stored the same way every other upload in
+// the app is (saveUploadedFile in src/lib/storage.ts, virus-scanned before
+// it ever reaches GCS), just referenced from a submission instead of a
+// Task/Application/Invoice.
+model FormSubmissionFile {
+  id           String         @id @default(cuid())
+  submission   FormSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  submissionId String
+  fieldKey     String
+  fileName     String
+  storageKey   String
+  mimeType     String
+  sizeBytes    Int
+  createdAt    DateTime       @default(now())
+
+  @@map("form_submission_files")
 }

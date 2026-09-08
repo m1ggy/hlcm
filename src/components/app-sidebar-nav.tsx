@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FolderKanban, Users, ClipboardList, UserCog, CheckSquare, Clock, Receipt, Settings } from "lucide-react";
+import { FolderKanban, Users, ClipboardList, UserCog, CheckSquare, Clock, Receipt, Settings, Inbox } from "lucide-react";
 import {
   SidebarMenu,
   SidebarMenuButton,
@@ -14,6 +14,7 @@ const LINKS = [
   { href: "/clients", label: "Clients", icon: Users, tour: "nav-clients" },
   { href: "/applications", label: "Applications", icon: ClipboardList, tour: "nav-applications" },
   { href: "/tasks", label: "My Tasks", icon: CheckSquare, tour: "nav-tasks" },
+  { href: "/admin/forms/inbox", label: "Form Submissions", icon: Inbox, tour: "nav-form-submissions" },
   { href: "/time", label: "Time", icon: Clock, tour: "nav-time" },
 ];
 
