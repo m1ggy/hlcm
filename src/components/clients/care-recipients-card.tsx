@@ -3,10 +3,13 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { MapPin, X } from "lucide-react";
+import { MapPin, Pencil, X } from "lucide-react";
 import {
+  listCareRecipients,
   createCareRecipient,
+  updateCareRecipient,
   archiveCareRecipient,
+  restoreCareRecipient,
   assignCaregiver,
   unassignCaregiver,
 } from "@/lib/actions/care-recipients";
@@ -41,6 +44,45 @@ export type CareRecipientRow = {
   assignments: { caregiver: { id: string; name: string } }[];
 };
 
+// Shared by both Add and Edit — prefixed ids since this mounts on the same
+// Client detail page as ClientDetailsForm, which already owns plain #name/
+// #address/#contactInfo ids on its own always-visible, save-on-blur inputs.
+// An id collision here isn't just invalid HTML, it risks a label click or
+// fill targeting the Client's own live-saving field instead of this form's
+// (caught live during verification — see the geo-location-login plan).
+function CareRecipientFields({ defaultValues }: { defaultValues?: CareRecipientRow }) {
+  return (
+    <>
+      <div className="space-y-1">
+        <Label htmlFor="care-recipient-name">Name</Label>
+        <Input id="care-recipient-name" name="name" defaultValue={defaultValues?.name} required />
+      </div>
+      <div className="space-y-1">
+        <Label htmlFor="care-recipient-address">Address</Label>
+        <Input
+          id="care-recipient-address"
+          name="address"
+          placeholder="Where a caregiver visits them"
+          defaultValue={defaultValues?.address ?? ""}
+        />
+      </div>
+      <div className="space-y-1">
+        <Label htmlFor="care-recipient-contactInfo">Contact info</Label>
+        <Input
+          id="care-recipient-contactInfo"
+          name="contactInfo"
+          placeholder="Family member, phone, ..."
+          defaultValue={defaultValues?.contactInfo ?? ""}
+        />
+      </div>
+      <div className="space-y-1">
+        <Label htmlFor="care-recipient-notes">Notes</Label>
+        <Textarea id="care-recipient-notes" name="notes" rows={2} defaultValue={defaultValues?.notes ?? ""} />
+      </div>
+    </>
+  );
+}
+
 function NewCareRecipientDialog({ clientId }: { clientId: string }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -68,30 +110,45 @@ function NewCareRecipientDialog({ clientId }: { clientId: string }) {
           <DialogTitle>Add a care recipient</DialogTitle>
         </DialogHeader>
         <form action={handleSubmit} className="space-y-4">
-          {/* Prefixed ids — this dialog mounts on the same Client detail
-              page as ClientDetailsForm, which already owns plain #name/
-              #address/#contactInfo ids on its own always-visible,
-              save-on-blur inputs. An id collision here isn't just invalid
-              HTML, it risks a label click or fill targeting the Client's
-              own live-saving field instead of this form's. */}
-          <div className="space-y-1">
-            <Label htmlFor="care-recipient-name">Name</Label>
-            <Input id="care-recipient-name" name="name" required />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="care-recipient-address">Address</Label>
-            <Input id="care-recipient-address" name="address" placeholder="Where a caregiver visits them" />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="care-recipient-contactInfo">Contact info</Label>
-            <Input id="care-recipient-contactInfo" name="contactInfo" placeholder="Family member, phone, ..." />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="care-recipient-notes">Notes</Label>
-            <Textarea id="care-recipient-notes" name="notes" rows={2} />
-          </div>
+          <CareRecipientFields />
           <Button type="submit" className="w-full" loading={isPending}>
             Add
+          </Button>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EditCareRecipientDialog({ recipient }: { recipient: CareRecipientRow }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [isPending, startTransition] = useTransition();
+
+  function handleSubmit(formData: FormData) {
+    startTransition(async () => {
+      try {
+        await updateCareRecipient(recipient.id, formData);
+        toast.success("Care recipient updated");
+        setOpen(false);
+        router.refresh();
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Failed to update care recipient");
+      }
+    });
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger render={<Button variant="ghost" size="icon" className="size-7"><Pencil className="size-3.5" /></Button>} />
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Edit care recipient</DialogTitle>
+        </DialogHeader>
+        <form action={handleSubmit} className="space-y-4">
+          <CareRecipientFields defaultValues={recipient} />
+          <Button type="submit" className="w-full" loading={isPending}>
+            Save
           </Button>
         </form>
       </DialogContent>
@@ -203,6 +260,80 @@ function ArchiveRecipientButton({ id }: { id: string }) {
   );
 }
 
+function RestoreRecipientButton({ id, onRestored }: { id: string; onRestored: () => void }) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+
+  function handleRestore() {
+    startTransition(async () => {
+      try {
+        await restoreCareRecipient(id);
+        toast.success("Care recipient restored");
+        router.refresh();
+        onRestored();
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Failed to restore");
+      }
+    });
+  }
+
+  return (
+    <Button variant="ghost" size="sm" onClick={handleRestore} loading={isPending}>
+      Restore
+    </Button>
+  );
+}
+
+// Archived recipients aren't fetched up front with the active list — a
+// separate, on-demand section (client-side call to listCareRecipients with
+// filter: "archived") kept out of the way until someone actually needs to
+// find and restore one, same "hidden until asked for" shape the Clients
+// list page uses for its own archived view.
+function ArchivedRecipients({ clientId }: { clientId: string }) {
+  const [archived, setArchived] = useState<CareRecipientRow[] | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  function load() {
+    startTransition(async () => {
+      try {
+        const rows = await listCareRecipients({ clientId, filter: "archived" });
+        setArchived(rows);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Failed to load archived recipients");
+      }
+    });
+  }
+
+  if (archived === null) {
+    return (
+      <Button variant="link" size="sm" className="px-0" onClick={load} loading={isPending}>
+        Show archived
+      </Button>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-medium text-muted-foreground">Archived</p>
+        <Button variant="link" size="sm" className="px-0" onClick={() => setArchived(null)}>
+          Hide
+        </Button>
+      </div>
+      {archived.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No archived care recipients for this client.</p>
+      ) : (
+        archived.map((r) => (
+          <div key={r.id} className="flex items-center justify-between rounded-lg border border-dashed p-3">
+            <span className="text-sm text-muted-foreground">{r.name}</span>
+            <RestoreRecipientButton id={r.id} onRestored={load} />
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
 // Recipients ("who a Caregiver actually visits") are a different thing from
 // the Client itself (the licensing agency) — see prisma/schema.prisma. This
 // card is where an agency's own recipients live, mirroring
@@ -231,7 +362,10 @@ export function CareRecipientsCard({
               <div key={r.id} className="rounded-lg border p-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="font-medium">{r.name}</div>
-                  <ArchiveRecipientButton id={r.id} />
+                  <div className="flex items-center gap-1">
+                    <EditCareRecipientDialog recipient={r} />
+                    <ArchiveRecipientButton id={r.id} />
+                  </div>
                 </div>
                 <div className="mt-1 space-y-0.5 text-sm text-muted-foreground">
                   {r.address && (
@@ -259,6 +393,9 @@ export function CareRecipientsCard({
             ))}
           </div>
         )}
+        <div className="mt-3 border-t pt-3">
+          <ArchivedRecipients clientId={clientId} />
+        </div>
       </CardContent>
     </Card>
   );

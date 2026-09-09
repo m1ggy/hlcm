@@ -49,10 +49,18 @@ function auditTargetFor(recipient: { id: string; clientId: string | null }) {
     : { entityType: "CareRecipient" as const, entityId: recipient.id };
 }
 
-export async function listCareRecipients(opts: { clientId?: string } = {}) {
+// Same filter convention as listClients (src/lib/actions/clients.ts):
+// "active" (default) for day-to-day use, "archived" to review/restore ones
+// taken off a caregiver's list, "all" where an already-set value needs to
+// keep showing regardless of its current state.
+export async function listCareRecipients(opts: { clientId?: string; filter?: "active" | "archived" | "all" } = {}) {
   await requireRole([...MANAGE_ROLES]);
+  const filter = opts.filter ?? "active";
   return prisma.careRecipient.findMany({
-    where: { active: true, ...(opts.clientId ? { clientId: opts.clientId } : {}) },
+    where: {
+      ...(filter === "all" ? {} : { active: filter === "active" }),
+      ...(opts.clientId ? { clientId: opts.clientId } : {}),
+    },
     include: {
       client: { select: { id: true, name: true } },
       assignments: { include: { caregiver: { select: { id: true, name: true } } } },
@@ -134,6 +142,16 @@ export async function archiveCareRecipient(id: string) {
   const recipient = await prisma.careRecipient.update({ where: { id }, data: { active: false } });
 
   await recordAudit({ ...auditTargetFor(recipient), action: "archive", actorId: session.user.id });
+
+  revalidatePath("/clients");
+  if (recipient.clientId) revalidatePath(`/clients/${recipient.clientId}`);
+}
+
+export async function restoreCareRecipient(id: string) {
+  const session = await requireRole(["ADMIN", "MANAGER"]);
+  const recipient = await prisma.careRecipient.update({ where: { id }, data: { active: true } });
+
+  await recordAudit({ ...auditTargetFor(recipient), action: "restore", actorId: session.user.id });
 
   revalidatePath("/clients");
   if (recipient.clientId) revalidatePath(`/clients/${recipient.clientId}`);
