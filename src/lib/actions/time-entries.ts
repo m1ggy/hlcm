@@ -26,7 +26,18 @@ export async function getMyActiveBreak() {
   });
 }
 
-export async function clockIn() {
+// GPS captured client-side (see TimeClockWidget) around the moment of the
+// action — record-only, never validated or required here. A Caregiver with
+// no recipient assignments, a denied location permission, or any other
+// role entirely just omits this and clocks in/out exactly as before.
+type LocationInput = {
+  latitude?: number;
+  longitude?: number;
+  accuracy?: number;
+  locationError?: string;
+};
+
+export async function clockIn(input: { careRecipientId?: string } & LocationInput = {}) {
   const session = await requireSession();
   const open = await prisma.timeEntry.findFirst({
     where: { userId: session.user.id, clockOut: null },
@@ -34,7 +45,15 @@ export async function clockIn() {
   if (open) throw new TimeClockError("Already clocked in");
 
   const entry = await prisma.timeEntry.create({
-    data: { userId: session.user.id, clockIn: new Date() },
+    data: {
+      userId: session.user.id,
+      clockIn: new Date(),
+      careRecipientId: input.careRecipientId,
+      clockInLatitude: input.latitude,
+      clockInLongitude: input.longitude,
+      clockInLocationAccuracy: input.accuracy,
+      clockInLocationError: input.locationError,
+    },
   });
 
   await recordAudit({
@@ -48,7 +67,7 @@ export async function clockIn() {
   return entry;
 }
 
-export async function clockOut() {
+export async function clockOut(input: LocationInput = {}) {
   const session = await requireSession();
   const open = await prisma.timeEntry.findFirst({
     where: { userId: session.user.id, clockOut: null },
@@ -58,7 +77,13 @@ export async function clockOut() {
 
   const entry = await prisma.timeEntry.update({
     where: { id: open.id },
-    data: { clockOut: new Date() },
+    data: {
+      clockOut: new Date(),
+      clockOutLatitude: input.latitude,
+      clockOutLongitude: input.longitude,
+      clockOutLocationAccuracy: input.accuracy,
+      clockOutLocationError: input.locationError,
+    },
   });
 
   await recordAudit({
@@ -227,7 +252,10 @@ export async function listTimeEntries(input: TimeEntryRangeInput) {
       clockIn: { lte: to },
       OR: [{ clockOut: null }, { clockOut: { gte: from } }],
     },
-    include: { user: { select: { id: true, name: true, hourlyRate: true } } },
+    include: {
+      user: { select: { id: true, name: true, hourlyRate: true } },
+      careRecipient: { select: { id: true, name: true } },
+    },
     orderBy: [{ userId: "asc" }, { clockIn: "asc" }],
   });
 }

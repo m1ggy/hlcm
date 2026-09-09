@@ -11,6 +11,7 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/s
 import { Button } from "@/components/ui/button";
 import { BookOpen } from "lucide-react";
 import { getMyActiveEntry, getMyActiveBreak } from "@/lib/actions/time-entries";
+import { listMyCareRecipients } from "@/lib/actions/care-recipients";
 
 export default async function DashboardLayout({
   children,
@@ -19,7 +20,12 @@ export default async function DashboardLayout({
 }) {
   const session = await auth();
   if (session?.user?.role === "CLIENT") redirect("/portal");
-  const [activeEntry, activeBreak] = await Promise.all([getMyActiveEntry(), getMyActiveBreak()]);
+  const isCaregiver = session?.user?.role === "CAREGIVER";
+  const [activeEntry, activeBreak, careRecipients] = await Promise.all([
+    getMyActiveEntry(),
+    getMyActiveBreak(),
+    isCaregiver ? listMyCareRecipients() : Promise.resolve([]),
+  ]);
 
   return (
     <SidebarProvider>
@@ -34,6 +40,9 @@ export default async function DashboardLayout({
             <TimeClockWidget
               initialClockIn={activeEntry ? activeEntry.clockIn.toISOString() : null}
               initialBreakStart={activeBreak ? activeBreak.breakStart.toISOString() : null}
+              initialCareRecipientId={activeEntry?.careRecipientId ?? null}
+              isCaregiver={isCaregiver}
+              careRecipients={careRecipients}
             />
             <Button
               variant="ghost"

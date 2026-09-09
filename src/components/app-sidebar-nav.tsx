@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FolderKanban, Users, ClipboardList, UserCog, CheckSquare, Clock, Receipt, Settings, Inbox } from "lucide-react";
+import { FolderKanban, Users, ClipboardList, UserCog, CheckSquare, Clock, Receipt, Settings, Inbox, MapPin } from "lucide-react";
 import {
   SidebarMenu,
   SidebarMenuButton,
@@ -19,10 +19,12 @@ const LINKS = [
 ];
 
 // Caregiver-restricted set — no Projects/Applications/Time/Invoices/Admin,
-// same "My Tasks" + "Clients" + "Settings" trio the role is scoped to
-// everywhere else (see src/lib/rbac.ts, src/lib/actions/clients.ts).
+// same My Tasks/My Recipients/Clients/Settings scope the role is limited to
+// everywhere else (see src/lib/rbac.ts, src/lib/actions/clients.ts,
+// src/lib/actions/care-recipients.ts).
 const CAREGIVER_LINKS = [
   { href: "/tasks", label: "My Tasks", icon: CheckSquare, tour: "nav-tasks" },
+  { href: "/care-recipients", label: "My Recipients", icon: MapPin, tour: "nav-recipients" },
   { href: "/clients", label: "Clients", icon: Users, tour: "nav-clients" },
   { href: "/account", label: "Settings", icon: Settings, tour: "nav-settings" },
 ];

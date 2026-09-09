@@ -30,6 +30,7 @@ const FIELD_LABELS: Record<string, string> = {
   active: "Active",
   contactInfo: "Contact info",
   address: "Address",
+  notes: "Notes",
   businessName: "Business name",
   businessPhone: "Business phone",
   businessEmail: "Business email",
@@ -60,6 +61,10 @@ const ACTION_VERBS: Record<string, string> = {
   add_credential: "Added login credential",
   update_credential: "Updated login credential",
   remove_credential: "Removed login credential",
+  add_care_recipient: "Added care recipient",
+  update_care_recipient: "Updated care recipient",
+  assign_caregiver: "Assigned caregiver",
+  unassign_caregiver: "Unassigned caregiver",
   set_rate: "Set hourly rate",
   clock_in: "Clocked in",
   clock_out: "Clocked out",
@@ -133,6 +138,9 @@ const EVENT_ACTIONS = new Set([
   "add_credential",
   "update_credential",
   "remove_credential",
+  "add_care_recipient",
+  "assign_caregiver",
+  "unassign_caregiver",
 ]);
 
 export function isEventAction(action: string) {
@@ -186,6 +194,9 @@ export function formatEventDescription(
   if (action === "add_credential" && newValue) return `Added login credential "${newValue}"`;
   if (action === "update_credential" && newValue) return `Updated login credential "${newValue}"`;
   if (action === "remove_credential" && oldValue) return `Removed login credential "${oldValue}"`;
+  if (action === "add_care_recipient" && newValue) return `Added care recipient "${newValue}"`;
+  if (action === "assign_caregiver" && newValue) return `Assigned ${newValue} as caregiver`;
+  if (action === "unassign_caregiver" && oldValue) return `Unassigned ${oldValue} as caregiver`;
   return formatActionVerb(action);
 }
 

@@ -317,6 +317,15 @@ function buildCaregiverSteps(): TourStep[] {
     },
     {
       data: { path: "/tasks" },
+      element: '[data-tour="nav-recipients"]',
+      popover: {
+        title: "My Recipients",
+        description: "Who you actually visit and give care to — different from Clients below, which is the licensing businesses behind your task assignments. This is also who you'll pick between when you clock in for a visit.",
+        side: "right",
+      },
+    },
+    {
+      data: { path: "/tasks" },
       element: '[data-tour="nav-clients"]',
       popover: {
         title: "Clients",
@@ -338,7 +347,7 @@ function buildCaregiverSteps(): TourStep[] {
       element: '[data-tour="time-clock"]',
       popover: {
         title: "Clock in / out",
-        description: "Stays in the header on every page. Clock in when you start, clock out when you're done — a manager or admin pulls your hours from their own report.",
+        description: "Stays in the header on every page. If you're assigned to more than one recipient, clocking in asks which visit it's for — one recipient auto-selects, and it also captures your location for that visit. A manager or admin pulls your hours (and that location) from their own report.",
         side: "bottom",
       },
     },
@@ -368,6 +377,15 @@ function buildCaregiverSteps(): TourStep[] {
         description: "New task assignments and reassignments land here.",
         side: "bottom",
         align: "end",
+      },
+    },
+    {
+      data: { path: "/care-recipients" },
+      element: '[data-tour="recipients-list"]',
+      popover: {
+        title: "Your recipients",
+        description: "Name, address, and who they're served under — the address doubles as a map link, handy for planning a visit.",
+        side: "top",
       },
     },
     {

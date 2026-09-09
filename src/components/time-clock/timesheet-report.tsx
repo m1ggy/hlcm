@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { FileDown, Trash2, X } from "lucide-react";
+import { FileDown, MapPin, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,6 +37,7 @@ import {
   breakComplianceByDay,
   type TimesheetTotal,
 } from "@/lib/time-entries";
+import { mapsLinkForCoordinates } from "@/lib/geolocation";
 import { AddTimeEntryDialog } from "@/components/time-clock/add-time-entry-dialog";
 import { EditTimeEntryDialog } from "@/components/time-clock/edit-time-entry-dialog";
 import { BreakDeductionDialog } from "@/components/time-clock/break-deduction-dialog";
@@ -52,7 +53,32 @@ type TimeEntryRow = {
   clockIn: Date;
   clockOut: Date | null;
   user: { id: string; name: string; hourlyRate: number | null };
+  // Caregiver visits only — every other role's sessions leave all of these
+  // null. See src/lib/actions/care-recipients.ts / geo-location-login plan.
+  careRecipient: { id: string; name: string } | null;
+  clockInLatitude: number | null;
+  clockInLongitude: number | null;
+  clockOutLatitude: number | null;
+  clockOutLongitude: number | null;
 };
+
+// A small "View on map" pin next to a clock-in/out time — only rendered
+// when that specific moment actually has coordinates (a Caregiver session
+// with location captured), never for anything else.
+function LocationPin({ latitude, longitude }: { latitude: number | null; longitude: number | null }) {
+  if (latitude == null || longitude == null) return null;
+  return (
+    <a
+      href={mapsLinkForCoordinates(latitude, longitude)}
+      target="_blank"
+      rel="noreferrer"
+      title="View on map"
+      className="ml-1 inline-flex align-middle text-muted-foreground hover:text-foreground"
+    >
+      <MapPin className="size-3" />
+    </a>
+  );
+}
 
 type BreakEntryRow = { id: string; userId: string; breakStart: Date; breakEnd: Date | null };
 
@@ -398,6 +424,7 @@ export function TimesheetReport({
             <TableHeader>
               <TableRow>
                 <TableHead>User</TableHead>
+                <TableHead>Visit</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead>Clock in</TableHead>
                 <TableHead>Clock out</TableHead>
@@ -411,14 +438,21 @@ export function TimesheetReport({
                 .map((entry) => (
                   <TableRow key={entry.id}>
                     <TableCell className="font-medium">{entry.user.name}</TableCell>
+                    <TableCell className="text-muted-foreground">{entry.careRecipient?.name ?? "—"}</TableCell>
                     <TableCell>{entry.clockIn.toLocaleDateString(undefined, { timeZone: timezone })}</TableCell>
                     <TableCell>
                       {entry.clockIn.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZone: timezone })}
+                      <LocationPin latitude={entry.clockInLatitude} longitude={entry.clockInLongitude} />
                     </TableCell>
                     <TableCell>
-                      {entry.clockOut
-                        ? entry.clockOut.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZone: timezone })
-                        : "In progress"}
+                      {entry.clockOut ? (
+                        <>
+                          {entry.clockOut.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZone: timezone })}
+                          <LocationPin latitude={entry.clockOutLatitude} longitude={entry.clockOutLongitude} />
+                        </>
+                      ) : (
+                        "In progress"
+                      )}
                     </TableCell>
                     <TableCell>
                       {entry.clockOut ? formatDuration(hoursBetween(entry.clockIn, entry.clockOut)) : "—"}
@@ -442,7 +476,7 @@ export function TimesheetReport({
                 ))}
               {entries.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={isAdmin ? 6 : 5} className="text-center text-muted-foreground">
+                  <TableCell colSpan={isAdmin ? 7 : 6} className="text-center text-muted-foreground">
                     No sessions in this range.
                   </TableCell>
                 </TableRow>

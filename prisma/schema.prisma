@@ -176,6 +176,9 @@ model User {
   breakDeductionsCreated        TimesheetBreakDeduction[] @relation("TimesheetBreakDeductionCreatedBy")
   formTemplatesCreated          FormTemplate[]            @relation("FormTemplateCreatedBy")
   formSubmissionsReviewed       FormSubmission[]          @relation("FormSubmissionReviewedBy")
+  careRecipientsCreated         CareRecipient[]           @relation("CareRecipientCreatedBy")
+  careRecipientAssignments      CareRecipientAssignment[] @relation("CareRecipientAssignmentCaregiver")
+  careRecipientAssignmentsGiven CareRecipientAssignment[] @relation("CareRecipientAssignmentAssignedBy")
 
   @@map("users")
 }
@@ -241,7 +244,28 @@ model TimeEntry {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
+  // Which recipient this visit was for — Caregiver clock-ins only, always
+  // null for every other role's sessions. Optional even for a Caregiver: a
+  // clock-in with zero recipient assignments (office work) still works.
+  careRecipient   CareRecipient? @relation(fields: [careRecipientId], references: [id])
+  careRecipientId String?
+
+  // GPS captured at the moment of each action — record-only, never blocks a
+  // clock-in/out. A null error alongside null coordinates just means this
+  // session predates this feature or isn't a Caregiver session; a non-null
+  // error ("denied" | "unavailable" | "timeout") means location was actually
+  // attempted and failed, distinct from "never asked".
+  clockInLatitude          Float?
+  clockInLongitude         Float?
+  clockInLocationAccuracy  Float?
+  clockInLocationError     String?
+  clockOutLatitude         Float?
+  clockOutLongitude        Float?
+  clockOutLocationAccuracy Float?
+  clockOutLocationError    String?
+
   @@index([userId, clockIn])
+  @@index([careRecipientId])
   @@map("time_entries")
 }
 
@@ -391,9 +415,56 @@ model Client {
   credentials     ClientCredential[]
   invoices        Invoice[]
   formSubmissions FormSubmission[]
+  careRecipients  CareRecipient[]
 
   @@index([clientGroupId])
   @@map("clients")
+}
+
+// A person a Caregiver actually visits and gives hands-on care to — not the
+// same thing as Client above (the licensed business/facility, e.g. a Home
+// Care agency). Optionally tied to the agency Client they're served under,
+// so an agency's page can list its own recipients, but standing up a
+// recipient never requires picking one.
+model CareRecipient {
+  id          String   @id @default(cuid())
+  name        String
+  address     String?
+  contactInfo String?
+  notes       String?
+  active      Boolean  @default(true)
+
+  client   Client? @relation(fields: [clientId], references: [id])
+  clientId String?
+
+  createdBy   User     @relation("CareRecipientCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  assignments CareRecipientAssignment[]
+  timeEntries TimeEntry[]
+
+  @@index([clientId])
+  @@map("care_recipients")
+}
+
+// Many-to-many: a recipient can have more than one caregiver on rotation, a
+// caregiver can serve more than one recipient. Same shape as
+// TaskAssignee/AccessGrant elsewhere in this schema.
+model CareRecipientAssignment {
+  id              String        @id @default(cuid())
+  careRecipient   CareRecipient @relation(fields: [careRecipientId], references: [id], onDelete: Cascade)
+  careRecipientId String
+  caregiver       User          @relation("CareRecipientAssignmentCaregiver", fields: [caregiverId], references: [id])
+  caregiverId     String
+  assignedBy      User          @relation("CareRecipientAssignmentAssignedBy", fields: [assignedById], references: [id])
+  assignedById    String
+  assignedAt      DateTime      @default(now())
+
+  @@unique([careRecipientId, caregiverId])
+  @@index([caregiverId])
+  @@map("care_recipient_assignments")
 }
 
 // A named bundle of Clients that should be treated as one section on the
