@@ -273,7 +273,7 @@ export async function listBreakEntries(input: TimeEntryRangeInput) {
       breakStart: { lte: to },
       OR: [{ breakEnd: null }, { breakEnd: { gte: from } }],
     },
-    select: { id: true, userId: true, breakStart: true, breakEnd: true },
+    select: { id: true, userId: true, breakStart: true, breakEnd: true, user: { select: { id: true, name: true } } },
     orderBy: [{ userId: "asc" }, { breakStart: "asc" }],
   });
 }
@@ -476,6 +476,70 @@ export async function deleteTimeEntry(id: string) {
     action: "delete",
     actorId: session.user.id,
     oldValue: `${entry.clockIn.toISOString()} – ${entry.clockOut?.toISOString() ?? "open"}`,
+  });
+
+  revalidatePath("/time");
+}
+
+const updateBreakEntrySchema = z
+  .object({
+    breakStart: z.coerce.date(),
+    breakEnd: z.coerce.date().nullable(),
+  })
+  .refine((v) => !v.breakEnd || v.breakEnd > v.breakStart, { message: "Break end must be after break start" });
+
+/**
+ * Admin-only: corrects an existing break's times — same shape as
+ * updateTimeEntry above, just against BreakEntry. `breakEnd: null` re-opens
+ * the break (rare, but mirrors letting an admin undo an accidental
+ * clock-out), checked against other open breaks for that user so it can't
+ * create a second one.
+ */
+export async function updateBreakEntry(id: string, input: { breakStart: string; breakEnd: string | null }) {
+  const session = await requireRole(["ADMIN"]);
+  const existing = await prisma.breakEntry.findUniqueOrThrow({ where: { id } });
+  const parsed = updateBreakEntrySchema.parse(input);
+
+  if (!parsed.breakEnd) {
+    const otherOpen = await prisma.breakEntry.findFirst({
+      where: { userId: existing.userId, breakEnd: null, id: { not: id } },
+    });
+    if (otherOpen) throw new TimeClockError("This user already has an open break");
+  }
+
+  const entry = await prisma.breakEntry.update({
+    where: { id },
+    data: { breakStart: parsed.breakStart, breakEnd: parsed.breakEnd },
+  });
+
+  await recordAudit({
+    entityType: "BreakEntry",
+    entityId: id,
+    action: "edit_break_entry",
+    actorId: session.user.id,
+    oldValue: `${existing.breakStart.toISOString()} – ${existing.breakEnd?.toISOString() ?? "open"}`,
+    newValue: `${parsed.breakStart.toISOString()} – ${parsed.breakEnd?.toISOString() ?? "open"}`,
+  });
+
+  revalidatePath("/time");
+  return entry;
+}
+
+/** Admin-only: removes a mistaken or duplicate break (e.g. a double break-start left dangling open). */
+export async function deleteBreakEntry(id: string) {
+  const session = await requireRole(["ADMIN"]);
+  const entry = await prisma.breakEntry.findUniqueOrThrow({ where: { id } });
+
+  await prisma.breakEntry
+    .delete({ where: { id } })
+    .catch((e) => friendlyPrismaError(e, { notFoundMessage: "That break is already gone — someone else may have just removed it" }));
+
+  await recordAudit({
+    entityType: "BreakEntry",
+    entityId: id,
+    action: "delete",
+    actorId: session.user.id,
+    oldValue: `${entry.breakStart.toISOString()} – ${entry.breakEnd?.toISOString() ?? "open"}`,
   });
 
   revalidatePath("/time");

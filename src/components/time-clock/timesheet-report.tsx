@@ -22,6 +22,7 @@ import {
   listBreakDeductions,
   deleteBreakDeduction,
   deleteTimeEntry,
+  deleteBreakEntry,
 } from "@/lib/actions/time-entries";
 import { payUserViaWise } from "@/lib/actions/wise";
 import {
@@ -40,6 +41,7 @@ import {
 import { mapsLinkForCoordinates } from "@/lib/geolocation";
 import { AddTimeEntryDialog } from "@/components/time-clock/add-time-entry-dialog";
 import { EditTimeEntryDialog } from "@/components/time-clock/edit-time-entry-dialog";
+import { EditBreakEntryDialog } from "@/components/time-clock/edit-break-entry-dialog";
 import { BreakDeductionDialog } from "@/components/time-clock/break-deduction-dialog";
 import { DailyTimelineChart } from "@/components/time-clock/daily-timeline-chart";
 
@@ -80,7 +82,13 @@ function LocationPin({ latitude, longitude }: { latitude: number | null; longitu
   );
 }
 
-type BreakEntryRow = { id: string; userId: string; breakStart: Date; breakEnd: Date | null };
+type BreakEntryRow = {
+  id: string;
+  userId: string;
+  breakStart: Date;
+  breakEnd: Date | null;
+  user: { id: string; name: string };
+};
 
 type BreakDeductionRow = {
   id: string;
@@ -118,7 +126,12 @@ export function TimesheetReport({
   const [payStatus, setPayStatus] = useState<Record<string, "paying" | "paid">>({});
   const [, startPaying] = useTransition();
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [deletingBreakId, setDeletingBreakId] = useState<string | null>(null);
+  // Two different "delete a break" flows on this page: a BreakDeduction
+  // (a retroactive per-day policy, no clock time of its own) vs an actual
+  // BreakEntry (a real break-start/break-end punch) — kept as separate
+  // pending-state ids so a spinner on one row never bleeds into the other.
+  const [deletingBreakDeductionId, setDeletingBreakDeductionId] = useState<string | null>(null);
+  const [deletingBreakEntryId, setDeletingBreakEntryId] = useState<string | null>(null);
 
   function handlePay(payUserId: string) {
     setPayStatus((s) => ({ ...s, [payUserId]: "paying" }));
@@ -204,9 +217,9 @@ export function TimesheetReport({
     });
   }
 
-  function handleDeleteBreak(id: string) {
+  function handleDeleteBreakDeduction(id: string) {
     if (!confirm("Remove this break deduction? Hours/pay for this range will recalculate without it.")) return;
-    setDeletingBreakId(id);
+    setDeletingBreakDeductionId(id);
     startTransition(async () => {
       try {
         await deleteBreakDeduction(id);
@@ -215,7 +228,23 @@ export function TimesheetReport({
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to remove break deduction");
       } finally {
-        setDeletingBreakId(null);
+        setDeletingBreakDeductionId(null);
+      }
+    });
+  }
+
+  function handleDeleteBreakEntry(id: string) {
+    if (!confirm("Delete this break? This can't be undone.")) return;
+    setDeletingBreakEntryId(id);
+    startTransition(async () => {
+      try {
+        await deleteBreakEntry(id);
+        toast.success("Break deleted");
+        handlePreview();
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Failed to delete break");
+      } finally {
+        setDeletingBreakEntryId(null);
       }
     });
   }
@@ -311,8 +340,8 @@ export function TimesheetReport({
                   <Button
                     size="xs"
                     variant="ghost"
-                    loading={deletingBreakId === b.id}
-                    onClick={() => handleDeleteBreak(b.id)}
+                    loading={deletingBreakDeductionId === b.id}
+                    onClick={() => handleDeleteBreakDeduction(b.id)}
                   >
                     <X className="size-3.5 text-destructive" />
                   </Button>
@@ -478,6 +507,67 @@ export function TimesheetReport({
                 <TableRow>
                   <TableCell colSpan={isAdmin ? 7 : 6} className="text-center text-muted-foreground">
                     No sessions in this range.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+
+      {entries && (
+        <div className="space-y-1.5">
+          <p className="text-sm font-medium">Individual breaks</p>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>User</TableHead>
+                <TableHead>Date</TableHead>
+                <TableHead>Break start</TableHead>
+                <TableHead>Break end</TableHead>
+                <TableHead>Duration</TableHead>
+                {isAdmin && <TableHead className="w-20" />}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {[...breakEntries]
+                .sort((a, b) => b.breakStart.getTime() - a.breakStart.getTime())
+                .map((entry) => (
+                  <TableRow key={entry.id}>
+                    <TableCell className="font-medium">{entry.user.name}</TableCell>
+                    <TableCell>{entry.breakStart.toLocaleDateString(undefined, { timeZone: timezone })}</TableCell>
+                    <TableCell>
+                      {entry.breakStart.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZone: timezone })}
+                    </TableCell>
+                    <TableCell>
+                      {entry.breakEnd
+                        ? entry.breakEnd.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZone: timezone })
+                        : "In progress"}
+                    </TableCell>
+                    <TableCell>
+                      {entry.breakEnd ? formatDuration(hoursBetween(entry.breakStart, entry.breakEnd)) : "—"}
+                    </TableCell>
+                    {isAdmin && (
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          <EditBreakEntryDialog entry={entry} accountTimezone={accountTimezone} onUpdated={handlePreview} />
+                          <Button
+                            size="xs"
+                            variant="ghost"
+                            loading={deletingBreakEntryId === entry.id}
+                            onClick={() => handleDeleteBreakEntry(entry.id)}
+                          >
+                            <Trash2 className="size-3.5 text-destructive" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))}
+              {breakEntries.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={isAdmin ? 6 : 5} className="text-center text-muted-foreground">
+                    No breaks in this range.
                   </TableCell>
                 </TableRow>
               )}

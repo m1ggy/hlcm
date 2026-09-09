@@ -70,6 +70,7 @@ const ACTION_VERBS: Record<string, string> = {
   clock_out: "Clocked out",
   manual_add: "Added a time entry manually",
   edit_time_entry: "Edited a time entry",
+  edit_break_entry: "Edited a break entry",
   save: "Saved",
   pay: "Paid via Wise",
   change_password: "Changed password",
