@@ -76,6 +76,9 @@ const ACTION_VERBS: Record<string, string> = {
   unassign_caregiver: "Unassigned caregiver",
   add_care_instruction: "Added a care instruction",
   remove_care_instruction: "Removed a care instruction",
+  add_client_contact: "Added a contact",
+  update_client_contact: "Updated a contact",
+  remove_client_contact: "Removed a contact",
   set_rate: "Set hourly rate",
   clock_in: "Clocked in",
   clock_out: "Clocked out",
@@ -155,6 +158,9 @@ const EVENT_ACTIONS = new Set([
   "unassign_caregiver",
   "add_care_instruction",
   "remove_care_instruction",
+  "add_client_contact",
+  "update_client_contact",
+  "remove_client_contact",
 ]);
 
 export function isEventAction(action: string) {
@@ -213,6 +219,9 @@ export function formatEventDescription(
   if (action === "unassign_caregiver" && oldValue) return `Unassigned ${oldValue} as caregiver`;
   if (action === "add_care_instruction" && newValue) return `Added care instruction "${newValue}"`;
   if (action === "remove_care_instruction" && oldValue) return `Removed care instruction "${oldValue}"`;
+  if (action === "add_client_contact" && newValue) return `Added contact "${newValue}"`;
+  if (action === "update_client_contact" && newValue) return `Updated contact "${newValue}"`;
+  if (action === "remove_client_contact" && oldValue) return `Removed contact "${oldValue}"`;
   return formatActionVerb(action);
 }
 

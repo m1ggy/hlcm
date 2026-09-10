@@ -6,6 +6,7 @@ import { listAssignableUsers } from "@/lib/actions/applications";
 import { listClientNotes } from "@/lib/actions/notes";
 import { listMcoCredentialsForClient, listReachableMcoStages } from "@/lib/actions/mco";
 import { listClientCredentials } from "@/lib/actions/client-credentials";
+import { listClientContacts } from "@/lib/actions/client-contacts";
 import { listCareRecipients, listCaregivers } from "@/lib/actions/care-recipients";
 import { listPipelineStages } from "@/lib/actions/stage";
 import { listInvoices } from "@/lib/actions/invoices";
@@ -16,6 +17,7 @@ import { ClientDetailsForm } from "@/components/clients/client-details-form";
 import { ClientNotesPanel } from "@/components/clients/client-notes-panel";
 import { McoCredentialsCard } from "@/components/clients/mco-credentials-card";
 import { ClientCredentialsCard } from "@/components/clients/client-credentials-card";
+import { ClientContactsCard } from "@/components/clients/client-contacts-card";
 import { CareRecipientsCard } from "@/components/clients/care-recipients-card";
 import { AuditLogPanel } from "@/components/applications/audit-log-panel";
 import { ArchiveButton } from "@/components/shared/archive-button";
@@ -72,19 +74,31 @@ export default async function ClientDetailPage({
   const canManageInvoices = session?.user?.role === "ADMIN" || session?.user?.role === "MANAGER";
   const canArchive = canManageInvoices;
 
-  const [assignableUsers, notes, auditLog, mcoCredentials, credentials, mcoStages, invoices, clientGroups, careRecipients, caregivers] =
-    await Promise.all([
-      listAssignableUsers(),
-      listClientNotes(id),
-      getClientAuditLog(id),
-      listMcoCredentialsForClient(id),
-      listClientCredentials(id),
-      listPipelineStages("MCO", { includeExit: true }),
-      canManageInvoices ? listInvoices({ clientId: id }) : Promise.resolve([]),
-      listClientGroups(),
-      listCareRecipients({ clientId: id }),
-      listCaregivers(),
-    ]);
+  const [
+    assignableUsers,
+    notes,
+    auditLog,
+    mcoCredentials,
+    credentials,
+    contacts,
+    mcoStages,
+    invoices,
+    clientGroups,
+    careRecipients,
+    caregivers,
+  ] = await Promise.all([
+    listAssignableUsers(),
+    listClientNotes(id),
+    getClientAuditLog(id),
+    listMcoCredentialsForClient(id),
+    listClientCredentials(id),
+    listClientContacts(id),
+    listPipelineStages("MCO", { includeExit: true }),
+    canManageInvoices ? listInvoices({ clientId: id }) : Promise.resolve([]),
+    listClientGroups(),
+    listCareRecipients({ clientId: id }),
+    listCaregivers(),
+  ]);
   const mcoCredentialsWithStages = await Promise.all(
     mcoCredentials.map(async (c) => ({ ...c, reachableStages: await listReachableMcoStages(c.id) }))
   );
@@ -153,6 +167,8 @@ export default async function ClientDetailPage({
           clientGroupId: client.clientGroupId,
         }}
       />
+
+      <ClientContactsCard clientId={id} contacts={contacts} />
 
       <Card>
         <CardContent>
