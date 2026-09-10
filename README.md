@@ -32,8 +32,9 @@ Every push to `main` builds a Docker image, pushes it to GHCR, and deploys it to
    HCLM_DOMAIN=your-domain.example
    RESEND_API_KEY=<from resend.com — powers status-change/task/digest emails>
    EMAIL_FROM=HCLM <notifications@your-domain.example>
+   GOOGLE_MAPS_API_KEY=<from a Google Cloud project with the Geocoding API enabled>
    ```
-   `RESEND_API_KEY`/`EMAIL_FROM` are optional — without them the app still works, it just logs a warning and skips email (in-app notifications still work). `HCLM_DOMAIN` (already required above for Caddy) doubles as the base URL for links inside notification emails.
+   `RESEND_API_KEY`/`EMAIL_FROM` are optional — without them the app still works, it just logs a warning and skips email (in-app notifications still work). `HCLM_DOMAIN` (already required above for Caddy) doubles as the base URL for links inside notification emails. `GOOGLE_MAPS_API_KEY` is also optional — without it, Care Recipient addresses still save fine, they just don't get geocoded, so a Caregiver's clock-in skips the "near/far from the recipient's house" check (see src/lib/geocoding.ts).
    This file is never touched by CI/CD — it's the one thing that lives only on the server.
 3. Open ports 80/443 (and the SSH port) in the droplet's firewall.
 

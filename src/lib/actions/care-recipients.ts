@@ -3,9 +3,10 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireRole } from "@/lib/rbac";
+import { requireRole, requireSession, ForbiddenError } from "@/lib/rbac";
 import { recordAudit, recordFieldChanges } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
+import { geocodeAddress } from "@/lib/geocoding";
 
 // A CareRecipient is the person a Caregiver actually visits and gives
 // hands-on care to — a different thing from Client (the licensed
@@ -16,11 +17,22 @@ import { friendlyPrismaError } from "@/lib/prisma-errors";
 
 const MANAGE_ROLES = ["ADMIN", "MANAGER", "STAFF"] as const;
 
+const INCLUDE = {
+  client: { select: { id: true as const, name: true as const } },
+  assignments: { include: { caregiver: { select: { id: true as const, name: true as const } } } },
+  instructions: { orderBy: { sortOrder: "asc" as const } },
+};
+
 const careRecipientFields = {
   name: z.string().min(1, "Name is required"),
   address: z.string().optional(),
   contactInfo: z.string().optional(),
-  notes: z.string().optional(),
+  dateOfBirth: z.string().optional(),
+  emergencyContactName: z.string().optional(),
+  emergencyContactRelationship: z.string().optional(),
+  emergencyContactPhone: z.string().optional(),
+  careNotes: z.string().optional(),
+  visitSchedule: z.string().optional(),
   clientId: z.string().optional(),
 };
 
@@ -32,9 +44,26 @@ function readFields(formData: FormData) {
     name: formData.get("name"),
     address: formData.get("address") || undefined,
     contactInfo: formData.get("contactInfo") || undefined,
-    notes: formData.get("notes") || undefined,
+    dateOfBirth: formData.get("dateOfBirth") || undefined,
+    emergencyContactName: formData.get("emergencyContactName") || undefined,
+    emergencyContactRelationship: formData.get("emergencyContactRelationship") || undefined,
+    emergencyContactPhone: formData.get("emergencyContactPhone") || undefined,
+    careNotes: formData.get("careNotes") || undefined,
+    visitSchedule: formData.get("visitSchedule") || undefined,
     clientId: formData.get("clientId") || undefined,
   };
+}
+
+// Best-effort — geocoding a bad/partial address, or GOOGLE_MAPS_API_KEY
+// being unset, must never block saving the recipient itself. Only called
+// when the address is present and (on update) actually changed, so editing
+// an unrelated field doesn't re-geocode for no reason.
+async function geocodeFields(address: string | undefined) {
+  if (!address) return { latitude: null, longitude: null, geocodedAt: null };
+  const coords = await geocodeAddress(address);
+  return coords
+    ? { latitude: coords.latitude, longitude: coords.longitude, geocodedAt: new Date() }
+    : { latitude: null, longitude: null, geocodedAt: null };
 }
 
 // Logged under the owning Client's own audit trail when there is one — same
@@ -61,23 +90,14 @@ export async function listCareRecipients(opts: { clientId?: string; filter?: "ac
       ...(filter === "all" ? {} : { active: filter === "active" }),
       ...(opts.clientId ? { clientId: opts.clientId } : {}),
     },
-    include: {
-      client: { select: { id: true, name: true } },
-      assignments: { include: { caregiver: { select: { id: true, name: true } } } },
-    },
+    include: INCLUDE,
     orderBy: { name: "asc" },
   });
 }
 
 export async function getCareRecipient(id: string) {
   await requireRole([...MANAGE_ROLES]);
-  return prisma.careRecipient.findUniqueOrThrow({
-    where: { id },
-    include: {
-      client: { select: { id: true, name: true } },
-      assignments: { include: { caregiver: { select: { id: true, name: true } } } },
-    },
-  });
+  return prisma.careRecipient.findUniqueOrThrow({ where: { id }, include: INCLUDE });
 }
 
 // Every active Caregiver — for the "Assign caregiver" picker. Not gated to
@@ -95,10 +115,19 @@ export async function listCaregivers() {
 export async function createCareRecipient(formData: FormData) {
   const session = await requireRole([...MANAGE_ROLES]);
   const parsed = createSchema.parse(readFields(formData));
+  const { dateOfBirth, address, ...rest } = parsed;
+
+  const geo = await geocodeFields(address);
 
   const recipient = await prisma.careRecipient
     .create({
-      data: { ...parsed, createdById: session.user.id },
+      data: {
+        ...rest,
+        address,
+        dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined,
+        ...geo,
+        createdById: session.user.id,
+      },
     })
     .catch((e) => friendlyPrismaError(e, { notFoundMessage: "That client no longer exists" }));
 
@@ -117,10 +146,24 @@ export async function createCareRecipient(formData: FormData) {
 export async function updateCareRecipient(id: string, formData: FormData) {
   const session = await requireRole([...MANAGE_ROLES]);
   const parsed = updateSchema.parse(readFields(formData));
+  const { dateOfBirth, address, ...rest } = parsed;
 
   const before = await prisma.careRecipient.findUniqueOrThrow({ where: { id } });
+  // Only re-geocode when the address text actually changed — editing the
+  // emergency contact shouldn't re-hit the API for an address that's
+  // already correctly pinned.
+  const geo = address !== before.address ? await geocodeFields(address) : {};
+
   const recipient = await prisma.careRecipient
-    .update({ where: { id }, data: parsed })
+    .update({
+      where: { id },
+      data: {
+        ...rest,
+        address,
+        dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
+        ...geo,
+      },
+    })
     .catch((e) => friendlyPrismaError(e, { notFoundMessage: "That client no longer exists" }));
 
   await recordFieldChanges({
@@ -214,7 +257,80 @@ export async function listMyCareRecipients() {
   const session = await requireRole(["CAREGIVER"]);
   return prisma.careRecipient.findMany({
     where: { active: true, assignments: { some: { caregiverId: session.user.id } } },
-    include: { client: { select: { id: true, name: true } } },
+    include: {
+      client: { select: { id: true, name: true } },
+      instructions: { orderBy: { sortOrder: "asc" } },
+    },
     orderBy: { name: "asc" },
   });
+}
+
+// --- Care instructions: concrete, checkable requests for a visit ---------
+
+export async function createCareInstruction(careRecipientId: string, label: string) {
+  const session = await requireRole([...MANAGE_ROLES]);
+  if (!label.trim()) throw new Error("Instruction can't be empty");
+
+  const [recipient, count] = await Promise.all([
+    prisma.careRecipient.findUniqueOrThrow({ where: { id: careRecipientId } }),
+    prisma.careInstruction.count({ where: { careRecipientId } }),
+  ]);
+
+  await prisma.careInstruction.create({
+    data: { careRecipientId, label: label.trim(), sortOrder: count, createdById: session.user.id },
+  });
+
+  await recordAudit({
+    ...auditTargetFor(recipient),
+    action: "add_care_instruction",
+    actorId: session.user.id,
+    newValue: label.trim(),
+  });
+
+  revalidatePath("/clients");
+  revalidatePath("/care-recipients");
+  if (recipient.clientId) revalidatePath(`/clients/${recipient.clientId}`);
+}
+
+// Reachable by staff managing the record, and by the Caregiver actually on
+// the visit checking items off — but a Caregiver only for a recipient
+// they're assigned to, never any instruction by id.
+export async function toggleCareInstruction(id: string, completed: boolean) {
+  const session = await requireSession();
+  const role = session.user.role as (typeof MANAGE_ROLES)[number] | "CAREGIVER" | string;
+
+  const instruction = await prisma.careInstruction.findUniqueOrThrow({ where: { id } });
+
+  if (!MANAGE_ROLES.includes(role as (typeof MANAGE_ROLES)[number])) {
+    if (role !== "CAREGIVER") throw new ForbiddenError();
+    const assigned = await prisma.careRecipientAssignment.findUnique({
+      where: { careRecipientId_caregiverId: { careRecipientId: instruction.careRecipientId, caregiverId: session.user.id } },
+    });
+    if (!assigned) throw new ForbiddenError();
+  }
+
+  await prisma.careInstruction.update({ where: { id }, data: { completed } });
+
+  revalidatePath("/clients");
+  revalidatePath("/care-recipients");
+}
+
+export async function deleteCareInstruction(id: string) {
+  const session = await requireRole([...MANAGE_ROLES]);
+  const instruction = await prisma.careInstruction.findUniqueOrThrow({
+    where: { id },
+    include: { careRecipient: true },
+  });
+
+  await prisma.careInstruction.delete({ where: { id } });
+
+  await recordAudit({
+    ...auditTargetFor(instruction.careRecipient),
+    action: "remove_care_instruction",
+    actorId: session.user.id,
+    oldValue: instruction.label,
+  });
+
+  revalidatePath("/clients");
+  revalidatePath("/care-recipients");
 }

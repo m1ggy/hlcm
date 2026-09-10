@@ -254,7 +254,7 @@ export async function listTimeEntries(input: TimeEntryRangeInput) {
     },
     include: {
       user: { select: { id: true, name: true, hourlyRate: true } },
-      careRecipient: { select: { id: true, name: true } },
+      careRecipient: { select: { id: true, name: true, latitude: true, longitude: true } },
     },
     orderBy: [{ userId: "asc" }, { clockIn: "asc" }],
   });

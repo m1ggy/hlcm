@@ -38,7 +38,7 @@ import {
   breakComplianceByDay,
   type TimesheetTotal,
 } from "@/lib/time-entries";
-import { mapsLinkForCoordinates } from "@/lib/geolocation";
+import { mapsLinkForCoordinates, haversineMeters, formatDistance, NEAR_THRESHOLD_METERS } from "@/lib/geolocation";
 import { AddTimeEntryDialog } from "@/components/time-clock/add-time-entry-dialog";
 import { EditTimeEntryDialog } from "@/components/time-clock/edit-time-entry-dialog";
 import { EditBreakEntryDialog } from "@/components/time-clock/edit-break-entry-dialog";
@@ -57,7 +57,7 @@ type TimeEntryRow = {
   user: { id: string; name: string; hourlyRate: number | null };
   // Caregiver visits only — every other role's sessions leave all of these
   // null. See src/lib/actions/care-recipients.ts / geo-location-login plan.
-  careRecipient: { id: string; name: string } | null;
+  careRecipient: { id: string; name: string; latitude: number | null; longitude: number | null } | null;
   clockInLatitude: number | null;
   clockInLongitude: number | null;
   clockOutLatitude: number | null;
@@ -79,6 +79,33 @@ function LocationPin({ latitude, longitude }: { latitude: number | null; longitu
     >
       <MapPin className="size-3" />
     </a>
+  );
+}
+
+// How far the clock-in pin landed from the recipient's own geocoded
+// address — only rendered when both sides exist (a captured clock-in
+// location and a successfully geocoded recipient). Same threshold/colors
+// as the toast a Caregiver sees at the moment they clock in
+// (TimeClockWidget) — this is the admin-side, after-the-fact view of the
+// same comparison.
+function DistanceFromRecipient({
+  clockInLatitude,
+  clockInLongitude,
+  recipient,
+}: {
+  clockInLatitude: number | null;
+  clockInLongitude: number | null;
+  recipient: { latitude: number | null; longitude: number | null } | null;
+}) {
+  if (clockInLatitude == null || clockInLongitude == null || recipient?.latitude == null || recipient.longitude == null) {
+    return null;
+  }
+  const distance = haversineMeters(clockInLatitude, clockInLongitude, recipient.latitude, recipient.longitude);
+  const near = distance <= NEAR_THRESHOLD_METERS;
+  return (
+    <span className={near ? "ml-1 text-xs text-muted-foreground" : "ml-1 text-xs text-amber-600 dark:text-amber-400"}>
+      ({formatDistance(distance)}{near ? "" : " away"})
+    </span>
   );
 }
 
@@ -467,7 +494,14 @@ export function TimesheetReport({
                 .map((entry) => (
                   <TableRow key={entry.id}>
                     <TableCell className="font-medium">{entry.user.name}</TableCell>
-                    <TableCell className="text-muted-foreground">{entry.careRecipient?.name ?? "—"}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {entry.careRecipient?.name ?? "—"}
+                      <DistanceFromRecipient
+                        clockInLatitude={entry.clockInLatitude}
+                        clockInLongitude={entry.clockInLongitude}
+                        recipient={entry.careRecipient}
+                      />
+                    </TableCell>
                     <TableCell>{entry.clockIn.toLocaleDateString(undefined, { timeZone: timezone })}</TableCell>
                     <TableCell>
                       {entry.clockIn.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZone: timezone })}

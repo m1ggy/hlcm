@@ -7,9 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { clockIn, clockOut, startBreak, endBreak, endBreakForDay } from "@/lib/actions/time-entries";
 import { formatDuration } from "@/lib/time-entries";
-import { captureLocation } from "@/lib/geolocation";
+import { captureLocation, haversineMeters, formatDistance, NEAR_THRESHOLD_METERS } from "@/lib/geolocation";
 
-type CareRecipient = { id: string; name: string };
+type CareRecipient = { id: string; name: string; latitude: number | null; longitude: number | null };
 
 export function TimeClockWidget({
   initialClockIn,
@@ -76,6 +76,23 @@ export function TimeClockWidget({
         setClockedInAt(new Date(entry.clockIn));
         setActiveRecipientId(careRecipientId ?? null);
         toast.success("Clocked in");
+
+        // Purely informational, never re-litigates the clock-in above —
+        // only shown when both sides of the comparison actually exist: the
+        // capture succeeded (no locationError) and the recipient's address
+        // was geocoded. Anything else (denied permission, no address on
+        // file, GEOCODING key unset) just silently skips this toast.
+        const recipient = careRecipients.find((r) => r.id === careRecipientId);
+        if (recipient?.latitude != null && recipient.longitude != null && location.latitude != null && location.longitude != null) {
+          const distance = haversineMeters(location.latitude, location.longitude, recipient.latitude, recipient.longitude);
+          if (distance <= NEAR_THRESHOLD_METERS) {
+            toast.success(
+              distance < 5 ? `You're at ${recipient.name}'s` : `You're at ${recipient.name}'s (${formatDistance(distance)} away)`
+            );
+          } else {
+            toast.warning(`You're ${formatDistance(distance)} from ${recipient.name}'s house`);
+          }
+        }
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to clock in");
       }

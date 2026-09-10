@@ -179,6 +179,7 @@ model User {
   careRecipientsCreated         CareRecipient[]           @relation("CareRecipientCreatedBy")
   careRecipientAssignments      CareRecipientAssignment[] @relation("CareRecipientAssignmentCaregiver")
   careRecipientAssignmentsGiven CareRecipientAssignment[] @relation("CareRecipientAssignmentAssignedBy")
+  careInstructionsCreated       CareInstruction[]         @relation("CareInstructionCreatedBy")
 
   @@map("users")
 }
@@ -427,12 +428,37 @@ model Client {
 // so an agency's page can list its own recipients, but standing up a
 // recipient never requires picking one.
 model CareRecipient {
-  id          String   @id @default(cuid())
-  name        String
-  address     String?
-  contactInfo String?
-  notes       String?
-  active      Boolean  @default(true)
+  id           String    @id @default(cuid())
+  name         String
+  address      String?
+  contactInfo  String?
+  dateOfBirth  DateTime?
+  active       Boolean   @default(true)
+
+  // Deliberately separate from the licensing Client's own emergency-type
+  // fields — this is who to call about the recipient, not about the
+  // business.
+  emergencyContactName         String?
+  emergencyContactRelationship String?
+  emergencyContactPhone        String?
+
+  // What a caregiver should know before a visit — conditions, allergies,
+  // mobility needs. Kept distinct from CareInstruction (below): this is
+  // background a caregiver reads once, instructions are concrete
+  // to-dos they check off.
+  careNotes String?
+
+  // Freeform, informational only — "Mon/Wed/Fri mornings" — not tied to any
+  // actual scheduling/calendar logic.
+  visitSchedule String?
+
+  // Geocoded from `address` (see src/lib/geocoding.ts) whenever it's set or
+  // changed — best-effort, never blocks a create/update if it fails. Lets
+  // a Caregiver's clock-in compare their own GPS against this instead of
+  // just recording a raw pin with nothing to judge it against.
+  latitude   Float?
+  longitude  Float?
+  geocodedAt DateTime?
 
   client   Client? @relation(fields: [clientId], references: [id])
   clientId String?
@@ -442,11 +468,34 @@ model CareRecipient {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  assignments CareRecipientAssignment[]
-  timeEntries TimeEntry[]
+  assignments  CareRecipientAssignment[]
+  timeEntries  TimeEntry[]
+  instructions CareInstruction[]
 
   @@index([clientId])
   @@map("care_recipients")
+}
+
+// A specific request for whoever visits this recipient — "Give medication
+// at 2pm", "Help with laundry on Fridays" — distinct from careNotes above
+// (background to read once) and from the licensing Task model (tied to
+// Applications/checklists, nothing to do with a care visit). Plain
+// standing checklist, not per-visit: `completed` isn't reset on a new
+// clock-in — an admin/staff or the assigned Caregiver toggles it directly.
+model CareInstruction {
+  id              String        @id @default(cuid())
+  careRecipient   CareRecipient @relation(fields: [careRecipientId], references: [id], onDelete: Cascade)
+  careRecipientId String
+  label           String
+  completed       Boolean       @default(false)
+  sortOrder       Int           @default(0)
+  createdBy       User          @relation("CareInstructionCreatedBy", fields: [createdById], references: [id])
+  createdById     String
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([careRecipientId])
+  @@map("care_instructions")
 }
 
 // Many-to-many: a recipient can have more than one caregiver on rotation, a

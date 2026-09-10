@@ -3,6 +3,7 @@ import { MapPin } from "lucide-react";
 import { auth } from "@/auth";
 import { listMyCareRecipients } from "@/lib/actions/care-recipients";
 import { mapsLinkForAddress } from "@/lib/geolocation";
+import { CareInstructionChecklist } from "@/components/clients/care-instruction-checklist";
 import { PageInfoButton } from "@/components/shared/page-info-button";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -29,7 +30,8 @@ export default async function CareRecipientsPage() {
         <PageInfoButton title="My Recipients">
           <p>
             The people you visit and give hands-on care to — not the same as the businesses on your Clients page.
-            Clocking in for a visit asks which of these it&apos;s for (skipped automatically if you only have one).
+            Clocking in for a visit asks which of these it&apos;s for (skipped automatically if you only have one),
+            and tells you if you&apos;re near their address.
           </p>
         </PageInfoButton>
       </div>
@@ -39,7 +41,7 @@ export default async function CareRecipientsPage() {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {recipients.map((r) => (
             <Card key={r.id}>
-              <CardContent className="space-y-1">
+              <CardContent className="space-y-1.5">
                 <div className="font-medium">{r.name}</div>
                 {r.client && <p className="text-xs text-muted-foreground">{r.client.name}</p>}
                 {r.address && (
@@ -53,6 +55,22 @@ export default async function CareRecipientsPage() {
                   </a>
                 )}
                 {r.contactInfo && <p className="text-sm text-muted-foreground">{r.contactInfo}</p>}
+                {r.visitSchedule && <p className="text-sm text-muted-foreground">Visits: {r.visitSchedule}</p>}
+                {(r.emergencyContactName || r.emergencyContactPhone) && (
+                  <p className="text-sm text-muted-foreground">
+                    Emergency: {r.emergencyContactName || "—"}
+                    {r.emergencyContactRelationship && ` (${r.emergencyContactRelationship})`}
+                    {r.emergencyContactPhone && ` — ${r.emergencyContactPhone}`}
+                  </p>
+                )}
+                {r.careNotes && (
+                  <p className="rounded-md bg-muted/50 p-2 text-sm whitespace-pre-wrap">{r.careNotes}</p>
+                )}
+                {r.instructions.length > 0 && (
+                  <div className="border-t pt-2">
+                    <CareInstructionChecklist careRecipientId={r.id} instructions={r.instructions} />
+                  </div>
+                )}
               </CardContent>
             </Card>
           ))}

@@ -14,6 +14,7 @@ import {
   unassignCaregiver,
 } from "@/lib/actions/care-recipients";
 import { mapsLinkForAddress } from "@/lib/geolocation";
+import { CareInstructionChecklist, type CareInstructionRow } from "@/components/clients/care-instruction-checklist";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -40,9 +41,33 @@ export type CareRecipientRow = {
   name: string;
   address: string | null;
   contactInfo: string | null;
-  notes: string | null;
+  dateOfBirth: Date | null;
+  emergencyContactName: string | null;
+  emergencyContactRelationship: string | null;
+  emergencyContactPhone: string | null;
+  careNotes: string | null;
+  visitSchedule: string | null;
+  latitude: number | null;
+  longitude: number | null;
   assignments: { caregiver: { id: string; name: string } }[];
+  instructions: CareInstructionRow[];
 };
+
+function toDateInputValue(date: Date | null): string {
+  if (!date) return "";
+  return new Date(date).toISOString().slice(0, 10);
+}
+
+function age(dateOfBirth: Date | null): number | null {
+  if (!dateOfBirth) return null;
+  const dob = new Date(dateOfBirth);
+  const now = new Date();
+  let years = now.getFullYear() - dob.getFullYear();
+  const beforeBirthdayThisYear =
+    now.getMonth() < dob.getMonth() || (now.getMonth() === dob.getMonth() && now.getDate() < dob.getDate());
+  if (beforeBirthdayThisYear) years -= 1;
+  return years;
+}
 
 // Shared by both Add and Edit — prefixed ids since this mounts on the same
 // Client detail page as ClientDetailsForm, which already owns plain #name/
@@ -57,27 +82,84 @@ function CareRecipientFields({ defaultValues }: { defaultValues?: CareRecipientR
         <Label htmlFor="care-recipient-name">Name</Label>
         <Input id="care-recipient-name" name="name" defaultValue={defaultValues?.name} required />
       </div>
-      <div className="space-y-1">
-        <Label htmlFor="care-recipient-address">Address</Label>
-        <Input
-          id="care-recipient-address"
-          name="address"
-          placeholder="Where a caregiver visits them"
-          defaultValue={defaultValues?.address ?? ""}
-        />
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <Label htmlFor="care-recipient-address">Address</Label>
+          <Input
+            id="care-recipient-address"
+            name="address"
+            placeholder="Where a caregiver visits them"
+            defaultValue={defaultValues?.address ?? ""}
+          />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="care-recipient-dob">Date of birth</Label>
+          <Input
+            id="care-recipient-dob"
+            name="dateOfBirth"
+            type="date"
+            defaultValue={toDateInputValue(defaultValues?.dateOfBirth ?? null)}
+          />
+        </div>
       </div>
       <div className="space-y-1">
         <Label htmlFor="care-recipient-contactInfo">Contact info</Label>
         <Input
           id="care-recipient-contactInfo"
           name="contactInfo"
-          placeholder="Family member, phone, ..."
+          placeholder="General contact — phone, preferred way to reach them"
           defaultValue={defaultValues?.contactInfo ?? ""}
         />
       </div>
+      <fieldset className="space-y-2 rounded-lg border p-3">
+        <legend className="px-1 text-xs font-medium text-muted-foreground">Emergency contact</legend>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <Label htmlFor="care-recipient-ec-name">Name</Label>
+            <Input
+              id="care-recipient-ec-name"
+              name="emergencyContactName"
+              defaultValue={defaultValues?.emergencyContactName ?? ""}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="care-recipient-ec-relationship">Relationship</Label>
+            <Input
+              id="care-recipient-ec-relationship"
+              name="emergencyContactRelationship"
+              placeholder="Daughter, spouse, ..."
+              defaultValue={defaultValues?.emergencyContactRelationship ?? ""}
+            />
+          </div>
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="care-recipient-ec-phone">Phone</Label>
+          <Input
+            id="care-recipient-ec-phone"
+            name="emergencyContactPhone"
+            type="tel"
+            defaultValue={defaultValues?.emergencyContactPhone ?? ""}
+          />
+        </div>
+      </fieldset>
       <div className="space-y-1">
-        <Label htmlFor="care-recipient-notes">Notes</Label>
-        <Textarea id="care-recipient-notes" name="notes" rows={2} defaultValue={defaultValues?.notes ?? ""} />
+        <Label htmlFor="care-recipient-careNotes">Care needs & medical notes</Label>
+        <Textarea
+          id="care-recipient-careNotes"
+          name="careNotes"
+          rows={3}
+          placeholder="Conditions, allergies, mobility needs — what a caregiver should know before a visit"
+          defaultValue={defaultValues?.careNotes ?? ""}
+        />
+      </div>
+      <div className="space-y-1">
+        <Label htmlFor="care-recipient-schedule">Visit schedule</Label>
+        <Input
+          id="care-recipient-schedule"
+          name="visitSchedule"
+          placeholder="e.g. Mon/Wed/Fri mornings"
+          defaultValue={defaultValues?.visitSchedule ?? ""}
+        />
       </div>
     </>
   );
@@ -105,7 +187,7 @@ function NewCareRecipientDialog({ clientId }: { clientId: string }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={<Button variant="outline" size="sm">Add care recipient</Button>} />
-      <DialogContent>
+      <DialogContent className="max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Add a care recipient</DialogTitle>
         </DialogHeader>
@@ -141,7 +223,7 @@ function EditCareRecipientDialog({ recipient }: { recipient: CareRecipientRow })
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={<Button variant="ghost" size="icon" className="size-7"><Pencil className="size-3.5" /></Button>} />
-      <DialogContent>
+      <DialogContent className="max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit care recipient</DialogTitle>
         </DialogHeader>
@@ -358,39 +440,57 @@ export function CareRecipientsCard({
           <p className="text-sm text-muted-foreground">No care recipients added for this client yet.</p>
         ) : (
           <div className="space-y-2">
-            {recipients.map((r) => (
-              <div key={r.id} className="rounded-lg border p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="font-medium">{r.name}</div>
-                  <div className="flex items-center gap-1">
-                    <EditCareRecipientDialog recipient={r} />
-                    <ArchiveRecipientButton id={r.id} />
+            {recipients.map((r) => {
+              const recipientAge = age(r.dateOfBirth);
+              return (
+                <div key={r.id} className="rounded-lg border p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="font-medium">
+                      {r.name}
+                      {recipientAge !== null && <span className="ml-1.5 text-xs text-muted-foreground">Age {recipientAge}</span>}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <EditCareRecipientDialog recipient={r} />
+                      <ArchiveRecipientButton id={r.id} />
+                    </div>
+                  </div>
+                  <div className="mt-1 space-y-0.5 text-sm text-muted-foreground">
+                    {r.address && (
+                      <div className="flex items-center gap-1">
+                        <MapPin className="size-3.5" />
+                        <a href={mapsLinkForAddress(r.address)} target="_blank" rel="noreferrer" className="hover:underline">
+                          {r.address}
+                        </a>
+                        {r.latitude == null && <span className="text-xs italic">(couldn&apos;t locate this address)</span>}
+                      </div>
+                    )}
+                    {r.contactInfo && <div>{r.contactInfo}</div>}
+                    {r.visitSchedule && <div>Visits: {r.visitSchedule}</div>}
+                    {(r.emergencyContactName || r.emergencyContactPhone) && (
+                      <div>
+                        Emergency contact: {r.emergencyContactName || "—"}
+                        {r.emergencyContactRelationship && ` (${r.emergencyContactRelationship})`}
+                        {r.emergencyContactPhone && ` — ${r.emergencyContactPhone}`}
+                      </div>
+                    )}
+                    {r.careNotes && <div className="whitespace-pre-wrap">{r.careNotes}</div>}
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    {r.assignments.map((a) => (
+                      <CaregiverChip key={a.caregiver.id} careRecipientId={r.id} caregiver={a.caregiver} />
+                    ))}
+                    <AssignCaregiverControl
+                      careRecipientId={r.id}
+                      caregivers={caregivers}
+                      alreadyAssigned={r.assignments.map((a) => a.caregiver.id)}
+                    />
+                  </div>
+                  <div className="mt-2 border-t pt-2">
+                    <CareInstructionChecklist careRecipientId={r.id} instructions={r.instructions} canManage />
                   </div>
                 </div>
-                <div className="mt-1 space-y-0.5 text-sm text-muted-foreground">
-                  {r.address && (
-                    <div className="flex items-center gap-1">
-                      <MapPin className="size-3.5" />
-                      <a href={mapsLinkForAddress(r.address)} target="_blank" rel="noreferrer" className="hover:underline">
-                        {r.address}
-                      </a>
-                    </div>
-                  )}
-                  {r.contactInfo && <div>{r.contactInfo}</div>}
-                  {r.notes && <div>{r.notes}</div>}
-                </div>
-                <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                  {r.assignments.map((a) => (
-                    <CaregiverChip key={a.caregiver.id} careRecipientId={r.id} caregiver={a.caregiver} />
-                  ))}
-                  <AssignCaregiverControl
-                    careRecipientId={r.id}
-                    caregivers={caregivers}
-                    alreadyAssigned={r.assignments.map((a) => a.caregiver.id)}
-                  />
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
         <div className="mt-3 border-t pt-3">
