@@ -67,9 +67,6 @@ export function CreateClientFromSubmissionDialog({
     businessName: defaults.businessName ?? "",
     businessEmail: defaults.businessEmail ?? "",
     businessPhone: defaults.businessPhone ?? "",
-    ownerName: defaults.ownerName ?? "",
-    ownerEmail: defaults.ownerEmail ?? "",
-    ownerPhone: defaults.ownerPhone ?? "",
     contactInfo: defaults.contactInfo ?? "",
     address: defaults.address ?? "",
   });
@@ -144,9 +141,6 @@ export function CreateClientFromSubmissionDialog({
               required
             />
             <Field id="csf-businessPhone" label="Business phone" value={values.businessPhone} onChange={(v) => set("businessPhone", v)} />
-            <Field id="csf-ownerName" label="Owner name" value={values.ownerName} onChange={(v) => set("ownerName", v)} />
-            <Field id="csf-ownerEmail" label="Owner email" type="email" value={values.ownerEmail} onChange={(v) => set("ownerEmail", v)} />
-            <Field id="csf-ownerPhone" label="Owner phone" value={values.ownerPhone} onChange={(v) => set("ownerPhone", v)} />
             <Field id="csf-contactInfo" label="Other contact info" value={values.contactInfo} onChange={(v) => set("contactInfo", v)} />
           </div>
           <Field id="csf-address" label="Address" value={values.address} onChange={(v) => set("address", v)} />

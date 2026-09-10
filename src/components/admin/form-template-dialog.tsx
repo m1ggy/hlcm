@@ -46,9 +46,6 @@ const CLIENT_FIELD_LABELS: Record<(typeof CLIENT_FIELD_OPTIONS)[number], string>
   businessName: "Business name",
   businessPhone: "Business phone",
   businessEmail: "Business email",
-  ownerName: "Owner name",
-  ownerEmail: "Owner email",
-  ownerPhone: "Owner phone",
 };
 const NONE = "__none__";
 

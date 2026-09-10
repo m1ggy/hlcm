@@ -10,9 +10,6 @@ type ClientSummary = {
   businessEmail: string | null;
   address: string | null;
   contactInfo: string | null;
-  ownerName: string | null;
-  ownerPhone: string | null;
-  ownerEmail: string | null;
 };
 
 function Row({ label, value }: { label: string; value: string | null }) {
@@ -48,23 +45,9 @@ export function ClientSummaryCard({ client }: { client: ClientSummary }) {
         <Row label="Business phone" value={client.businessPhone} />
         <Row label="Business email" value={client.businessEmail} />
         <Row label="Other contact" value={client.contactInfo} />
-        {(client.ownerName || client.ownerPhone || client.ownerEmail) && (
-          <>
-            <div className="my-2 border-t" />
-            <Row label="Owner" value={client.ownerName} />
-            <Row label="Owner phone" value={client.ownerPhone} />
-            <Row label="Owner email" value={client.ownerEmail} />
-          </>
+        {!client.address && !client.businessPhone && !client.businessEmail && !client.contactInfo && (
+          <p className="text-sm text-muted-foreground">No contact details on file yet.</p>
         )}
-        {!client.address &&
-          !client.businessPhone &&
-          !client.businessEmail &&
-          !client.contactInfo &&
-          !client.ownerName &&
-          !client.ownerPhone &&
-          !client.ownerEmail && (
-            <p className="text-sm text-muted-foreground">No contact details on file yet.</p>
-          )}
       </CardContent>
     </Card>
   );

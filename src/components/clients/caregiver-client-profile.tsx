@@ -43,8 +43,6 @@ export async function CaregiverClientProfile({ clientId }: { clientId: string })
           <Field label="Business name" value={client.businessName} />
           <Field label="Business phone" value={client.businessPhone} />
           <Field label="Business email" value={client.businessEmail} />
-          <Field label="Owner" value={client.ownerName} />
-          <Field label="Owner phone" value={client.ownerPhone} />
         </CardContent>
       </Card>
 

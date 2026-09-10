@@ -7,6 +7,8 @@ import { requireRole } from "@/lib/rbac";
 import { recordAudit, recordFieldChanges } from "@/lib/audit";
 import { caregiverClientScope } from "@/lib/caregiver-scope";
 
+const CLIENT_STATUSES = ["PROSPECT", "ACTIVE", "ON_HOLD", "COMPLETED"] as const;
+
 const clientDetailFields = {
   name: z.string().min(1, "Name is required"),
   contactInfo: z.string().optional(),
@@ -14,10 +16,6 @@ const clientDetailFields = {
   businessName: z.string().optional(),
   businessPhone: z.string().optional(),
   businessEmail: z.string().optional(),
-  ownerName: z.string().optional(),
-  ownerEmail: z.string().optional(),
-  ownerPhone: z.string().optional(),
-  ownerDateOfBirth: z.string().optional(),
   billingAddressLine1: z.string().optional(),
   billingCity: z.string().optional(),
   billingState: z.string().optional(),
@@ -36,7 +34,9 @@ const createClientSchema = z.object({
   businessEmail: z.string().min(1, "Business email is required").email("Enter a valid email address"),
 });
 
-const updateClientSchema = z.object(clientDetailFields);
+// status isn't set on create — every new client starts at the schema
+// default (PROSPECT), matching how a lead actually enters the pipeline.
+const updateClientSchema = z.object({ ...clientDetailFields, status: z.enum(CLIENT_STATUSES).optional() });
 
 function readClientFields(formData: FormData) {
   return {
@@ -46,10 +46,6 @@ function readClientFields(formData: FormData) {
     businessName: formData.get("businessName") || undefined,
     businessPhone: formData.get("businessPhone") || undefined,
     businessEmail: formData.get("businessEmail") || undefined,
-    ownerName: formData.get("ownerName") || undefined,
-    ownerEmail: formData.get("ownerEmail") || undefined,
-    ownerPhone: formData.get("ownerPhone") || undefined,
-    ownerDateOfBirth: formData.get("ownerDateOfBirth") || undefined,
     billingAddressLine1: formData.get("billingAddressLine1") || undefined,
     billingCity: formData.get("billingCity") || undefined,
     billingState: formData.get("billingState") || undefined,
@@ -119,8 +115,6 @@ export async function getCaregiverClient(clientId: string) {
       businessName: true,
       businessPhone: true,
       businessEmail: true,
-      ownerName: true,
-      ownerPhone: true,
       applications: {
         select: {
           id: true,
@@ -160,12 +154,11 @@ export async function createClient(formData: FormData) {
     projectId: formData.get("projectId"),
     ...readClientFields(formData),
   });
-  const { ownerDateOfBirth, projectId, ...rest } = parsed;
+  const { projectId, ...rest } = parsed;
 
   const client = await prisma.client.create({
     data: {
       ...rest,
-      ownerDateOfBirth: ownerDateOfBirth ? new Date(ownerDateOfBirth) : undefined,
       createdById: session.user.id,
       projects: { connect: { id: projectId } },
     },
@@ -185,8 +178,7 @@ export async function createClient(formData: FormData) {
 
 export async function updateClient(id: string, formData: FormData) {
   const session = await requireRole(["ADMIN", "MANAGER", "STAFF"]);
-  const parsed = updateClientSchema.parse(readClientFields(formData));
-  const { ownerDateOfBirth, ...rest } = parsed;
+  const parsed = updateClientSchema.parse({ ...readClientFields(formData), status: formData.get("status") || undefined });
   // Unlike every other field here (omitted from the payload means "leave
   // unchanged"), the Group select always submits a value — "" explicitly
   // means "ungroup this client", not "don't touch clientGroupId" — so it's
@@ -199,8 +191,7 @@ export async function updateClient(id: string, formData: FormData) {
   const client = await prisma.client.update({
     where: { id },
     data: {
-      ...rest,
-      ownerDateOfBirth: ownerDateOfBirth ? new Date(ownerDateOfBirth) : null,
+      ...parsed,
       ...(clientGroupId !== null && { clientGroupId: (clientGroupId as string) || null }),
     },
   });

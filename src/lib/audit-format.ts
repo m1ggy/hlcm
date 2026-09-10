@@ -1,6 +1,7 @@
 import { STATUS_LABELS, ApplicationStatus } from "@/lib/status";
 import { TASK_STATUS_LABELS, TaskStatusValue } from "@/lib/task-status";
 import { PIPELINE_LABELS } from "@/lib/pipeline-labels";
+import { CLIENT_STATUS_LABELS, ClientStatus } from "@/lib/client-status";
 
 const FIELD_LABELS: Record<string, string> = {
   name: "Name",
@@ -34,10 +35,6 @@ const FIELD_LABELS: Record<string, string> = {
   businessName: "Business name",
   businessPhone: "Business phone",
   businessEmail: "Business email",
-  ownerName: "Owner name",
-  ownerEmail: "Owner email",
-  ownerPhone: "Owner phone",
-  ownerDateOfBirth: "Owner date of birth",
   hourlyRate: "Hourly rate",
   email: "Email",
   role: "Role",
@@ -247,7 +244,12 @@ export function formatAuditValue(
 ) {
   if (value === null || value === undefined || value === "") return "—";
   if (field === "status") {
-    return STATUS_LABELS[value as ApplicationStatus] ?? TASK_STATUS_LABELS[value as TaskStatusValue] ?? value;
+    return (
+      STATUS_LABELS[value as ApplicationStatus] ??
+      TASK_STATUS_LABELS[value as TaskStatusValue] ??
+      CLIENT_STATUS_LABELS[value as ClientStatus] ??
+      value
+    );
   }
   if (field === "clientId") return lookups.clients?.[value] ?? value;
   if (field === "assignedUserId" || field === "reviewerUserId" || field === "assignedManagerId") {
@@ -270,7 +272,6 @@ export function formatAuditValue(
     field === "dueDate" ||
     field === "createdAt" ||
     field === "updatedAt" ||
-    field === "ownerDateOfBirth" ||
     field === "deficiencyReceivedDate" ||
     field === "deficiencyResponseDueDate" ||
     field === "deficiencyResponseSubmittedDate" ||

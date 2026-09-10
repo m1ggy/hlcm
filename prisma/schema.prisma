@@ -180,6 +180,10 @@ model User {
   careRecipientAssignments      CareRecipientAssignment[] @relation("CareRecipientAssignmentCaregiver")
   careRecipientAssignmentsGiven CareRecipientAssignment[] @relation("CareRecipientAssignmentAssignedBy")
   careInstructionsCreated       CareInstruction[]         @relation("CareInstructionCreatedBy")
+  clientContactsCreated         ClientContact[]           @relation("ClientContactCreatedBy")
+  clientOwnersCreated           ClientOwner[]             @relation("ClientOwnerCreatedBy")
+  clientAgreementsCreated       ClientAgreement[]         @relation("ClientAgreementCreatedBy")
+  clientLicensesCreated         ClientLicense[]           @relation("ClientLicenseCreatedBy")
 
   @@map("users")
 }
@@ -358,8 +362,19 @@ model ServiceType {
   @@map("service_types")
 }
 
+// Where a client stands in the engagement lifecycle — separate from `active`
+// below, which only means "archived or not" (a Completed or On Hold client
+// is still active, just not currently being worked). Default is Prospect:
+// a brand-new client record starts as a lead, not already engaged.
+enum ClientStatus {
+  PROSPECT
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+}
+
 model Client {
-  id          String    @id @default(cuid())
+  id          String       @id @default(cuid())
   // A client can be worked under more than one project (e.g. a facility
   // that comes back for a new batch of renewals next year) — many-to-many
   // rather than a single owning project, so it's added once and linked
@@ -368,20 +383,13 @@ model Client {
   name        String
   contactInfo String?
   address     String?
-  active      Boolean   @default(true)
+  active      Boolean      @default(true)
+  status      ClientStatus @default(PROSPECT)
 
   // Business details — the licensed entity itself.
   businessName  String?
   businessPhone String?
   businessEmail String?
-
-  // Owner details — the individual who owns/operates the business. DOB
-  // matters here (not on the business) since licensing bodies run
-  // background checks against the owner, not the entity.
-  ownerName        String?
-  ownerEmail       String?
-  ownerPhone       String?
-  ownerDateOfBirth DateTime?
 
   // Structured billing address — separate from the freeform `address`
   // above because Stripe Tax needs discrete fields (state/postal code at
@@ -417,9 +425,101 @@ model Client {
   invoices        Invoice[]
   formSubmissions FormSubmission[]
   careRecipients  CareRecipient[]
+  contacts        ClientContact[]
+  owners          ClientOwner[]
+  agreements      ClientAgreement[]
+  licenses        ClientLicense[]
+  files           FileAsset[]
 
   @@index([clientGroupId])
   @@map("clients")
+}
+
+// A labeled contact at the client — a partner, office manager, whoever else
+// is involved in communication besides the primary owner(s) below. Deliberately
+// separate from ClientOwner: a contact doesn't imply any ownership stake.
+model ClientContact {
+  id          String   @id @default(cuid())
+  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId    String
+  name        String
+  role        String?
+  email       String?
+  phone       String?
+  createdBy   User     @relation("ClientContactCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([clientId])
+  @@map("client_contacts")
+}
+
+// Replaces the old single ownerName/ownerEmail/ownerPhone/ownerDateOfBirth
+// fields on Client — some companies have two or three owners/partners, not
+// one. ownershipPercentage is informational only, nothing sums/validates it
+// to 100 (real-world data is often partial or unknown).
+model ClientOwner {
+  id                    String   @id @default(cuid())
+  client                Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId              String
+  name                  String
+  email                 String?
+  phone                 String?
+  ownershipPercentage   Float?
+  createdBy             User     @relation("ClientOwnerCreatedBy", fields: [createdById], references: [id])
+  createdById           String
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([clientId])
+  @@map("client_owners")
+}
+
+// Full agreement history, not just the current one — a renewal adds a new
+// row rather than overwriting the last engagement's record.
+model ClientAgreement {
+  id            String   @id @default(cuid())
+  client        Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId      String
+  agreementType String
+  signedDate    DateTime?
+  amount        Float?
+  // Plain string, not a Prisma enum — a small closed set ("Unpaid" |
+  // "Partial" | "Paid") with no cross-entity filtering need, same call as
+  // CareRecipient.preferredContactMethod earlier this session.
+  paymentStatus String?
+  notes         String?
+  createdBy     User     @relation("ClientAgreementCreatedBy", fields: [createdById], references: [id])
+  createdById   String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([clientId])
+  @@map("client_agreements")
+}
+
+// Distinct from ClientCredential (portal login credentials) — this tracks
+// the actual licenses/certifications/insurance a client holds, with expiry
+// dates that feed both the dashboard alerts and the daily digest email
+// (see src/lib/aging-alerts.ts, src/lib/due-date-digest.ts).
+model ClientLicense {
+  id            String    @id @default(cuid())
+  client        Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId      String
+  licenseType   String
+  licenseNumber String?
+  issuedDate    DateTime?
+  expiryDate    DateTime
+  status        String?
+  createdBy     User      @relation("ClientLicenseCreatedBy", fields: [createdById], references: [id])
+  createdById   String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([clientId])
+  @@index([expiryDate])
+  @@map("client_licenses")
 }
 
 // A person a Caregiver actually visits and gives hands-on care to — not the
@@ -800,6 +900,12 @@ model FileAsset {
   applicationId String?
   task          Task?        @relation(fields: [taskId], references: [id])
   taskId        String?
+  // Third parent kind, alongside applicationId/taskId above — the "one
+  // stop shop" ask: a signed agreement, EIN letter, W-9, license, or
+  // insurance certificate attached directly to the client, not routed
+  // through a case or task.
+  client        Client?      @relation(fields: [clientId], references: [id])
+  clientId      String?
   fileName      String
   storageKey    String
   mimeType      String

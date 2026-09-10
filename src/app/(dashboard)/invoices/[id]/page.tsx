@@ -86,7 +86,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           )}
         </div>
         <InvoiceActions
-          invoice={{ ...invoice, businessEmail: invoice.client.businessEmail, ownerEmail: invoice.client.ownerEmail }}
+          invoice={{ ...invoice, businessEmail: invoice.client.businessEmail, ownerEmail: invoice.client.owners[0]?.email ?? null }}
           clients={clients.map((c) => ({ id: c.id, name: c.name }))}
           applications={applications.map((a) => ({ id: a.id, name: a.name, clientId: a.client.id }))}
           paymentsCount={invoice.payments.length}
@@ -103,7 +103,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         </div>
       )}
 
-      {!invoice.client.businessEmail && !invoice.client.ownerEmail && (
+      {!invoice.client.businessEmail && !invoice.client.owners[0]?.email && (
         <div className="flex items-center gap-2 rounded-lg border border-amber-500/50 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-400">
           <TriangleAlert className="size-4 shrink-0" />
           <span>
@@ -225,7 +225,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                                   receiptId={payment.receipt.id}
                                   alreadySent={!!payment.receipt.sentAt}
                                   businessEmail={invoice.client.businessEmail}
-                                  ownerEmail={invoice.client.ownerEmail}
+                                  ownerEmail={invoice.client.owners[0]?.email ?? null}
                                 />
                               </div>
                               {payment.receipt.sentAt && (

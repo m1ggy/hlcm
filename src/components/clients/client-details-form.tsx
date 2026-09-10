@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Check, Loader2 } from "lucide-react";
 import { updateClient } from "@/lib/actions/clients";
+import { CLIENT_STATUS_LABELS, CLIENT_STATUSES, type ClientStatus } from "@/lib/client-status";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,10 +18,7 @@ type ClientDetails = {
   businessName: string | null;
   businessPhone: string | null;
   businessEmail: string | null;
-  ownerName: string | null;
-  ownerEmail: string | null;
-  ownerPhone: string | null;
-  ownerDateOfBirth: Date | null;
+  status: ClientStatus;
   billingAddressLine1: string | null;
   billingCity: string | null;
   billingState: string | null;
@@ -35,11 +33,6 @@ type ClientDetails = {
 const NO_GROUP = "__none__";
 
 type FieldKey = keyof ClientDetails;
-
-function toDateInputValue(date: Date | null) {
-  if (!date) return "";
-  return new Date(date).toISOString().slice(0, 10);
-}
 
 function LabeledInput({
   id,
@@ -79,6 +72,8 @@ export function ClientDetailsForm({
 }) {
   const router = useRouter();
   const [isSaving, startTransition] = useTransition();
+  const [justSaved, setJustSaved] = useState(false);
+  const savedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [values, setValues] = useState({
     name: defaultValues.name,
     contactInfo: defaultValues.contactInfo ?? "",
@@ -86,10 +81,7 @@ export function ClientDetailsForm({
     businessName: defaultValues.businessName ?? "",
     businessPhone: defaultValues.businessPhone ?? "",
     businessEmail: defaultValues.businessEmail ?? "",
-    ownerName: defaultValues.ownerName ?? "",
-    ownerEmail: defaultValues.ownerEmail ?? "",
-    ownerPhone: defaultValues.ownerPhone ?? "",
-    ownerDateOfBirth: toDateInputValue(defaultValues.ownerDateOfBirth),
+    status: defaultValues.status,
     billingAddressLine1: defaultValues.billingAddressLine1 ?? "",
     billingCity: defaultValues.billingCity ?? "",
     billingState: defaultValues.billingState ?? "",
@@ -99,6 +91,12 @@ export function ClientDetailsForm({
     // updateClient itself reads (see src/lib/actions/clients.ts).
     clientGroupId: defaultValues.clientGroupId ?? "",
   });
+
+  useEffect(() => {
+    return () => {
+      if (savedTimeoutRef.current) clearTimeout(savedTimeoutRef.current);
+    };
+  }, []);
 
   function set(field: FieldKey, v: string) {
     setValues((prev) => ({ ...prev, [field]: v }));
@@ -117,6 +115,12 @@ export function ClientDetailsForm({
       try {
         await updateClient(clientId, formData);
         router.refresh();
+        // Brief "Saved ✓" confirmation next to the spinner — cleared on a
+        // timer, and re-armed (clearing any previous timer) on every
+        // successful save so back-to-back edits each get their own blip.
+        if (savedTimeoutRef.current) clearTimeout(savedTimeoutRef.current);
+        setJustSaved(true);
+        savedTimeoutRef.current = setTimeout(() => setJustSaved(false), 2000);
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to update client");
       }
@@ -125,10 +129,16 @@ export function ClientDetailsForm({
 
   return (
     <div className="space-y-4">
-      {isSaving && (
+      {isSaving ? (
         <span className="flex items-center gap-1 text-xs text-muted-foreground">
           <Loader2 className="size-3 animate-spin" /> Saving...
         </span>
+      ) : (
+        justSaved && (
+          <span className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
+            <Check className="size-3" /> Saved
+          </span>
+        )
       )}
       <Card>
         <CardContent className="flex flex-wrap gap-4 pt-6">
@@ -159,45 +169,46 @@ export function ClientDetailsForm({
               </SelectContent>
             </Select>
           </div>
+          <div className="space-y-1">
+            <Label htmlFor="status" className="text-xs text-muted-foreground">
+              Status
+            </Label>
+            <Select
+              items={CLIENT_STATUS_LABELS}
+              value={values.status}
+              onValueChange={(v) => {
+                const next = (v as ClientStatus) || values.status;
+                set("status", next);
+                save("status", next);
+              }}
+            >
+              <SelectTrigger id="status" size="sm" className="h-8 w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {CLIENT_STATUSES.map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {CLIENT_STATUS_LABELS[s]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Business details</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <LabeledInput id="businessName" label="Legal business name" value={values.businessName} onChange={(v) => set("businessName", v)} onBlur={() => save("businessName")} />
-            <LabeledInput id="address" label="Address" value={values.address} onChange={(v) => set("address", v)} onBlur={() => save("address")} />
-            <LabeledInput id="businessPhone" label="Business phone" value={values.businessPhone} onChange={(v) => set("businessPhone", v)} onBlur={() => save("businessPhone")} type="tel" />
-            <LabeledInput id="businessEmail" label="Business email" value={values.businessEmail} onChange={(v) => set("businessEmail", v)} onBlur={() => save("businessEmail")} type="email" />
-            <LabeledInput id="contactInfo" label="Other contact info" value={values.contactInfo} onChange={(v) => set("contactInfo", v)} onBlur={() => save("contactInfo")} />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Owner details</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <LabeledInput id="ownerName" label="Owner name" value={values.ownerName} onChange={(v) => set("ownerName", v)} onBlur={() => save("ownerName")} />
-            <LabeledInput id="ownerEmail" label="Owner email" value={values.ownerEmail} onChange={(v) => set("ownerEmail", v)} onBlur={() => save("ownerEmail")} type="email" />
-            <LabeledInput id="ownerPhone" label="Owner phone" value={values.ownerPhone} onChange={(v) => set("ownerPhone", v)} onBlur={() => save("ownerPhone")} type="tel" />
-            <LabeledInput
-              id="ownerDateOfBirth"
-              label="Owner date of birth"
-              value={values.ownerDateOfBirth}
-              onChange={(v) => {
-                set("ownerDateOfBirth", v);
-                save("ownerDateOfBirth", v);
-              }}
-              onBlur={() => {}}
-              type="date"
-            />
-          </CardContent>
-        </Card>
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Business details</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-2">
+          <LabeledInput id="businessName" label="Legal business name" value={values.businessName} onChange={(v) => set("businessName", v)} onBlur={() => save("businessName")} />
+          <LabeledInput id="address" label="Address" value={values.address} onChange={(v) => set("address", v)} onBlur={() => save("address")} />
+          <LabeledInput id="businessPhone" label="Business phone" value={values.businessPhone} onChange={(v) => set("businessPhone", v)} onBlur={() => save("businessPhone")} type="tel" />
+          <LabeledInput id="businessEmail" label="Business email" value={values.businessEmail} onChange={(v) => set("businessEmail", v)} onBlur={() => save("businessEmail")} type="email" />
+          <LabeledInput id="contactInfo" label="Other contact info" value={values.contactInfo} onChange={(v) => set("contactInfo", v)} onBlur={() => save("contactInfo")} className="sm:col-span-2" />
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

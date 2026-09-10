@@ -13,7 +13,4 @@ export const CLIENT_FIELD_OPTIONS = [
   "businessName",
   "businessPhone",
   "businessEmail",
-  "ownerName",
-  "ownerEmail",
-  "ownerPhone",
 ] as const;

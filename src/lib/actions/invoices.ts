@@ -38,7 +38,7 @@ const invoiceInclude = {
       name: true,
       businessName: true,
       businessEmail: true,
-      ownerEmail: true,
+      owners: { select: { email: true }, orderBy: { createdAt: "asc" }, take: 1 },
       stripeCustomerId: true,
       billingAddressLine1: true,
       billingCity: true,
@@ -633,18 +633,18 @@ export async function deletePayment(paymentId: string) {
 }
 
 // Shared by every "send" action below — whoever's sending can pick the
-// client's business email, their owner email, or type a one-off address
-// (see EmailRecipientPicker), instead of always defaulting to
-// businessEmail ?? ownerEmail. An override that's just whitespace is
+// client's business email, their (first) owner's email, or type a one-off
+// address (see EmailRecipientPicker), instead of always defaulting to
+// businessEmail ?? owner email. An override that's just whitespace is
 // treated the same as none, so a picker left on "business"/"owner"
 // doesn't need to special-case an empty custom-email field.
 function resolveRecipientEmail(
   override: string | null | undefined,
-  client: { businessEmail: string | null; ownerEmail: string | null }
+  client: { businessEmail: string | null; owners: { email: string | null }[] }
 ) {
   const trimmed = override?.trim() || undefined;
   const email = trimmed ? z.string().email("Enter a valid email address").parse(trimmed) : undefined;
-  const recipientEmail = email ?? client.businessEmail ?? client.ownerEmail;
+  const recipientEmail = email ?? client.businessEmail ?? client.owners[0]?.email;
   if (!recipientEmail) {
     throw new Error("Client has no email on file — add one before sending, or type a different email for this send");
   }

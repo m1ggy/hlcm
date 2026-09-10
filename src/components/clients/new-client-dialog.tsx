@@ -123,22 +123,17 @@ export function NewClientDialog({
             </div>
           )}
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-3">
-              <SectionHeading>Business details</SectionHeading>
+          <div className="space-y-3">
+            {/* Owners are added after creation, from the client's own page
+                (see ClientOwnersCard) — they're a repeatable list now, not
+                fixed fields, so there's no single "owner" to fill in yet. */}
+            <SectionHeading>Business details</SectionHeading>
+            <div className="grid gap-3 sm:grid-cols-2">
               <Field id="businessName" label="Legal business name" />
               <Field id="address" label="Address" />
               <Field id="businessPhone" label="Business phone" type="tel" />
               <Field id="businessEmail" label="Business email" type="email" required />
-              <Field id="contactInfo" label="Other contact info" />
-            </div>
-
-            <div className="space-y-3">
-              <SectionHeading>Owner details</SectionHeading>
-              <Field id="ownerName" label="Owner name" />
-              <Field id="ownerEmail" label="Owner email" type="email" />
-              <Field id="ownerPhone" label="Owner phone" type="tel" />
-              <Field id="ownerDateOfBirth" label="Owner date of birth" type="date" />
+              <Field id="contactInfo" label="Other contact info" className="sm:col-span-2" />
             </div>
           </div>
 
