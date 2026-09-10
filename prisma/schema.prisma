@@ -431,9 +431,18 @@ model CareRecipient {
   id           String    @id @default(cuid())
   name         String
   address      String?
-  contactInfo  String?
   dateOfBirth  DateTime?
   active       Boolean   @default(true)
+
+  // The recipient's own reachability — distinct from emergencyContact*
+  // below (a different person). preferredContactMethod and contactNotes
+  // are both plain freeform strings, not enums: neither drives any
+  // filtering/business logic, just a hint on this record for staff and
+  // the assigned Caregiver to read.
+  phone                  String?
+  email                  String?
+  preferredContactMethod String?
+  contactNotes           String?
 
   // Deliberately separate from the licensing Client's own emergency-type
   // fields — this is who to call about the recipient, not about the

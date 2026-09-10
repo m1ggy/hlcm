@@ -41,8 +41,11 @@ export type CareRecipientRow = {
   id: string;
   name: string;
   address: string | null;
-  contactInfo: string | null;
   dateOfBirth: Date | null;
+  phone: string | null;
+  email: string | null;
+  preferredContactMethod: string | null;
+  contactNotes: string | null;
   emergencyContactName: string | null;
   emergencyContactRelationship: string | null;
   emergencyContactPhone: string | null;
@@ -66,11 +69,21 @@ function toDateInputValue(date: Date | null): string {
 // An id collision here isn't just invalid HTML, it risks a label click or
 // fill targeting the Client's own live-saving field instead of this form's
 // (caught live during verification — see the geo-location-login plan).
+const CONTACT_METHOD_NONE = "__none__";
+const CONTACT_METHODS = ["Phone", "Email", "Text"];
+
 function CareRecipientFields({ defaultValues }: { defaultValues?: CareRecipientRow }) {
+  const [preferredContactMethod, setPreferredContactMethod] = useState(defaultValues?.preferredContactMethod || CONTACT_METHOD_NONE);
+
   return (
     <>
+      <p className="text-xs text-muted-foreground">
+        The person a Caregiver actually visits and gives hands-on care to — not a contact at the agency itself.
+      </p>
       <div className="space-y-1">
-        <Label htmlFor="care-recipient-name">Name</Label>
+        <Label htmlFor="care-recipient-name">
+          Name <span className="text-destructive">*</span>
+        </Label>
         <Input id="care-recipient-name" name="name" defaultValue={defaultValues?.name} required />
       </div>
       <div className="grid grid-cols-2 gap-3">
@@ -93,17 +106,64 @@ function CareRecipientFields({ defaultValues }: { defaultValues?: CareRecipientR
           />
         </div>
       </div>
-      <div className="space-y-1">
-        <Label htmlFor="care-recipient-contactInfo">Contact info</Label>
-        <Input
-          id="care-recipient-contactInfo"
-          name="contactInfo"
-          placeholder="General contact — phone, preferred way to reach them"
-          defaultValue={defaultValues?.contactInfo ?? ""}
-        />
-      </div>
+
       <fieldset className="space-y-2 rounded-lg border p-3">
-        <legend className="px-1 text-xs font-medium text-muted-foreground">Emergency contact</legend>
+        <legend className="px-1 text-xs font-medium text-muted-foreground">How to reach them directly</legend>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <Label htmlFor="care-recipient-phone">Phone</Label>
+            <Input
+              id="care-recipient-phone"
+              name="phone"
+              type="tel"
+              placeholder="Their own number, if they have one"
+              defaultValue={defaultValues?.phone ?? ""}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="care-recipient-email">Email</Label>
+            <Input
+              id="care-recipient-email"
+              name="email"
+              type="email"
+              defaultValue={defaultValues?.email ?? ""}
+            />
+          </div>
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="care-recipient-preferred">Preferred contact method</Label>
+          <Select
+            items={{ [CONTACT_METHOD_NONE]: "No preference", ...Object.fromEntries(CONTACT_METHODS.map((m) => [m, m])) }}
+            value={preferredContactMethod}
+            onValueChange={(v) => setPreferredContactMethod(v ?? CONTACT_METHOD_NONE)}
+          >
+            <SelectTrigger id="care-recipient-preferred" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={CONTACT_METHOD_NONE}>No preference</SelectItem>
+              {CONTACT_METHODS.map((m) => (
+                <SelectItem key={m} value={m}>
+                  {m}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <input type="hidden" name="preferredContactMethod" value={preferredContactMethod === CONTACT_METHOD_NONE ? "" : preferredContactMethod} />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="care-recipient-contact-notes">Other notes</Label>
+          <Input
+            id="care-recipient-contact-notes"
+            name="contactNotes"
+            placeholder="Best times to call, hard of hearing, reachable via a neighbor, ..."
+            defaultValue={defaultValues?.contactNotes ?? ""}
+          />
+        </div>
+      </fieldset>
+
+      <fieldset className="space-y-2 rounded-lg border p-3">
+        <legend className="px-1 text-xs font-medium text-muted-foreground">Who to call in an emergency</legend>
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1">
             <Label htmlFor="care-recipient-ec-name">Name</Label>
@@ -133,6 +193,7 @@ function CareRecipientFields({ defaultValues }: { defaultValues?: CareRecipientR
           />
         </div>
       </fieldset>
+
       <div className="space-y-1">
         <Label htmlFor="care-recipient-careNotes">Care needs & medical notes</Label>
         <Textarea

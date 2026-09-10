@@ -26,8 +26,11 @@ const INCLUDE = {
 const careRecipientFields = {
   name: z.string().min(1, "Name is required"),
   address: z.string().optional(),
-  contactInfo: z.string().optional(),
   dateOfBirth: z.string().optional(),
+  phone: z.string().optional(),
+  email: z.string().optional(),
+  preferredContactMethod: z.string().optional(),
+  contactNotes: z.string().optional(),
   emergencyContactName: z.string().optional(),
   emergencyContactRelationship: z.string().optional(),
   emergencyContactPhone: z.string().optional(),
@@ -43,8 +46,11 @@ function readFields(formData: FormData) {
   return {
     name: formData.get("name"),
     address: formData.get("address") || undefined,
-    contactInfo: formData.get("contactInfo") || undefined,
     dateOfBirth: formData.get("dateOfBirth") || undefined,
+    phone: formData.get("phone") || undefined,
+    email: formData.get("email") || undefined,
+    preferredContactMethod: formData.get("preferredContactMethod") || undefined,
+    contactNotes: formData.get("contactNotes") || undefined,
     emergencyContactName: formData.get("emergencyContactName") || undefined,
     emergencyContactRelationship: formData.get("emergencyContactRelationship") || undefined,
     emergencyContactPhone: formData.get("emergencyContactPhone") || undefined,
@@ -139,6 +145,7 @@ export async function createCareRecipient(formData: FormData) {
   });
 
   revalidatePath("/clients");
+  revalidatePath("/care-recipients");
   if (recipient.clientId) revalidatePath(`/clients/${recipient.clientId}`);
   return recipient;
 }
@@ -175,6 +182,7 @@ export async function updateCareRecipient(id: string, formData: FormData) {
   });
 
   revalidatePath("/clients");
+  revalidatePath("/care-recipients");
   if (recipient.clientId) revalidatePath(`/clients/${recipient.clientId}`);
   if (before.clientId && before.clientId !== recipient.clientId) revalidatePath(`/clients/${before.clientId}`);
   return recipient;
@@ -187,6 +195,7 @@ export async function archiveCareRecipient(id: string) {
   await recordAudit({ ...auditTargetFor(recipient), action: "archive", actorId: session.user.id });
 
   revalidatePath("/clients");
+  revalidatePath("/care-recipients");
   if (recipient.clientId) revalidatePath(`/clients/${recipient.clientId}`);
 }
 
@@ -197,6 +206,7 @@ export async function restoreCareRecipient(id: string) {
   await recordAudit({ ...auditTargetFor(recipient), action: "restore", actorId: session.user.id });
 
   revalidatePath("/clients");
+  revalidatePath("/care-recipients");
   if (recipient.clientId) revalidatePath(`/clients/${recipient.clientId}`);
 }
 
@@ -226,6 +236,7 @@ export async function assignCaregiver(careRecipientId: string, caregiverId: stri
   });
 
   revalidatePath("/clients");
+  revalidatePath("/care-recipients");
   if (recipient.clientId) revalidatePath(`/clients/${recipient.clientId}`);
 }
 
@@ -246,6 +257,7 @@ export async function unassignCaregiver(careRecipientId: string, caregiverId: st
   });
 
   revalidatePath("/clients");
+  revalidatePath("/care-recipients");
   if (recipient.clientId) revalidatePath(`/clients/${recipient.clientId}`);
 }
 
