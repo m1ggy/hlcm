@@ -148,6 +148,35 @@ export async function getClientAuditLog(clientId: string) {
   });
 }
 
+// Common legal-entity suffixes/punctuation stripped before comparing, so
+// "Sunrise Home Care" and "Sunrise Home Care, LLC." are still flagged as
+// the same business even though they're not a literal exact match.
+const NAME_SUFFIX_RE = /\b(inc|incorporated|llc|l\.l\.c|ltd|limited|corp|corporation|co)\b\.?/gi;
+
+function normalizeClientName(name: string) {
+  return name
+    .toLowerCase()
+    .replace(NAME_SUFFIX_RE, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+// Purely informational — never blocks create, just flags "someone may have
+// already added this" so a second person adding clients doesn't
+// accidentally duplicate one. Exact/near-exact only (normalized match),
+// not a fuzzy/typo-tolerant search, to keep false positives low.
+export async function checkSimilarClientNames(name: string) {
+  await requireRole(["ADMIN", "MANAGER", "STAFF"]);
+  const normalized = normalizeClientName(name);
+  if (normalized.length < 2) return [];
+
+  const candidates = await prisma.client.findMany({
+    where: { active: true },
+    select: { id: true, name: true },
+  });
+  return candidates.filter((c) => normalizeClientName(c.name) === normalized).slice(0, 3);
+}
+
 export async function createClient(formData: FormData) {
   const session = await requireRole(["ADMIN", "MANAGER", "STAFF"]);
   const parsed = createClientSchema.parse({

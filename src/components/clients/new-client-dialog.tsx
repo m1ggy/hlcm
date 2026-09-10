@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
+import Link from "next/link";
+import { TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
-import { createClient } from "@/lib/actions/clients";
+import { createClient, checkSimilarClientNames } from "@/lib/actions/clients";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -67,6 +69,24 @@ export function NewClientDialog({
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [pickedProjectId, setPickedProjectId] = useState<string | null>(null);
+  const [name, setName] = useState("");
+  const [similar, setSimilar] = useState<{ id: string; name: string }[]>([]);
+
+  // Debounced, non-blocking duplicate-name check — purely informational
+  // (see checkSimilarClientNames), never disables Create.
+  useEffect(() => {
+    const trimmed = name.trim();
+    const id = setTimeout(() => {
+      if (trimmed.length < 2) {
+        setSimilar([]);
+        return;
+      }
+      checkSimilarClientNames(trimmed)
+        .then(setSimilar)
+        .catch(() => setSimilar([]));
+    }, 400);
+    return () => clearTimeout(id);
+  }, [name]);
 
   function handleSubmit(formData: FormData) {
     const resolvedProjectId = projectId ?? pickedProjectId;
@@ -80,6 +100,8 @@ export function NewClientDialog({
         await createClient(formData);
         toast.success("Client created");
         setOpen(false);
+        setName("");
+        setSimilar([]);
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to create client");
       }
@@ -91,6 +113,10 @@ export function NewClientDialog({
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
+        if (!next) {
+          setName("");
+          setSimilar([]);
+        }
       }}
     >
       <DialogTrigger render={<Button>New Client</Button>} />
@@ -103,7 +129,24 @@ export function NewClientDialog({
             <Label htmlFor="name" className="text-xs text-muted-foreground">
               Client name
             </Label>
-            <Input id="name" name="name" required className="h-8" />
+            <Input id="name" name="name" value={name} onChange={(e) => setName(e.target.value)} required className="h-8" />
+            {similar.length > 0 && (
+              <div className="flex items-start gap-1.5 rounded-lg border border-amber-500/50 bg-amber-500/10 px-2.5 py-2 text-xs text-amber-700 dark:text-amber-400">
+                <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
+                <span>
+                  A client named similarly already exists:{" "}
+                  {similar.map((c, i) => (
+                    <span key={c.id}>
+                      {i > 0 && ", "}
+                      <Link href={`/clients/${c.id}`} target="_blank" className="font-medium underline">
+                        {c.name}
+                      </Link>
+                    </span>
+                  ))}
+                  . You can still create this one.
+                </span>
+              </div>
+            )}
           </div>
 
           {projects && (
