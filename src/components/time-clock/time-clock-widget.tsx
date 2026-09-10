@@ -2,14 +2,15 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Clock, Coffee, LogOut, MapPin } from "lucide-react";
+import { Clock, Coffee, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AvatarInitials } from "@/components/ui/avatar-initials";
 import { clockIn, clockOut, startBreak, endBreak, endBreakForDay } from "@/lib/actions/time-entries";
 import { formatDuration } from "@/lib/time-entries";
 import { captureLocation, haversineMeters, formatDistance, NEAR_THRESHOLD_METERS } from "@/lib/geolocation";
 
-type CareRecipient = { id: string; name: string; latitude: number | null; longitude: number | null };
+type CareRecipient = { id: string; name: string; address: string | null; latitude: number | null; longitude: number | null };
 
 export function TimeClockWidget({
   initialClockIn,
@@ -176,16 +177,20 @@ export function TimeClockWidget({
         <DialogHeader>
           <DialogTitle>Who&apos;s this visit for?</DialogTitle>
         </DialogHeader>
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-1">
           {careRecipients.map((recipient) => (
-            <Button
+            <button
               key={recipient.id}
-              variant="outline"
-              className="justify-start"
+              type="button"
               onClick={() => handlePickRecipient(recipient.id)}
+              className="flex items-center gap-2.5 rounded-lg border px-3 py-2 text-left transition-colors hover:bg-muted/60"
             >
-              <MapPin className="size-3.5" /> {recipient.name}
-            </Button>
+              <AvatarInitials name={recipient.name} className="size-8 text-sm" />
+              <div className="min-w-0">
+                <div className="font-medium">{recipient.name}</div>
+                {recipient.address && <div className="truncate text-xs text-muted-foreground">{recipient.address}</div>}
+              </div>
+            </button>
           ))}
         </div>
       </DialogContent>

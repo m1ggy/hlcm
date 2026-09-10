@@ -1,9 +1,9 @@
 import { redirect } from "next/navigation";
-import { MapPin } from "lucide-react";
 import { auth } from "@/auth";
 import { listMyCareRecipients } from "@/lib/actions/care-recipients";
-import { mapsLinkForAddress } from "@/lib/geolocation";
+import { RecipientSummary, ageFromDob } from "@/components/clients/care-recipient-summary";
 import { CareInstructionChecklist } from "@/components/clients/care-instruction-checklist";
+import { AvatarInitials } from "@/components/ui/avatar-initials";
 import { PageInfoButton } from "@/components/shared/page-info-button";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -38,42 +38,39 @@ export default async function CareRecipientsPage() {
       {recipients.length === 0 ? (
         <p className="text-sm text-muted-foreground">No recipients assigned to you yet.</p>
       ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {recipients.map((r) => (
-            <Card key={r.id}>
-              <CardContent className="space-y-1.5">
-                <div className="font-medium">{r.name}</div>
-                {r.client && <p className="text-xs text-muted-foreground">{r.client.name}</p>}
-                {r.address && (
-                  <a
-                    href={mapsLinkForAddress(r.address)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center gap-1 text-sm text-muted-foreground hover:underline"
-                  >
-                    <MapPin className="size-3.5" /> {r.address}
-                  </a>
-                )}
-                {r.contactInfo && <p className="text-sm text-muted-foreground">{r.contactInfo}</p>}
-                {r.visitSchedule && <p className="text-sm text-muted-foreground">Visits: {r.visitSchedule}</p>}
-                {(r.emergencyContactName || r.emergencyContactPhone) && (
-                  <p className="text-sm text-muted-foreground">
-                    Emergency: {r.emergencyContactName || "—"}
-                    {r.emergencyContactRelationship && ` (${r.emergencyContactRelationship})`}
-                    {r.emergencyContactPhone && ` — ${r.emergencyContactPhone}`}
-                  </p>
-                )}
-                {r.careNotes && (
-                  <p className="rounded-md bg-muted/50 p-2 text-sm whitespace-pre-wrap">{r.careNotes}</p>
-                )}
-                {r.instructions.length > 0 && (
-                  <div className="border-t pt-2">
-                    <CareInstructionChecklist careRecipientId={r.id} instructions={r.instructions} />
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {recipients.map((r) => {
+            const recipientAge = ageFromDob(r.dateOfBirth);
+            const done = r.instructions.filter((i) => i.completed).length;
+            return (
+              <Card key={r.id}>
+                <CardContent className="space-y-3">
+                  <div className="flex items-center gap-2.5">
+                    <AvatarInitials name={r.name} className="size-9 text-sm" />
+                    <div>
+                      <div className="font-medium leading-tight">{r.name}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {r.client?.name}
+                        {recipientAge !== null && (r.client?.name ? " · " : "") + `Age ${recipientAge}`}
+                      </div>
+                    </div>
                   </div>
-                )}
-              </CardContent>
-            </Card>
-          ))}
+                  <RecipientSummary recipient={r} />
+                  {r.instructions.length > 0 && (
+                    <div className="border-t pt-3">
+                      <div className="mb-1.5 flex items-center justify-between">
+                        <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">To do this visit</p>
+                        <span className="text-xs text-muted-foreground">
+                          {done}/{r.instructions.length} done
+                        </span>
+                      </div>
+                      <CareInstructionChecklist careRecipientId={r.id} instructions={r.instructions} hideHeader />
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>

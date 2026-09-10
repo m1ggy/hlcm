@@ -49,7 +49,7 @@ function InstructionRow({
   }
 
   return (
-    <div className="flex items-center gap-2">
+    <label className="flex items-center gap-2 rounded-md px-1.5 py-1 -mx-1.5 hover:bg-muted/60">
       <Checkbox checked={instruction.completed} onCheckedChange={handleToggle} disabled={isPending} />
       <span className={instruction.completed ? "flex-1 text-sm text-muted-foreground line-through" : "flex-1 text-sm"}>
         {instruction.label}
@@ -64,7 +64,7 @@ function InstructionRow({
           <X className="size-3.5" />
         </button>
       )}
-    </div>
+    </label>
   );
 }
 
@@ -87,7 +87,7 @@ function AddInstructionRow({ careRecipientId }: { careRecipientId: string }) {
   }
 
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="mt-1 flex items-center gap-1.5">
       <Input
         value={label}
         onChange={(e) => setLabel(e.target.value)}
@@ -111,15 +111,29 @@ export function CareInstructionChecklist({
   careRecipientId,
   instructions,
   canManage = false,
+  hideHeader = false,
 }: {
   careRecipientId: string;
   instructions: CareInstructionRow[];
   canManage?: boolean;
+  /** The caller already renders its own "To do this visit" + progress
+   * header (see the Caregiver's My Recipients page) — skip the internal
+   * one rather than show it twice. */
+  hideHeader?: boolean;
 }) {
+  const done = instructions.filter((i) => i.completed).length;
+
   return (
-    <div className="space-y-1.5">
-      {instructions.length === 0 && !canManage ? null : (
-        <p className="text-xs font-medium text-muted-foreground uppercase">To do this visit</p>
+    <div className="space-y-0.5">
+      {!hideHeader && (instructions.length > 0 || canManage) && (
+        <div className="mb-1 flex items-center justify-between">
+          <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">To do this visit</p>
+          {instructions.length > 0 && (
+            <span className="text-xs text-muted-foreground">
+              {done}/{instructions.length} done
+            </span>
+          )}
+        </div>
       )}
       {instructions.map((i) => (
         <InstructionRow key={i.id} instruction={i} canManage={canManage} />

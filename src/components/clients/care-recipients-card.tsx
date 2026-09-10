@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { MapPin, Pencil, X } from "lucide-react";
+import { Pencil, X } from "lucide-react";
 import {
   listCareRecipients,
   createCareRecipient,
@@ -13,8 +13,9 @@ import {
   assignCaregiver,
   unassignCaregiver,
 } from "@/lib/actions/care-recipients";
-import { mapsLinkForAddress } from "@/lib/geolocation";
 import { CareInstructionChecklist, type CareInstructionRow } from "@/components/clients/care-instruction-checklist";
+import { RecipientSummary, ageFromDob } from "@/components/clients/care-recipient-summary";
+import { AvatarInitials } from "@/components/ui/avatar-initials";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -58,16 +59,6 @@ function toDateInputValue(date: Date | null): string {
   return new Date(date).toISOString().slice(0, 10);
 }
 
-function age(dateOfBirth: Date | null): number | null {
-  if (!dateOfBirth) return null;
-  const dob = new Date(dateOfBirth);
-  const now = new Date();
-  let years = now.getFullYear() - dob.getFullYear();
-  const beforeBirthdayThisYear =
-    now.getMonth() < dob.getMonth() || (now.getMonth() === dob.getMonth() && now.getDate() < dob.getDate());
-  if (beforeBirthdayThisYear) years -= 1;
-  return years;
-}
 
 // Shared by both Add and Edit — prefixed ids since this mounts on the same
 // Client detail page as ClientDetailsForm, which already owns plain #name/
@@ -439,43 +430,28 @@ export function CareRecipientsCard({
         {recipients.length === 0 ? (
           <p className="text-sm text-muted-foreground">No care recipients added for this client yet.</p>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-3">
             {recipients.map((r) => {
-              const recipientAge = age(r.dateOfBirth);
+              const recipientAge = ageFromDob(r.dateOfBirth);
               return (
-                <div key={r.id} className="rounded-lg border p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="font-medium">
-                      {r.name}
-                      {recipientAge !== null && <span className="ml-1.5 text-xs text-muted-foreground">Age {recipientAge}</span>}
+                <div key={r.id} className="rounded-xl border p-3.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <AvatarInitials name={r.name} className="size-8 text-sm" />
+                      <div>
+                        <div className="font-medium leading-tight">{r.name}</div>
+                        {recipientAge !== null && <div className="text-xs text-muted-foreground">Age {recipientAge}</div>}
+                      </div>
                     </div>
                     <div className="flex items-center gap-1">
                       <EditCareRecipientDialog recipient={r} />
                       <ArchiveRecipientButton id={r.id} />
                     </div>
                   </div>
-                  <div className="mt-1 space-y-0.5 text-sm text-muted-foreground">
-                    {r.address && (
-                      <div className="flex items-center gap-1">
-                        <MapPin className="size-3.5" />
-                        <a href={mapsLinkForAddress(r.address)} target="_blank" rel="noreferrer" className="hover:underline">
-                          {r.address}
-                        </a>
-                        {r.latitude == null && <span className="text-xs italic">(couldn&apos;t locate this address)</span>}
-                      </div>
-                    )}
-                    {r.contactInfo && <div>{r.contactInfo}</div>}
-                    {r.visitSchedule && <div>Visits: {r.visitSchedule}</div>}
-                    {(r.emergencyContactName || r.emergencyContactPhone) && (
-                      <div>
-                        Emergency contact: {r.emergencyContactName || "—"}
-                        {r.emergencyContactRelationship && ` (${r.emergencyContactRelationship})`}
-                        {r.emergencyContactPhone && ` — ${r.emergencyContactPhone}`}
-                      </div>
-                    )}
-                    {r.careNotes && <div className="whitespace-pre-wrap">{r.careNotes}</div>}
+                  <div className="mt-3">
+                    <RecipientSummary recipient={r} />
                   </div>
-                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  <div className="mt-3 flex flex-wrap items-center gap-1.5">
                     {r.assignments.map((a) => (
                       <CaregiverChip key={a.caregiver.id} careRecipientId={r.id} caregiver={a.caregiver} />
                     ))}
@@ -485,7 +461,7 @@ export function CareRecipientsCard({
                       alreadyAssigned={r.assignments.map((a) => a.caregiver.id)}
                     />
                   </div>
-                  <div className="mt-2 border-t pt-2">
+                  <div className="mt-3 border-t pt-3">
                     <CareInstructionChecklist careRecipientId={r.id} instructions={r.instructions} canManage />
                   </div>
                 </div>
