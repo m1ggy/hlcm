@@ -82,6 +82,9 @@ const ACTION_VERBS: Record<string, string> = {
   add_client_owner: "Added an owner",
   update_client_owner: "Updated an owner",
   remove_client_owner: "Removed an owner",
+  add_client_agreement: "Added an agreement",
+  update_client_agreement: "Updated an agreement",
+  remove_client_agreement: "Removed an agreement",
   set_rate: "Set hourly rate",
   clock_in: "Clocked in",
   clock_out: "Clocked out",
@@ -167,6 +170,9 @@ const EVENT_ACTIONS = new Set([
   "add_client_owner",
   "update_client_owner",
   "remove_client_owner",
+  "add_client_agreement",
+  "update_client_agreement",
+  "remove_client_agreement",
 ]);
 
 export function isEventAction(action: string) {
@@ -231,6 +237,9 @@ export function formatEventDescription(
   if (action === "add_client_owner" && newValue) return `Added owner "${newValue}"`;
   if (action === "update_client_owner" && newValue) return `Updated owner "${newValue}"`;
   if (action === "remove_client_owner" && oldValue) return `Removed owner "${oldValue}"`;
+  if (action === "add_client_agreement" && newValue) return `Added agreement "${newValue}"`;
+  if (action === "update_client_agreement" && newValue) return `Updated agreement "${newValue}"`;
+  if (action === "remove_client_agreement" && oldValue) return `Removed agreement "${oldValue}"`;
   return formatActionVerb(action);
 }
 
