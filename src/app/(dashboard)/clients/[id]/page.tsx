@@ -10,6 +10,7 @@ import { listClientContacts } from "@/lib/actions/client-contacts";
 import { listClientOwners } from "@/lib/actions/client-owners";
 import { listClientFiles } from "@/lib/actions/files";
 import { listClientAgreements } from "@/lib/actions/client-agreements";
+import { listClientLicenses } from "@/lib/actions/client-licenses";
 import { listCareRecipients, listCaregivers } from "@/lib/actions/care-recipients";
 import { listPipelineStages } from "@/lib/actions/stage";
 import { listInvoices } from "@/lib/actions/invoices";
@@ -24,6 +25,7 @@ import { ClientContactsCard } from "@/components/clients/client-contacts-card";
 import { ClientOwnersCard } from "@/components/clients/client-owners-card";
 import { ClientFilePool } from "@/components/clients/client-file-pool";
 import { ClientAgreementsCard } from "@/components/clients/client-agreements-card";
+import { ClientLicensesCard } from "@/components/clients/client-licenses-card";
 import { CareRecipientsCard } from "@/components/clients/care-recipients-card";
 import { AuditLogPanel } from "@/components/applications/audit-log-panel";
 import { ArchiveButton } from "@/components/shared/archive-button";
@@ -90,6 +92,7 @@ export default async function ClientDetailPage({
     owners,
     files,
     agreements,
+    licenses,
     mcoStages,
     invoices,
     clientGroups,
@@ -105,6 +108,7 @@ export default async function ClientDetailPage({
     listClientOwners(id),
     listClientFiles(id),
     listClientAgreements(id),
+    listClientLicenses(id),
     listPipelineStages("MCO", { includeExit: true }),
     canManageInvoices ? listInvoices({ clientId: id }) : Promise.resolve([]),
     listClientGroups(),
@@ -187,6 +191,8 @@ export default async function ClientDetailPage({
       <ClientFilePool clientId={id} files={files} canEdit />
 
       <ClientAgreementsCard clientId={id} agreements={agreements} />
+
+      <ClientLicensesCard clientId={id} licenses={licenses} />
 
       <Card>
         <CardContent>

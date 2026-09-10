@@ -76,3 +76,14 @@ export function computeAgingAlerts(input: AgingAlertInput, now: Date = new Date(
 
   return alerts;
 }
+
+// A ClientLicense's own alert rule — separate from computeAgingAlerts above
+// since it isn't stage-driven at all, just a flat expiry date. Same
+// severity shape/types so listLicenseAlerts (src/lib/actions/alerts.ts) and
+// the dashboard render it identically to the pipeline alerts.
+export function computeLicenseAlerts(expiryDate: Date, now: Date = new Date()): AgingAlert[] {
+  const days = daysUntil(expiryDate, now);
+  if (days > 60) return [];
+  const message = days < 0 ? `Expired ${-days} day(s) ago.` : `Expires in ${days} day(s).`;
+  return [{ message, severity: days <= 14 ? "critical" : "warning" }];
+}

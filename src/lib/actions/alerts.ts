@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/rbac";
-import { computeAgingAlerts, AgingAlert } from "@/lib/aging-alerts";
+import { computeAgingAlerts, computeLicenseAlerts, AgingAlert } from "@/lib/aging-alerts";
 import { daysInStage } from "@/lib/stage-transitions";
 
 export type ApplicationAlertGroup = {
@@ -17,6 +17,15 @@ export type McoAlertGroup = {
   clientId: string;
   clientName: string;
   mcoName: string;
+  alerts: AgingAlert[];
+};
+
+export type LicenseAlertGroup = {
+  licenseId: string;
+  clientId: string;
+  clientName: string;
+  licenseType: string;
+  expiryDate: Date;
   alerts: AgingAlert[];
 };
 
@@ -87,6 +96,35 @@ export async function listMcoAlerts(): Promise<McoAlertGroup[]> {
     );
     if (alerts.length > 0) {
       results.push({ mcoCredentialId: c.id, clientId: c.client.id, clientName: c.client.name, mcoName: c.mcoName, alerts });
+    }
+  }
+  return results;
+}
+
+// Only clients on active projects — an archived client's licenses aren't
+// anyone's problem to renew anymore, matching how listClients defaults to
+// active-only everywhere else in this app.
+export async function listLicenseAlerts(): Promise<LicenseAlertGroup[]> {
+  await requireRole(["ADMIN", "MANAGER", "STAFF"]);
+  const licenses = await prisma.clientLicense.findMany({
+    where: { client: { active: true } },
+    include: { client: { select: { id: true, name: true } } },
+    orderBy: { expiryDate: "asc" },
+  });
+
+  const now = new Date();
+  const results: LicenseAlertGroup[] = [];
+  for (const license of licenses) {
+    const alerts = computeLicenseAlerts(license.expiryDate, now);
+    if (alerts.length > 0) {
+      results.push({
+        licenseId: license.id,
+        clientId: license.client.id,
+        clientName: license.client.name,
+        licenseType: license.licenseType,
+        expiryDate: license.expiryDate,
+        alerts,
+      });
     }
   }
   return results;

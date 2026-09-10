@@ -4,7 +4,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { applicationVisibilityFilter, blockCaregiverRoute } from "@/lib/rbac";
 import { getDashboardStats } from "@/lib/actions/dashboard";
-import { listApplicationAlerts, listMcoAlerts } from "@/lib/actions/alerts";
+import { listApplicationAlerts, listMcoAlerts, listLicenseAlerts } from "@/lib/actions/alerts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { STATUS_BADGE_VARIANT, STATUS_LABELS, ApplicationStatus } from "@/lib/status";
@@ -39,13 +39,14 @@ export default async function HomePage() {
   const session = await auth();
   if (!session?.user) return null;
 
-  const [projectCount, clientCount, applicationCount, stats, applicationAlerts, mcoAlerts] = await Promise.all([
+  const [projectCount, clientCount, applicationCount, stats, applicationAlerts, mcoAlerts, licenseAlerts] = await Promise.all([
     prisma.project.count({ where: { active: true } }),
     prisma.client.count({ where: { active: true } }),
     prisma.application.count({ where: { ...applicationVisibilityFilter(session), active: true } }),
     getDashboardStats(),
     listApplicationAlerts(),
     listMcoAlerts(),
+    listLicenseAlerts(),
   ]);
 
   return (
@@ -164,6 +165,30 @@ export default async function HomePage() {
             <div key={group.mcoCredentialId} className="border-b pb-2 text-sm last:border-b-0">
               <Link href={`/clients/${group.clientId}`} className="font-medium hover:underline">
                 {group.clientName} — {group.mcoName}
+              </Link>
+              {group.alerts.map((alert, i) => (
+                <p
+                  key={i}
+                  className={`text-xs ${alert.severity === "critical" ? "text-destructive" : "text-amber-600 dark:text-amber-500"}`}
+                >
+                  {alert.message}
+                </p>
+              ))}
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>License Alerts</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {licenseAlerts.length === 0 && <p className="text-sm text-muted-foreground">No licenses expiring soon.</p>}
+          {licenseAlerts.map((group) => (
+            <div key={group.licenseId} className="border-b pb-2 text-sm last:border-b-0">
+              <Link href={`/clients/${group.clientId}`} className="font-medium hover:underline">
+                {group.clientName} — {group.licenseType}
               </Link>
               {group.alerts.map((alert, i) => (
                 <p
