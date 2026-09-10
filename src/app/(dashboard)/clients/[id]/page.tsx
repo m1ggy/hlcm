@@ -7,6 +7,7 @@ import { listClientNotes } from "@/lib/actions/notes";
 import { listMcoCredentialsForClient, listReachableMcoStages } from "@/lib/actions/mco";
 import { listClientCredentials } from "@/lib/actions/client-credentials";
 import { listClientContacts } from "@/lib/actions/client-contacts";
+import { listClientOwners } from "@/lib/actions/client-owners";
 import { listCareRecipients, listCaregivers } from "@/lib/actions/care-recipients";
 import { listPipelineStages } from "@/lib/actions/stage";
 import { listInvoices } from "@/lib/actions/invoices";
@@ -18,6 +19,7 @@ import { ClientNotesPanel } from "@/components/clients/client-notes-panel";
 import { McoCredentialsCard } from "@/components/clients/mco-credentials-card";
 import { ClientCredentialsCard } from "@/components/clients/client-credentials-card";
 import { ClientContactsCard } from "@/components/clients/client-contacts-card";
+import { ClientOwnersCard } from "@/components/clients/client-owners-card";
 import { CareRecipientsCard } from "@/components/clients/care-recipients-card";
 import { AuditLogPanel } from "@/components/applications/audit-log-panel";
 import { ArchiveButton } from "@/components/shared/archive-button";
@@ -81,6 +83,7 @@ export default async function ClientDetailPage({
     mcoCredentials,
     credentials,
     contacts,
+    owners,
     mcoStages,
     invoices,
     clientGroups,
@@ -93,6 +96,7 @@ export default async function ClientDetailPage({
     listMcoCredentialsForClient(id),
     listClientCredentials(id),
     listClientContacts(id),
+    listClientOwners(id),
     listPipelineStages("MCO", { includeExit: true }),
     canManageInvoices ? listInvoices({ clientId: id }) : Promise.resolve([]),
     listClientGroups(),
@@ -167,6 +171,8 @@ export default async function ClientDetailPage({
           clientGroupId: client.clientGroupId,
         }}
       />
+
+      <ClientOwnersCard clientId={id} owners={owners} />
 
       <ClientContactsCard clientId={id} contacts={contacts} />
 
