@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
@@ -88,12 +88,16 @@ export function NewClientDialog({
     return () => clearTimeout(id);
   }, [name]);
 
+  const submittingRef = useRef(false);
+
   function handleSubmit(formData: FormData) {
+    if (submittingRef.current) return;
     const resolvedProjectId = projectId ?? pickedProjectId;
     if (!resolvedProjectId) {
       toast.error("Pick a project");
       return;
     }
+    submittingRef.current = true;
     formData.set("projectId", resolvedProjectId);
     startTransition(async () => {
       try {
@@ -104,6 +108,8 @@ export function NewClientDialog({
         setSimilar([]);
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to create client");
+      } finally {
+        submittingRef.current = false;
       }
     });
   }

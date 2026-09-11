@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Pencil } from "lucide-react";
 import { createClientAgreement, updateClientAgreement, deleteClientAgreement } from "@/lib/actions/client-agreements";
@@ -103,8 +103,11 @@ function NewAgreementDialog({ clientId }: { clientId: string }) {
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [paymentStatus, setPaymentStatus] = useState("");
+  const submittingRef = useRef(false);
 
   function handleSubmit(formData: FormData) {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     formData.set("clientId", clientId);
     formData.set("paymentStatus", paymentStatus);
     startTransition(async () => {
@@ -115,6 +118,8 @@ function NewAgreementDialog({ clientId }: { clientId: string }) {
         setPaymentStatus("");
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to add agreement");
+      } finally {
+        submittingRef.current = false;
       }
     });
   }
@@ -141,8 +146,11 @@ function EditAgreementDialog({ agreement }: { agreement: ClientAgreement }) {
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [paymentStatus, setPaymentStatus] = useState(agreement.paymentStatus ?? "");
+  const submittingRef = useRef(false);
 
   function handleSubmit(formData: FormData) {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     formData.set("paymentStatus", paymentStatus);
     startTransition(async () => {
       try {
@@ -151,6 +159,8 @@ function EditAgreementDialog({ agreement }: { agreement: ClientAgreement }) {
         setOpen(false);
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to update agreement");
+      } finally {
+        submittingRef.current = false;
       }
     });
   }

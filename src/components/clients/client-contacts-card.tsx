@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Pencil } from "lucide-react";
 import { createClientContact, updateClientContact, deleteClientContact } from "@/lib/actions/client-contacts";
@@ -57,8 +57,14 @@ function ContactFields({ defaultValues }: { defaultValues?: ClientContact }) {
 function NewContactDialog({ clientId }: { clientId: string }) {
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
+  // Synchronous guard — see NewOwnerDialog in client-owners-card.tsx for
+  // why isPending alone (a state update, one render behind) isn't enough
+  // to stop a fast double-click from submitting twice.
+  const submittingRef = useRef(false);
 
   function handleSubmit(formData: FormData) {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     formData.set("clientId", clientId);
     startTransition(async () => {
       try {
@@ -67,6 +73,8 @@ function NewContactDialog({ clientId }: { clientId: string }) {
         setOpen(false);
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to add contact");
+      } finally {
+        submittingRef.current = false;
       }
     });
   }
@@ -92,8 +100,11 @@ function NewContactDialog({ clientId }: { clientId: string }) {
 function EditContactDialog({ contact }: { contact: ClientContact }) {
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const submittingRef = useRef(false);
 
   function handleSubmit(formData: FormData) {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     startTransition(async () => {
       try {
         await updateClientContact(contact.id, formData);
@@ -101,6 +112,8 @@ function EditContactDialog({ contact }: { contact: ClientContact }) {
         setOpen(false);
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to update contact");
+      } finally {
+        submittingRef.current = false;
       }
     });
   }

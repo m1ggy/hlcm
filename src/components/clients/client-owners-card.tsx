@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Pencil } from "lucide-react";
 import { createClientOwner, updateClientOwner, deleteClientOwner } from "@/lib/actions/client-owners";
@@ -63,8 +63,17 @@ function OwnerFields({ defaultValues }: { defaultValues?: ClientOwner }) {
 function NewOwnerDialog({ clientId }: { clientId: string }) {
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
+  // A plain state-based guard (isPending) still leaves a real window open:
+  // two clicks landing in the same tick both read isPending as false before
+  // either commits. This ref is set synchronously, so the second click
+  // sees it immediately regardless of render timing — see the owner
+  // double-submission bug this was written to fix (two rows for the same
+  // person from one click that just felt like it hadn't registered).
+  const submittingRef = useRef(false);
 
   function handleSubmit(formData: FormData) {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     formData.set("clientId", clientId);
     startTransition(async () => {
       try {
@@ -73,6 +82,8 @@ function NewOwnerDialog({ clientId }: { clientId: string }) {
         setOpen(false);
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to add owner");
+      } finally {
+        submittingRef.current = false;
       }
     });
   }
@@ -98,8 +109,11 @@ function NewOwnerDialog({ clientId }: { clientId: string }) {
 function EditOwnerDialog({ owner }: { owner: ClientOwner }) {
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const submittingRef = useRef(false);
 
   function handleSubmit(formData: FormData) {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     startTransition(async () => {
       try {
         await updateClientOwner(owner.id, formData);
@@ -107,6 +121,8 @@ function EditOwnerDialog({ owner }: { owner: ClientOwner }) {
         setOpen(false);
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to update owner");
+      } finally {
+        submittingRef.current = false;
       }
     });
   }

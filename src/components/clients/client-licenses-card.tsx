@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Pencil } from "lucide-react";
 import { createClientLicense, updateClientLicense, deleteClientLicense } from "@/lib/actions/client-licenses";
@@ -92,8 +92,11 @@ function LicenseFields({ defaultValues }: { defaultValues?: ClientLicense }) {
 function NewLicenseDialog({ clientId }: { clientId: string }) {
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const submittingRef = useRef(false);
 
   function handleSubmit(formData: FormData) {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     formData.set("clientId", clientId);
     startTransition(async () => {
       try {
@@ -102,6 +105,8 @@ function NewLicenseDialog({ clientId }: { clientId: string }) {
         setOpen(false);
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to add license");
+      } finally {
+        submittingRef.current = false;
       }
     });
   }
@@ -127,8 +132,11 @@ function NewLicenseDialog({ clientId }: { clientId: string }) {
 function EditLicenseDialog({ license }: { license: ClientLicense }) {
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const submittingRef = useRef(false);
 
   function handleSubmit(formData: FormData) {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     startTransition(async () => {
       try {
         await updateClientLicense(license.id, formData);
@@ -136,6 +144,8 @@ function EditLicenseDialog({ license }: { license: ClientLicense }) {
         setOpen(false);
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to update license");
+      } finally {
+        submittingRef.current = false;
       }
     });
   }
