@@ -43,7 +43,7 @@ export default async function TimePage() {
           <CardTitle>My Time</CardTitle>
         </CardHeader>
         <CardContent>
-          <MyTimeLog limit={50} />
+          <MyTimeLog accountTimezone={account.timezone} />
         </CardContent>
       </Card>
 

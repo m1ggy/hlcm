@@ -357,6 +357,30 @@ export function lastNDaysRange(n: number, timeZone: string = DEFAULT_TIMEZONE, n
   return { from: toDateInputValue(new Date(from), "UTC"), to: toDateInputValue(new Date(to), "UTC") };
 }
 
+/** Monday–Sunday week (as "yyyy-mm-dd" strings) containing the calendar day
+ * `dayStr` — a zone-agnostic, pure calendar-date computation (no timezone
+ * conversion; `dayStr` is assumed already resolved to whatever zone
+ * matters). Used to bucket a flat list of shifts into one group per
+ * calendar week (see MyTimeLog) — Monday-start is this app's own choice,
+ * not tied to any existing pay-period convention (those are semi-monthly,
+ * see currentPayPeriodRange). */
+export function weekRangeForDay(dayStr: string): { from: string; to: string } {
+  const [y, m, d] = dayStr.split("-").map(Number);
+  const asUtc = Date.UTC(y, m - 1, d);
+  const dayOfWeek = new Date(asUtc).getUTCDay(); // 0=Sun..6=Sat
+  const sinceMonday = (dayOfWeek + 6) % 7;
+  const monday = asUtc - sinceMonday * 24 * 60 * 60 * 1000;
+  const sunday = monday + 6 * 24 * 60 * 60 * 1000;
+  return { from: toDateInputValue(new Date(monday), "UTC"), to: toDateInputValue(new Date(sunday), "UTC") };
+}
+
+/** The Monday–Sunday week containing "today" in `timeZone` — the boundary
+ * MyTimeLog uses to decide which week's shifts show flat vs. collapse into
+ * an accordion item. */
+export function currentWeekRange(timeZone: string = DEFAULT_TIMEZONE, now = new Date()): { from: string; to: string } {
+  return weekRangeForDay(toDateInputValue(now, timeZone));
+}
+
 /** Converts a [from, to] pair of "yyyy-mm-dd" date-only strings into the UTC
  * instants spanning that whole range's wall-clock days in `timeZone` — from
  * midnight the first day through the last instant of the last day. For any
