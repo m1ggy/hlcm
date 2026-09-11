@@ -5,6 +5,7 @@ import { NotificationBell } from "@/components/notifications/notification-bell";
 import { SearchBox } from "@/components/search-box";
 import { CommandPalette } from "@/components/command-palette";
 import { GlobalShortcuts } from "@/components/global-shortcuts";
+import { SessionExpiredDialog } from "@/components/auth/session-expired-dialog";
 import { ProductTour } from "@/components/tour/product-tour";
 import { TimeClockWidget } from "@/components/time-clock/time-clock-widget";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -63,6 +64,7 @@ export default async function DashboardLayout({
       </SidebarInset>
       <CommandPalette isAdmin={session?.user?.role === "ADMIN"} />
       <GlobalShortcuts />
+      <SessionExpiredDialog />
     </SidebarProvider>
   );
 }

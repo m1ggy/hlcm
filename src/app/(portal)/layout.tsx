@@ -7,6 +7,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { EmailNotificationsToggle } from "@/components/account/email-notifications-toggle";
 import { ProductTour } from "@/components/tour/product-tour";
+import { SessionExpiredDialog } from "@/components/auth/session-expired-dialog";
 
 export default async function PortalLayout({
   children,
@@ -47,6 +48,7 @@ export default async function PortalLayout({
         </div>
       </header>
       <main className="w-full min-w-0 flex-1 px-4 py-6 md:px-6">{children}</main>
+      <SessionExpiredDialog />
     </div>
   );
 }
