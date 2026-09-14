@@ -1047,6 +1047,14 @@ model Task {
   applicationId String?
   phase         Phase?       @relation(fields: [phaseId], references: [id])
   phaseId       String?
+  // Set only for a follow-up task auto-created by changeLeadStage
+  // (src/lib/actions/leads.ts) on a NO_SHOW/MISSED transition — purely
+  // informational (lets the Leads inbox show/link it), not an access
+  // boundary: this is a standalone task like any other with no
+  // applicationId, so assertCanAccessTask's existing
+  // assignee/creator/ADMIN/MANAGER fallback already covers it unchanged.
+  lead          Lead?        @relation(fields: [leadId], references: [id])
+  leadId        String?
 
   checklistItemTemplateId String?
 
@@ -1592,6 +1600,8 @@ enum LeadSource {
 enum LeadStage {
   BOOKED
   HELD
+  NO_SHOW // client didn't show — see changeLeadStage in src/lib/actions/leads.ts, which auto-creates a required follow-up Task on this transition
+  MISSED // CTK didn't show — same auto-follow-up-task behavior as NO_SHOW
   FOLLOW_UP_SENT
   REBOOKED
   CONVERTED
@@ -1666,6 +1676,10 @@ model Lead {
   // tick actually succeeded — see the "degrade gracefully" note there.
   reminder24hSentAt DateTime?
   reminder30mSentAt DateTime?
+
+  // The auto-created follow-up task on a NO_SHOW/MISSED transition (see
+  // Task.leadId above) — usually 0 or 1, not a general task list for the lead.
+  tasks Task[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

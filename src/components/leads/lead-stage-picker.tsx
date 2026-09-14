@@ -7,12 +7,16 @@ import { changeLeadStage } from "@/lib/actions/leads";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { $Enums } from "@/generated/prisma/client";
 
-// One dropdown of all 6 stages, used instead of bespoke per-stage buttons —
+// One dropdown of all 8 stages, used instead of bespoke per-stage buttons —
 // any stage can move to any other stage, no whitelist (see LeadStage in
-// prisma/schema.prisma).
+// prisma/schema.prisma). NO_SHOW/MISSED are attendance tracking's whole
+// UI — landing on either one auto-creates a follow-up Task, see
+// changeLeadStage in src/lib/actions/leads.ts.
 export const LEAD_STAGE_LABELS: Record<$Enums.LeadStage, string> = {
   BOOKED: "Booked",
   HELD: "Held",
+  NO_SHOW: "No-show",
+  MISSED: "Missed",
   FOLLOW_UP_SENT: "Follow-up sent",
   REBOOKED: "Rebooked",
   CONVERTED: "Converted",

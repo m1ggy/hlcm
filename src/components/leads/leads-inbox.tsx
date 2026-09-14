@@ -4,8 +4,8 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronDown, ChevronRight, Ban, Video } from "lucide-react";
-import { markLeadLost } from "@/lib/actions/leads";
+import { ChevronDown, ChevronRight, Ban, Video, Mail, ListTodo } from "lucide-react";
+import { markLeadLost, sendFollowUpEmail } from "@/lib/actions/leads";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CreateClientFromLeadDialog } from "./create-client-from-lead-dialog";
@@ -15,6 +15,7 @@ import { LeadAssigneePicker } from "./lead-assignee-picker";
 import type { $Enums } from "@/generated/prisma/client";
 
 type QuestionAnswer = { question: string; answer: string };
+type LinkedTask = { id: string; label: string; status: string; dueDate: Date | null };
 type Lead = {
   id: string;
   stage: $Enums.LeadStage;
@@ -29,6 +30,7 @@ type Lead = {
   createdAt: Date;
   client: { id: string; name: string } | null;
   assignedTo: { id: string; name: string } | null;
+  tasks: LinkedTask[];
 };
 
 const STAGE_TABS = [
@@ -53,6 +55,7 @@ export function LeadsInbox({
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [losingId, setLosingId] = useState<string | null>(null);
+  const [sendingId, setSendingId] = useState<string | null>(null);
 
   function handleMarkLost(id: string) {
     if (!confirm("Mark this lead as lost? It'll stay visible here, just filed under Lost.")) return;
@@ -66,6 +69,22 @@ export function LeadsInbox({
         toast.error(error instanceof Error ? error.message : "Failed to update");
       } finally {
         setLosingId(null);
+      }
+    });
+  }
+
+  // One click, no confirm — see sendFollowUpEmail's own comment for why.
+  function handleSendFollowUp(id: string) {
+    setSendingId(id);
+    startTransition(async () => {
+      try {
+        await sendFollowUpEmail(id);
+        toast.success("Follow-up sent");
+        router.refresh();
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Failed to send follow-up");
+      } finally {
+        setSendingId(null);
       }
     });
   }
@@ -152,6 +171,19 @@ export function LeadsInbox({
                     </div>
                   </div>
 
+                  {lead.tasks.length > 0 && (
+                    <div className="flex items-center gap-1.5 text-sm">
+                      <ListTodo className="size-3.5 text-muted-foreground" />
+                      <span>
+                        Follow-up task: {lead.tasks[0].label}
+                        <span className="ml-1 text-xs text-muted-foreground">
+                          ({lead.tasks[0].status}
+                          {lead.tasks[0].dueDate && `, due ${new Date(lead.tasks[0].dueDate).toLocaleDateString()}`})
+                        </span>
+                      </span>
+                    </div>
+                  )}
+
                   {lead.meetingJoinUrl && (
                     <Button variant="outline" size="sm" nativeButton={false} render={<a href={lead.meetingJoinUrl} target="_blank" rel="noopener noreferrer" />}>
                       <Video className="size-3.5" /> Join link
@@ -184,6 +216,14 @@ export function LeadsInbox({
                       <AttachLeadDialog leadId={lead.id} clients={clients} />
                       <LeadStagePicker leadId={lead.id} stage={lead.stage} />
                       <LeadAssigneePicker leadId={lead.id} assignedToId={lead.assignedTo?.id ?? null} users={assignableUsers} />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleSendFollowUp(lead.id)}
+                        loading={isPending && sendingId === lead.id}
+                      >
+                        <Mail className="size-3.5" /> Send follow-up
+                      </Button>
                       {lead.stage !== "LOST" && (
                         <Button
                           variant="ghost"

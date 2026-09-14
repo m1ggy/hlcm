@@ -26,8 +26,10 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
         <PageInfoButton title="Leads">
           <p>
             Every new booking on Calendly lands here first — nothing becomes a client automatically. Review each one,
-            move it through the pipeline (Booked → Held → Follow-up sent → Rebooked → Converted → Lost), then either
-            create a new client from it, attach it to a client that already exists, or mark it lost.
+            move it through the pipeline (Booked → Held/No-show/Missed → Follow-up sent → Rebooked → Converted →
+            Lost), then either create a new client from it, attach it to a client that already exists, or mark it
+            lost. Marking a lead No-show or Missed auto-creates a follow-up task; &quot;Send follow-up&quot; emails a
+            one-click rebooking link.
           </p>
         </PageInfoButton>
       </div>
