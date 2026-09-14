@@ -32,6 +32,8 @@ type EditableUser = {
   email: string;
   role: (typeof ROLES)[number];
   active: boolean;
+  phone: string | null;
+  smsRemindersEnabled: boolean;
 };
 
 export function EditUserDialog({ user, isSelf = false }: { user: EditableUser; isSelf?: boolean }) {
@@ -42,6 +44,8 @@ export function EditUserDialog({ user, isSelf = false }: { user: EditableUser; i
   const [role, setRole] = useState<(typeof ROLES)[number]>(user.role);
   const [active, setActive] = useState(user.active);
   const [password, setPassword] = useState("");
+  const [phone, setPhone] = useState(user.phone ?? "");
+  const [smsRemindersEnabled, setSmsRemindersEnabled] = useState(user.smsRemindersEnabled);
   const [isPending, startTransition] = useTransition();
 
   function reset() {
@@ -50,6 +54,8 @@ export function EditUserDialog({ user, isSelf = false }: { user: EditableUser; i
     setRole(user.role);
     setActive(user.active);
     setPassword("");
+    setPhone(user.phone ?? "");
+    setSmsRemindersEnabled(user.smsRemindersEnabled);
   }
 
   function handleSave() {
@@ -61,6 +67,10 @@ export function EditUserDialog({ user, isSelf = false }: { user: EditableUser; i
       toast.error("Password must be at least 8 characters");
       return;
     }
+    if (smsRemindersEnabled && !phone.trim()) {
+      toast.error("Add a phone number to enable SMS/call reminders");
+      return;
+    }
     startTransition(async () => {
       try {
         await updateUser({
@@ -70,6 +80,8 @@ export function EditUserDialog({ user, isSelf = false }: { user: EditableUser; i
           role,
           active,
           password: password || undefined,
+          phone: phone || undefined,
+          smsRemindersEnabled,
         });
         toast.success("User updated");
         setOpen(false);
@@ -140,6 +152,20 @@ export function EditUserDialog({ user, isSelf = false }: { user: EditableUser; i
               minLength={8}
             />
           </div>
+          <div className="space-y-1">
+            <Label htmlFor="edit-phone">Phone</Label>
+            <Input
+              id="edit-phone"
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="For SMS/call meeting reminders"
+            />
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox checked={smsRemindersEnabled} onCheckedChange={(c) => setSmsRemindersEnabled(c === true)} />
+            Send this person a text/call before every upcoming meeting
+          </label>
           <label className={`flex items-center gap-2 text-sm ${isSelf ? "opacity-50" : ""}`}>
             <Checkbox checked={active} onCheckedChange={(c) => setActive(c === true)} disabled={isSelf} />
             Active — deactivating blocks sign-in without deleting their account

@@ -31,6 +31,7 @@ const NOTIFICATION_HEADINGS: Record<$Enums.NotificationType, string> = {
   INVOICE_PAID: "Invoice paid",
   LEAD_BOOKED: "New lead booked",
   LEAD_CANCELED: "Lead canceled",
+  MEETING_REMINDER: "Meeting reminder",
 };
 
 // Fire-and-forget from inside a mutation — never let a notification failure

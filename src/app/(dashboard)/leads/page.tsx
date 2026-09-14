@@ -1,6 +1,7 @@
 import { listLeads } from "@/lib/actions/leads";
 import { listClients } from "@/lib/actions/clients";
 import { listProjects } from "@/lib/actions/projects";
+import { listAssignableUsers } from "@/lib/actions/applications";
 import { LeadsInbox } from "@/components/leads/leads-inbox";
 import { PageInfoButton } from "@/components/shared/page-info-button";
 import { blockCaregiverRoute } from "@/lib/rbac";
@@ -11,7 +12,12 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
   const { stage } = await searchParams;
   const filterStage = stage === "all" ? undefined : ((stage as $Enums.LeadStage | undefined) ?? "BOOKED");
 
-  const [leads, clients, projects] = await Promise.all([listLeads(filterStage), listClients(), listProjects()]);
+  const [leads, clients, projects, assignableUsers] = await Promise.all([
+    listLeads(filterStage),
+    listClients(),
+    listProjects(),
+    listAssignableUsers(),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -29,6 +35,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
         leads={leads}
         clients={clients.map((c) => ({ id: c.id, name: c.name }))}
         projects={projects.map((p) => ({ id: p.id, name: p.name }))}
+        assignableUsers={assignableUsers.map((u) => ({ id: u.id, name: u.name }))}
         currentFilter={filterStage ?? "all"}
       />
     </div>

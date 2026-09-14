@@ -18,6 +18,7 @@ export async function listLeads(stage?: $Enums.LeadStage) {
     include: {
       client: { select: { id: true, name: true } },
       reviewedBy: { select: { id: true, name: true } },
+      assignedTo: { select: { id: true, name: true } },
     },
     orderBy: { meetingStartAt: "desc" },
   });
@@ -30,8 +31,41 @@ export async function getLead(id: string) {
     include: {
       client: { select: { id: true, name: true } },
       reviewedBy: { select: { id: true, name: true } },
+      assignedTo: { select: { id: true, name: true } },
     },
   });
+}
+
+// Who follows up on this booking — drives the meeting-reminder notify()/
+// Teams post (src/lib/meeting-reminders.ts). userId null clears it.
+export async function assignLead(leadId: string, userId: string | null) {
+  const session = await requireRole(REVIEW_ROLES);
+
+  const before = await prisma.lead.findUniqueOrThrow({ where: { id: leadId }, select: { assignedToId: true } });
+  const lead = await prisma.lead
+    .update({
+      where: { id: leadId },
+      data: { assignedToId: userId },
+      include: { assignedTo: { select: { id: true, name: true } } },
+    })
+    .catch((e) => friendlyPrismaError(e, { notFoundMessage: "That lead is already gone — someone else may have just deleted it" }));
+
+  // Generic field-change shape (action "update", field "assignedToId"),
+  // same as how Application.assignedUserId is audited — not a bespoke
+  // "assign" event action, so a user-id lookup map can resolve names later
+  // if a History panel gets added to /leads.
+  await recordAudit({
+    entityType: "Lead",
+    entityId: leadId,
+    action: "update",
+    actorId: session.user.id,
+    field: "assignedToId",
+    oldValue: before.assignedToId,
+    newValue: userId,
+  });
+
+  revalidatePath("/leads");
+  return lead;
 }
 
 // Staff can move a Lead to any of the 6 stages, in any order — no

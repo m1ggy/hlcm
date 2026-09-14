@@ -102,6 +102,7 @@ enum NotificationType {
   INVOICE_PAID
   LEAD_BOOKED
   LEAD_CANCELED
+  MEETING_REMINDER
 }
 
 enum InvoiceStatus {
@@ -133,6 +134,12 @@ model User {
   // time in a time-entry dialog is resolved to an instant, wherever this
   // user is the one reading/typing it (see src/lib/time-entries.ts).
   timezone                  String?
+  // Admin-set (Admin > Users), not self-service like emailNotificationsEnabled
+  // above — phone is only meaningful once smsRemindersEnabled is on. Off by
+  // default: this is a small opt-in roster ("who gets a text/call for every
+  // upcoming meeting"), not a per-user preference everyone starts with.
+  phone                     String?
+  smsRemindersEnabled       Boolean  @default(false)
   createdAt                 DateTime @default(now())
   updatedAt                 DateTime @updatedAt
 
@@ -179,6 +186,7 @@ model User {
   formTemplatesCreated          FormTemplate[]            @relation("FormTemplateCreatedBy")
   formSubmissionsReviewed       FormSubmission[]          @relation("FormSubmissionReviewedBy")
   leadsReviewed                 Lead[]                    @relation("LeadReviewedBy")
+  leadsAssigned                  Lead[]                    @relation("LeadAssignedTo")
   careRecipientsCreated         CareRecipient[]           @relation("CareRecipientCreatedBy")
   careRecipientAssignments      CareRecipientAssignment[] @relation("CareRecipientAssignmentCaregiver")
   careRecipientAssignmentsGiven CareRecipientAssignment[] @relation("CareRecipientAssignmentAssignedBy")
@@ -1554,6 +1562,21 @@ model Lead {
   reviewedBy   User?     @relation("LeadReviewedBy", fields: [reviewedById], references: [id])
   reviewedById String?
   reviewedAt   DateTime?
+
+  // Who follows up on this booking — backlog item 15 ("Assignment") for the
+  // Lead half of it; the other half (DocuSign envelopes) has nothing to own
+  // yet, since DocuSign isn't built. Drives who gets the meeting-reminder
+  // notify()/Teams post — see src/lib/meeting-reminders.ts.
+  assignedTo   User?     @relation("LeadAssignedTo", fields: [assignedToId], references: [id])
+  assignedToId String?
+
+  // Set once each reminder actually fires (src/lib/meeting-reminders.ts) —
+  // a threshold check against these, not a narrow time-window match, so a
+  // process restart between polls still catches up instead of silently
+  // skipping a lead. Doesn't matter whether every channel (Teams/SMS) that
+  // tick actually succeeded — see the "degrade gracefully" note there.
+  reminder24hSentAt DateTime?
+  reminder30mSentAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

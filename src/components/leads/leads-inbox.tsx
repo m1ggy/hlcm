@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { CreateClientFromLeadDialog } from "./create-client-from-lead-dialog";
 import { AttachLeadDialog } from "./attach-lead-dialog";
 import { LeadStagePicker, LEAD_STAGE_LABELS } from "./lead-stage-picker";
+import { LeadAssigneePicker } from "./lead-assignee-picker";
 import type { $Enums } from "@/generated/prisma/client";
 
 type QuestionAnswer = { question: string; answer: string };
@@ -27,6 +28,7 @@ type Lead = {
   canceledAt: Date | null;
   createdAt: Date;
   client: { id: string; name: string } | null;
+  assignedTo: { id: string; name: string } | null;
 };
 
 const STAGE_TABS = [
@@ -38,11 +40,13 @@ export function LeadsInbox({
   leads,
   clients,
   projects,
+  assignableUsers,
   currentFilter,
 }: {
   leads: Lead[];
   clients: { id: string; name: string }[];
   projects: { id: string; name: string }[];
+  assignableUsers: { id: string; name: string }[];
   currentFilter: string;
 }) {
   const router = useRouter();
@@ -112,6 +116,11 @@ export function LeadsInbox({
                     {lead.client.name}
                   </Link>
                 )}
+                {lead.assignedTo && (
+                  <span className="text-xs text-muted-foreground" title="Assigned to">
+                    {lead.assignedTo.name}
+                  </span>
+                )}
                 {lead.canceledAt && (
                   <Badge variant="destructive" className="text-[0.65rem]">
                     Canceled
@@ -174,6 +183,7 @@ export function LeadsInbox({
                       />
                       <AttachLeadDialog leadId={lead.id} clients={clients} />
                       <LeadStagePicker leadId={lead.id} stage={lead.stage} />
+                      <LeadAssigneePicker leadId={lead.id} assignedToId={lead.assignedTo?.id ?? null} users={assignableUsers} />
                       {lead.stage !== "LOST" && (
                         <Button
                           variant="ghost"
