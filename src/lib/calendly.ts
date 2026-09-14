@@ -6,8 +6,10 @@
 // Calendly's scheme (https://developer.calendly.com/api-docs — Webhook
 // Signatures) happens to look almost identical to Stripe's: header
 // "t=<unix_ts>,v1=<hex hmac>", HMAC-SHA256 over "${t}.${rawBody}", keyed by
-// the webhook subscription's own signing_key (returned once, at
-// subscription-creation time — see scripts/create-calendly-webhook.ts).
+// a signing_key WE generate and supply when creating the subscription —
+// confirmed against a real API call (2026-09-14) that Calendly does NOT
+// generate and hand one back the way Stripe/DocuSign do; see
+// scripts/create-calendly-webhook.ts's header comment for the full story.
 // One addition Stripe's route doesn't bother with: Calendly's docs
 // explicitly recommend rejecting an old timestamp to block replay, so this
 // does too.
