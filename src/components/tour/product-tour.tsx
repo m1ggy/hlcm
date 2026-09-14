@@ -338,7 +338,7 @@ function buildCaregiverSteps(): TourStep[] {
       element: '[data-tour="nav-settings"]',
       popover: {
         title: "Account",
-        description: "Password, MFA, your signature, notification preferences, and payout details for Wise — add your bank details here so a payroll run has somewhere to send your pay.",
+        description: "Password, MFA, notification preferences, and payout details for Wise — add your bank details here so a payroll run has somewhere to send your pay.",
         side: "right",
       },
     },

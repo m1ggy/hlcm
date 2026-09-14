@@ -103,6 +103,8 @@ enum NotificationType {
   LEAD_BOOKED
   LEAD_CANCELED
   MEETING_REMINDER
+  ENVELOPE_COMPLETED
+  ENVELOPE_DECLINED
 }
 
 enum InvoiceStatus {
@@ -187,6 +189,7 @@ model User {
   formSubmissionsReviewed       FormSubmission[]          @relation("FormSubmissionReviewedBy")
   leadsReviewed                 Lead[]                    @relation("LeadReviewedBy")
   leadsAssigned                  Lead[]                    @relation("LeadAssignedTo")
+  docusignEnvelopesSent          DocusignEnvelope[]        @relation("DocusignEnvelopeSentBy")
   careRecipientsCreated         CareRecipient[]           @relation("CareRecipientCreatedBy")
   careRecipientAssignments      CareRecipientAssignment[] @relation("CareRecipientAssignmentCaregiver")
   careRecipientAssignmentsGiven CareRecipientAssignment[] @relation("CareRecipientAssignmentAssignedBy")
@@ -507,6 +510,8 @@ model ClientAgreement {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  docusignEnvelopes DocusignEnvelope[]
+
   @@index([clientId])
   @@map("client_agreements")
 }
@@ -809,6 +814,7 @@ model Application {
   notes              Note[]
   stageHistory       StageHistory[]
   invoices           Invoice[]
+  docusignEnvelopes  DocusignEnvelope[]
 
   @@map("applications")
 }
@@ -928,6 +934,8 @@ model FileAsset {
 
   versions        FileVersion[]
   signatureEvents SignatureEvent[]
+  envelopesAsSource   DocusignEnvelope[] @relation("EnvelopeSourceFile")
+  envelopeAsCompleted DocusignEnvelope?  @relation("EnvelopeCompletedFile")
 
   @@map("file_assets")
 }
@@ -1126,6 +1134,15 @@ model SignatureProfile {
 // A signature flattened onto a specific FileAsset (the resulting signed PDF).
 // Position stored as ratios of page size so it's independent of any one
 // viewer's pixel scale.
+//
+// RETIRED as of the DocusignEnvelope model below — new signing goes through
+// DocuSign, not this in-app self-sign flow. Left completely unchanged, not
+// deleted: existing rows and the FileAssets they point at are read-only
+// history (a document someone already signed this way stays exactly as
+// signed), and no new code creates a new row here. Same for SignatureProfile
+// above — DocuSign captures the signer's actual signature during its own
+// hosted ceremony, so there's no "pre-saved drawn signature" concept in the
+// new flow at all.
 model SignatureEvent {
   id          String    @id @default(cuid())
   fileAsset   FileAsset @relation(fields: [fileAssetId], references: [id])
@@ -1141,6 +1158,78 @@ model SignatureEvent {
   createdAt   DateTime  @default(now())
 
   @@map("signature_events")
+}
+
+enum DocusignEnvelopeStatus {
+  CREATED
+  SENT
+  DELIVERED // DocuSign's "viewed" — matches their own envelope-status vocabulary
+  COMPLETED
+  DECLINED
+  VOIDED // includes DocuSign's own auto-void-on-expiration case
+}
+
+// One DocuSign envelope sent from inside HCLM — replaces SignatureEvent/
+// SignatureProfile above as the one signing flow going forward. Exactly one
+// of applicationId/clientAgreementId is set, enforced in the action layer
+// (src/lib/actions/docusign-envelopes.ts), not a DB constraint — same "no
+// XOR CHECK constraint" convention FileAsset itself already uses for its
+// own applicationId/taskId/clientId.
+//
+// No stored EXPIRED status: DocuSign itself has no such status — an
+// unsigned envelope past its expiresAt transitions to VOIDED with a reason.
+// "Expiring soon" is derived at read time against expiresAt (status in
+// SENT/DELIVERED, expiresAt close), same convention as ClientLicense/
+// computeLicenseAlerts (src/lib/aging-alerts.ts) — never a separately
+// tracked flag that could go stale.
+model DocusignEnvelope {
+  id                String                 @id @default(cuid())
+  application       Application?           @relation(fields: [applicationId], references: [id])
+  applicationId     String?
+  clientAgreement   ClientAgreement?       @relation(fields: [clientAgreementId], references: [id])
+  clientAgreementId String?
+
+  // The document sent for signature.
+  sourceFileAsset   FileAsset @relation("EnvelopeSourceFile", fields: [sourceFileAssetId], references: [id])
+  sourceFileAssetId String
+  // The signed result, downloaded and stored once DocuSign Connect reports
+  // COMPLETED (see the webhook route) — null until then.
+  completedFileAsset   FileAsset? @relation("EnvelopeCompletedFile", fields: [completedFileAssetId], references: [id])
+  completedFileAssetId String?    @unique
+
+  // DocuSign's own envelope GUID — the webhook's idempotency key.
+  docusignEnvelopeId String                 @unique
+  status             DocusignEnvelopeStatus @default(CREATED)
+
+  signerName  String
+  signerEmail String
+  // Where the signature tab goes, as ratios of page size (same convention
+  // as the retired SignatureEvent above) — top-left origin, no Y-flip
+  // needed for DocuSign (unlike pdf-lib's bottom-left drawImage origin the
+  // old flow used); see src/lib/docusign.ts.
+  pageNumber Int
+  xRatio     Float
+  yRatio     Float
+
+  expiresAt     DateTime?
+  declineReason String?
+  voidReason    String?
+
+  sentBy   User   @relation("DocusignEnvelopeSentBy", fields: [sentById], references: [id])
+  sentById String
+
+  sentAt      DateTime?
+  deliveredAt DateTime?
+  completedAt DateTime?
+  declinedAt  DateTime?
+  voidedAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([applicationId])
+  @@index([clientAgreementId])
+  @@map("docusign_envelopes")
 }
 
 // In-app notification for events a user should know about (reassignment,

@@ -48,6 +48,12 @@ export async function listClientAgreements(clientId: string) {
   return prisma.clientAgreement.findMany({
     where: { clientId },
     orderBy: [{ signedDate: "desc" }, { createdAt: "desc" }],
+    include: {
+      docusignEnvelopes: {
+        orderBy: { createdAt: "desc" },
+        select: { id: true, status: true, signerName: true, signerEmail: true, expiresAt: true, completedFileAssetId: true },
+      },
+    },
   });
 }
 

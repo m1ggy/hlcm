@@ -27,6 +27,11 @@ export async function GET(_req: NextRequest, ctx: RouteContext<"/api/files/[id]/
           throw new ForbiddenError("Not your task");
         }
       }
+    } else if (asset.clientId) {
+      const role = session.user.role as AppRole;
+      if (!(role === "ADMIN" || role === "MANAGER" || role === "STAFF")) {
+        throw new ForbiddenError("Not accessible");
+      }
     } else {
       throw new ForbiddenError("Not accessible");
     }

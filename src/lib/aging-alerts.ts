@@ -87,3 +87,17 @@ export function computeLicenseAlerts(expiryDate: Date, now: Date = new Date()): 
   const message = days < 0 ? `Expired ${-days} day(s) ago.` : `Expires in ${days} day(s).`;
   return [{ message, severity: days <= 14 ? "critical" : "warning" }];
 }
+
+// A DocusignEnvelope's expiry rule — mirrors computeLicenseAlerts exactly
+// (same flat-expiry-date shape, same 60-day warning / 14-day critical
+// thresholds — there's no DocuSign-specific reason for a document's
+// signature window to warrant different numbers, so this just inherits the
+// license convention). No stored EXPIRED status exists on the envelope
+// itself (see prisma/schema.prisma) — this IS the "is it expiring/expired"
+// answer, computed fresh against expiresAt every time, same as licenses.
+export function computeEnvelopeAlerts(expiresAt: Date, now: Date = new Date()): AgingAlert[] {
+  const days = daysUntil(expiresAt, now);
+  if (days > 60) return [];
+  const message = days < 0 ? `Envelope expired ${-days} day(s) ago.` : `Envelope expires in ${days} day(s).`;
+  return [{ message, severity: days <= 14 ? "critical" : "warning" }];
+}

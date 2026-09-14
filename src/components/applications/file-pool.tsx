@@ -6,7 +6,8 @@ import { toast } from "sonner";
 import { Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { uploadFile, deleteFile } from "@/lib/actions/files";
-import { SignPdfDialog } from "@/components/applications/sign-pdf-dialog";
+import { SendEnvelopeDialog } from "@/components/applications/send-envelope-dialog";
+import { EnvelopeStatusList, type EnvelopeRow } from "@/components/applications/envelope-status-list";
 import { FileCard } from "@/components/files/file-card";
 import { FileInfoDrawer } from "@/components/files/file-info-drawer";
 import type { FileRow } from "@/components/files/types";
@@ -14,13 +15,13 @@ import type { FileRow } from "@/components/files/types";
 export function FilePool({
   applicationId,
   files,
+  envelopes,
   canEdit,
-  hasSavedSignature,
 }: {
   applicationId: string;
   files: FileRow[];
+  envelopes: EnvelopeRow[];
   canEdit: boolean;
-  hasSavedSignature: boolean;
 }) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
@@ -83,6 +84,8 @@ export function FilePool({
         </form>
       )}
 
+      <EnvelopeStatusList envelopes={envelopes} canEdit={canEdit} />
+
       {files.length === 0 ? (
         <p className="py-6 text-center text-sm text-muted-foreground">No files yet</p>
       ) : (
@@ -110,11 +113,10 @@ export function FilePool({
         onChanged={() => router.refresh()}
         signAction={
           canEdit && activeFile && activeFile.mimeType === "application/pdf" && !activeFile.isSigned ? (
-            <SignPdfDialog
+            <SendEnvelopeDialog
               fileAssetId={activeFile.id}
-              applicationId={applicationId}
               fileName={activeFile.fileName}
-              hasSavedSignature={hasSavedSignature}
+              parent={{ kind: "application", applicationId }}
             />
           ) : undefined
         }

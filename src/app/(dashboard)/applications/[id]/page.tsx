@@ -13,9 +13,9 @@ import { listLicenseTypes } from "@/lib/actions/license-types";
 import { listCaseTypes } from "@/lib/actions/case-types";
 import { listTasksForApplication } from "@/lib/actions/tasks";
 import { listFiles } from "@/lib/actions/files";
+import { listEnvelopesForApplication } from "@/lib/actions/docusign-envelopes";
 import { listAccessGrants, listGrantableUsers } from "@/lib/actions/access-grants";
 import { listApplicableTemplates, listGeneratedDocuments } from "@/lib/actions/generated-documents";
-import { getMySignatureProfile } from "@/lib/actions/signatures";
 import { listNotes } from "@/lib/actions/notes";
 import { listReachableStages, listPipelineStages, listAllStageNames } from "@/lib/actions/stage";
 import { ApplicationPropertiesTable } from "@/components/applications/application-properties-table";
@@ -77,10 +77,10 @@ export default async function ApplicationDetailPage({
     auditLog,
     taskData,
     files,
+    envelopes,
     accessGrants,
     applicableTemplates,
     generatedDocuments,
-    signatureProfile,
     notes,
     reachableStages,
     forwardStages,
@@ -94,10 +94,10 @@ export default async function ApplicationDetailPage({
     getApplicationAuditLog(id),
     listTasksForApplication(id),
     listFiles(id),
+    listEnvelopesForApplication(id),
     listAccessGrants(id),
     listApplicableTemplates(id),
     listGeneratedDocuments(id),
-    getMySignatureProfile(),
     listNotes(id),
     listReachableStages(id),
     application.pipeline ? listPipelineStages(application.pipeline) : Promise.resolve([]),
@@ -224,12 +224,7 @@ export default async function ApplicationDetailPage({
                     />
                   </TabsContent>
                   <TabsContent value="files">
-                    <FilePool
-                      applicationId={id}
-                      files={files}
-                      canEdit={canEdit}
-                      hasSavedSignature={!!signatureProfile}
-                    />
+                    <FilePool applicationId={id} files={files} envelopes={envelopes} canEdit={canEdit} />
                   </TabsContent>
                   <TabsContent value="documents" className="space-y-4">
                     {canEdit && <DocumentGenerator applicationId={id} templates={applicableTemplates} />}

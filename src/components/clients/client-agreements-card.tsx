@@ -18,6 +18,19 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Card, CardContent } from "@/components/ui/card";
+import { Download } from "lucide-react";
+import { EnvelopeStatusBadge } from "@/components/files/envelope-status-badge";
+import { SendAgreementEnvelopeDialog } from "@/components/clients/send-agreement-envelope-dialog";
+import type { $Enums } from "@/generated/prisma/client";
+
+type AgreementEnvelope = {
+  id: string;
+  status: $Enums.DocusignEnvelopeStatus;
+  signerName: string;
+  signerEmail: string;
+  expiresAt: Date | null;
+  completedFileAssetId: string | null;
+};
 
 export type ClientAgreement = {
   id: string;
@@ -26,6 +39,7 @@ export type ClientAgreement = {
   amount: number | null;
   paymentStatus: string | null;
   notes: string | null;
+  docusignEnvelopes: AgreementEnvelope[];
 };
 
 const PAYMENT_STATUSES = ["Unpaid", "Partial", "Paid"] as const;
@@ -205,17 +219,33 @@ function DeleteAgreementButton({ agreement }: { agreement: ClientAgreement }) {
   );
 }
 
-function AgreementRow({ agreement }: { agreement: ClientAgreement }) {
+function AgreementRow({ agreement, clientId }: { agreement: ClientAgreement; clientId: string }) {
+  const latestEnvelope = agreement.docusignEnvelopes[0] ?? null;
+  const hasActiveOrCompleted = agreement.docusignEnvelopes.some((e) => e.status !== "DECLINED" && e.status !== "VOIDED");
+
   return (
     <div className="rounded-lg border p-3">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="font-medium">{agreement.agreementType}</span>
           {agreement.paymentStatus && (
             <Badge variant={PAYMENT_STATUS_VARIANT[agreement.paymentStatus] ?? "outline"}>{agreement.paymentStatus}</Badge>
           )}
+          {latestEnvelope && <EnvelopeStatusBadge status={latestEnvelope.status} expiresAt={latestEnvelope.expiresAt} />}
         </div>
         <div className="flex items-center gap-1">
+          {!hasActiveOrCompleted && <SendAgreementEnvelopeDialog clientId={clientId} clientAgreementId={agreement.id} />}
+          {latestEnvelope?.completedFileAssetId && (
+            <Button
+              variant="ghost"
+              size="sm"
+              title="Download signed document"
+              nativeButton={false}
+              render={<a href={`/api/files/${latestEnvelope.completedFileAssetId}`} />}
+            >
+              <Download className="size-3.5" /> Signed copy
+            </Button>
+          )}
           <EditAgreementDialog agreement={agreement} />
           <DeleteAgreementButton agreement={agreement} />
         </div>
@@ -223,6 +253,11 @@ function AgreementRow({ agreement }: { agreement: ClientAgreement }) {
       <div className="mt-1 flex flex-wrap gap-x-4 text-sm text-muted-foreground">
         {agreement.signedDate && <span>Signed {new Date(agreement.signedDate).toLocaleDateString()}</span>}
         {agreement.amount != null && <span className="tabular-nums">${agreement.amount.toFixed(2)}</span>}
+        {latestEnvelope && (
+          <span>
+            Sent to {latestEnvelope.signerName} ({latestEnvelope.signerEmail})
+          </span>
+        )}
       </div>
       {agreement.notes && <p className="mt-2 text-sm text-muted-foreground">{agreement.notes}</p>}
     </div>
@@ -246,7 +281,7 @@ export function ClientAgreementsCard({ clientId, agreements }: { clientId: strin
           <p className="text-sm text-muted-foreground">No agreements on file yet.</p>
         ) : (
           <div className="space-y-2">
-            <AgreementRow agreement={current} />
+            <AgreementRow agreement={current} clientId={clientId} />
             {rest.length > 0 && (
               <details className="text-sm">
                 <summary className="cursor-pointer text-muted-foreground select-none">
@@ -254,7 +289,7 @@ export function ClientAgreementsCard({ clientId, agreements }: { clientId: strin
                 </summary>
                 <div className="mt-2 space-y-2">
                   {rest.map((a) => (
-                    <AgreementRow key={a.id} agreement={a} />
+                    <AgreementRow key={a.id} agreement={a} clientId={clientId} />
                   ))}
                 </div>
               </details>
