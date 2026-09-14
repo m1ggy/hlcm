@@ -239,10 +239,12 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
 
       {groups ? (
         <div className="space-y-3">
-          {/* Collapsed by default — just the client/group names and totals up
-              front, each one's invoices only load into view once clicked. */}
+          {/* Collapsed by default — just the client/group names and outstanding
+              balances up front, each one's invoices only load into view once
+              clicked. Outstanding rather than billed total, so this view
+              doubles as a collections worklist. */}
           {groups.map((group) => {
-            const total = group.rows.reduce((sum, r) => sum + (r.total ?? 0), 0);
+            const outstanding = group.rows.reduce((sum, r) => sum + outstandingBalance(r), 0);
             // A ClientGroup bucket can span more than one distinct Client —
             // show the Business/Client columns inside it so rows stay
             // distinguishable; a single-client bucket doesn't need them,
@@ -257,7 +259,7 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
                       ({group.rows.length} {group.rows.length === 1 ? "invoice" : "invoices"})
                     </span>
                   </span>
-                  <span className="tabular-nums text-muted-foreground">${total.toFixed(2)}</span>
+                  <span className="tabular-nums text-muted-foreground">${outstanding.toFixed(2)}</span>
                 </summary>
                 <div className="border-t px-4 pb-3">{renderTable(group.rows, { showClient: distinctClients > 1 })}</div>
               </details>
