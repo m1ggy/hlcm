@@ -100,6 +100,8 @@ enum NotificationType {
   APPLICATION_SHARED
   MENTIONED
   INVOICE_PAID
+  LEAD_BOOKED
+  LEAD_CANCELED
 }
 
 enum InvoiceStatus {
@@ -176,6 +178,7 @@ model User {
   breakDeductionsCreated        TimesheetBreakDeduction[] @relation("TimesheetBreakDeductionCreatedBy")
   formTemplatesCreated          FormTemplate[]            @relation("FormTemplateCreatedBy")
   formSubmissionsReviewed       FormSubmission[]          @relation("FormSubmissionReviewedBy")
+  leadsReviewed                 Lead[]                    @relation("LeadReviewedBy")
   careRecipientsCreated         CareRecipient[]           @relation("CareRecipientCreatedBy")
   careRecipientAssignments      CareRecipientAssignment[] @relation("CareRecipientAssignmentCaregiver")
   careRecipientAssignmentsGiven CareRecipientAssignment[] @relation("CareRecipientAssignmentAssignedBy")
@@ -424,6 +427,7 @@ model Client {
   credentials     ClientCredential[]
   invoices        Invoice[]
   formSubmissions FormSubmission[]
+  leads           Lead[]
   careRecipients  CareRecipient[]
   contacts        ClientContact[]
   owners          ClientOwner[]
@@ -1472,6 +1476,91 @@ model FormField {
 
   @@unique([templateId, key])
   @@map("form_fields")
+}
+
+// Where a Lead came from — one value today (a Calendly booking), kept as
+// its own enum rather than hardcoding "Calendly" everywhere so a second
+// source (a "Contact us" form, a referral) doesn't force a rename later.
+enum LeadSource {
+  CALENDLY
+}
+
+// Booked -> Held -> Follow-up sent -> Rebooked -> Converted -> Lost. A
+// plain closed enum, not a PipelineStage-style admin-configurable catalog
+// like Application/MCO credentialing use (see docs/pipeline-stage-plan.md)
+// — that machinery (rule engine, StageHistory, drag/drop board) solves a
+// much bigger problem (3 pipelines, up to 24 stages, per-stage required
+// fields) than these 6 fixed stages need. Any stage can move to any other
+// stage — no backward-move whitelist, staff aren't restricted here.
+enum LeadStage {
+  BOOKED
+  HELD
+  FOLLOW_UP_SENT
+  REBOOKED
+  CONVERTED
+  LOST
+}
+
+// One inbound lead — today always a Calendly booking, landing here
+// straight off the invitee.created webhook (see
+// src/app/api/webhooks/calendly/route.ts). Mirrors FormSubmission's
+// review-queue shape: `client`/`reviewedBy` stay null until staff acts on
+// it (create a new Client, attach to an existing one, or mark Lost — see
+// src/lib/actions/leads.ts), just with a 6-stage `stage` instead of a
+// 3-value `status`.
+model Lead {
+  id     String     @id @default(cuid())
+  source LeadSource @default(CALENDLY)
+  stage  LeadStage  @default(BOOKED)
+
+  // Invitee details, straight from Calendly's invitee.created payload.
+  inviteeName  String
+  inviteeEmail String
+  // Calendly doesn't put a phone field on the invitee resource by default
+  // — this is extracted from questions_and_answers (or text_reminder_number
+  // when SMS reminders are configured), see extractPhoneAnswer in
+  // src/lib/calendly.ts. Null when neither is present.
+  inviteePhone String?
+  timezone     String?
+
+  // The scheduled event, not the invitee — start/end/location come from
+  // the payload's embedded scheduled_event object.
+  meetingStartAt DateTime
+  meetingEndAt   DateTime?
+  // scheduled_event.location.join_url — populated only when Calendly's own
+  // Zoom conferencing was used for this booking. Covers the separate
+  // "Zoom integration" backlog item for free: no Zoom API call needed.
+  meetingJoinUrl String?
+
+  // Calendly's own identifiers. calendlyInviteeUri is the real idempotency
+  // key (one row per invitee); calendlyEventUri is indexed but not unique
+  // since a group event type could have more than one invitee per event.
+  calendlyEventUri   String
+  calendlyInviteeUri String @unique
+
+  // Calendly's questions_and_answers array, stored verbatim — same
+  // convention as FormSubmission.answers.
+  answers Json
+
+  // Set by the invitee.canceled webhook. Deliberately doesn't auto-move
+  // `stage` to LOST — a canceled booking might get rebooked (that's what
+  // the REBOOKED stage is for), so the system just surfaces the fact and
+  // lets staff decide what it means.
+  canceledAt   DateTime?
+  cancelReason String?
+
+  client       Client?   @relation(fields: [clientId], references: [id])
+  clientId     String?
+  reviewedBy   User?     @relation("LeadReviewedBy", fields: [reviewedById], references: [id])
+  reviewedById String?
+  reviewedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([stage])
+  @@index([calendlyEventUri])
+  @@map("leads")
 }
 
 // One filled-out form. `ipAddress` is spam triage only — deliberately never

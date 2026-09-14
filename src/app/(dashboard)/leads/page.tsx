@@ -1,0 +1,36 @@
+import { listLeads } from "@/lib/actions/leads";
+import { listClients } from "@/lib/actions/clients";
+import { listProjects } from "@/lib/actions/projects";
+import { LeadsInbox } from "@/components/leads/leads-inbox";
+import { PageInfoButton } from "@/components/shared/page-info-button";
+import { blockCaregiverRoute } from "@/lib/rbac";
+import type { $Enums } from "@/generated/prisma/client";
+
+export default async function LeadsPage({ searchParams }: { searchParams: Promise<{ stage?: string }> }) {
+  await blockCaregiverRoute();
+  const { stage } = await searchParams;
+  const filterStage = stage === "all" ? undefined : ((stage as $Enums.LeadStage | undefined) ?? "BOOKED");
+
+  const [leads, clients, projects] = await Promise.all([listLeads(filterStage), listClients(), listProjects()]);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-1.5">
+        <h1 className="text-2xl font-semibold">Leads</h1>
+        <PageInfoButton title="Leads">
+          <p>
+            Every new booking on Calendly lands here first — nothing becomes a client automatically. Review each one,
+            move it through the pipeline (Booked → Held → Follow-up sent → Rebooked → Converted → Lost), then either
+            create a new client from it, attach it to a client that already exists, or mark it lost.
+          </p>
+        </PageInfoButton>
+      </div>
+      <LeadsInbox
+        leads={leads}
+        clients={clients.map((c) => ({ id: c.id, name: c.name }))}
+        projects={projects.map((p) => ({ id: p.id, name: p.name }))}
+        currentFilter={filterStage ?? "all"}
+      />
+    </div>
+  );
+}
