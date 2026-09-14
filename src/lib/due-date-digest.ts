@@ -1,12 +1,14 @@
 import { prisma } from "@/lib/prisma";
 import { sendEmail, renderEmailLayout, getAppUrl } from "@/lib/email";
 import { TASK_CLOSED_STATUSES } from "@/lib/task-status";
-import { computeLicenseAlerts } from "@/lib/aging-alerts";
+import { computeLicenseAlerts, computeEnvelopeAlerts } from "@/lib/aging-alerts";
 
 const DUE_SOON_WINDOW_DAYS = 3;
 // Matches computeLicenseAlerts' own 60-day warning threshold — the query
 // below only needs to fetch licenses that could possibly produce an alert.
 const LICENSE_WINDOW_DAYS = 60;
+// Matches computeEnvelopeAlerts' own 60-day warning threshold, same reasoning.
+const ENVELOPE_WINDOW_DAYS = 60;
 
 function formatTask(task: { label: string; dueDate: Date | null; application: { name: string } | null }) {
   const scope = task.application ? task.application.name : "Standalone task";
@@ -36,6 +38,44 @@ async function buildLicenseSectionHtml(now: Date): Promise<string> {
   return `<p style="margin:16px 0 4px;font-weight:600;color:#1f2937">Licenses expiring soon (${licenses.length})</p><ul style="margin:0;padding-left:18px">${licenses.map((l) => formatLicense(l, now)).join("")}</ul>`;
 }
 
+function formatEnvelope(
+  envelope: {
+    signerName: string;
+    expiresAt: Date;
+    application: { name: string } | null;
+    clientAgreement: { client: { name: string } } | null;
+  },
+  now: Date
+) {
+  const [alert] = computeEnvelopeAlerts(envelope.expiresAt, now);
+  const color = alert?.severity === "critical" ? "#b91c1c" : "#92400e";
+  const scope = envelope.application?.name ?? envelope.clientAgreement?.client.name ?? "Unknown";
+  return `<li style="margin:4px 0"><strong>${scope}</strong> — sent to ${envelope.signerName} <span style="color:${color}">(${alert?.message ?? ""})</span></li>`;
+}
+
+// Same "no natural per-recipient assignee, goes to every active
+// ADMIN/MANAGER" shape as buildLicenseSectionHtml above — an outstanding
+// envelope isn't owned by whoever it was sent to (they're often an
+// external party, not an HCLM user), and DocusignEnvelope.sentById isn't
+// necessarily still the right person to nag either, so this mirrors the
+// license section's broadcast rather than a per-sender digest.
+async function buildEnvelopeSectionHtml(now: Date): Promise<string> {
+  const windowEnd = new Date(now.getTime() + ENVELOPE_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+  const envelopes = await prisma.docusignEnvelope.findMany({
+    where: { status: { in: ["SENT", "DELIVERED"] }, expiresAt: { lte: windowEnd } },
+    select: {
+      signerName: true,
+      expiresAt: true,
+      application: { select: { name: true } },
+      clientAgreement: { select: { client: { select: { name: true } } } },
+    },
+    orderBy: { expiresAt: "asc" },
+  });
+  const withExpiry = envelopes.filter((e): e is typeof e & { expiresAt: Date } => e.expiresAt !== null);
+  if (withExpiry.length === 0) return "";
+  return `<p style="margin:16px 0 4px;font-weight:600;color:#1f2937">Envelopes expiring soon (${withExpiry.length})</p><ul style="margin:0;padding-left:18px">${withExpiry.map((e) => formatEnvelope(e, now)).join("")}</ul>`;
+}
+
 // Groups every open task with a due date in the next few days (or already
 // overdue) by assignee and sends each of them one digest email, with a
 // licenses-expiring-soon section appended for ADMIN/MANAGER recipients (an
@@ -47,7 +87,7 @@ export async function sendDueDateDigests() {
   const now = new Date();
   const windowEnd = new Date(now.getTime() + DUE_SOON_WINDOW_DAYS * 24 * 60 * 60 * 1000);
 
-  const [tasks, licenseSectionHtml, managers] = await Promise.all([
+  const [tasks, licenseSectionHtml, envelopeSectionHtml, managers] = await Promise.all([
     prisma.task.findMany({
       where: {
         dueDate: { lte: windowEnd },
@@ -61,6 +101,7 @@ export async function sendDueDateDigests() {
       },
     }),
     buildLicenseSectionHtml(now),
+    buildEnvelopeSectionHtml(now),
     prisma.user.findMany({
       where: { role: { in: ["ADMIN", "MANAGER"] }, active: true, emailNotificationsEnabled: true },
       select: { id: true, email: true },
@@ -97,7 +138,7 @@ export async function sendDueDateDigests() {
       dueSoon.length
         ? `<p style="margin:0 0 4px;font-weight:600;color:#1f2937">Due in the next ${DUE_SOON_WINDOW_DAYS} days (${dueSoon.length})</p><ul style="margin:0;padding-left:18px">${dueSoon.map(formatTask).join("")}</ul>`
         : "",
-      isManager ? licenseSectionHtml : "",
+      isManager ? licenseSectionHtml + envelopeSectionHtml : "",
     ].join("");
 
     try {
@@ -119,25 +160,26 @@ export async function sendDueDateDigests() {
 
   // Every other active ADMIN/MANAGER (no tasks due, so no digest email
   // above to append to) still gets a dedicated email when there's
-  // something expiring soon — the license section isn't lost just because
-  // they have no open tasks.
-  if (licenseSectionHtml) {
+  // something expiring soon — the license/envelope sections aren't lost
+  // just because they have no open tasks.
+  const expirySectionHtml = licenseSectionHtml + envelopeSectionHtml;
+  if (expirySectionHtml) {
     for (const manager of managers) {
       if (managerIdsWithTaskDigest.has(manager.id)) continue;
       try {
         await sendEmail({
           to: manager.email,
-          subject: "Licenses expiring soon",
+          subject: "Licenses/envelopes expiring soon",
           html: renderEmailLayout({
-            heading: "License expiry digest",
-            bodyHtml: licenseSectionHtml,
+            heading: "Expiry digest",
+            bodyHtml: expirySectionHtml,
             ctaLabel: "View clients",
             ctaUrl: `${getAppUrl()}/clients`,
-            preheader: "Licenses on client records expiring soon",
+            preheader: "Licenses or DocuSign envelopes expiring soon",
           }),
         });
       } catch (error) {
-        console.error("Failed to send license digest:", error);
+        console.error("Failed to send expiry digest:", error);
       }
     }
   }

@@ -58,15 +58,29 @@ async function assertCanAccessFileAsset(
   throw new ForbiddenError("Not accessible");
 }
 
-// Signed PDFs (SignatureEvent points at exact page/ratio coordinates on this
-// file's current bytes) can't be re-versioned — overwriting or reverting the
-// object would silently invalidate where the signature was flattened. Also
-// guards deletion: SignatureEvent.fileAssetId has no onDelete behavior, so
-// without this check deleting a signed file would fail on a raw foreign-key
-// error instead of a plain one.
-function assertNotSigned(asset: { signatureEvents: { id: string }[] }, action: "have new versions" | "be deleted" = "have new versions") {
-  if (asset.signatureEvents.length > 0) {
+// Signed/completed PDFs can't be re-versioned or deleted — overwriting or
+// reverting the object would silently invalidate where a legacy signature
+// was flattened (SignatureEvent, the retired in-app self-sign flow — see
+// prisma/schema.prisma), or orphan a completed DocuSign envelope's own
+// record of its result (envelopeAsCompleted). Also guards deletion:
+// SignatureEvent.fileAssetId/DocusignEnvelope.completedFileAssetId have no
+// onDelete behavior, so without this check deleting one of these files
+// would fail on a raw foreign-key error instead of a plain one.
+function assertNotModifiable(
+  asset: { signatureEvents: { id: string }[]; envelopeAsCompleted: { id: string } | null },
+  action: "have new versions" | "be deleted" = "have new versions"
+) {
+  if (asset.signatureEvents.length > 0 || asset.envelopeAsCompleted) {
     throw new Error(`This file has been signed and can't ${action}`);
+  }
+}
+
+// A file currently out for signature (a non-terminal DocuSign envelope
+// points at it as its source) can't be edited out from under the signer —
+// the envelope's page/x/y placement was defined against these exact bytes.
+function assertNotEnvelopePending(asset: { envelopesAsSource: { id: string }[] }) {
+  if (asset.envelopesAsSource.length > 0) {
+    throw new Error("This file is out for signature and can't be changed until that's resolved");
   }
 }
 
@@ -147,9 +161,14 @@ export async function deleteFile(fileId: string, applicationId: string) {
 
   const asset = await prisma.fileAsset.findUniqueOrThrow({
     where: { id: fileId },
-    include: { signatureEvents: { select: { id: true } } },
+    include: {
+      signatureEvents: { select: { id: true } },
+      envelopeAsCompleted: { select: { id: true } },
+      envelopesAsSource: { where: { status: { in: ["SENT", "DELIVERED"] } }, select: { id: true } },
+    },
   });
-  assertNotSigned(asset, "be deleted");
+  assertNotModifiable(asset, "be deleted");
+  assertNotEnvelopePending(asset);
   await prisma.fileAsset
     .delete({ where: { id: fileId } })
     .catch((e) =>
@@ -253,9 +272,14 @@ export async function deleteTaskFile(fileId: string, taskId: string) {
 
   const asset = await prisma.fileAsset.findUniqueOrThrow({
     where: { id: fileId },
-    include: { signatureEvents: { select: { id: true } } },
+    include: {
+      signatureEvents: { select: { id: true } },
+      envelopeAsCompleted: { select: { id: true } },
+      envelopesAsSource: { where: { status: { in: ["SENT", "DELIVERED"] } }, select: { id: true } },
+    },
   });
-  assertNotSigned(asset, "be deleted");
+  assertNotModifiable(asset, "be deleted");
+  assertNotEnvelopePending(asset);
   await prisma.fileAsset
     .delete({ where: { id: fileId } })
     .catch((e) =>
@@ -352,9 +376,14 @@ export async function deleteClientFile(fileId: string, clientId: string) {
 
   const asset = await prisma.fileAsset.findUniqueOrThrow({
     where: { id: fileId },
-    include: { signatureEvents: { select: { id: true } } },
+    include: {
+      signatureEvents: { select: { id: true } },
+      envelopeAsCompleted: { select: { id: true } },
+      envelopesAsSource: { where: { status: { in: ["SENT", "DELIVERED"] } }, select: { id: true } },
+    },
   });
-  assertNotSigned(asset, "be deleted");
+  assertNotModifiable(asset, "be deleted");
+  assertNotEnvelopePending(asset);
   await prisma.fileAsset
     .delete({ where: { id: fileId } })
     .catch((e) =>
@@ -396,10 +425,16 @@ export async function uploadNewFileVersion(fileId: string, formData: FormData) {
   const session = await requireSession();
   const asset = await prisma.fileAsset.findUniqueOrThrow({
     where: { id: fileId },
-    include: { task: { include: { assignees: { select: { userId: true } } } }, signatureEvents: { select: { id: true } } },
+    include: {
+      task: { include: { assignees: { select: { userId: true } } } },
+      signatureEvents: { select: { id: true } },
+      envelopeAsCompleted: { select: { id: true } },
+      envelopesAsSource: { where: { status: { in: ["SENT", "DELIVERED"] } }, select: { id: true } },
+    },
   });
   await assertCanAccessFileAsset(session, asset, "edit");
-  assertNotSigned(asset);
+  assertNotModifiable(asset);
+  assertNotEnvelopePending(asset);
 
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) {
@@ -454,10 +489,16 @@ export async function revertFileVersion(fileId: string, versionId: string) {
   const session = await requireSession();
   const asset = await prisma.fileAsset.findUniqueOrThrow({
     where: { id: fileId },
-    include: { task: { include: { assignees: { select: { userId: true } } } }, signatureEvents: { select: { id: true } } },
+    include: {
+      task: { include: { assignees: { select: { userId: true } } } },
+      signatureEvents: { select: { id: true } },
+      envelopeAsCompleted: { select: { id: true } },
+      envelopesAsSource: { where: { status: { in: ["SENT", "DELIVERED"] } }, select: { id: true } },
+    },
   });
   await assertCanAccessFileAsset(session, asset, "edit");
-  assertNotSigned(asset);
+  assertNotModifiable(asset);
+  assertNotEnvelopePending(asset);
 
   const target = await prisma.fileVersion.findUniqueOrThrow({ where: { id: versionId } });
   if (target.fileAssetId !== fileId) throw new ForbiddenError("Version does not belong to this file");

@@ -21,7 +21,17 @@ export async function listUsers() {
   await requireRole(["ADMIN"]);
   return prisma.user.findMany({
     orderBy: { name: "asc" },
-    select: { id: true, name: true, email: true, role: true, active: true, mfaEnabled: true, hourlyRate: true },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      active: true,
+      mfaEnabled: true,
+      hourlyRate: true,
+      phone: true,
+      smsRemindersEnabled: true,
+    },
   });
 }
 
@@ -96,6 +106,11 @@ const updateSchema = z.object({
   role: z.enum(ROLE_VALUES),
   active: z.boolean(),
   password: z.string().min(8, "Password must be at least 8 characters").optional().or(z.literal("")),
+  phone: z.string().optional(),
+  // Admin-set roster membership for meeting SMS/call reminders (see
+  // src/lib/meeting-reminders.ts) — not a self-service preference like
+  // emailNotificationsEnabled on /account.
+  smsRemindersEnabled: z.boolean(),
 });
 
 export async function updateUser(input: z.infer<typeof updateSchema>) {
@@ -108,7 +123,7 @@ export async function updateUser(input: z.infer<typeof updateSchema>) {
 
   const before = await prisma.user.findUniqueOrThrow({
     where: { id: parsed.userId },
-    select: { name: true, email: true, role: true, active: true },
+    select: { name: true, email: true, role: true, active: true, phone: true, smsRemindersEnabled: true },
   });
 
   const existing = await prisma.user.findUnique({ where: { email: parsed.email } });
@@ -123,6 +138,8 @@ export async function updateUser(input: z.infer<typeof updateSchema>) {
       email: parsed.email,
       role: parsed.role,
       active: parsed.active,
+      phone: parsed.phone || null,
+      smsRemindersEnabled: parsed.smsRemindersEnabled,
       ...(parsed.password ? { passwordHash: await bcrypt.hash(parsed.password, 12) } : {}),
     },
   });
@@ -133,7 +150,14 @@ export async function updateUser(input: z.infer<typeof updateSchema>) {
     actorId: session.user.id,
     action: "update",
     before,
-    after: { name: parsed.name, email: parsed.email, role: parsed.role, active: parsed.active },
+    after: {
+      name: parsed.name,
+      email: parsed.email,
+      role: parsed.role,
+      active: parsed.active,
+      phone: parsed.phone || null,
+      smsRemindersEnabled: parsed.smsRemindersEnabled,
+    },
   });
   if (parsed.password) {
     await recordAudit({

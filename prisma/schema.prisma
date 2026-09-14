@@ -100,6 +100,11 @@ enum NotificationType {
   APPLICATION_SHARED
   MENTIONED
   INVOICE_PAID
+  LEAD_BOOKED
+  LEAD_CANCELED
+  MEETING_REMINDER
+  ENVELOPE_COMPLETED
+  ENVELOPE_DECLINED
 }
 
 enum InvoiceStatus {
@@ -131,6 +136,12 @@ model User {
   // time in a time-entry dialog is resolved to an instant, wherever this
   // user is the one reading/typing it (see src/lib/time-entries.ts).
   timezone                  String?
+  // Admin-set (Admin > Users), not self-service like emailNotificationsEnabled
+  // above — phone is only meaningful once smsRemindersEnabled is on. Off by
+  // default: this is a small opt-in roster ("who gets a text/call for every
+  // upcoming meeting"), not a per-user preference everyone starts with.
+  phone                     String?
+  smsRemindersEnabled       Boolean  @default(false)
   createdAt                 DateTime @default(now())
   updatedAt                 DateTime @updatedAt
 
@@ -176,6 +187,9 @@ model User {
   breakDeductionsCreated        TimesheetBreakDeduction[] @relation("TimesheetBreakDeductionCreatedBy")
   formTemplatesCreated          FormTemplate[]            @relation("FormTemplateCreatedBy")
   formSubmissionsReviewed       FormSubmission[]          @relation("FormSubmissionReviewedBy")
+  leadsReviewed                 Lead[]                    @relation("LeadReviewedBy")
+  leadsAssigned                  Lead[]                    @relation("LeadAssignedTo")
+  docusignEnvelopesSent          DocusignEnvelope[]        @relation("DocusignEnvelopeSentBy")
   careRecipientsCreated         CareRecipient[]           @relation("CareRecipientCreatedBy")
   careRecipientAssignments      CareRecipientAssignment[] @relation("CareRecipientAssignmentCaregiver")
   careRecipientAssignmentsGiven CareRecipientAssignment[] @relation("CareRecipientAssignmentAssignedBy")
@@ -424,6 +438,7 @@ model Client {
   credentials     ClientCredential[]
   invoices        Invoice[]
   formSubmissions FormSubmission[]
+  leads           Lead[]
   careRecipients  CareRecipient[]
   contacts        ClientContact[]
   owners          ClientOwner[]
@@ -494,6 +509,8 @@ model ClientAgreement {
   createdById   String
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+
+  docusignEnvelopes DocusignEnvelope[]
 
   @@index([clientId])
   @@map("client_agreements")
@@ -797,6 +814,7 @@ model Application {
   notes              Note[]
   stageHistory       StageHistory[]
   invoices           Invoice[]
+  docusignEnvelopes  DocusignEnvelope[]
 
   @@map("applications")
 }
@@ -916,6 +934,8 @@ model FileAsset {
 
   versions        FileVersion[]
   signatureEvents SignatureEvent[]
+  envelopesAsSource   DocusignEnvelope[] @relation("EnvelopeSourceFile")
+  envelopeAsCompleted DocusignEnvelope?  @relation("EnvelopeCompletedFile")
 
   @@map("file_assets")
 }
@@ -1027,6 +1047,14 @@ model Task {
   applicationId String?
   phase         Phase?       @relation(fields: [phaseId], references: [id])
   phaseId       String?
+  // Set only for a follow-up task auto-created by changeLeadStage
+  // (src/lib/actions/leads.ts) on a NO_SHOW/MISSED transition — purely
+  // informational (lets the Leads inbox show/link it), not an access
+  // boundary: this is a standalone task like any other with no
+  // applicationId, so assertCanAccessTask's existing
+  // assignee/creator/ADMIN/MANAGER fallback already covers it unchanged.
+  lead          Lead?        @relation(fields: [leadId], references: [id])
+  leadId        String?
 
   checklistItemTemplateId String?
 
@@ -1114,6 +1142,15 @@ model SignatureProfile {
 // A signature flattened onto a specific FileAsset (the resulting signed PDF).
 // Position stored as ratios of page size so it's independent of any one
 // viewer's pixel scale.
+//
+// RETIRED as of the DocusignEnvelope model below — new signing goes through
+// DocuSign, not this in-app self-sign flow. Left completely unchanged, not
+// deleted: existing rows and the FileAssets they point at are read-only
+// history (a document someone already signed this way stays exactly as
+// signed), and no new code creates a new row here. Same for SignatureProfile
+// above — DocuSign captures the signer's actual signature during its own
+// hosted ceremony, so there's no "pre-saved drawn signature" concept in the
+// new flow at all.
 model SignatureEvent {
   id          String    @id @default(cuid())
   fileAsset   FileAsset @relation(fields: [fileAssetId], references: [id])
@@ -1129,6 +1166,78 @@ model SignatureEvent {
   createdAt   DateTime  @default(now())
 
   @@map("signature_events")
+}
+
+enum DocusignEnvelopeStatus {
+  CREATED
+  SENT
+  DELIVERED // DocuSign's "viewed" — matches their own envelope-status vocabulary
+  COMPLETED
+  DECLINED
+  VOIDED // includes DocuSign's own auto-void-on-expiration case
+}
+
+// One DocuSign envelope sent from inside HCLM — replaces SignatureEvent/
+// SignatureProfile above as the one signing flow going forward. Exactly one
+// of applicationId/clientAgreementId is set, enforced in the action layer
+// (src/lib/actions/docusign-envelopes.ts), not a DB constraint — same "no
+// XOR CHECK constraint" convention FileAsset itself already uses for its
+// own applicationId/taskId/clientId.
+//
+// No stored EXPIRED status: DocuSign itself has no such status — an
+// unsigned envelope past its expiresAt transitions to VOIDED with a reason.
+// "Expiring soon" is derived at read time against expiresAt (status in
+// SENT/DELIVERED, expiresAt close), same convention as ClientLicense/
+// computeLicenseAlerts (src/lib/aging-alerts.ts) — never a separately
+// tracked flag that could go stale.
+model DocusignEnvelope {
+  id                String                 @id @default(cuid())
+  application       Application?           @relation(fields: [applicationId], references: [id])
+  applicationId     String?
+  clientAgreement   ClientAgreement?       @relation(fields: [clientAgreementId], references: [id])
+  clientAgreementId String?
+
+  // The document sent for signature.
+  sourceFileAsset   FileAsset @relation("EnvelopeSourceFile", fields: [sourceFileAssetId], references: [id])
+  sourceFileAssetId String
+  // The signed result, downloaded and stored once DocuSign Connect reports
+  // COMPLETED (see the webhook route) — null until then.
+  completedFileAsset   FileAsset? @relation("EnvelopeCompletedFile", fields: [completedFileAssetId], references: [id])
+  completedFileAssetId String?    @unique
+
+  // DocuSign's own envelope GUID — the webhook's idempotency key.
+  docusignEnvelopeId String                 @unique
+  status             DocusignEnvelopeStatus @default(CREATED)
+
+  signerName  String
+  signerEmail String
+  // Where the signature tab goes, as ratios of page size (same convention
+  // as the retired SignatureEvent above) — top-left origin, no Y-flip
+  // needed for DocuSign (unlike pdf-lib's bottom-left drawImage origin the
+  // old flow used); see src/lib/docusign.ts.
+  pageNumber Int
+  xRatio     Float
+  yRatio     Float
+
+  expiresAt     DateTime?
+  declineReason String?
+  voidReason    String?
+
+  sentBy   User   @relation("DocusignEnvelopeSentBy", fields: [sentById], references: [id])
+  sentById String
+
+  sentAt      DateTime?
+  deliveredAt DateTime?
+  completedAt DateTime?
+  declinedAt  DateTime?
+  voidedAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([applicationId])
+  @@index([clientAgreementId])
+  @@map("docusign_envelopes")
 }
 
 // In-app notification for events a user should know about (reassignment,
@@ -1472,6 +1581,112 @@ model FormField {
 
   @@unique([templateId, key])
   @@map("form_fields")
+}
+
+// Where a Lead came from — one value today (a Calendly booking), kept as
+// its own enum rather than hardcoding "Calendly" everywhere so a second
+// source (a "Contact us" form, a referral) doesn't force a rename later.
+enum LeadSource {
+  CALENDLY
+}
+
+// Booked -> Held -> Follow-up sent -> Rebooked -> Converted -> Lost. A
+// plain closed enum, not a PipelineStage-style admin-configurable catalog
+// like Application/MCO credentialing use (see docs/pipeline-stage-plan.md)
+// — that machinery (rule engine, StageHistory, drag/drop board) solves a
+// much bigger problem (3 pipelines, up to 24 stages, per-stage required
+// fields) than these 6 fixed stages need. Any stage can move to any other
+// stage — no backward-move whitelist, staff aren't restricted here.
+enum LeadStage {
+  BOOKED
+  HELD
+  NO_SHOW // client didn't show — see changeLeadStage in src/lib/actions/leads.ts, which auto-creates a required follow-up Task on this transition
+  MISSED // CTK didn't show — same auto-follow-up-task behavior as NO_SHOW
+  FOLLOW_UP_SENT
+  REBOOKED
+  CONVERTED
+  LOST
+}
+
+// One inbound lead — today always a Calendly booking, landing here
+// straight off the invitee.created webhook (see
+// src/app/api/webhooks/calendly/route.ts). Mirrors FormSubmission's
+// review-queue shape: `client`/`reviewedBy` stay null until staff acts on
+// it (create a new Client, attach to an existing one, or mark Lost — see
+// src/lib/actions/leads.ts), just with a 6-stage `stage` instead of a
+// 3-value `status`.
+model Lead {
+  id     String     @id @default(cuid())
+  source LeadSource @default(CALENDLY)
+  stage  LeadStage  @default(BOOKED)
+
+  // Invitee details, straight from Calendly's invitee.created payload.
+  inviteeName  String
+  inviteeEmail String
+  // Calendly doesn't put a phone field on the invitee resource by default
+  // — this is extracted from questions_and_answers (or text_reminder_number
+  // when SMS reminders are configured), see extractPhoneAnswer in
+  // src/lib/calendly.ts. Null when neither is present.
+  inviteePhone String?
+  timezone     String?
+
+  // The scheduled event, not the invitee — start/end/location come from
+  // the payload's embedded scheduled_event object.
+  meetingStartAt DateTime
+  meetingEndAt   DateTime?
+  // scheduled_event.location.join_url — populated only when Calendly's own
+  // Zoom conferencing was used for this booking. Covers the separate
+  // "Zoom integration" backlog item for free: no Zoom API call needed.
+  meetingJoinUrl String?
+
+  // Calendly's own identifiers. calendlyInviteeUri is the real idempotency
+  // key (one row per invitee); calendlyEventUri is indexed but not unique
+  // since a group event type could have more than one invitee per event.
+  calendlyEventUri   String
+  calendlyInviteeUri String @unique
+
+  // Calendly's questions_and_answers array, stored verbatim — same
+  // convention as FormSubmission.answers.
+  answers Json
+
+  // Set by the invitee.canceled webhook. Deliberately doesn't auto-move
+  // `stage` to LOST — a canceled booking might get rebooked (that's what
+  // the REBOOKED stage is for), so the system just surfaces the fact and
+  // lets staff decide what it means.
+  canceledAt   DateTime?
+  cancelReason String?
+
+  client       Client?   @relation(fields: [clientId], references: [id])
+  clientId     String?
+  reviewedBy   User?     @relation("LeadReviewedBy", fields: [reviewedById], references: [id])
+  reviewedById String?
+  reviewedAt   DateTime?
+
+  // Who follows up on this booking — backlog item 15 ("Assignment") for the
+  // Lead half of it; the other half (DocuSign envelopes) has nothing to own
+  // yet, since DocuSign isn't built. Drives who gets the meeting-reminder
+  // notify()/Teams post — see src/lib/meeting-reminders.ts.
+  assignedTo   User?     @relation("LeadAssignedTo", fields: [assignedToId], references: [id])
+  assignedToId String?
+
+  // Set once each reminder actually fires (src/lib/meeting-reminders.ts) —
+  // a threshold check against these, not a narrow time-window match, so a
+  // process restart between polls still catches up instead of silently
+  // skipping a lead. Doesn't matter whether every channel (Teams/SMS) that
+  // tick actually succeeded — see the "degrade gracefully" note there.
+  reminder24hSentAt DateTime?
+  reminder30mSentAt DateTime?
+
+  // The auto-created follow-up task on a NO_SHOW/MISSED transition (see
+  // Task.leadId above) — usually 0 or 1, not a general task list for the lead.
+  tasks Task[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([stage])
+  @@index([calendlyEventUri])
+  @@map("leads")
 }
 
 // One filled-out form. `ipAddress` is spam triage only — deliberately never

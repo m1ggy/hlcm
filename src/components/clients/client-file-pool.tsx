@@ -14,8 +14,10 @@ import type { FileRow } from "@/components/files/types";
 // Same shape as FilePool (src/components/applications/file-pool.tsx),
 // pointed at the Client-scoped actions instead — the signed agreement,
 // EIN letter, W-9, licenses, insurance certificates, whatever else needs
-// to live on the client record itself. No e-signing here (that's an
-// Application-flow concept), so no SignPdfDialog/signAction.
+// to live on the client record itself. Sending a file here for a DocuSign
+// signature is a ClientAgreement-scoped flow (see
+// SendAgreementEnvelopeDialog on client-agreements-card.tsx), not a
+// generic action on every client file, so no signAction slot here.
 export function ClientFilePool({ clientId, files, canEdit }: { clientId: string; files: FileRow[]; canEdit: boolean }) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);

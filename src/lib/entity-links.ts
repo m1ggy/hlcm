@@ -16,6 +16,9 @@ export const ENTITY_LINKS: Record<EntityLinkVariant, Record<string, (id: string)
     Application: (id) => `/applications/${id}`,
     Client: (id) => `/clients/${id}`,
     Invoice: (id) => `/invoices/${id}`,
+    // No per-lead detail route exists (yet) — only the /leads list, same
+    // situation as Task above.
+    Lead: () => "/leads",
   },
   portal: {
     Application: (id) => `/portal/applications/${id}`,
