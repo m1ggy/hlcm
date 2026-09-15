@@ -77,6 +77,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           {isManualInvoice(invoice) && (
             <span className="text-xs text-muted-foreground" title="Recorded manually — not billed through an online payment link">
               Recorded manually{invoice.invoiceProfile ? ` — billed as ${invoice.invoiceProfile.name}` : ""}
+              {invoice.careRecipient ? ` — for ${invoice.careRecipient.name}` : ""}
             </span>
           )}
           {invoice.importedAt && (
