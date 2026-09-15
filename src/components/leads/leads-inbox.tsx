@@ -234,7 +234,7 @@ export function LeadsInbox({
                       />
                       <AttachLeadDialog leadId={lead.id} clients={clients} />
                       <LeadStagePicker leadId={lead.id} stage={lead.stage} />
-                      <LeadAssigneePicker leadId={lead.id} assignedToId={lead.assignedTo?.id ?? null} users={assignableUsers} />
+                      <LeadAssigneePicker leadId={lead.id} assignedTo={lead.assignedTo} users={assignableUsers} />
                       <Button
                         variant="outline"
                         size="sm"
