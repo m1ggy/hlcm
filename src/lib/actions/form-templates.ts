@@ -10,6 +10,22 @@ import { CLIENT_FIELD_OPTIONS } from "@/lib/form-client-fields";
 
 const FIELD_TYPES = ["TEXT", "LONG_TEXT", "EMAIL", "PHONE", "DATE", "SELECT", "CHECKBOX", "FILE"] as const;
 
+// Same shape as validateCcEmails/EMAIL_RE in src/lib/actions/invoice-profiles.ts
+// — kept file-local rather than shared, matching that file's own precedent
+// for a one-line regex not worth a cross-module import.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+function validateNotifyEmails(raw: string | undefined): string | null {
+  if (!raw?.trim()) return null;
+  const emails = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  for (const email of emails) {
+    if (!EMAIL_RE.test(email)) throw new Error(`"${email}" doesn't look like a valid email`);
+  }
+  return emails.join(", ");
+}
+
 // Reading the list (to pick a form to send someone, or grab its public
 // link) is open to anyone who can create a client — building/editing one
 // is ADMIN-only, same split Document Templates already uses.
@@ -46,11 +62,14 @@ const createSchema = z.object({
     .regex(/^[a-z0-9-]+$/, "Only lowercase letters, numbers, and dashes"),
   description: z.string().optional(),
   fields: z.array(fieldSchema).min(1, "Add at least one field"),
+  notifyUserIds: z.array(z.string()).default([]),
+  notifyEmails: z.string().optional(),
 });
 
 export async function createFormTemplate(input: z.infer<typeof createSchema>) {
   const session = await requireRole(["ADMIN"]);
   const parsed = createSchema.parse(input);
+  const notifyEmails = validateNotifyEmails(parsed.notifyEmails);
 
   const template = await prisma.formTemplate
     .create({
@@ -58,6 +77,8 @@ export async function createFormTemplate(input: z.infer<typeof createSchema>) {
         name: parsed.name,
         slug: parsed.slug,
         description: parsed.description || undefined,
+        notifyUserIds: parsed.notifyUserIds,
+        notifyEmails,
         createdById: session.user.id,
         fields: {
           create: parsed.fields.map((f, i) => ({
@@ -95,6 +116,7 @@ const updateSchema = createSchema.extend({
 export async function updateFormTemplate(id: string, input: z.infer<typeof updateSchema>) {
   const session = await requireRole(["ADMIN"]);
   const parsed = updateSchema.parse(input);
+  const notifyEmails = validateNotifyEmails(parsed.notifyEmails);
 
   const template = await prisma
     .$transaction(async (tx) => {
@@ -106,6 +128,8 @@ export async function updateFormTemplate(id: string, input: z.infer<typeof updat
           slug: parsed.slug,
           description: parsed.description || undefined,
           active: parsed.active,
+          notifyUserIds: parsed.notifyUserIds,
+          notifyEmails,
           fields: {
             create: parsed.fields.map((f, i) => ({
               key: f.key,

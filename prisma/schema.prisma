@@ -1583,14 +1583,22 @@ enum FormSubmissionStatus {
 }
 
 model FormTemplate {
-  id          String   @id @default(cuid())
+  id          String  @id @default(cuid())
   name        String
   // URL-friendly and unique — the public link is /forms/{slug}, so this is
   // effectively load-bearing (share it wrong and the form 404s), not just
   // cosmetic.
-  slug        String   @unique
+  slug        String  @unique
   description String?
-  active      Boolean  @default(true)
+  active      Boolean @default(true)
+
+  // Who gets emailed on a new submission — see submitForm in
+  // src/lib/actions/public-forms.ts. Both empty falls back to every active
+  // ADMIN (the original, hardcoded behavior); either one non-empty
+  // replaces that default entirely, deduped against each other.
+  notifyUserIds String[] @default([])
+  notifyEmails  String?
+
   createdBy   User     @relation("FormTemplateCreatedBy", fields: [createdById], references: [id])
   createdById String
   createdAt   DateTime @default(now())

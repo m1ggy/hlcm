@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Pencil } from "lucide-react";
 import { auth } from "@/auth";
 import { listFormTemplates } from "@/lib/actions/form-templates";
+import { listAssignableUsers } from "@/lib/actions/applications";
 import { FormTemplateDialog } from "@/components/admin/form-template-dialog";
 import { CopyLinkButton } from "@/components/admin/copy-link-button";
 import { PageInfoButton } from "@/components/shared/page-info-button";
@@ -21,7 +22,10 @@ export default async function FormTemplatesPage() {
   await blockCaregiverRoute();
   const session = await auth();
   const canManage = session?.user?.role === "ADMIN";
-  const templates = await listFormTemplates();
+  const [templates, assignableUsers] = await Promise.all([
+    listFormTemplates(),
+    canManage ? listAssignableUsers() : Promise.resolve([]),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -39,7 +43,9 @@ export default async function FormTemplatesPage() {
             </p>
           </PageInfoButton>
         </div>
-        {canManage && <FormTemplateDialog />}
+        {canManage && (
+          <FormTemplateDialog assignableUsers={assignableUsers.map((u) => ({ id: u.id, name: u.name }))} />
+        )}
       </div>
       <Table>
         <TableHeader>
@@ -73,6 +79,7 @@ export default async function FormTemplatesPage() {
                 <TableCell className="text-right">
                   <FormTemplateDialog
                     template={t}
+                    assignableUsers={assignableUsers.map((u) => ({ id: u.id, name: u.name }))}
                     trigger={
                       <Button variant="ghost" size="icon-sm" title="Edit form">
                         <Pencil className="size-3.5" />

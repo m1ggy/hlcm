@@ -51,6 +51,27 @@ async function getClientIp() {
   return (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim() || null;
 }
 
+// Who gets emailed when this form gets a new submission — see the
+// "notifyUserIds"/"notifyEmails" fields on FormTemplate. Both empty falls
+// back to every active ADMIN, the original hardcoded behavior; either one
+// non-empty replaces that default entirely rather than adding to it, per
+// how this was scoped — deduped against each other since the same address
+// could plausibly show up both ways (a picked user who's also typed in
+// manually by habit).
+async function resolveNotifyRecipients(template: { notifyUserIds: string[]; notifyEmails: string | null }): Promise<string[]> {
+  const hasCustomRecipients = template.notifyUserIds.length > 0 || !!template.notifyEmails?.trim();
+  if (!hasCustomRecipients) {
+    const admins = await prisma.user.findMany({ where: { role: "ADMIN", active: true }, select: { email: true } });
+    return admins.map((a) => a.email);
+  }
+
+  const users = template.notifyUserIds.length
+    ? await prisma.user.findMany({ where: { id: { in: template.notifyUserIds }, active: true }, select: { email: true } })
+    : [];
+  const extra = (template.notifyEmails ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  return [...new Set([...users.map((u) => u.email), ...extra])];
+}
+
 // Only ever returns an active template — an inactive/unknown slug is
 // indistinguishable from "doesn't exist" to the public page, which just
 // 404s either way (see src/app/forms/[slug]/page.tsx).
@@ -143,13 +164,10 @@ export async function submitForm(templateId: string, formData: FormData) {
   // Best-effort — a notification failure must never make the submission
   // itself look like it failed to whoever just filled the form out.
   try {
-    const admins = await prisma.user.findMany({
-      where: { role: "ADMIN", active: true },
-      select: { email: true },
-    });
-    for (const admin of admins) {
+    const recipients = await resolveNotifyRecipients(template);
+    for (const email of recipients) {
       await sendEmail({
-        to: admin.email,
+        to: email,
         subject: `New form submission — ${template.name}`,
         html: renderEmailLayout({
           heading: "New form submission",

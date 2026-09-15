@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { MultiUserSelect } from "@/components/ui/multi-user-select";
 import {
   Dialog,
   DialogContent,
@@ -77,9 +78,19 @@ type ExistingTemplate = {
   description: string | null;
   active: boolean;
   fields: { key: string; label: string; type: FieldType; required: boolean; options: string[]; clientField: string | null }[];
+  notifyUserIds: string[];
+  notifyEmails: string | null;
 };
 
-export function FormTemplateDialog({ template, trigger }: { template?: ExistingTemplate; trigger?: React.ReactElement }) {
+export function FormTemplateDialog({
+  template,
+  trigger,
+  assignableUsers,
+}: {
+  template?: ExistingTemplate;
+  trigger?: React.ReactElement;
+  assignableUsers: { id: string; name: string }[];
+}) {
   const router = useRouter();
   const isEdit = !!template;
   const [open, setOpen] = useState(false);
@@ -90,6 +101,8 @@ export function FormTemplateDialog({ template, trigger }: { template?: ExistingT
   const [slugTouched, setSlugTouched] = useState(isEdit);
   const [description, setDescription] = useState(template?.description ?? "");
   const [active, setActive] = useState(template?.active ?? true);
+  const [notifyUserIds, setNotifyUserIds] = useState<string[]>(template?.notifyUserIds ?? []);
+  const [notifyEmails, setNotifyEmails] = useState(template?.notifyEmails ?? "");
   const [fields, setFields] = useState<FieldDraft[]>(
     template?.fields.length
       ? template.fields.map((f) => ({
@@ -109,6 +122,8 @@ export function FormTemplateDialog({ template, trigger }: { template?: ExistingT
     setSlugTouched(isEdit);
     setDescription(template?.description ?? "");
     setActive(template?.active ?? true);
+    setNotifyUserIds(template?.notifyUserIds ?? []);
+    setNotifyEmails(template?.notifyEmails ?? "");
     setFields(
       template?.fields.length
         ? template.fields.map((f) => ({
@@ -178,6 +193,8 @@ export function FormTemplateDialog({ template, trigger }: { template?: ExistingT
       name: name.trim(),
       slug: slug.trim(),
       description: description.trim() || undefined,
+      notifyUserIds,
+      notifyEmails: notifyEmails.trim() || undefined,
       fields: fields.map((f) => ({
         key: f.key.trim() || slugify(f.label, "_"),
         label: f.label.trim(),
@@ -258,6 +275,25 @@ export function FormTemplateDialog({ template, trigger }: { template?: ExistingT
               Active — inactive forms 404 for anyone with the link
             </label>
           )}
+
+          <div className="space-y-2 rounded-lg border p-3">
+            <Label>Notify on new submission</Label>
+            <MultiUserSelect
+              items={Object.fromEntries(assignableUsers.map((u) => [u.id, u.name]))}
+              value={notifyUserIds}
+              onValueChange={setNotifyUserIds}
+              placeholder="Search staff..."
+            />
+            <Input
+              value={notifyEmails}
+              onChange={(e) => setNotifyEmails(e.target.value)}
+              placeholder="Extra email addresses, comma-separated"
+            />
+            <p className="text-xs text-muted-foreground">
+              Leave both empty to notify every admin (today&apos;s default) — set either one to notify only these
+              instead.
+            </p>
+          </div>
 
           <div className="space-y-2">
             <Label>Fields</Label>
