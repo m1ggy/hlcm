@@ -8,6 +8,7 @@ import {
   effectiveTimezone,
   lastNDaysRange,
   currentWeekRange,
+  currentPayPeriodRange,
   weekRangeForDay,
   dayRangeToInstants,
   toDateInputValue,
@@ -196,6 +197,9 @@ export function MyTimeLog({ accountTimezone }: { accountTimezone: string | null 
         <Button variant="ghost" size="sm" onClick={() => applyPreset(currentWeekRange(timeZone))} loading={isPending}>
           This week
         </Button>
+        <Button variant="ghost" size="sm" onClick={() => applyPreset(currentPayPeriodRange(timeZone))} loading={isPending}>
+          This pay period
+        </Button>
         <Button variant="ghost" size="sm" onClick={() => applyPreset(lastNDaysRange(DEFAULT_WEEKS * 7, timeZone))} loading={isPending}>
           Last {DEFAULT_WEEKS} weeks
         </Button>
@@ -205,6 +209,18 @@ export function MyTimeLog({ accountTimezone }: { accountTimezone: string | null 
         <p className="text-sm text-muted-foreground">Loading shifts...</p>
       ) : (
         <div className="space-y-3">
+          <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2">
+            <span className="text-sm font-medium">
+              Total, {formatCalendarDay(from)} – {formatCalendarDay(to)}
+            </span>
+            <span className="text-sm tabular-nums font-medium">
+              {formatDuration(totalHours(entries))}
+              <span className="ml-1.5 font-normal text-muted-foreground">
+                ({entries.length} {entries.length === 1 ? "shift" : "shifts"})
+              </span>
+            </span>
+          </div>
+
           <div>
             <p className="mb-1.5 text-sm font-medium">
               This week <span className="font-normal text-muted-foreground">({formatCalendarDay(thisWeek.from)} – {formatCalendarDay(thisWeek.to)})</span>
