@@ -21,6 +21,23 @@ const INCLUDE = {
   client: { select: { id: true as const, name: true as const } },
   assignments: { include: { caregiver: { select: { id: true as const, name: true as const } } } },
   instructions: { orderBy: { sortOrder: "asc" as const } },
+  // Powers the recipient-scoped "Invoices" section in CareRecipientsCard —
+  // reads off the same fetch the Client detail page already does, no extra
+  // round trip. See Invoice.careRecipientId in prisma/schema.prisma.
+  invoices: {
+    select: {
+      id: true as const,
+      seq: true as const,
+      stripeInvoiceNumber: true as const,
+      invoiceNumber: true as const,
+      status: true as const,
+      total: true as const,
+      amountPaid: true as const,
+      dueDate: true as const,
+      createdAt: true as const,
+    },
+    orderBy: { createdAt: "desc" as const },
+  },
 };
 
 const careRecipientFields = {
@@ -37,6 +54,10 @@ const careRecipientFields = {
   careNotes: z.string().optional(),
   visitSchedule: z.string().optional(),
   clientId: z.string().optional(),
+  hourlyRate: z.coerce.number().min(0).optional(),
+  billingContactName: z.string().optional(),
+  billingContactEmail: z.string().optional(),
+  billingContactPhone: z.string().optional(),
 };
 
 const createSchema = z.object(careRecipientFields);
@@ -57,6 +78,10 @@ function readFields(formData: FormData) {
     careNotes: formData.get("careNotes") || undefined,
     visitSchedule: formData.get("visitSchedule") || undefined,
     clientId: formData.get("clientId") || undefined,
+    hourlyRate: formData.get("hourlyRate") || undefined,
+    billingContactName: formData.get("billingContactName") || undefined,
+    billingContactEmail: formData.get("billingContactEmail") || undefined,
+    billingContactPhone: formData.get("billingContactPhone") || undefined,
   };
 }
 
@@ -259,6 +284,21 @@ export async function unassignCaregiver(careRecipientId: string, caregiverId: st
   revalidatePath("/clients");
   revalidatePath("/care-recipients");
   if (recipient.clientId) revalidatePath(`/clients/${recipient.clientId}`);
+}
+
+// Completed (clocked out), not-yet-billed visits for this recipient — the
+// pool CreateRecipientInvoiceDialog (src/components/clients/
+// create-recipient-invoice-dialog.tsx) offers to turn into invoice line
+// items. billedInvoiceId null is what "not yet billed" means (see
+// TimeEntry.billedInvoiceId in prisma/schema.prisma) — an open (still
+// clocked in) session never shows up here since its hours aren't final yet.
+export async function listUnbilledVisits(careRecipientId: string) {
+  await requireRole([...MANAGE_ROLES]);
+  return prisma.timeEntry.findMany({
+    where: { careRecipientId, clockOut: { not: null }, billedInvoiceId: null },
+    include: { user: { select: { name: true } } },
+    orderBy: { clockIn: "asc" },
+  });
 }
 
 // Both derive the caller's id from the session, never from a caller-supplied

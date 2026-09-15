@@ -80,6 +80,14 @@ export type InvoicePdfInput = {
     billingPostalCode: string | null;
     projects: { name: string }[];
   };
+  /** Manual invoices only — who this bills for, if a Care Recipient (see
+   * Invoice.careRecipientId). When set, the Bill To block addresses the
+   * actual payer instead of the agency. */
+  careRecipient?: {
+    name: string;
+    address: string | null;
+    billingContactName: string | null;
+  } | null;
   lineItems: { description: string; quantity: number; unitPrice: number }[];
   /** Which InvoiceProfile this invoice was billed under — see src/lib/invoice-profiles.ts. */
   logo?: { bytes: Uint8Array; mimeType: string } | null;
@@ -153,15 +161,25 @@ export async function generateInvoicePdf(invoice: InvoicePdfInput): Promise<Uint
     y -= 16;
   }
 
-  // Bill to
-  const billTo = invoice.client.businessName ?? invoice.client.name;
+  // Bill to — a Care Recipient invoice addresses the actual payer (their
+  // billing contact if one's on file, else the recipient themselves)
+  // instead of the licensing agency, since the point of tagging a
+  // recipient at all is billing the person who receives/pays for care.
+  const recipient = invoice.careRecipient;
+  const billTo = recipient ? recipient.billingContactName || recipient.name : invoice.client.businessName ?? invoice.client.name;
   page.drawText("Bill to", { x: MARGIN, y, size: 9, font, color: rgb(0.5, 0.5, 0.5) });
   y -= 14;
   page.drawText(billTo, { x: MARGIN, y, size: 12, font: boldFont });
   y -= 15;
-  const addressLine = [invoice.client.billingAddressLine1, invoice.client.billingCity, invoice.client.billingState, invoice.client.billingPostalCode]
-    .filter(Boolean)
-    .join(", ");
+  if (recipient?.billingContactName && recipient.billingContactName !== recipient.name) {
+    page.drawText(`Care of: ${recipient.name}`, { x: MARGIN, y, size: 10, font, color: rgb(0.3, 0.3, 0.3) });
+    y -= 15;
+  }
+  const addressLine = recipient
+    ? recipient.address ?? ""
+    : [invoice.client.billingAddressLine1, invoice.client.billingCity, invoice.client.billingState, invoice.client.billingPostalCode]
+        .filter(Boolean)
+        .join(", ");
   if (addressLine) {
     page.drawText(addressLine, { x: MARGIN, y, size: 10, font, color: rgb(0.3, 0.3, 0.3) });
     y -= 15;

@@ -52,6 +52,22 @@ const invoiceInclude = {
   },
   application: { select: { id: true, name: true } },
   invoiceProfile: { select: { id: true, name: true } },
+  // Manual invoices only — which Care Recipient this bills for, if any.
+  // The extra fields (address/email/billingContact*) are what
+  // generateInvoicePdf's Bill To block and resolveRecipientEmail below
+  // read to address/email the invoice to the actual payer instead of the
+  // agency, when set.
+  careRecipient: {
+    select: {
+      id: true,
+      name: true,
+      address: true,
+      email: true,
+      billingContactName: true,
+      billingContactEmail: true,
+      billingContactPhone: true,
+    },
+  },
   createdBy: { select: { id: true, name: true } },
   lineItems: { orderBy: { sortOrder: "asc" as const } },
   payments: {
@@ -60,13 +76,14 @@ const invoiceInclude = {
   },
 } as const;
 
-export async function listInvoices(filters?: { status?: $Enums.InvoiceStatus; clientId?: string }) {
+export async function listInvoices(filters?: { status?: $Enums.InvoiceStatus; clientId?: string; careRecipientId?: string }) {
   await requireRole(MANAGE_ROLES);
 
   return prisma.invoice.findMany({
     where: {
       status: filters?.status,
       clientId: filters?.clientId || undefined,
+      careRecipientId: filters?.careRecipientId || undefined,
     },
     include: invoiceInclude,
     orderBy: { createdAt: "desc" },
@@ -310,6 +327,12 @@ const createManualInvoiceSchema = z.object({
   notes: z.string().optional(),
   internalTag: z.string().optional(),
   lineItems: z.array(lineItemSchema).min(1, "At least one line item is required"),
+  // Both optional, both Care Recipient billing only — see
+  // CreateRecipientInvoiceDialog. careRecipientId tags who the invoice is
+  // for; timeEntryIds are the logged visits it bills (validated below,
+  // then marked billed in the same transaction as the invoice itself).
+  careRecipientId: z.string().optional(),
+  timeEntryIds: z.array(z.string()).optional(),
 });
 
 // The main way to bill a client outside Stripe entirely — no draft, no
@@ -327,32 +350,71 @@ export async function createManualInvoice(input: z.infer<typeof createManualInvo
   // submitted without picking one.
   const profileId = parsed.invoiceProfileId || (await getDefaultInvoiceProfile())?.id;
 
-  const invoice = await prisma.invoice
-    .create({
-      data: {
-        clientId: parsed.clientId,
-        applicationId: parsed.applicationId || undefined,
-        invoiceProfileId: profileId,
-        invoiceNumber: parsed.invoiceNumber || undefined,
-        issueDate: parsed.issueDate ? new Date(parsed.issueDate) : undefined,
-        dueDate: parsed.dueDate ? new Date(parsed.dueDate) : undefined,
-        notes: parsed.notes,
-        internalTag: parsed.internalTag,
-        status: "SENT",
-        total,
-        taxAmount: 0,
-        createdById: session.user.id,
-        lineItems: {
-          create: parsed.lineItems.map((li, index) => ({ ...li, sortOrder: index })),
+  // A recipient must belong to the Client actually being billed — catches
+  // a stale/mismatched pair rather than silently tagging the wrong
+  // recipient (Invoice always bills through the recipient's own Client,
+  // never independently — see CareRecipient's comment in
+  // prisma/schema.prisma).
+  if (parsed.careRecipientId) {
+    const recipient = await prisma.careRecipient.findUniqueOrThrow({ where: { id: parsed.careRecipientId } });
+    if (recipient.clientId !== parsed.clientId) {
+      throw new Error("That care recipient doesn't belong to this client");
+    }
+  }
+
+  // Visits being billed must actually belong to this recipient and still
+  // be unbilled — race-safety against double-billing the same visit (e.g.
+  // two staff opening the same recipient's invoice dialog at once), not
+  // just a client-side check.
+  if (parsed.timeEntryIds?.length) {
+    if (!parsed.careRecipientId) throw new Error("Visits can only be billed alongside a care recipient");
+    const billableCount = await prisma.timeEntry.count({
+      where: { id: { in: parsed.timeEntryIds }, careRecipientId: parsed.careRecipientId, billedInvoiceId: null },
+    });
+    if (billableCount !== parsed.timeEntryIds.length) {
+      throw new Error("One or more of those visits is no longer available to bill — someone else may have just billed it");
+    }
+  }
+
+  const invoice = await prisma
+    .$transaction(async (tx) => {
+      const created = await tx.invoice.create({
+        data: {
+          clientId: parsed.clientId,
+          applicationId: parsed.applicationId || undefined,
+          invoiceProfileId: profileId,
+          careRecipientId: parsed.careRecipientId || undefined,
+          invoiceNumber: parsed.invoiceNumber || undefined,
+          issueDate: parsed.issueDate ? new Date(parsed.issueDate) : undefined,
+          dueDate: parsed.dueDate ? new Date(parsed.dueDate) : undefined,
+          notes: parsed.notes,
+          internalTag: parsed.internalTag,
+          status: "SENT",
+          total,
+          taxAmount: 0,
+          createdById: session.user.id,
+          lineItems: {
+            create: parsed.lineItems.map((li, index) => ({ ...li, sortOrder: index })),
+          },
         },
-      },
-      include: invoiceInclude,
+        include: invoiceInclude,
+      });
+
+      if (parsed.timeEntryIds?.length) {
+        await tx.timeEntry.updateMany({
+          where: { id: { in: parsed.timeEntryIds } },
+          data: { billedInvoiceId: created.id },
+        });
+      }
+
+      return created;
     })
     .catch(friendlyInvoiceNumberError);
 
   await recordAudit({ entityType: "Invoice", entityId: invoice.id, action: "create_manual", actorId: session.user.id });
 
   revalidatePath("/invoices");
+  if (parsed.careRecipientId) revalidatePath("/clients");
   return invoice;
 }
 
@@ -638,13 +700,22 @@ export async function deletePayment(paymentId: string) {
 // businessEmail ?? owner email. An override that's just whitespace is
 // treated the same as none, so a picker left on "business"/"owner"
 // doesn't need to special-case an empty custom-email field.
+//
+// When the invoice is tagged to a Care Recipient (manual invoices only —
+// see Invoice.careRecipientId), their own billing contact/email takes
+// priority over the Client's, same as generateInvoicePdf's Bill To block —
+// the point of tagging a recipient at all is addressing the invoice to the
+// actual payer instead of the agency. A Stripe-bound invoice never has a
+// careRecipient, so omitting it there is equivalent to passing null.
 function resolveRecipientEmail(
   override: string | null | undefined,
-  client: { businessEmail: string | null; owners: { email: string | null }[] }
+  client: { businessEmail: string | null; owners: { email: string | null }[] },
+  careRecipient?: { billingContactEmail: string | null; email: string | null } | null
 ) {
   const trimmed = override?.trim() || undefined;
   const email = trimmed ? z.string().email("Enter a valid email address").parse(trimmed) : undefined;
-  const recipientEmail = email ?? client.businessEmail ?? client.owners[0]?.email;
+  const recipientEmail =
+    email ?? careRecipient?.billingContactEmail ?? careRecipient?.email ?? client.businessEmail ?? client.owners[0]?.email;
   if (!recipientEmail) {
     throw new Error("Client has no email on file — add one before sending, or type a different email for this send");
   }
@@ -699,7 +770,7 @@ export async function sendReceiptEmail(receiptId: string, recipientEmailOverride
   // payment was recorded (see addManualPayment) — nothing to send yet.
   if (!receipt.storageKey) throw new Error("This receipt's PDF failed to generate — try recording the payment again");
 
-  const recipientEmail = resolveRecipientEmail(recipientEmailOverride, invoice.client);
+  const recipientEmail = resolveRecipientEmail(recipientEmailOverride, invoice.client, invoice.careRecipient);
 
   const number = displayInvoiceNumber(invoice);
   const receiptNumber = displayReceiptNumber(receipt);
@@ -784,7 +855,7 @@ export async function sendManualInvoicePdf(id: string, formData?: FormData) {
     throw new Error("This invoice is no longer awaiting payment");
   }
 
-  const recipientEmail = resolveRecipientEmail(formData?.get("recipientEmail") as string | null, invoice.client);
+  const recipientEmail = resolveRecipientEmail(formData?.get("recipientEmail") as string | null, invoice.client, invoice.careRecipient);
 
   const [extraAttachments, invoiceAttachments] = await Promise.all([
     readExtraAttachments(formData),

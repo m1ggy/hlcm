@@ -14,8 +14,12 @@ import {
   unassignCaregiver,
 } from "@/lib/actions/care-recipients";
 import { CareInstructionChecklist, type CareInstructionRow } from "@/components/clients/care-instruction-checklist";
+import { CreateRecipientInvoiceDialog } from "@/components/clients/create-recipient-invoice-dialog";
 import { RecipientSummary, ageFromDob } from "@/components/clients/care-recipient-summary";
 import { AvatarInitials } from "@/components/ui/avatar-initials";
+import { InvoiceStatusBadge } from "@/components/invoices/invoice-status-badge";
+import { displayInvoiceNumber } from "@/lib/invoice-format";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,6 +41,18 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 
+export type CareRecipientInvoiceRow = {
+  id: string;
+  seq: number;
+  stripeInvoiceNumber: string | null;
+  invoiceNumber: string | null;
+  status: string;
+  total: number | null;
+  amountPaid: number | null;
+  dueDate: Date | null;
+  createdAt: Date;
+};
+
 export type CareRecipientRow = {
   id: string;
   name: string;
@@ -53,8 +69,13 @@ export type CareRecipientRow = {
   visitSchedule: string | null;
   latitude: number | null;
   longitude: number | null;
+  hourlyRate: number | null;
+  billingContactName: string | null;
+  billingContactEmail: string | null;
+  billingContactPhone: string | null;
   assignments: { caregiver: { id: string; name: string } }[];
   instructions: CareInstructionRow[];
+  invoices: CareRecipientInvoiceRow[];
 };
 
 function toDateInputValue(date: Date | null): string {
@@ -213,6 +234,53 @@ function CareRecipientFields({ defaultValues }: { defaultValues?: CareRecipientR
           defaultValue={defaultValues?.visitSchedule ?? ""}
         />
       </div>
+
+      <fieldset className="space-y-2 rounded-lg border p-3">
+        <legend className="px-1 text-xs font-medium text-muted-foreground">Billing</legend>
+        <div className="space-y-1">
+          <Label htmlFor="care-recipient-hourly-rate">Hourly rate</Label>
+          <Input
+            id="care-recipient-hourly-rate"
+            name="hourlyRate"
+            type="number"
+            step="0.01"
+            min="0"
+            placeholder="For pricing billed visits automatically"
+            defaultValue={defaultValues?.hourlyRate ?? ""}
+          />
+        </div>
+        <p className="px-1 text-xs text-muted-foreground">Who pays for their care, if different from them</p>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <Label htmlFor="care-recipient-billing-name">Name</Label>
+            <Input
+              id="care-recipient-billing-name"
+              name="billingContactName"
+              placeholder="e.g. their adult child"
+              defaultValue={defaultValues?.billingContactName ?? ""}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="care-recipient-billing-phone">Phone</Label>
+            <Input
+              id="care-recipient-billing-phone"
+              name="billingContactPhone"
+              type="tel"
+              defaultValue={defaultValues?.billingContactPhone ?? ""}
+            />
+          </div>
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="care-recipient-billing-email">Email</Label>
+          <Input
+            id="care-recipient-billing-email"
+            name="billingContactEmail"
+            type="email"
+            placeholder="Invoices go here when set"
+            defaultValue={defaultValues?.billingContactEmail ?? ""}
+          />
+        </div>
+      </fieldset>
     </>
   );
 }
@@ -468,6 +536,13 @@ function ArchivedRecipients({ clientId }: { clientId: string }) {
   );
 }
 
+// Same "only SENT/PARTIALLY_PAID actually owe money" rule as
+// outstandingBalance in src/components/invoices/invoices-table.tsx.
+function outstandingBalance(invoice: Pick<CareRecipientInvoiceRow, "status" | "total" | "amountPaid">): number {
+  if (invoice.status !== "SENT" && invoice.status !== "PARTIALLY_PAID") return 0;
+  return Math.max(0, (invoice.total ?? 0) - (invoice.amountPaid ?? 0));
+}
+
 // Recipients ("who a Caregiver actually visits") are a different thing from
 // the Client itself (the licensing agency) — see prisma/schema.prisma. This
 // card is where an agency's own recipients live, mirroring
@@ -476,10 +551,24 @@ export function CareRecipientsCard({
   clientId,
   recipients,
   caregivers,
+  profiles,
+  canManageInvoices,
+  isAdmin,
 }: {
   clientId: string;
   recipients: CareRecipientRow[];
   caregivers: { id: string; name: string }[];
+  profiles: { id: string; name: string }[];
+  // Invoicing is ADMIN/MANAGER only — same gate createManualInvoice itself
+  // enforces (src/lib/actions/invoices.ts) — a narrower bar than the
+  // ADMIN/MANAGER/STAFF this whole card otherwise renders for, so the
+  // "New invoice" trigger and invoice list stay hidden rather than showing
+  // an action that would just 403.
+  canManageInvoices: boolean;
+  // "Log a missed visit" is ADMIN-only, same as every other manual
+  // TimeEntry edit (src/lib/actions/time-entries.ts) — narrower still than
+  // canManageInvoices.
+  isAdmin: boolean;
 }) {
   return (
     <Card>
@@ -525,6 +614,45 @@ export function CareRecipientsCard({
                   <div className="mt-3 border-t pt-3">
                     <CareInstructionChecklist careRecipientId={r.id} instructions={r.instructions} canManage />
                   </div>
+                  {canManageInvoices && (
+                    <div className="mt-3 border-t pt-3">
+                      <div className="mb-2 flex items-center justify-between">
+                        <p className="text-sm font-medium">Invoices</p>
+                        <CreateRecipientInvoiceDialog
+                          clientId={clientId}
+                          careRecipientId={r.id}
+                          careRecipientName={r.name}
+                          hourlyRate={r.hourlyRate}
+                          profiles={profiles}
+                          caregivers={caregivers}
+                          isAdmin={isAdmin}
+                        />
+                      </div>
+                      {r.invoices.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">No invoices yet.</p>
+                      ) : (
+                        <div className="space-y-1">
+                          {r.invoices.map((inv) => (
+                            <Link
+                              key={inv.id}
+                              href={`/invoices/${inv.id}`}
+                              className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-muted"
+                            >
+                              <span className="flex items-center gap-2">
+                                <span className="tabular-nums">{displayInvoiceNumber(inv)}</span>
+                                <InvoiceStatusBadge status={inv.status} />
+                              </span>
+                              <span className="tabular-nums text-muted-foreground">
+                                {outstandingBalance(inv) > 0
+                                  ? `$${outstandingBalance(inv).toFixed(2)} due`
+                                  : `$${(inv.total ?? 0).toFixed(2)}`}
+                              </span>
+                            </Link>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}

@@ -388,6 +388,11 @@ const manualEntrySchema = z
     userId: z.string().min(1),
     clockIn: z.coerce.date(),
     clockOut: z.coerce.date(),
+    // Optional — lets a backfilled visit count toward a Care Recipient's
+    // billable hours the same as a real clock-in would (see
+    // listUnbilledVisits in src/lib/actions/care-recipients.ts). Omitted
+    // for a plain office-work backfill, same as a real clockIn does.
+    careRecipientId: z.string().optional(),
   })
   .refine((v) => v.clockOut > v.clockIn, { message: "Clock out must be after clock in" });
 
@@ -396,14 +401,25 @@ const manualEntrySchema = z
  * missed punch — always a completed shift (both ends required), unlike a
  * real clock-in which starts open. Same TimeEntry row a clockIn/clockOut
  * pair would produce, so it flows into totals, PDFs, and payouts exactly
- * the same way.
+ * the same way — and, with careRecipientId set, into that recipient's
+ * billable visits too.
  */
-export async function createManualTimeEntry(input: { userId: string; clockIn: string; clockOut: string }) {
+export async function createManualTimeEntry(input: {
+  userId: string;
+  clockIn: string;
+  clockOut: string;
+  careRecipientId?: string;
+}) {
   const session = await requireRole(["ADMIN"]);
   const parsed = manualEntrySchema.parse(input);
 
   const entry = await prisma.timeEntry.create({
-    data: { userId: parsed.userId, clockIn: parsed.clockIn, clockOut: parsed.clockOut },
+    data: {
+      userId: parsed.userId,
+      clockIn: parsed.clockIn,
+      clockOut: parsed.clockOut,
+      careRecipientId: parsed.careRecipientId || undefined,
+    },
   });
 
   await recordAudit({
@@ -415,6 +431,7 @@ export async function createManualTimeEntry(input: { userId: string; clockIn: st
   });
 
   revalidatePath("/time");
+  revalidatePath("/clients");
   return entry;
 }
 

@@ -188,8 +188,8 @@ model User {
   formTemplatesCreated          FormTemplate[]            @relation("FormTemplateCreatedBy")
   formSubmissionsReviewed       FormSubmission[]          @relation("FormSubmissionReviewedBy")
   leadsReviewed                 Lead[]                    @relation("LeadReviewedBy")
-  leadsAssigned                  Lead[]                    @relation("LeadAssignedTo")
-  docusignEnvelopesSent          DocusignEnvelope[]        @relation("DocusignEnvelopeSentBy")
+  leadsAssigned                 Lead[]                    @relation("LeadAssignedTo")
+  docusignEnvelopesSent         DocusignEnvelope[]        @relation("DocusignEnvelopeSentBy")
   careRecipientsCreated         CareRecipient[]           @relation("CareRecipientCreatedBy")
   careRecipientAssignments      CareRecipientAssignment[] @relation("CareRecipientAssignmentCaregiver")
   careRecipientAssignmentsGiven CareRecipientAssignment[] @relation("CareRecipientAssignmentAssignedBy")
@@ -282,6 +282,14 @@ model TimeEntry {
   clockOutLongitude        Float?
   clockOutLocationAccuracy Float?
   clockOutLocationError    String?
+
+  // Set once this visit is included on a Care Recipient invoice — doubles
+  // as the "already billed" flag (null = unbilled, see listUnbilledVisits
+  // in src/lib/actions/care-recipients.ts). SetNull rather than Cascade:
+  // if the invoice that billed it is ever deleted, the visit just becomes
+  // billable again instead of losing its own clock-in/out record.
+  billedInvoice   Invoice? @relation(fields: [billedInvoiceId], references: [id], onDelete: SetNull)
+  billedInvoiceId String?
 
   @@index([userId, clockIn])
   @@index([careRecipientId])
@@ -475,17 +483,17 @@ model ClientContact {
 // one. ownershipPercentage is informational only, nothing sums/validates it
 // to 100 (real-world data is often partial or unknown).
 model ClientOwner {
-  id                    String   @id @default(cuid())
-  client                Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  clientId              String
-  name                  String
-  email                 String?
-  phone                 String?
-  ownershipPercentage   Float?
-  createdBy             User     @relation("ClientOwnerCreatedBy", fields: [createdById], references: [id])
-  createdById           String
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  id                  String   @id @default(cuid())
+  client              Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId            String
+  name                String
+  email               String?
+  phone               String?
+  ownershipPercentage Float?
+  createdBy           User     @relation("ClientOwnerCreatedBy", fields: [createdById], references: [id])
+  createdById         String
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   @@index([clientId])
   @@map("client_owners")
@@ -494,8 +502,8 @@ model ClientOwner {
 // Full agreement history, not just the current one — a renewal adds a new
 // row rather than overwriting the last engagement's record.
 model ClientAgreement {
-  id            String   @id @default(cuid())
-  client        Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  id            String    @id @default(cuid())
+  client        Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
   clientId      String
   agreementType String
   signedDate    DateTime?
@@ -505,10 +513,10 @@ model ClientAgreement {
   // CareRecipient.preferredContactMethod earlier this session.
   paymentStatus String?
   notes         String?
-  createdBy     User     @relation("ClientAgreementCreatedBy", fields: [createdById], references: [id])
+  createdBy     User      @relation("ClientAgreementCreatedBy", fields: [createdById], references: [id])
   createdById   String
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   docusignEnvelopes DocusignEnvelope[]
 
@@ -545,11 +553,11 @@ model ClientLicense {
 // so an agency's page can list its own recipients, but standing up a
 // recipient never requires picking one.
 model CareRecipient {
-  id           String    @id @default(cuid())
-  name         String
-  address      String?
-  dateOfBirth  DateTime?
-  active       Boolean   @default(true)
+  id          String    @id @default(cuid())
+  name        String
+  address     String?
+  dateOfBirth DateTime?
+  active      Boolean   @default(true)
 
   // The recipient's own reachability — distinct from emergencyContact*
   // below (a different person). preferredContactMethod and contactNotes
@@ -578,6 +586,24 @@ model CareRecipient {
   // actual scheduling/calendar logic.
   visitSchedule String?
 
+  // Private-pay hourly rate for this recipient's care — used to auto-price
+  // logged visits when billing them (see listUnbilledVisits in
+  // src/lib/actions/care-recipients.ts and CreateRecipientInvoiceDialog).
+  // Optional: a recipient never billed by the hour just never sets one.
+  hourlyRate Float?
+
+  // Who actually pays for their care, if different from the recipient
+  // themselves — often an adult child or POA. Deliberately separate from
+  // emergencyContact* above (who to call about them) and from phone/email
+  // above (their own reachability) — this is specifically who an invoice
+  // should be addressed/emailed to. Invoice.careRecipientId reads these at
+  // send/PDF time (see resolveRecipientEmail in src/lib/actions/invoices.ts
+  // and the Bill To block in src/lib/invoice-pdf.ts); left blank, an
+  // invoice just bills the recipient's own name/email instead.
+  billingContactName  String?
+  billingContactEmail String?
+  billingContactPhone String?
+
   // Geocoded from `address` (see src/lib/geocoding.ts) whenever it's set or
   // changed — best-effort, never blocks a create/update if it fails. Lets
   // a Caregiver's clock-in compare their own GPS against this instead of
@@ -597,6 +623,10 @@ model CareRecipient {
   assignments  CareRecipientAssignment[]
   timeEntries  TimeEntry[]
   instructions CareInstruction[]
+  // Manual invoices billed for this recipient's care — see
+  // Invoice.careRecipientId. Always billed through their own `client`
+  // above (Invoice.clientId is a hard requirement, unrelated to this).
+  invoices     Invoice[]
 
   @@index([clientId])
   @@map("care_recipients")
@@ -932,8 +962,8 @@ model FileAsset {
   uploadedById  String
   createdAt     DateTime     @default(now())
 
-  versions        FileVersion[]
-  signatureEvents SignatureEvent[]
+  versions            FileVersion[]
+  signatureEvents     SignatureEvent[]
   envelopesAsSource   DocusignEnvelope[] @relation("EnvelopeSourceFile")
   envelopeAsCompleted DocusignEnvelope?  @relation("EnvelopeCompletedFile")
 
@@ -1191,15 +1221,15 @@ enum DocusignEnvelopeStatus {
 // computeLicenseAlerts (src/lib/aging-alerts.ts) — never a separately
 // tracked flag that could go stale.
 model DocusignEnvelope {
-  id                String                 @id @default(cuid())
-  application       Application?           @relation(fields: [applicationId], references: [id])
+  id                String           @id @default(cuid())
+  application       Application?     @relation(fields: [applicationId], references: [id])
   applicationId     String?
-  clientAgreement   ClientAgreement?       @relation(fields: [clientAgreementId], references: [id])
+  clientAgreement   ClientAgreement? @relation(fields: [clientAgreementId], references: [id])
   clientAgreementId String?
 
   // The document sent for signature.
-  sourceFileAsset   FileAsset @relation("EnvelopeSourceFile", fields: [sourceFileAssetId], references: [id])
-  sourceFileAssetId String
+  sourceFileAsset      FileAsset  @relation("EnvelopeSourceFile", fields: [sourceFileAssetId], references: [id])
+  sourceFileAssetId    String
   // The signed result, downloaded and stored once DocuSign Connect reports
   // COMPLETED (see the webhook route) — null until then.
   completedFileAsset   FileAsset? @relation("EnvelopeCompletedFile", fields: [completedFileAssetId], references: [id])
@@ -1215,9 +1245,9 @@ model DocusignEnvelope {
   // as the retired SignatureEvent above) — top-left origin, no Y-flip
   // needed for DocuSign (unlike pdf-lib's bottom-left drawImage origin the
   // old flow used); see src/lib/docusign.ts.
-  pageNumber Int
-  xRatio     Float
-  yRatio     Float
+  pageNumber  Int
+  xRatio      Float
+  yRatio      Float
 
   expiresAt     DateTime?
   declineReason String?
@@ -1392,10 +1422,21 @@ model Invoice {
   invoiceProfile   InvoiceProfile? @relation(fields: [invoiceProfileId], references: [id], onDelete: SetNull)
   invoiceProfileId String?
 
-  lineItems   InvoiceLineItem[]
-  payments    Payment[]
-  receipts    Receipt[]
-  attachments InvoiceAttachment[]
+  // Manual invoices only, same as invoiceProfile above — which Care
+  // Recipient this invoice bills for, if any (still billed to `client`
+  // above regardless; this is a tag, not a separate billing identity — see
+  // CareRecipient's own comment in prisma/schema.prisma). SetNull on
+  // delete so removing a recipient later can never be blocked by, or
+  // destroy, a historical invoice's own record of who it billed for.
+  careRecipient   CareRecipient? @relation(fields: [careRecipientId], references: [id], onDelete: SetNull)
+  careRecipientId String?
+
+  lineItems         InvoiceLineItem[]
+  payments          Payment[]
+  receipts          Receipt[]
+  attachments       InvoiceAttachment[]
+  // TimeEntry rows billed on this invoice — see TimeEntry.billedInvoiceId.
+  billedTimeEntries TimeEntry[]
 
   @@index([clientId])
   @@map("invoices")
@@ -1575,7 +1616,7 @@ model FormField {
   label       String
   type        FormFieldType
   required    Boolean       @default(false)
-  options     String[]      // SELECT only
+  options     String[] // SELECT only
   clientField String?
   sortOrder   Int           @default(0)
 
@@ -1666,7 +1707,7 @@ model Lead {
   // Lead half of it; the other half (DocuSign envelopes) has nothing to own
   // yet, since DocuSign isn't built. Drives who gets the meeting-reminder
   // notify()/Teams post — see src/lib/meeting-reminders.ts.
-  assignedTo   User?     @relation("LeadAssignedTo", fields: [assignedToId], references: [id])
+  assignedTo   User?   @relation("LeadAssignedTo", fields: [assignedToId], references: [id])
   assignedToId String?
 
   // Set once each reminder actually fires (src/lib/meeting-reminders.ts) —

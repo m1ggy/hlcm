@@ -14,6 +14,7 @@ import { listClientLicenses } from "@/lib/actions/client-licenses";
 import { listCareRecipients, listCaregivers } from "@/lib/actions/care-recipients";
 import { listPipelineStages } from "@/lib/actions/stage";
 import { listInvoices } from "@/lib/actions/invoices";
+import { listInvoiceProfiles } from "@/lib/invoice-profiles";
 import { listClientGroups } from "@/lib/actions/client-groups";
 import { displayInvoiceNumber } from "@/lib/invoice-format";
 import { InvoiceStatusBadge, isInvoiceOverdue } from "@/components/invoices/invoice-status-badge";
@@ -81,6 +82,7 @@ export default async function ClientDetailPage({
   // STAFF viewer never triggers a ForbiddenError just for loading this page.
   const canManageInvoices = session?.user?.role === "ADMIN" || session?.user?.role === "MANAGER";
   const canArchive = canManageInvoices;
+  const isAdmin = session?.user?.role === "ADMIN";
 
   const [
     assignableUsers,
@@ -95,6 +97,7 @@ export default async function ClientDetailPage({
     licenses,
     mcoStages,
     invoices,
+    invoiceProfiles,
     clientGroups,
     careRecipients,
     caregivers,
@@ -111,6 +114,7 @@ export default async function ClientDetailPage({
     listClientLicenses(id),
     listPipelineStages("MCO", { includeExit: true }),
     canManageInvoices ? listInvoices({ clientId: id }) : Promise.resolve([]),
+    canManageInvoices ? listInvoiceProfiles() : Promise.resolve([]),
     listClientGroups(),
     listCareRecipients({ clientId: id }),
     listCaregivers(),
@@ -286,7 +290,14 @@ export default async function ClientDetailPage({
 
       <ClientCredentialsCard clientId={id} credentials={credentials} />
 
-      <CareRecipientsCard clientId={id} recipients={careRecipients} caregivers={caregivers} />
+      <CareRecipientsCard
+        clientId={id}
+        recipients={careRecipients}
+        caregivers={caregivers}
+        profiles={invoiceProfiles.map((p) => ({ id: p.id, name: p.name }))}
+        canManageInvoices={canManageInvoices}
+        isAdmin={isAdmin}
+      />
 
       <Card>
         <CardContent>
