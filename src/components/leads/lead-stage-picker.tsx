@@ -32,6 +32,7 @@ export function LeadStagePicker({ leadId, stage }: { leadId: string; stage: $Enu
     startTransition(async () => {
       try {
         await changeLeadStage(leadId, next as $Enums.LeadStage);
+        toast.success(`Moved to ${LEAD_STAGE_LABELS[next as $Enums.LeadStage]}`);
         router.refresh();
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to update stage");

@@ -421,6 +421,7 @@ function CaregiverChip({ careRecipientId, caregiver }: { careRecipientId: string
     startTransition(async () => {
       try {
         await unassignCaregiver(careRecipientId, caregiver.id);
+        toast.success(`${caregiver.name} unassigned`);
         router.refresh();
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to unassign caregiver");

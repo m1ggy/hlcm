@@ -31,6 +31,7 @@ export function LeadAssigneePicker({
     startTransition(async () => {
       try {
         await assignLead(leadId, userId);
+        toast.success(userId ? `Assigned to ${users.find((u) => u.id === userId)?.name}` : "Unassigned");
         router.refresh();
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to update assignee");
