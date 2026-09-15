@@ -36,7 +36,7 @@ export default async function FormTemplatesPage() {
             <p>
               Build a public intake form once, then share its link anywhere — no login required to fill it out.
               Every submission lands in the{" "}
-              <Link href="/admin/forms/inbox" className="underline">
+              <Link href="/form-submissions" className="underline">
                 Form Submissions
               </Link>{" "}
               queue for review; nothing is added to the CRM automatically.

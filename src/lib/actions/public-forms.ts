@@ -174,7 +174,7 @@ export async function submitForm(templateId: string, formData: FormData) {
           bodyHtml: `<p style="margin:0">Someone just filled out &quot;${template.name}&quot;.</p>`,
           preheader: `New submission for ${template.name}`,
           ctaLabel: "Review it",
-          ctaUrl: `${getAppUrl()}/admin/forms/inbox`,
+          ctaUrl: `${getAppUrl()}/form-submissions`,
         }),
       });
     }

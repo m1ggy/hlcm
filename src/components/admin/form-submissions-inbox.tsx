@@ -74,7 +74,7 @@ export function FormSubmissionsInbox({
         {STATUS_TABS.map((tab) => (
           <Link
             key={tab.key}
-            href={tab.key === "PENDING" ? "/admin/forms/inbox" : `/admin/forms/inbox?status=${tab.key}`}
+            href={tab.key === "PENDING" ? "/form-submissions" : `/form-submissions?status=${tab.key}`}
             className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
               currentFilter === tab.key
                 ? "border-primary bg-primary text-primary-foreground"

@@ -58,7 +58,7 @@ export async function linkSubmissionToClient(submissionId: string, clientId: str
     newValue: clientId,
   });
 
-  revalidatePath("/admin/forms/inbox");
+  revalidatePath("/form-submissions");
 }
 
 export async function dismissSubmission(id: string) {
@@ -73,7 +73,7 @@ export async function dismissSubmission(id: string) {
 
   await recordAudit({ entityType: "FormSubmission", entityId: id, action: "dismiss", actorId: session.user.id });
 
-  revalidatePath("/admin/forms/inbox");
+  revalidatePath("/form-submissions");
 }
 
 // Used by the download route (src/app/api/form-submissions/[id]/files/
