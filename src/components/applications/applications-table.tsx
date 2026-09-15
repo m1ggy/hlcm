@@ -160,58 +160,70 @@ export function ApplicationsTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {applications.map((app) => (
-            <TableRow key={app.id} className="relative">
-              <TableCell>
-                <Checkbox
-                  checked={selected.has(app.id)}
-                  onCheckedChange={() => toggleOne(app.id)}
-                  aria-label={`Select ${app.name}`}
-                />
-              </TableCell>
-              <TableCell>
-                <FavoriteStar
-                  applicationId={app.id}
-                  isFavorite={favoriteIds?.has(app.id)}
-                  onToggle={(nowFavorite) => onFavoriteChange?.(app.id, nowFavorite)}
-                />
-              </TableCell>
-              <TableCell className="font-medium">
-                <Link href={`/applications/${app.id}`} className="hover:underline">
-                  {app.name}
-                </Link>
-              </TableCell>
-              <TableCell>{app.client.name}</TableCell>
-              <TableCell>{app.assignedUser.name}</TableCell>
-              <TableCell>
-                <TaskProgress total={app.taskProgress.total} done={app.taskProgress.done} />
-              </TableCell>
-              <TableCell>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {app.stage ? (
-                    <>
-                      <span
-                        className="inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-xs font-medium"
-                        style={{ backgroundColor: app.stage.hex, color: "#fff" }}
-                        title={app.stage.name}
-                      >
-                        {app.stage.abbrev}
-                      </span>
-                      <span className="hidden text-xs text-muted-foreground lg:inline">
-                        {app.stage.name}
-                        {app.stepInfo && ` · Step ${app.stepInfo.index} of ${app.stepInfo.total}`}
-                      </span>
-                    </>
-                  ) : (
-                    <Badge variant={STATUS_BADGE_VARIANT[app.status as ApplicationStatus]}>
-                      {STATUS_LABELS[app.status as ApplicationStatus]}
-                    </Badge>
-                  )}
-                  <ApplicationFlags readyToSubmit={app.readyToSubmit} staleDays={app.staleDays} />
-                </div>
-              </TableCell>
-            </TableRow>
-          ))}
+          {applications.map((app) => {
+            // A subtle red tint, not a badge — lets a whole row of "still
+            // has work to do" cases read at a glance while scanning the
+            // table, the way isInvoiceOverdue's text-destructive does for
+            // invoices. total/done already power TaskProgress right there
+            // in the row, so this is free — no extra fetch.
+            const hasOutstandingTasks = app.taskProgress.total - app.taskProgress.done > 0;
+            return (
+              <TableRow
+                key={app.id}
+                className={`relative${hasOutstandingTasks ? " bg-destructive/5 dark:bg-destructive/10" : ""}`}
+                title={hasOutstandingTasks ? "Has open tasks" : undefined}
+              >
+                <TableCell>
+                  <Checkbox
+                    checked={selected.has(app.id)}
+                    onCheckedChange={() => toggleOne(app.id)}
+                    aria-label={`Select ${app.name}`}
+                  />
+                </TableCell>
+                <TableCell>
+                  <FavoriteStar
+                    applicationId={app.id}
+                    isFavorite={favoriteIds?.has(app.id)}
+                    onToggle={(nowFavorite) => onFavoriteChange?.(app.id, nowFavorite)}
+                  />
+                </TableCell>
+                <TableCell className="font-medium">
+                  <Link href={`/applications/${app.id}`} className="hover:underline">
+                    {app.name}
+                  </Link>
+                </TableCell>
+                <TableCell>{app.client.name}</TableCell>
+                <TableCell>{app.assignedUser.name}</TableCell>
+                <TableCell>
+                  <TaskProgress total={app.taskProgress.total} done={app.taskProgress.done} />
+                </TableCell>
+                <TableCell>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {app.stage ? (
+                      <>
+                        <span
+                          className="inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-xs font-medium"
+                          style={{ backgroundColor: app.stage.hex, color: "#fff" }}
+                          title={app.stage.name}
+                        >
+                          {app.stage.abbrev}
+                        </span>
+                        <span className="hidden text-xs text-muted-foreground lg:inline">
+                          {app.stage.name}
+                          {app.stepInfo && ` · Step ${app.stepInfo.index} of ${app.stepInfo.total}`}
+                        </span>
+                      </>
+                    ) : (
+                      <Badge variant={STATUS_BADGE_VARIANT[app.status as ApplicationStatus]}>
+                        {STATUS_LABELS[app.status as ApplicationStatus]}
+                      </Badge>
+                    )}
+                    <ApplicationFlags readyToSubmit={app.readyToSubmit} staleDays={app.staleDays} />
+                  </div>
+                </TableCell>
+              </TableRow>
+            );
+          })}
           {applications.length === 0 && (
             <TableRow>
               <TableCell colSpan={7} className="text-center text-muted-foreground">
