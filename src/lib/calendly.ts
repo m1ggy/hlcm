@@ -25,6 +25,14 @@ export class CalendlyWebhookError extends Error {
     super(message);
   }
 }
+export class CalendlyApiError extends Error {
+  constructor(
+    message: string,
+    public status: number
+  ) {
+    super(message);
+  }
+}
 
 const MAX_SIGNATURE_AGE_SECONDS = 5 * 60;
 
@@ -82,4 +90,69 @@ export function extractPhoneAnswer(
 ): string | null {
   const match = questionsAndAnswers?.find((qa) => qa.question.toLowerCase().includes("phone"));
   return match?.answer || textReminderNumber || null;
+}
+
+// --- Live API calls (single-use rebooking links, cancellation) ---
+//
+// Separate credential from the signing key above: CALENDLY_API_TOKEN is a
+// Personal Access Token (dashboard -> Integrations -> API & Webhooks ->
+// Generate New Token), the same kind of token scripts/create-calendly-
+// webhook.ts uses one-off, but stored persistently here so the running app
+// can call Calendly live (that script's CALENDLY_PAT is deliberately never
+// stored). Calendly PATs aren't scope-limited — this has full account
+// access, same as every other PAT this integration has used. Same wrapper
+// shape as src/lib/docusign.ts/src/lib/stripe.ts: lazy env getter, an
+// isXConfigured() check, a *ApiError with a status code, plain fetch.
+
+const API_BASE = "https://api.calendly.com";
+
+function getApiToken(): string | null {
+  return process.env.CALENDLY_API_TOKEN || null;
+}
+
+export function isCalendlyApiConfigured(): boolean {
+  return getApiToken() !== null;
+}
+
+async function calendlyFetch(url: string, init?: RequestInit): Promise<Response> {
+  const token = getApiToken();
+  if (!token) throw new CalendlyConfigError("CALENDLY_API_TOKEN env var is required");
+  const res = await fetch(url, {
+    ...init,
+    headers: { ...init?.headers, Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+  });
+  if (!res.ok) throw new CalendlyApiError(`Calendly API request failed: ${res.status} ${await res.text()}`, res.status);
+  return res;
+}
+
+// scheduledEventUri = Lead.calendlyEventUri, already a full API URI (e.g.
+// https://api.calendly.com/scheduled_events/UUID — straight from the
+// webhook payload's scheduled_event.uri). Looks up that event's own event
+// type first, then asks for a single-use link to the SAME kind of meeting
+// — a rebooking nudge shouldn't silently swap what's being booked. Request/
+// response shape per Calendly's docs (GET /scheduled_events/{uuid} ->
+// resource.event_type; POST /scheduling_links -> resource.booking_url) —
+// not yet confirmed against a live call (needs CALENDLY_API_TOKEN set),
+// same caveat as everything else this integration has had to verify live.
+export async function createSingleUseSchedulingLink(scheduledEventUri: string): Promise<string> {
+  const eventRes = await calendlyFetch(scheduledEventUri, { method: "GET" });
+  const event = await eventRes.json();
+  const eventTypeUri = event.resource.event_type as string;
+
+  const linkRes = await calendlyFetch(`${API_BASE}/scheduling_links`, {
+    method: "POST",
+    body: JSON.stringify({ max_event_count: 1, owner: eventTypeUri, owner_type: "EventType" }),
+  });
+  const link = await linkRes.json();
+  return link.resource.booking_url as string;
+}
+
+// Cancels the real Calendly event (all invitees on it — fine here, these
+// are 1:1 meetings) and sends Calendly's own cancellation email to the
+// invitee. scheduledEventUri is Lead.calendlyEventUri, same as above.
+export async function cancelScheduledEvent(scheduledEventUri: string, reason: string): Promise<void> {
+  await calendlyFetch(`${scheduledEventUri}/cancellation`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
 }

@@ -6,6 +6,7 @@ import { requireRole, AppRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
 import { sendEmail, renderEmailLayout } from "@/lib/email";
+import { createSingleUseSchedulingLink, cancelScheduledEvent } from "@/lib/calendly";
 import type { $Enums } from "@/generated/prisma/client";
 
 // Same reviewer tier as Form Submissions (src/lib/actions/form-submissions.ts)
@@ -184,6 +185,17 @@ export async function sendFollowUpEmail(leadId: string) {
   const session = await requireRole(REVIEW_ROLES);
   const lead = await prisma.lead.findUniqueOrThrow({ where: { id: leadId } });
 
+  // A real single-use link (same event type as their original booking)
+  // beats the generic org page when we can get one — but a Calendly hiccup
+  // (token unset, API error) must never block the follow-up email itself
+  // from going out, so this falls back to the generic URL on any failure.
+  let bookingUrl: string = CALENDLY_BOOKING_URL;
+  try {
+    bookingUrl = await createSingleUseSchedulingLink(lead.calendlyEventUri);
+  } catch (error) {
+    console.error("Falling back to the generic Calendly link:", error);
+  }
+
   await sendEmail({
     to: lead.inviteeEmail,
     subject: "Let's find a new time",
@@ -191,7 +203,7 @@ export async function sendFollowUpEmail(leadId: string) {
       heading: "We missed you",
       bodyHtml: `<p style="margin:0 0 12px">Hi ${lead.inviteeName}, we'd still love to connect — pick a new time that works for you:</p>`,
       ctaLabel: "Rebook a time",
-      ctaUrl: CALENDLY_BOOKING_URL,
+      ctaUrl: bookingUrl,
       preheader: "Pick a new time that works for you",
     }),
   });
@@ -204,6 +216,41 @@ export async function sendFollowUpEmail(leadId: string) {
     action: "send_followup",
     actorId: session.user.id,
     newValue: lead.inviteeEmail,
+  });
+
+  revalidatePath("/leads");
+}
+
+// Standalone action, not folded into markLeadLost — canceling a specific
+// calendar event doesn't map cleanly to any one stage transition (No-show/
+// Missed already happened, Lost can happen long after), and it sends the
+// invitee a real cancellation email, so it gets its own explicit confirm in
+// the UI. Unlike sendFollowUpEmail, no fallback on failure: this is a
+// destructive action expecting a real effect, so an unconfigured token or
+// API error surfaces as a toast rather than silently no-op'ing.
+export async function cancelLeadBooking(leadId: string, reason?: string) {
+  const session = await requireRole(REVIEW_ROLES);
+  const lead = await prisma.lead.findUniqueOrThrow({ where: { id: leadId } });
+  if (lead.canceledAt) throw new Error("This booking is already canceled");
+
+  await cancelScheduledEvent(lead.calendlyEventUri, reason || "Canceled by CTK staff");
+
+  // Set canceledAt here rather than waiting on Calendly's own
+  // invitee.canceled webhook round-trip, so the UI reflects it immediately.
+  // When that webhook does arrive afterward, the existing idempotency check
+  // in src/app/api/webhooks/calendly/route.ts (`if (lead && !lead.canceledAt)`)
+  // sees it's already set and no-ops — no duplicate notify, no feedback loop.
+  await prisma.lead.update({
+    where: { id: leadId },
+    data: { canceledAt: new Date(), cancelReason: reason || "Canceled by CTK staff" },
+  });
+
+  await recordAudit({
+    entityType: "Lead",
+    entityId: leadId,
+    action: "cancel_booking",
+    actorId: session.user.id,
+    newValue: reason,
   });
 
   revalidatePath("/leads");

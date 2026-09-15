@@ -4,8 +4,8 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronDown, ChevronRight, Ban, Video, Mail, ListTodo } from "lucide-react";
-import { markLeadLost, sendFollowUpEmail } from "@/lib/actions/leads";
+import { ChevronDown, ChevronRight, Ban, Video, Mail, ListTodo, CalendarX } from "lucide-react";
+import { markLeadLost, sendFollowUpEmail, cancelLeadBooking } from "@/lib/actions/leads";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CreateClientFromLeadDialog } from "./create-client-from-lead-dialog";
@@ -56,6 +56,7 @@ export function LeadsInbox({
   const [isPending, startTransition] = useTransition();
   const [losingId, setLosingId] = useState<string | null>(null);
   const [sendingId, setSendingId] = useState<string | null>(null);
+  const [cancelingId, setCancelingId] = useState<string | null>(null);
 
   function handleMarkLost(id: string) {
     if (!confirm("Mark this lead as lost? It'll stay visible here, just filed under Lost.")) return;
@@ -69,6 +70,24 @@ export function LeadsInbox({
         toast.error(error instanceof Error ? error.message : "Failed to update");
       } finally {
         setLosingId(null);
+      }
+    });
+  }
+
+  // Sends the invitee a real Calendly cancellation email — confirm first,
+  // same as Mark lost, since it's outward-facing and can't be undone here.
+  function handleCancelBooking(id: string) {
+    if (!confirm("Cancel this Calendly booking? The invitee gets a real cancellation email from Calendly.")) return;
+    setCancelingId(id);
+    startTransition(async () => {
+      try {
+        await cancelLeadBooking(id);
+        toast.success("Booking canceled");
+        router.refresh();
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Failed to cancel booking");
+      } finally {
+        setCancelingId(null);
       }
     });
   }
@@ -224,6 +243,17 @@ export function LeadsInbox({
                       >
                         <Mail className="size-3.5" /> Send follow-up
                       </Button>
+                      {!lead.canceledAt && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => handleCancelBooking(lead.id)}
+                          loading={isPending && cancelingId === lead.id}
+                        >
+                          <CalendarX className="size-3.5" /> Cancel booking
+                        </Button>
+                      )}
                       {lead.stage !== "LOST" && (
                         <Button
                           variant="ghost"

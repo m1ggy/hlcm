@@ -34,6 +34,7 @@ Every push to `main` builds a Docker image, pushes it to GHCR, and deploys it to
    EMAIL_FROM=HCLM <notifications@your-domain.example>
    GOOGLE_MAPS_API_KEY=<from a Google Cloud project with the Geocoding API enabled>
    CALENDLY_WEBHOOK_SIGNING_KEY=<from the webhook subscription's create response — see "Calendly integration setup" below>
+   CALENDLY_API_TOKEN=<a Personal Access Token — Calendly dashboard → Integrations → API & Webhooks → Generate New Token — see "Calendly integration setup" below>
    MS_TEAMS_WEBHOOK_URL=<an Incoming Webhook URL for a Teams channel/chat — powers the meeting-reminder Teams post>
    TWILIO_ACCOUNT_SID=<from twilio.com>
    TWILIO_AUTH_TOKEN=<from twilio.com>
@@ -78,6 +79,8 @@ New bookings on `calendly.com/ctkadvisorsinc` land in the CRM as Leads (`/leads`
 3. Set `CALENDLY_WEBHOOK_SIGNING_KEY` to that value in `.env.production` and restart the app.
 
 The app must already be deployed and reachable at `HCLM_DOMAIN` before step 2 — Calendly needs to be able to reach the callback URL to accept the subscription. There's an unavoidable short gap between step 2 (subscription goes live) and step 3 completing (app restarted with the key) where a delivery would 400 — do step 3 immediately after step 2 to keep that gap small; Calendly retries failed deliveries, so a booking made in that narrow window still isn't lost. Calendly never echoes the signing key back afterward (same as DocuSign's Connect HMAC key), so the only real confirmation this worked is a live test delivery — book a real test slot once step 3 is done and confirm the Lead actually lands on `/leads`.
+
+`CALENDLY_API_TOKEN` is a separate credential from the signing key above — a Personal Access Token (same dashboard path as step 1, "Generate New Token"), but this one IS stored persistently, since the app calls Calendly live with it: generating a single-use rebooking link when staff click "Send follow-up" on `/leads` (falls back to the generic `calendly.com/ctkadvisorsinc` link if this isn't set or the call fails — a Calendly hiccup must never block the follow-up email itself), and canceling the real Calendly event when staff click "Cancel booking" (no fallback here — it's an explicit destructive action, so it fails loudly if unset, same as the signing key above). Calendly PATs aren't scope-limited (full account access) — if the PAT generated for step 1 above was revoked as recommended, generate a fresh one for this instead of reusing it.
 
 ## Meeting reminders setup
 
