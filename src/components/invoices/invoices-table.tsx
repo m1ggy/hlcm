@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { InvoiceStatusBadge, INVOICE_STATUS_LABELS, InvoiceStatusValue, isInvoiceOverdue, isManualInvoice } from "./invoice-status-badge";
 import { displayInvoiceNumber } from "@/lib/invoice-format";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -39,18 +40,28 @@ type InvoiceRow = {
   // comment in prisma/schema.prisma). Drives the "By profile" grouping
   // below, same reason Business/Client/Project columns exist for grouping.
   invoiceProfile: { id: string; name: string } | null;
+  // Manual invoices only — which Care Recipient this bills for, if any
+  // (see Invoice.careRecipientId). Shown as a small "For {name}" note so a
+  // Client's invoice list stays legible even when it bills for more than
+  // one recipient.
+  careRecipient: { id: string; name: string } | null;
 };
 
 const FILTER_KEY = "hclm:invoices-filter";
 const GROUP_KEY = "hclm:invoices-group-by";
+const PROFILE_FILTER_KEY = "hclm:invoices-profile-filter";
 type Filter = "all" | InvoiceStatusValue;
 // "client" is the default and matches the old boolean key's "true" — kept
 // as a distinct localStorage key (GROUP_KEY) rather than reusing the old
 // boolean one, so a stale "true"/"false" string from before this existed
-// can't be misread as a group mode.
-type GroupMode = "client" | "profile" | "all";
+// can't be misread as a group mode. "profile" used to be a third value here
+// (grouping BY profile) — it's now its own independent filter (below)
+// instead, orthogonal to this toggle, so a stale "profile" string just
+// falls through to the "client" default rather than being read as valid.
+type GroupMode = "client" | "all";
 const NO_PROFILE_KEY = "__no_profile__";
 const NO_PROFILE_LABEL = "No profile (Stripe-billed)";
+const ALL_PROFILES_KEY = "__all_profiles__";
 
 function clientLabel(client: InvoiceRow["client"]) {
   return client.businessName ?? client.name;
@@ -79,13 +90,20 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
   // Grouped by client is the default — a flat "All" list (today's original
   // view, still newest-first) stays one click away for anyone who prefers it.
   const [groupMode, setGroupMode] = useState<GroupMode>("client");
+  // Independent of groupMode — narrows which invoices show at all, same as
+  // the status chips do, so "by client" and "all" both still work while
+  // scoped to one billing identity (e.g. "just this Client Group's own
+  // letterhead, grouped by client").
+  const [profileFilter, setProfileFilter] = useState<string>(ALL_PROFILES_KEY);
 
   useEffect(() => {
     const id = setTimeout(() => {
       const savedFilter = window.localStorage.getItem(FILTER_KEY);
       if (savedFilter) setFilter(savedFilter as Filter);
       const savedGroup = window.localStorage.getItem(GROUP_KEY);
-      if (savedGroup === "client" || savedGroup === "profile" || savedGroup === "all") setGroupMode(savedGroup);
+      if (savedGroup === "client" || savedGroup === "all") setGroupMode(savedGroup);
+      const savedProfile = window.localStorage.getItem(PROFILE_FILTER_KEY);
+      if (savedProfile) setProfileFilter(savedProfile);
     }, 0);
     return () => clearTimeout(id);
   }, []);
@@ -100,13 +118,42 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
     window.localStorage.setItem(GROUP_KEY, next);
   }
 
+  function changeProfileFilter(next: string) {
+    setProfileFilter(next);
+    window.localStorage.setItem(PROFILE_FILTER_KEY, next);
+  }
+
+  // Every billing identity actually used by at least one invoice — not a
+  // separately-fetched list of all configured profiles, so a profile with
+  // zero invoices here just doesn't clutter the picker. "No profile
+  // (Stripe-billed)" only shows up as an option when at least one invoice
+  // actually has none (see InvoiceProfile's comment in prisma/schema.prisma
+  // for why a Stripe-billed invoice never has one).
+  const profileOptions = useMemo(() => {
+    const byId = new Map<string, string>();
+    let hasNoProfile = false;
+    for (const invoice of invoices) {
+      if (invoice.invoiceProfile) byId.set(invoice.invoiceProfile.id, invoice.invoiceProfile.name);
+      else hasNoProfile = true;
+    }
+    const options = Array.from(byId.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    if (hasNoProfile) options.push({ id: NO_PROFILE_KEY, name: NO_PROFILE_LABEL });
+    return options;
+  }, [invoices]);
+
   // "All" follows the same hide-by-default pattern as archived clients/
   // projects — a voided invoice is done, nothing left to act on, and
   // shouldn't clutter the main list. It's still one click away via its own
   // "Void" chip, same as archived items get their own explicit view.
-  const filtered = invoices.filter((invoice) =>
-    filter === "all" ? invoice.status !== "VOID" : invoice.status === filter
-  );
+  const filtered = invoices
+    .filter((invoice) => (filter === "all" ? invoice.status !== "VOID" : invoice.status === filter))
+    .filter((invoice) => {
+      if (profileFilter === ALL_PROFILES_KEY) return true;
+      if (profileFilter === NO_PROFILE_KEY) return !invoice.invoiceProfile;
+      return invoice.invoiceProfile?.id === profileFilter;
+    });
 
   const chips: { key: Filter; label: string; count: number }[] = [
     { key: "all", label: "All", count: invoices.filter((i) => i.status !== "VOID").length },
@@ -118,45 +165,24 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
   ];
 
   // Invoices already arrive newest-first (see listInvoices); grouping just
-  // buckets that same order, it doesn't re-sort within a bucket.
-  //
-  // "client": bucketed by ClientGroup when the client belongs to one (see
-  // Client.clientGroup in prisma/schema.prisma — a client group merges
-  // several clients into one section, e.g. a holding company's separate
-  // locations), falling back to the individual client otherwise — same as
-  // before "By profile" existed.
-  //
-  // "profile": bucketed by which InvoiceProfile (billing identity —
-  // logo/CC/footer) the invoice was billed under, so invoices meant to look
-  // like they came from different letterheads never sit mixed in one list.
-  // Only manual invoices have one at all (Stripe-billed invoices are
-  // emailed by Stripe itself, with Stripe's own branding — see
-  // InvoiceProfile's comment in prisma/schema.prisma) — those land in one
-  // shared "No profile (Stripe-billed)" bucket, always sorted last since
-  // it's a catch-all rather than a real billing identity.
+  // buckets that same order, it doesn't re-sort within a bucket. Bucketed
+  // by ClientGroup when the client belongs to one (see Client.clientGroup
+  // in prisma/schema.prisma — a client group merges several clients into
+  // one section, e.g. a holding company's separate locations), falling
+  // back to the individual client otherwise.
   const groups =
     groupMode === "all"
       ? null
       : Object.values(
           filtered.reduce<Record<string, { key: string; label: string; rows: InvoiceRow[] }>>((acc, invoice) => {
-            const key =
-              groupMode === "client"
-                ? (invoice.client.clientGroupId ?? invoice.client.id)
-                : (invoice.invoiceProfile?.id ?? NO_PROFILE_KEY);
-            const label =
-              groupMode === "client"
-                ? (invoice.client.clientGroup?.name ?? clientLabel(invoice.client))
-                : (invoice.invoiceProfile?.name ?? NO_PROFILE_LABEL);
+            const key = invoice.client.clientGroupId ?? invoice.client.id;
+            const label = invoice.client.clientGroup?.name ?? clientLabel(invoice.client);
             const bucket = acc[key] ?? { key, label, rows: [] };
             bucket.rows.push(invoice);
             acc[key] = bucket;
             return acc;
           }, {})
-        ).sort((a, b) => {
-          if (a.key === NO_PROFILE_KEY) return 1;
-          if (b.key === NO_PROFILE_KEY) return -1;
-          return a.label.localeCompare(b.label);
-        });
+        ).sort((a, b) => a.label.localeCompare(b.label));
 
   function renderTable(rows: InvoiceRow[], { showClient }: { showClient: boolean }) {
     return (
@@ -184,7 +210,12 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
               {showClient && (
                 <>
                   <TableCell>{clientLabel(invoice.client)}</TableCell>
-                  <TableCell>{invoice.client.name}</TableCell>
+                  <TableCell>
+                    {invoice.client.name}
+                    {invoice.careRecipient && (
+                      <div className="text-xs text-muted-foreground">For {invoice.careRecipient.name}</div>
+                    )}
+                  </TableCell>
                   <TableCell className="text-muted-foreground">{projectLabel(invoice.client)}</TableCell>
                 </>
               )}
@@ -253,28 +284,38 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-1 rounded-full border border-input p-0.5 text-xs">
-          <button
-            type="button"
-            onClick={() => changeGrouping("client")}
-            className={`rounded-full px-2.5 py-1 transition-colors ${groupMode === "client" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
-          >
-            By client
-          </button>
-          <button
-            type="button"
-            onClick={() => changeGrouping("profile")}
-            className={`rounded-full px-2.5 py-1 transition-colors ${groupMode === "profile" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
-          >
-            By profile
-          </button>
-          <button
-            type="button"
-            onClick={() => changeGrouping("all")}
-            className={`rounded-full px-2.5 py-1 transition-colors ${groupMode === "all" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
-          >
-            All
-          </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {profileOptions.length > 0 && (
+            <Select value={profileFilter} onValueChange={(v) => changeProfileFilter(v ?? ALL_PROFILES_KEY)}>
+              <SelectTrigger size="sm" className="w-[11rem]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_PROFILES_KEY}>All profiles</SelectItem>
+                {profileOptions.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <div className="flex items-center gap-1 rounded-full border border-input p-0.5 text-xs">
+            <button
+              type="button"
+              onClick={() => changeGrouping("client")}
+              className={`rounded-full px-2.5 py-1 transition-colors ${groupMode === "client" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+            >
+              By client
+            </button>
+            <button
+              type="button"
+              onClick={() => changeGrouping("all")}
+              className={`rounded-full px-2.5 py-1 transition-colors ${groupMode === "all" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+            >
+              All
+            </button>
+          </div>
         </div>
       </div>
 
@@ -303,7 +344,7 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
                   </span>
                   <span className="tabular-nums text-muted-foreground">${outstanding.toFixed(2)}</span>
                 </summary>
-                <div className="border-t px-4 pb-3">{renderTable(group.rows, { showClient: groupMode === "profile" || distinctClients > 1 })}</div>
+                <div className="border-t px-4 pb-3">{renderTable(group.rows, { showClient: distinctClients > 1 })}</div>
               </details>
             );
           })}
