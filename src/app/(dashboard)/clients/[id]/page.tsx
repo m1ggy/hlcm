@@ -314,6 +314,7 @@ export default async function ClientDetailPage({
                 <AuditLogPanel
                   auditLog={auditLog}
                   users={Object.fromEntries(assignableUsers.map((u) => [u.id, u.name]))}
+                  clientGroups={Object.fromEntries(clientGroups.map((g) => [g.id, g.name]))}
                 />
               </div>
             </TabsContent>

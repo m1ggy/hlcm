@@ -226,12 +226,17 @@ export async function voidInvoice(id: string) {
   // a voided one forever (see friendlyInvoiceNumberError below for what
   // happens when it isn't freed and someone types the same number again).
   await prisma.invoice.update({ where: { id }, data: { status: "VOID", invoiceNumber: null } });
+  // No `field` here — see the "void" case in formatEventDescription
+  // (src/lib/audit-format.ts): this used to conditionally set
+  // field: "invoiceNumber", which routed it through the generic "X changed
+  // from A to B" template with an unlabeled raw field name instead of a
+  // proper sentence.
   await recordAudit({
     entityType: "Invoice",
     entityId: id,
     action: "void",
     actorId: session.user.id,
-    ...(before.invoiceNumber ? { field: "invoiceNumber", oldValue: before.invoiceNumber } : {}),
+    oldValue: before.invoiceNumber || undefined,
   });
 
   revalidatePath("/invoices");

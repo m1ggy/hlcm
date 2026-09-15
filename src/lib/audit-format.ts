@@ -52,6 +52,16 @@ const FIELD_LABELS: Record<string, string> = {
   latitude: "Latitude",
   longitude: "Longitude",
   geocodedAt: "Geocoded at",
+  billingAddressLine1: "Billing address",
+  billingCity: "Billing city",
+  billingState: "Billing state",
+  billingPostalCode: "Billing ZIP",
+  billingCountry: "Billing country",
+  clientGroupId: "Client group",
+  pipeline: "Pipeline",
+  billingContactName: "Billing contact",
+  billingContactEmail: "Billing contact email",
+  billingContactPhone: "Billing contact phone",
 };
 
 const ACTION_VERBS: Record<string, string> = {
@@ -116,11 +126,24 @@ const ACTION_VERBS: Record<string, string> = {
   delete_document: "Deleted a document",
   sign_document: "Signed a document",
   send: "Sent the invoice",
-  void: "Voided the invoice",
   mark_paid: "Marked as paid",
   paid_online: "Paid online",
   payment_failed: "Payment attempt failed",
   finalization_failed: "Failed to finalize (check the client's billing address)",
+  create_manual: "Created a manual invoice",
+  update_manual_draft: "Updated the invoice",
+  import_stripe: "Imported from Stripe",
+  link_client: "Linked to a client",
+  dismiss: "Dismissed",
+  start_break: "Started a break",
+  end_break: "Ended a break",
+  end_break_for_day: "Ended a break (done for the day)",
+  rename: "Renamed",
+  set_default: "Set as the default",
+  remove_logo: "Removed the logo",
+  update_logo: "Updated the logo",
+  update_email_notifications: "Updated email notification settings",
+  update_timezone: "Updated timezone",
 };
 
 const DOCUMENT_STATUS_LABELS: Record<string, string> = {
@@ -181,6 +204,20 @@ const EVENT_ACTIONS = new Set([
   "add_client_license",
   "update_client_license",
   "remove_client_license",
+  "send_envelope",
+  "void_envelope",
+  "upload_file_version",
+  "revert_file_version",
+  "share_via_task_assignment",
+  "void",
+  "record_manual_payment",
+  "update_manual_payment",
+  "delete_manual_payment",
+  "void_with_payments",
+  "send_invoice_pdf",
+  "send_receipt",
+  "cancel_booking",
+  "mark_lost",
 ]);
 
 export function isEventAction(action: string) {
@@ -251,6 +288,29 @@ export function formatEventDescription(
   if (action === "add_client_license" && newValue) return `Added license "${newValue}"`;
   if (action === "update_client_license" && newValue) return `Updated license "${newValue}"`;
   if (action === "remove_client_license" && oldValue) return `Removed license "${oldValue}"`;
+  // These carry an already-composed, human-readable sentence in
+  // newValue/oldValue rather than a bare before/after property — shown
+  // directly instead of being wrapped in the generic "X changed from A to
+  // B" template, which read oddly around a full sentence (and, for
+  // share_via_task_assignment, exposed a raw userId:permission pair the
+  // same "share" action already knows how to resolve to a name).
+  if (action === "send_envelope" && newValue) return newValue;
+  if (action === "void_envelope") return newValue ? `Voided the signature request (${newValue})` : "Voided the signature request";
+  if (action === "upload_file_version" && newValue) return `Uploaded a new version: ${newValue}`;
+  if (action === "revert_file_version" && newValue) return oldValue ? `Reverted "${oldValue}" — ${newValue}` : newValue;
+  if (action === "share_via_task_assignment" && newValue) {
+    const [userId] = newValue.split(":");
+    return `Gave ${users[userId] ?? userId} edit access by assigning them a task`;
+  }
+  if (action === "void") return oldValue ? `Voided the invoice (freed invoice #${oldValue} for reuse)` : "Voided the invoice";
+  if (action === "void_with_payments" && oldValue) return `Voided the invoice (was ${oldValue})`;
+  if (action === "record_manual_payment" && newValue) return `Recorded a payment: ${newValue}`;
+  if (action === "update_manual_payment" && newValue) return `Updated a payment: ${oldValue} → ${newValue}`;
+  if (action === "delete_manual_payment" && oldValue) return `Deleted a payment: ${oldValue}`;
+  if (action === "send_invoice_pdf" && newValue) return `Emailed the invoice PDF to ${newValue}`;
+  if (action === "send_receipt" && newValue) return `Emailed the receipt to ${newValue}`;
+  if (action === "cancel_booking") return newValue ? `Canceled the booking (${newValue})` : "Canceled the booking";
+  if (action === "mark_lost") return newValue ? `Marked as lost (${newValue})` : "Marked as lost";
   return formatActionVerb(action);
 }
 
@@ -278,6 +338,7 @@ export function formatAuditValue(
     licenseTypes?: Record<string, string>;
     caseTypes?: Record<string, string>;
     stages?: Record<string, string>;
+    clientGroups?: Record<string, string>;
   } = {}
 ) {
   if (value === null || value === undefined || value === "") return "—";
@@ -305,6 +366,7 @@ export function formatAuditValue(
   if (field === "licenseTypeTemplateId") return lookups.licenseTypes?.[value] ?? value;
   if (field === "caseTypeId") return lookups.caseTypes?.[value] ?? value;
   if (field === "stageId") return lookups.stages?.[value] ?? value;
+  if (field === "clientGroupId") return lookups.clientGroups?.[value] ?? value;
   if (field === "pipeline") return PIPELINE_LABELS[value as keyof typeof PIPELINE_LABELS] ?? value;
   if (
     field === "dueDate" ||
@@ -314,7 +376,9 @@ export function formatAuditValue(
     field === "deficiencyResponseDueDate" ||
     field === "deficiencyResponseSubmittedDate" ||
     field === "effectiveDate" ||
-    field === "recredentialingDueDate"
+    field === "recredentialingDueDate" ||
+    field === "dateOfBirth" ||
+    field === "geocodedAt"
   ) {
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString();
@@ -324,6 +388,12 @@ export function formatAuditValue(
   if (field === "hourlyRate") {
     const rate = Number(value);
     return Number.isNaN(rate) ? value : `$${rate.toFixed(2)}/hr`;
+  }
+  // A handful of boolean columns (Client.active, User.mfaEnabled, ...) can
+  // reach here via the generic field-diff path — "true"/"false" reads as a
+  // debug log, not something a human wrote.
+  if (field === "active" || field === "mfaEnabled" || field === "smsRemindersEnabled") {
+    return value === "true" ? "Yes" : value === "false" ? "No" : value;
   }
   return value;
 }
