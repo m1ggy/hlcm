@@ -4,19 +4,9 @@ import { ArrowUpRight } from "lucide-react";
 import { auth } from "@/auth";
 import { listUsers } from "@/lib/actions/users";
 import { NewUserDialog } from "@/components/admin/new-user-dialog";
-import { EditUserDialog } from "@/components/admin/edit-user-dialog";
-import { RateCell } from "@/components/admin/rate-cell";
+import { UsersTable } from "@/components/admin/users-table";
 import { PageInfoButton } from "@/components/shared/page-info-button";
-import { Badge } from "@/components/ui/badge";
 import { ForbiddenError, blockCaregiverRoute, isSuperuser } from "@/lib/rbac";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 
 export default async function UsersPage() {
   await blockCaregiverRoute();
@@ -52,42 +42,7 @@ export default async function UsersPage() {
         </div>
         <NewUserDialog canAssignAdmin={canManageAdmins} />
       </div>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Name</TableHead>
-            <TableHead>Email</TableHead>
-            <TableHead>Role</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Rate</TableHead>
-            <TableHead />
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {users.map((user) => (
-            <TableRow key={user.id}>
-              <TableCell className="font-medium">{user.name}</TableCell>
-              <TableCell>{user.email}</TableCell>
-              <TableCell>{user.role}</TableCell>
-              <TableCell>
-                <Badge variant={user.active ? "default" : "outline"}>
-                  {user.active ? "Active" : "Deactivated"}
-                </Badge>
-              </TableCell>
-              <TableCell>
-                <RateCell userId={user.id} initialRate={user.hourlyRate} />
-              </TableCell>
-              <TableCell>
-                <EditUserDialog
-                  user={user}
-                  isSelf={user.id === session?.user?.id}
-                  canManageAdmins={canManageAdmins}
-                />
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+      <UsersTable users={users} currentUserId={session?.user?.id} canManageAdmins={canManageAdmins} />
     </div>
   );
 }
