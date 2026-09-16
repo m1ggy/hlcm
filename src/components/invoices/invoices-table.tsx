@@ -286,7 +286,14 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {profileOptions.length > 0 && (
-            <Select value={profileFilter} onValueChange={(v) => changeProfileFilter(v ?? ALL_PROFILES_KEY)}>
+            <Select
+              items={{
+                [ALL_PROFILES_KEY]: "All profiles",
+                ...Object.fromEntries(profileOptions.map((p) => [p.id, p.name])),
+              }}
+              value={profileFilter}
+              onValueChange={(v) => changeProfileFilter(v ?? ALL_PROFILES_KEY)}
+            >
               <SelectTrigger size="sm" className="w-[11rem]">
                 <SelectValue />
               </SelectTrigger>
