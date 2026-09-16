@@ -2,32 +2,38 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 
-export const ROLES = ["OWNER", "ADMIN", "ACCOUNTANT", "MANAGER", "STAFF", "CLIENT", "CAREGIVER"] as const;
+export const ROLES = ["DEVELOPER", "OWNER", "ADMIN", "ACCOUNTANT", "MANAGER", "STAFF", "CLIENT", "CAREGIVER"] as const;
 export type AppRole = (typeof ROLES)[number];
 
-/**
- * OWNER inherits every ADMIN permission; ACCOUNTANT also carries full ADMIN
- * permissions everywhere (on top of the Invoices exclusivity below) — check
- * this instead of `role === "ADMIN"`. Takes `string` (not `AppRole`) since
- * it's most often called directly on `session.user.role`, which next-auth
- * types as `string`.
- */
-export function isAdmin(role: string | null | undefined): boolean {
-  return role === "ADMIN" || role === "OWNER" || role === "ACCOUNTANT";
+/** DEVELOPER is a break-glass superuser, same reach as OWNER — see requireRole(). */
+export function isSuperuser(role: string | null | undefined): boolean {
+  return role === "OWNER" || role === "DEVELOPER";
 }
 
-/** ADMIN/OWNER/ACCOUNTANT/MANAGER — the "management" tier used across visibility and archive checks. */
+/**
+ * OWNER/DEVELOPER inherit every ADMIN permission; ACCOUNTANT also carries
+ * full ADMIN permissions everywhere (on top of the Invoices exclusivity
+ * below) — check this instead of `role === "ADMIN"`. Takes `string` (not
+ * `AppRole`) since it's most often called directly on `session.user.role`,
+ * which next-auth types as `string`.
+ */
+export function isAdmin(role: string | null | undefined): boolean {
+  return role === "ADMIN" || role === "ACCOUNTANT" || isSuperuser(role);
+}
+
+/** ADMIN/ACCOUNTANT/MANAGER/OWNER/DEVELOPER — the "management" tier used across visibility and archive checks. */
 export function isManagement(role: string | null | undefined): boolean {
   return isAdmin(role) || role === "MANAGER";
 }
 
 /**
- * Invoices are ACCOUNTANT/OWNER-exclusive — unlike every other ADMIN-gated
- * feature, plain ADMIN and MANAGER do NOT get this one. See MANAGE_ROLES in
- * src/lib/actions/invoices.ts / invoice-attachments.ts.
+ * Invoices are ACCOUNTANT-exclusive (plus the OWNER/DEVELOPER superusers) —
+ * unlike every other ADMIN-gated feature, plain ADMIN and MANAGER do NOT get
+ * this one. See MANAGE_ROLES in src/lib/actions/invoices.ts /
+ * invoice-attachments.ts.
  */
 export function canAccessInvoices(role: string | null | undefined): boolean {
-  return role === "ACCOUNTANT" || role === "OWNER";
+  return role === "ACCOUNTANT" || isSuperuser(role);
 }
 
 export class UnauthorizedError extends Error {
@@ -63,16 +69,17 @@ export async function blockCaregiverRoute(fallback = "/tasks") {
 }
 
 /**
- * Throws unless the current user's role is one of `allowed`. OWNER sits
- * above every role and always passes, including an ACCOUNTANT-exclusive
- * `allowed` list (e.g. Invoices) that doesn't even mention ADMIN. ACCOUNTANT
- * passes any `allowed` list that includes ADMIN — every call site written
- * as ADMIN-gated doesn't need to separately remember ACCOUNTANT.
+ * Throws unless the current user's role is one of `allowed`. OWNER and
+ * DEVELOPER sit above every role and always pass, including an
+ * ACCOUNTANT-exclusive `allowed` list (e.g. Invoices) that doesn't even
+ * mention ADMIN. ACCOUNTANT passes any `allowed` list that includes ADMIN —
+ * every call site written as ADMIN-gated doesn't need to separately
+ * remember ACCOUNTANT.
  */
 export async function requireRole(allowed: AppRole[]) {
   const session = await requireSession();
   const role = session.user.role as AppRole;
-  if (role === "OWNER") return session;
+  if (isSuperuser(role)) return session;
   const permitted = allowed.includes(role) || (role === "ACCOUNTANT" && allowed.includes("ADMIN"));
   if (!permitted) throw new ForbiddenError();
   return session;

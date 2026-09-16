@@ -4,7 +4,7 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireRole, ForbiddenError, isAdmin } from "@/lib/rbac";
+import { requireRole, ForbiddenError, isAdmin, isSuperuser } from "@/lib/rbac";
 import { recordAudit, recordFieldChanges } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
 
@@ -76,7 +76,7 @@ export async function createUser(formData: FormData) {
     role: formData.get("role"),
   });
 
-  if (isAdmin(parsed.role) && session.user.role !== "OWNER") {
+  if (isAdmin(parsed.role) && !isSuperuser(session.user.role)) {
     throw new ForbiddenError("Only an Owner can create an Admin, Accountant, or Owner account");
   }
 
@@ -126,9 +126,16 @@ export async function updateUser(input: z.infer<typeof updateSchema>) {
     select: { name: true, email: true, role: true, active: true, phone: true, smsRemindersEnabled: true },
   });
 
-  const actorIsOwner = session.user.role === "OWNER";
+  // DEVELOPER is break-glass-only — ROLE_VALUES above already keeps
+  // parsed.role from ever being DEVELOPER, but an *existing* DEVELOPER row
+  // still needs protecting from every other field (name/active/password),
+  // for every actor including another DEVELOPER or an OWNER. Direct SQL only.
+  if (before.role === "DEVELOPER") {
+    throw new ForbiddenError("Developer accounts can only be changed directly in the database");
+  }
+
   const isSelfEdit = parsed.userId === session.user.id;
-  if (!isSelfEdit && !actorIsOwner && (isAdmin(before.role) || isAdmin(parsed.role))) {
+  if (!isSelfEdit && !isSuperuser(session.user.role) && (isAdmin(before.role) || isAdmin(parsed.role))) {
     throw new ForbiddenError("Only an Owner can create, edit, or demote an Admin, Accountant, or Owner account");
   }
 

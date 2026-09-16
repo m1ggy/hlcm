@@ -24,7 +24,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-const ROLES = ["OWNER", "ADMIN", "ACCOUNTANT", "MANAGER", "STAFF", "CLIENT", "CAREGIVER"] as const;
+// DEVELOPER is a real Role a user row can have (break-glass superuser, set
+// only via direct SQL — see prisma/schema.prisma), so it has to be in this
+// type for real data to type-check. It's deliberately excluded from
+// ASSIGNABLE_ROLES below — nobody, including an Owner, can assign it
+// through this dialog, and a DEVELOPER row is always fully protected.
+const ROLES = ["DEVELOPER", "OWNER", "ADMIN", "ACCOUNTANT", "MANAGER", "STAFF", "CLIENT", "CAREGIVER"] as const;
+const ASSIGNABLE_ROLES = ROLES.filter((r) => r !== "DEVELOPER");
 const ADMIN_TIER_ROLES = new Set<(typeof ROLES)[number]>(["OWNER", "ADMIN", "ACCOUNTANT"]);
 
 type EditableUser = {
@@ -50,20 +56,27 @@ export function EditUserDialog({
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(user.name);
   const [email, setEmail] = useState(user.email);
-  const [role, setRole] = useState<(typeof ROLES)[number]>(user.role);
+  // A DEVELOPER row returns null below before this state is ever read/
+  // submitted — the cast just satisfies updateUser's narrower input type.
+  const [role, setRole] = useState<(typeof ASSIGNABLE_ROLES)[number]>(
+    user.role as (typeof ASSIGNABLE_ROLES)[number]
+  );
   const [active, setActive] = useState(user.active);
   const [password, setPassword] = useState("");
   const [phone, setPhone] = useState(user.phone ?? "");
   const [smsRemindersEnabled, setSmsRemindersEnabled] = useState(user.smsRemindersEnabled);
   const [isPending, startTransition] = useTransition();
 
-  const isProtected = ADMIN_TIER_ROLES.has(user.role) && !canManageAdmins && !isSelf;
-  const availableRoles = canManageAdmins || isSelf ? ROLES : ROLES.filter((r) => !ADMIN_TIER_ROLES.has(r));
+  // A DEVELOPER row is always protected, for every actor — see users.ts.
+  const isProtected =
+    user.role === "DEVELOPER" || (ADMIN_TIER_ROLES.has(user.role) && !canManageAdmins && !isSelf);
+  const availableRoles =
+    canManageAdmins || isSelf ? ASSIGNABLE_ROLES : ASSIGNABLE_ROLES.filter((r) => !ADMIN_TIER_ROLES.has(r));
 
   function reset() {
     setName(user.name);
     setEmail(user.email);
-    setRole(user.role);
+    setRole(user.role as (typeof ASSIGNABLE_ROLES)[number]);
     setActive(user.active);
     setPassword("");
     setPhone(user.phone ?? "");
@@ -142,7 +155,7 @@ export function EditUserDialog({
             <Label>Role</Label>
             <Select
               value={role}
-              onValueChange={(v) => setRole((v ?? role) as (typeof ROLES)[number])}
+              onValueChange={(v) => setRole((v ?? role) as (typeof ASSIGNABLE_ROLES)[number])}
               disabled={isSelf}
             >
               <SelectTrigger className="w-full">

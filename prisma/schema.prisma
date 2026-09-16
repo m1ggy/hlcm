@@ -10,12 +10,19 @@ datasource db {
   provider = "postgresql"
 }
 
+// DEVELOPER is a break-glass superuser, same reach as OWNER — it exists
+// only to bootstrap the first OWNER (or fix a locked-out account) without
+// touching the database by hand every time. It's deliberately NOT
+// assignable through the app (see ROLE_VALUES in src/lib/actions/users.ts)
+// — the only way to create or edit a DEVELOPER account is direct SQL.
+//
 // OWNER sits above ADMIN — same access everywhere ADMIN has it, plus
 // exclusive rights to create/edit/demote other ADMIN/ACCOUNTANT/OWNER
 // accounts. ACCOUNTANT carries every ADMIN permission too, plus exclusive
 // access to Invoices that plain ADMIN doesn't get (see
 // requireRole()/isAdmin()/canAccessInvoices() in src/lib/rbac.ts).
 enum Role {
+  DEVELOPER
   OWNER
   ADMIN
   ACCOUNTANT
