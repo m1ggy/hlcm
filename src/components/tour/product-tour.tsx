@@ -24,9 +24,9 @@ type TourStep = DriveStep & { data: { path: string } };
 // Applications/Projects/Time/Invoices/Admin to skip past).
 
 function buildStaffSteps(role: string | undefined): TourStep[] {
-  const isAdmin = role === "ADMIN" || role === "OWNER" || role === "ACCOUNTANT";
+  const isAdmin = role === "ADMIN" || role === "OWNER" || role === "ACCOUNTANT" || role === "DEVELOPER";
   const canSeeAllUsersTime = isAdmin || role === "MANAGER";
-  const canManageInvoices = role === "ACCOUNTANT" || role === "OWNER";
+  const canManageInvoices = role === "ACCOUNTANT" || role === "OWNER" || role === "DEVELOPER";
 
   const steps: TourStep[] = [
     {

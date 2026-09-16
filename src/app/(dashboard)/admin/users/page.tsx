@@ -8,7 +8,7 @@ import { EditUserDialog } from "@/components/admin/edit-user-dialog";
 import { RateCell } from "@/components/admin/rate-cell";
 import { PageInfoButton } from "@/components/shared/page-info-button";
 import { Badge } from "@/components/ui/badge";
-import { ForbiddenError, blockCaregiverRoute } from "@/lib/rbac";
+import { ForbiddenError, blockCaregiverRoute, isSuperuser } from "@/lib/rbac";
 import {
   Table,
   TableBody,
@@ -21,7 +21,10 @@ import {
 export default async function UsersPage() {
   await blockCaregiverRoute();
   const session = await auth();
-  const isOwner = session?.user?.role === "OWNER";
+  // OWNER and DEVELOPER (break-glass superuser) both manage admin-tier
+  // accounts and can assign OWNER — see isSuperuser() in rbac.ts and the
+  // matching server-side gate in src/lib/actions/users.ts.
+  const canManageAdmins = isSuperuser(session?.user?.role);
   let users;
   try {
     users = await listUsers();
@@ -47,7 +50,7 @@ export default async function UsersPage() {
             </p>
           </PageInfoButton>
         </div>
-        <NewUserDialog canAssignAdmin={isOwner} />
+        <NewUserDialog canAssignAdmin={canManageAdmins} />
       </div>
       <Table>
         <TableHeader>
@@ -78,7 +81,7 @@ export default async function UsersPage() {
                 <EditUserDialog
                   user={user}
                   isSelf={user.id === session?.user?.id}
-                  canManageAdmins={isOwner}
+                  canManageAdmins={canManageAdmins}
                 />
               </TableCell>
             </TableRow>
