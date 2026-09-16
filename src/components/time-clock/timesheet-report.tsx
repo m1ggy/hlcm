@@ -29,6 +29,7 @@ import {
   effectiveTimezone,
   currentMonthRange,
   currentPayPeriodRange,
+  dayRangeToInstants,
   formatDuration,
   formatMoney,
   hoursBetween,
@@ -164,8 +165,8 @@ export function TimesheetReport({
     setPayStatus((s) => ({ ...s, [payUserId]: "paying" }));
     startPaying(async () => {
       try {
-        const toEnd = new Date(`${to}T23:59:59.999`);
-        await payUserViaWise({ userId: payUserId, from: new Date(`${from}T00:00:00`), to: toEnd, timeZone: timezone });
+        const range = dayRangeToInstants(from, to, timezone);
+        await payUserViaWise({ userId: payUserId, from: range.from, to: range.to, timeZone: timezone });
         setPayStatus((s) => ({ ...s, [payUserId]: "paid" }));
         toast.success("Payout sent via Wise");
       } catch (error) {
@@ -195,12 +196,11 @@ export function TimesheetReport({
     }
     startTransition(async () => {
       try {
-        // "to" is a date-only input — extend to end of day so that day's sessions are included.
-        const toEnd = new Date(`${range.to}T23:59:59.999`);
+        const instants = dayRangeToInstants(range.from, range.to, timezone);
         const query = {
           userId: userId === "all" ? undefined : userId,
-          from: new Date(`${range.from}T00:00:00`),
-          to: toEnd,
+          from: instants.from,
+          to: instants.to,
         };
         const [rows, rawEntries, rawBreakEntries, rawBreaks] = await Promise.all([
           getTimesheetTotals({ ...query, timeZone: timezone }),
