@@ -17,18 +17,25 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { InvoiceLineItemsEditor, emptyLineItem } from "./invoice-line-items-editor";
+import { InvoiceLineItemsEditor, emptyLineItem, type LineItem } from "./invoice-line-items-editor";
+import { UnbilledVisitsSection } from "./unbilled-visits-section";
 
-// One combobox covers both "just a client, no case" and "this specific
-// case" — prefixing the key is simpler than a parallel id/type pair to
-// carry through state, and keeps the two kinds of option unambiguous even
-// though a client id and an application id could otherwise collide.
+// One combobox covers "just a client, no case", "this specific case", and
+// "this specific care recipient" — prefixing the key is simpler than a
+// parallel id/type pair to carry through state, and keeps the three kinds
+// of option unambiguous even though their ids could otherwise collide.
 const CLIENT_PREFIX = "client:";
 const CASE_PREFIX = "case:";
+const RECIPIENT_PREFIX = "recipient:";
 
 type ClientOption = { id: string; name: string };
 type ApplicationOption = { id: string; name: string; clientId: string };
 type ProfileOption = { id: string; name: string };
+type CareRecipientOption = { id: string; name: string; clientId: string; clientName: string; hourlyRate: number | null };
+type CaregiverOption = { id: string; name: string };
+type VisitBilling = { lineItems: LineItem[]; timeEntryIds: string[] };
+
+const EMPTY_VISIT_BILLING: VisitBilling = { lineItems: [], timeEntryIds: [] };
 
 function todayInputValue() {
   const d = new Date();
@@ -43,16 +50,23 @@ function todayInputValue() {
 export function RecordPaymentDialog({
   clients,
   applications,
+  careRecipients,
+  caregivers,
   profiles,
+  isAdmin,
 }: {
   clients: ClientOption[];
   applications: ApplicationOption[];
+  careRecipients: CareRecipientOption[];
+  caregivers: CaregiverOption[];
   profiles: ProfileOption[];
+  isAdmin: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [selection, setSelection] = useState(clients[0] ? `${CLIENT_PREFIX}${clients[0].id}` : "");
+  const [visitBilling, setVisitBilling] = useState<VisitBilling>(EMPTY_VISIT_BILLING);
   // profiles[0] is always the default — see listInvoiceProfiles' ordering
   // (isDefault desc) in src/lib/invoice-profiles.ts.
   const [profileId, setProfileId] = useState(profiles[0]?.id ?? "");
@@ -66,8 +80,16 @@ export function RecordPaymentDialog({
   const selectedCase = selection.startsWith(CASE_PREFIX)
     ? applications.find((a) => a.id === selection.slice(CASE_PREFIX.length))
     : undefined;
-  const clientId = selectedCase ? selectedCase.clientId : selection.slice(CLIENT_PREFIX.length);
+  const selectedRecipient = selection.startsWith(RECIPIENT_PREFIX)
+    ? careRecipients.find((r) => r.id === selection.slice(RECIPIENT_PREFIX.length))
+    : undefined;
+  const clientId = selectedRecipient
+    ? selectedRecipient.clientId
+    : selectedCase
+      ? selectedCase.clientId
+      : selection.slice(CLIENT_PREFIX.length);
   const applicationId = selectedCase?.id;
+  const careRecipientId = selectedRecipient?.id;
 
   const clientNameById = new Map(clients.map((c) => [c.id, c.name]));
   const selectionItems: Record<string, string> = {
@@ -75,12 +97,18 @@ export function RecordPaymentDialog({
     ...Object.fromEntries(
       applications.map((a) => [`${CASE_PREFIX}${a.id}`, `${a.name} — ${clientNameById.get(a.clientId) ?? "Unknown client"}`])
     ),
+    ...Object.fromEntries(
+      careRecipients.map((r) => [`${RECIPIENT_PREFIX}${r.id}`, `${r.name} — ${r.clientName}`])
+    ),
   };
 
-  const subtotal = lineItems.reduce((sum, li) => sum + li.quantity * li.unitPrice, 0);
+  const visitsSubtotal = visitBilling.lineItems.reduce((sum, li) => sum + li.quantity * li.unitPrice, 0);
+  const manualSubtotal = lineItems.reduce((sum, li) => sum + li.quantity * li.unitPrice, 0);
+  const subtotal = visitsSubtotal + manualSubtotal;
 
   function reset() {
     setSelection(clients[0] ? `${CLIENT_PREFIX}${clients[0].id}` : "");
+    setVisitBilling(EMPTY_VISIT_BILLING);
     setProfileId(profiles[0]?.id ?? "");
     setInvoiceNumber("");
     setIssueDate(todayInputValue());
@@ -92,11 +120,12 @@ export function RecordPaymentDialog({
 
   function handleSubmit() {
     if (!clientId) {
-      toast.error("Pick a client or case");
+      toast.error("Pick a client, case, or care recipient");
       return;
     }
-    const cleanItems = lineItems.filter((li) => li.description.trim().length > 0);
-    if (cleanItems.length === 0) {
+    const manualItems = lineItems.filter((li) => li.description.trim().length > 0);
+    const allItems = [...visitBilling.lineItems, ...manualItems];
+    if (allItems.length === 0) {
       toast.error("Add at least one line item");
       return;
     }
@@ -106,13 +135,15 @@ export function RecordPaymentDialog({
         await createManualInvoice({
           clientId,
           applicationId,
+          careRecipientId,
+          timeEntryIds: visitBilling.timeEntryIds.length ? visitBilling.timeEntryIds : undefined,
           invoiceProfileId: profileId || undefined,
           invoiceNumber: invoiceNumber.trim() || undefined,
           issueDate: issueDate || undefined,
           dueDate: dueDate || undefined,
           notes: notes || undefined,
           internalTag: internalTag || undefined,
-          lineItems: cleanItems,
+          lineItems: allItems,
         });
         toast.success("Invoice created");
         setOpen(false);
@@ -133,7 +164,7 @@ export function RecordPaymentDialog({
       }}
     >
       <DialogTrigger render={<Button variant="outline"><HandCoins className="size-3.5" /> New Manual Invoice</Button>} />
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>New invoice</DialogTitle>
         </DialogHeader>
@@ -144,14 +175,25 @@ export function RecordPaymentDialog({
           </p>
 
           <div className="space-y-1">
-            <Label>Client / case</Label>
+            <Label>Client / case / care recipient</Label>
             <SearchableSelect
               items={selectionItems}
               value={selection || null}
               onValueChange={(v) => setSelection(v ?? selection)}
-              searchPlaceholder="Search clients or cases..."
+              searchPlaceholder="Search clients, cases, or care recipients..."
             />
           </div>
+
+          {selectedRecipient && (
+            <UnbilledVisitsSection
+              key={selectedRecipient.id}
+              careRecipientId={selectedRecipient.id}
+              hourlyRate={selectedRecipient.hourlyRate}
+              caregivers={caregivers}
+              canLogVisit={isAdmin}
+              onVisitsChange={setVisitBilling}
+            />
+          )}
 
           {profiles.length > 1 && (
             <div className="space-y-1">

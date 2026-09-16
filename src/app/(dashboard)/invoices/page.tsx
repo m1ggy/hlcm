@@ -1,17 +1,20 @@
 import { notFound } from "next/navigation";
+import { auth } from "@/auth";
 import { listInvoices } from "@/lib/actions/invoices";
 import { listClients } from "@/lib/actions/clients";
 import { listApplications } from "@/lib/actions/applications";
+import { listCareRecipients, listCaregivers } from "@/lib/actions/care-recipients";
 import { listInvoiceProfiles } from "@/lib/invoice-profiles";
 import { InvoicesTable } from "@/components/invoices/invoices-table";
 import { InvoiceFormDialog } from "@/components/invoices/invoice-form-dialog";
 import { RecordPaymentDialog } from "@/components/invoices/record-payment-dialog";
 import { ImportStripeInvoiceDialog } from "@/components/invoices/import-stripe-invoice-dialog";
 import { PageInfoButton } from "@/components/shared/page-info-button";
-import { ForbiddenError, blockCaregiverRoute } from "@/lib/rbac";
+import { ForbiddenError, blockCaregiverRoute, isAdmin } from "@/lib/rbac";
 
 export default async function InvoicesPage() {
   await blockCaregiverRoute();
+  const session = await auth();
   let invoices;
   try {
     invoices = await listInvoices();
@@ -20,9 +23,11 @@ export default async function InvoicesPage() {
     throw error;
   }
 
-  const [clients, applications, profiles] = await Promise.all([
+  const [clients, applications, careRecipients, caregivers, profiles] = await Promise.all([
     listClients({ filter: "all" }),
     listApplications(),
+    listCareRecipients({ filter: "active" }),
+    listCaregivers(),
     listInvoiceProfiles(),
   ]);
 
@@ -54,7 +59,22 @@ export default async function InvoicesPage() {
           <RecordPaymentDialog
             clients={clients.map((c) => ({ id: c.id, name: c.name }))}
             applications={applications.map((a) => ({ id: a.id, name: a.name, clientId: a.client.id }))}
+            // A recipient not yet attached to a Client can't be billed —
+            // Invoice.clientId is a hard requirement (see CareRecipient's
+            // comment in prisma/schema.prisma) and there's nothing to bill
+            // it under.
+            careRecipients={careRecipients
+              .filter((r) => r.client != null)
+              .map((r) => ({
+                id: r.id,
+                name: r.name,
+                clientId: r.client!.id,
+                clientName: r.client!.name,
+                hourlyRate: r.hourlyRate,
+              }))}
+            caregivers={caregivers}
             profiles={profiles.map((p) => ({ id: p.id, name: p.name }))}
+            isAdmin={isAdmin(session?.user?.role)}
           />
           <InvoiceFormDialog
             clients={clients.map((c) => ({ id: c.id, name: c.name }))}
