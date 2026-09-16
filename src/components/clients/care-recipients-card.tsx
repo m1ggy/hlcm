@@ -40,6 +40,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 
 export type CareRecipientInvoiceRow = {
   id: string;
@@ -581,83 +582,112 @@ export function CareRecipientsCard({
         {recipients.length === 0 ? (
           <p className="text-sm text-muted-foreground">No care recipients added for this client yet.</p>
         ) : (
-          <div className="space-y-3">
+          <Accordion multiple className="rounded-lg border">
             {recipients.map((r) => {
               const recipientAge = ageFromDob(r.dateOfBirth);
+              const doneCount = r.instructions.filter((i) => i.completed).length;
+              const recipientOutstanding = r.invoices.reduce((sum, inv) => sum + outstandingBalance(inv), 0);
               return (
-                <div key={r.id} className="rounded-xl border p-3.5">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2.5">
-                      <AvatarInitials name={r.name} className="size-8 text-sm" />
-                      <div>
-                        <div className="font-medium leading-tight">{r.name}</div>
-                        {recipientAge !== null && <div className="text-xs text-muted-foreground">Age {recipientAge}</div>}
+                <AccordionItem key={r.id} value={r.id} className="px-3">
+                  <AccordionTrigger>
+                    <span className="flex min-w-0 flex-1 items-center justify-between gap-2 pr-2">
+                      <span className="flex min-w-0 items-center gap-2.5">
+                        <AvatarInitials name={r.name} className="size-7 shrink-0 text-xs" />
+                        <span className="min-w-0 truncate">
+                          {r.name}
+                          {recipientAge !== null && (
+                            <span className="ml-1.5 font-normal text-muted-foreground">Age {recipientAge}</span>
+                          )}
+                        </span>
+                      </span>
+                      {/* Same at-a-glance stats the Caregiver's own /care-recipients
+                          page already shows for instructions progress — enriching
+                          the collapsed row so most recipients never need expanding
+                          just to check status. */}
+                      <span className="flex shrink-0 items-center gap-2.5 text-xs font-normal text-muted-foreground">
+                        <span>
+                          {r.assignments.length > 0
+                            ? `${r.assignments.length} caregiver${r.assignments.length === 1 ? "" : "s"}`
+                            : "Unassigned"}
+                        </span>
+                        {r.instructions.length > 0 && (
+                          <span>
+                            {doneCount}/{r.instructions.length} done
+                          </span>
+                        )}
+                        {canManageInvoices && recipientOutstanding > 0 && (
+                          <span className="text-amber-600 dark:text-amber-400">
+                            ${recipientOutstanding.toFixed(2)} due
+                          </span>
+                        )}
+                      </span>
+                    </span>
+                  </AccordionTrigger>
+                  <AccordionContent>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-end gap-1">
+                        <EditCareRecipientDialog recipient={r} />
+                        <ArchiveRecipientButton id={r.id} />
                       </div>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <EditCareRecipientDialog recipient={r} />
-                      <ArchiveRecipientButton id={r.id} />
-                    </div>
-                  </div>
-                  <div className="mt-3">
-                    <RecipientSummary recipient={r} />
-                  </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                    {r.assignments.map((a) => (
-                      <CaregiverChip key={a.caregiver.id} careRecipientId={r.id} caregiver={a.caregiver} />
-                    ))}
-                    <AssignCaregiverControl
-                      careRecipientId={r.id}
-                      caregivers={caregivers}
-                      alreadyAssigned={r.assignments.map((a) => a.caregiver.id)}
-                    />
-                  </div>
-                  <div className="mt-3 border-t pt-3">
-                    <CareInstructionChecklist careRecipientId={r.id} instructions={r.instructions} canManage />
-                  </div>
-                  {canManageInvoices && (
-                    <div className="mt-3 border-t pt-3">
-                      <div className="mb-2 flex items-center justify-between">
-                        <p className="text-sm font-medium">Invoices</p>
-                        <CreateRecipientInvoiceDialog
-                          clientId={clientId}
+                      <RecipientSummary recipient={r} />
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {r.assignments.map((a) => (
+                          <CaregiverChip key={a.caregiver.id} careRecipientId={r.id} caregiver={a.caregiver} />
+                        ))}
+                        <AssignCaregiverControl
                           careRecipientId={r.id}
-                          careRecipientName={r.name}
-                          hourlyRate={r.hourlyRate}
-                          profiles={profiles}
                           caregivers={caregivers}
-                          isAdmin={isAdmin}
+                          alreadyAssigned={r.assignments.map((a) => a.caregiver.id)}
                         />
                       </div>
-                      {r.invoices.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">No invoices yet.</p>
-                      ) : (
-                        <div className="space-y-1">
-                          {r.invoices.map((inv) => (
-                            <Link
-                              key={inv.id}
-                              href={`/invoices/${inv.id}`}
-                              className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-muted"
-                            >
-                              <span className="flex items-center gap-2">
-                                <span className="tabular-nums">{displayInvoiceNumber(inv)}</span>
-                                <InvoiceStatusBadge status={inv.status} />
-                              </span>
-                              <span className="tabular-nums text-muted-foreground">
-                                {outstandingBalance(inv) > 0
-                                  ? `$${outstandingBalance(inv).toFixed(2)} due`
-                                  : `$${(inv.total ?? 0).toFixed(2)}`}
-                              </span>
-                            </Link>
-                          ))}
+                      <div className="border-t pt-3">
+                        <CareInstructionChecklist careRecipientId={r.id} instructions={r.instructions} canManage />
+                      </div>
+                      {canManageInvoices && (
+                        <div className="border-t pt-3">
+                          <div className="mb-2 flex items-center justify-between">
+                            <p className="text-sm font-medium">Invoices</p>
+                            <CreateRecipientInvoiceDialog
+                              clientId={clientId}
+                              careRecipientId={r.id}
+                              careRecipientName={r.name}
+                              hourlyRate={r.hourlyRate}
+                              profiles={profiles}
+                              caregivers={caregivers}
+                              isAdmin={isAdmin}
+                            />
+                          </div>
+                          {r.invoices.length === 0 ? (
+                            <p className="text-sm text-muted-foreground">No invoices yet.</p>
+                          ) : (
+                            <div className="space-y-1">
+                              {r.invoices.map((inv) => (
+                                <Link
+                                  key={inv.id}
+                                  href={`/invoices/${inv.id}`}
+                                  className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-muted"
+                                >
+                                  <span className="flex items-center gap-2">
+                                    <span className="tabular-nums">{displayInvoiceNumber(inv)}</span>
+                                    <InvoiceStatusBadge status={inv.status} />
+                                  </span>
+                                  <span className="tabular-nums text-muted-foreground">
+                                    {outstandingBalance(inv) > 0
+                                      ? `$${outstandingBalance(inv).toFixed(2)} due`
+                                      : `$${(inv.total ?? 0).toFixed(2)}`}
+                                  </span>
+                                </Link>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
-                  )}
-                </div>
+                  </AccordionContent>
+                </AccordionItem>
               );
             })}
-          </div>
+          </Accordion>
         )}
         <div className="mt-3 border-t pt-3">
           <ArchivedRecipients clientId={clientId} />
