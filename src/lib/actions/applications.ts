@@ -8,6 +8,7 @@ import {
   requireSession,
   applicationVisibilityFilter,
   assertApplicationAccess,
+  AppRole,
 } from "@/lib/rbac";
 import { recordFieldChanges, recordAudit } from "@/lib/audit";
 import { cloneChecklistForApplication } from "@/lib/checklist-clone";
@@ -147,10 +148,15 @@ export async function getApplicationAuditLog(applicationId: string) {
   });
 }
 
+// Every internal-staff role — everything except CLIENT (never staff) and
+// CAREGIVER (own separate pool, see listTaskAssignableUsers below). Also
+// backs the "All users" list on /time, so this is who's payroll-visible.
+const INTERNAL_STAFF_ROLES: AppRole[] = ["OWNER", "DEVELOPER", "ADMIN", "ACCOUNTANT", "MANAGER", "STAFF"];
+
 export async function listAssignableUsers() {
   await requireRole(["ADMIN", "MANAGER", "STAFF"]);
   return prisma.user.findMany({
-    where: { active: true, role: { in: ["ADMIN", "OWNER", "MANAGER", "STAFF"] } },
+    where: { active: true, role: { in: INTERNAL_STAFF_ROLES } },
     orderBy: { name: "asc" },
     select: { id: true, name: true, role: true },
   });
@@ -165,7 +171,7 @@ export async function listAssignableUsers() {
 export async function listTaskAssignableUsers() {
   await requireRole(["ADMIN", "MANAGER", "STAFF", "CAREGIVER"]);
   return prisma.user.findMany({
-    where: { active: true, role: { in: ["ADMIN", "OWNER", "MANAGER", "STAFF", "CAREGIVER"] } },
+    where: { active: true, role: { in: [...INTERNAL_STAFF_ROLES, "CAREGIVER"] } },
     orderBy: { name: "asc" },
     select: { id: true, name: true, role: true },
   });
