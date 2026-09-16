@@ -1,7 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { requireSession, applicationVisibilityFilter, AppRole } from "@/lib/rbac";
+import { requireSession, applicationVisibilityFilter, AppRole, isManagement } from "@/lib/rbac";
 import { caregiverClientScope } from "@/lib/caregiver-scope";
 
 export async function searchAll(query: string) {
@@ -23,7 +23,7 @@ export async function searchAll(query: string) {
   });
 
   const clients =
-    role === "ADMIN" || role === "MANAGER" || role === "STAFF"
+    isManagement(role) || role === "STAFF"
       ? await prisma.client.findMany({
           where: { name: { contains: q, mode: "insensitive" }, active: true },
           take: 10,
@@ -36,7 +36,7 @@ export async function searchAll(query: string) {
         : [];
 
   const taskWhere =
-    role === "ADMIN" || role === "MANAGER"
+    isManagement(role)
       ? { label: { contains: q, mode: "insensitive" as const } }
       : {
           label: { contains: q, mode: "insensitive" as const },

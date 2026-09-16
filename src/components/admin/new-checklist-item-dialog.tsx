@@ -23,7 +23,7 @@ import {
 
 type Option = { id: string; name: string };
 
-const ROLES = ["ADMIN", "MANAGER", "STAFF", "CLIENT", "CAREGIVER"] as const;
+const ROLES = ["OWNER", "ADMIN", "ACCOUNTANT", "MANAGER", "STAFF", "CLIENT", "CAREGIVER"] as const;
 const NONE = "__none__";
 
 export function NewChecklistItemDialog({

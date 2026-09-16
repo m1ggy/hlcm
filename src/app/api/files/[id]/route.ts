@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireSession, assertApplicationAccess, UnauthorizedError, ForbiddenError, AppRole } from "@/lib/rbac";
+import { requireSession, assertApplicationAccess, UnauthorizedError, ForbiddenError, AppRole, isManagement } from "@/lib/rbac";
 import { readStoredFile } from "@/lib/storage";
 
 export async function GET(_req: NextRequest, ctx: RouteContext<"/api/files/[id]">) {
@@ -23,7 +23,7 @@ export async function GET(_req: NextRequest, ctx: RouteContext<"/api/files/[id]"
       } else {
         const role = session.user.role as AppRole;
         const isAssignee = task.assignees.some((a) => a.userId === session.user.id);
-        if (!(role === "ADMIN" || role === "MANAGER" || isAssignee || task.createdById === session.user.id)) {
+        if (!(isManagement(role) || isAssignee || task.createdById === session.user.id)) {
           throw new ForbiddenError("Not your task");
         }
       }
@@ -32,7 +32,7 @@ export async function GET(_req: NextRequest, ctx: RouteContext<"/api/files/[id]"
       // (src/lib/actions/files.ts) — Clients have no per-record
       // access-grant concept the way Applications do.
       const role = session.user.role as AppRole;
-      if (!(role === "ADMIN" || role === "MANAGER" || role === "STAFF")) {
+      if (!(isManagement(role) || role === "STAFF")) {
         throw new ForbiddenError("Not accessible");
       }
     } else {

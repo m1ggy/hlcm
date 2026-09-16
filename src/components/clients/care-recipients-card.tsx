@@ -560,8 +560,8 @@ export function CareRecipientsCard({
   recipients: CareRecipientRow[];
   caregivers: { id: string; name: string }[];
   profiles: { id: string; name: string }[];
-  // Invoicing is ADMIN/MANAGER only — same gate createManualInvoice itself
-  // enforces (src/lib/actions/invoices.ts) — a narrower bar than the
+  // Invoicing is ACCOUNTANT/OWNER only — same gate createManualInvoice
+  // itself enforces (src/lib/actions/invoices.ts) — a narrower bar than the
   // ADMIN/MANAGER/STAFF this whole card otherwise renders for, so the
   // "New invoice" trigger and invoice list stay hidden rather than showing
   // an action that would just 403.

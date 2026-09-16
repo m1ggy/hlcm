@@ -103,7 +103,7 @@ export async function sendDueDateDigests() {
     buildLicenseSectionHtml(now),
     buildEnvelopeSectionHtml(now),
     prisma.user.findMany({
-      where: { role: { in: ["ADMIN", "MANAGER"] }, active: true, emailNotificationsEnabled: true },
+      where: { role: { in: ["ADMIN", "OWNER", "MANAGER"] }, active: true, emailNotificationsEnabled: true },
       select: { id: true, email: true },
     }),
   ]);

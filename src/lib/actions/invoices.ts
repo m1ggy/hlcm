@@ -29,7 +29,10 @@ import {
 } from "@/lib/stripe";
 import type { $Enums, Prisma } from "@/generated/prisma/client";
 
-const MANAGE_ROLES: AppRole[] = ["ADMIN", "MANAGER"];
+// Invoices are ACCOUNTANT-exclusive (plus OWNER, who bypasses every
+// requireRole check) — plain ADMIN and MANAGER don't get this module. See
+// canAccessInvoices() in src/lib/rbac.ts, which every invoice UI gate uses.
+const MANAGE_ROLES: AppRole[] = ["ACCOUNTANT"];
 
 const invoiceInclude = {
   client: {

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { auth } from "@/auth";
-import { blockCaregiverRoute } from "@/lib/rbac";
+import { blockCaregiverRoute, isManagement } from "@/lib/rbac";
 import { getProject, archiveProject, restoreProject, listServiceTypes } from "@/lib/actions/projects";
 import { listClients } from "@/lib/actions/clients";
 import { NewClientDialog } from "@/components/clients/new-client-dialog";
@@ -39,7 +39,7 @@ export default async function ProjectDetailPage({
     auth(),
     listServiceTypes(),
   ]);
-  const canArchive = session?.user?.role === "ADMIN" || session?.user?.role === "MANAGER";
+  const canArchive = isManagement(session?.user?.role);
   const importableClients = allClients.map((client) => ({
     id: client.id,
     name: client.name,

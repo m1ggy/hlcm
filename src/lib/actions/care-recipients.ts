@@ -349,11 +349,11 @@ export async function createCareInstruction(careRecipientId: string, label: stri
 // they're assigned to, never any instruction by id.
 export async function toggleCareInstruction(id: string, completed: boolean) {
   const session = await requireSession();
-  const role = session.user.role as (typeof MANAGE_ROLES)[number] | "CAREGIVER" | string;
+  const role = session.user.role as (typeof MANAGE_ROLES)[number] | "OWNER" | "CAREGIVER" | string;
 
   const instruction = await prisma.careInstruction.findUniqueOrThrow({ where: { id } });
 
-  if (!MANAGE_ROLES.includes(role as (typeof MANAGE_ROLES)[number])) {
+  if (role !== "OWNER" && !MANAGE_ROLES.includes(role as (typeof MANAGE_ROLES)[number])) {
     if (role !== "CAREGIVER") throw new ForbiddenError();
     const assigned = await prisma.careRecipientAssignment.findUnique({
       where: { careRecipientId_caregiverId: { careRecipientId: instruction.careRecipientId, caregiverId: session.user.id } },

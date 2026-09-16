@@ -24,7 +24,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-const ROLES = ["ADMIN", "MANAGER", "STAFF", "CLIENT", "CAREGIVER"] as const;
+const ROLES = ["OWNER", "ADMIN", "ACCOUNTANT", "MANAGER", "STAFF", "CLIENT", "CAREGIVER"] as const;
+const ADMIN_TIER_ROLES = new Set<(typeof ROLES)[number]>(["OWNER", "ADMIN", "ACCOUNTANT"]);
 
 type EditableUser = {
   id: string;
@@ -36,7 +37,15 @@ type EditableUser = {
   smsRemindersEnabled: boolean;
 };
 
-export function EditUserDialog({ user, isSelf = false }: { user: EditableUser; isSelf?: boolean }) {
+export function EditUserDialog({
+  user,
+  isSelf = false,
+  canManageAdmins = false,
+}: {
+  user: EditableUser;
+  isSelf?: boolean;
+  canManageAdmins?: boolean;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(user.name);
@@ -47,6 +56,9 @@ export function EditUserDialog({ user, isSelf = false }: { user: EditableUser; i
   const [phone, setPhone] = useState(user.phone ?? "");
   const [smsRemindersEnabled, setSmsRemindersEnabled] = useState(user.smsRemindersEnabled);
   const [isPending, startTransition] = useTransition();
+
+  const isProtected = ADMIN_TIER_ROLES.has(user.role) && !canManageAdmins && !isSelf;
+  const availableRoles = canManageAdmins || isSelf ? ROLES : ROLES.filter((r) => !ADMIN_TIER_ROLES.has(r));
 
   function reset() {
     setName(user.name);
@@ -92,6 +104,10 @@ export function EditUserDialog({ user, isSelf = false }: { user: EditableUser; i
     });
   }
 
+  // Only an Owner can edit another Admin/Owner account — an Admin managing
+  // everyone below just doesn't get the affordance for those rows.
+  if (isProtected) return null;
+
   return (
     <Dialog
       open={open}
@@ -133,7 +149,7 @@ export function EditUserDialog({ user, isSelf = false }: { user: EditableUser; i
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {ROLES.map((r) => (
+                {availableRoles.map((r) => (
                   <SelectItem key={r} value={r}>
                     {r}
                   </SelectItem>

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Download } from "lucide-react";
 import { auth } from "@/auth";
-import { blockCaregiverRoute } from "@/lib/rbac";
+import { blockCaregiverRoute, isManagement } from "@/lib/rbac";
 import { listApplications, listAssignableUsers, archiveApplication, restoreApplication } from "@/lib/actions/applications";
 import { listClients } from "@/lib/actions/clients";
 import { listLicenseTypes } from "@/lib/actions/license-types";
@@ -31,7 +31,7 @@ export default async function ApplicationsPage({
 
   const { archived } = await searchParams;
   const showArchived = archived === "1";
-  const canArchive = session.user.role === "ADMIN" || session.user.role === "MANAGER";
+  const canArchive = isManagement(session.user.role);
 
   const [
     applications,

@@ -8,7 +8,7 @@ import { CopyLinkButton } from "@/components/admin/copy-link-button";
 import { PageInfoButton } from "@/components/shared/page-info-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { blockCaregiverRoute } from "@/lib/rbac";
+import { blockCaregiverRoute, isAdmin } from "@/lib/rbac";
 import {
   Table,
   TableBody,
@@ -21,7 +21,7 @@ import {
 export default async function FormTemplatesPage() {
   await blockCaregiverRoute();
   const session = await auth();
-  const canManage = session?.user?.role === "ADMIN";
+  const canManage = isAdmin(session?.user?.role);
   const [templates, assignableUsers] = await Promise.all([
     listFormTemplates(),
     canManage ? listAssignableUsers() : Promise.resolve([]),

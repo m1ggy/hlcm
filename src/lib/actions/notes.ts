@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireSession, requireRole, assertApplicationAccess, ForbiddenError, AppRole } from "@/lib/rbac";
+import { requireSession, requireRole, assertApplicationAccess, ForbiddenError, AppRole, isManagement } from "@/lib/rbac";
 import { notify } from "@/lib/notifications";
 
 // Caregivers never hold an Application-level AccessGrant (see
@@ -19,7 +19,7 @@ async function assertCanCommentOnTask(
     await assertApplicationAccess(session, task.applicationId, "view");
     return;
   }
-  if (role === "ADMIN" || role === "MANAGER") return;
+  if (isManagement(role)) return;
   const isAssignee = task.assignees.some((a) => a.userId === session.user.id);
   if (!isAssignee && task.createdById !== session.user.id) {
     throw new ForbiddenError("Not your task");

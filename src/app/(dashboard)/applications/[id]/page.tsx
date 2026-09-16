@@ -46,7 +46,7 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { ApplicationStatus } from "@/lib/status";
-import { ForbiddenError, requireSession, getApplicationAccessLevel, blockCaregiverRoute } from "@/lib/rbac";
+import { ForbiddenError, requireSession, getApplicationAccessLevel, blockCaregiverRoute, isAdmin, isManagement } from "@/lib/rbac";
 
 export default async function ApplicationDetailPage({
   params,
@@ -67,7 +67,7 @@ export default async function ApplicationDetailPage({
   const session = await requireSession();
   const accessLevel = await getApplicationAccessLevel(session, id);
   const canEdit = accessLevel === "edit";
-  const canArchive = session.user.role === "ADMIN" || session.user.role === "MANAGER";
+  const canArchive = isManagement(session.user.role);
   const grantableUsers = canEdit ? await listGrantableUsers(id) : [];
 
   const [
@@ -176,7 +176,7 @@ export default async function ApplicationDetailPage({
                 }))}
                 assignableUsers={taskAssignableUsers}
                 defaultAssignedUserId={application.assignedUserId}
-                isAdmin={session.user.role === "ADMIN"}
+                isAdmin={isAdmin(session.user.role)}
               />
             </CardContent>
           </Card>

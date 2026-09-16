@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { auth } from "@/auth";
-import { blockCaregiverRoute } from "@/lib/rbac";
+import { blockCaregiverRoute, isManagement } from "@/lib/rbac";
 import { listProjects, archiveProject, restoreProject } from "@/lib/actions/projects";
 import { NewProjectDialog } from "@/components/projects/new-project-dialog";
 import { ArchiveButton } from "@/components/shared/archive-button";
@@ -23,7 +23,7 @@ export default async function ProjectsPage({
   const { archived } = await searchParams;
   const showArchived = archived === "1";
   const session = await auth();
-  const canArchive = session?.user?.role === "ADMIN" || session?.user?.role === "MANAGER";
+  const canArchive = isManagement(session?.user?.role);
 
   const projects = await listProjects({ archived: showArchived });
 

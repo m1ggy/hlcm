@@ -6,7 +6,7 @@ import { NewDocumentTemplateDialog } from "@/components/admin/new-document-templ
 import { DocumentTemplateRowActions } from "@/components/admin/document-template-row-actions";
 import { PageInfoButton } from "@/components/shared/page-info-button";
 import { Badge } from "@/components/ui/badge";
-import { ForbiddenError, blockCaregiverRoute } from "@/lib/rbac";
+import { ForbiddenError, blockCaregiverRoute, isAdmin } from "@/lib/rbac";
 import {
   Table,
   TableBody,
@@ -19,7 +19,7 @@ import {
 export default async function DocumentTemplatesPage() {
   await blockCaregiverRoute();
   const session = await auth();
-  const canManage = session?.user?.role === "ADMIN";
+  const canManage = isAdmin(session?.user?.role);
 
   let templates, licenseTypes;
   try {

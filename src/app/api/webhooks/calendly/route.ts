@@ -99,7 +99,7 @@ export async function POST(req: Request) {
 // accidentally suppress it (same sentinel the Stripe webhook uses).
 async function notifyLeadStaff(lead: Lead, type: "LEAD_BOOKED" | "LEAD_CANCELED", message: string) {
   const recipients = await prisma.user.findMany({
-    where: { role: { in: ["ADMIN", "MANAGER"] }, active: true },
+    where: { role: { in: ["ADMIN", "OWNER", "MANAGER"] }, active: true },
     select: { id: true },
   });
   for (const recipient of recipients) {

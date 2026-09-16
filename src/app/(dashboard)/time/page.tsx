@@ -1,5 +1,5 @@
 import { auth } from "@/auth";
-import { blockCaregiverRoute } from "@/lib/rbac";
+import { blockCaregiverRoute, isAdmin, isManagement } from "@/lib/rbac";
 import { listAssignableUsers } from "@/lib/actions/applications";
 import { getAccount } from "@/lib/actions/account";
 import { MyTimeLog } from "@/components/time-clock/my-time-log";
@@ -12,8 +12,8 @@ export default async function TimePage() {
   await blockCaregiverRoute();
   const session = await auth();
   const role = session?.user?.role;
-  const canSeeAllUsers = role === "ADMIN" || role === "MANAGER";
-  const canPay = role === "ADMIN";
+  const canSeeAllUsers = isManagement(role);
+  const canPay = isAdmin(role);
 
   const [users, account] = await Promise.all([
     canSeeAllUsers ? listAssignableUsers() : Promise.resolve([]),

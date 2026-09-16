@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { auth, signOut } from "@/auth";
+import { isAdmin, canAccessInvoices } from "@/lib/rbac";
 import {
   Sidebar,
   SidebarContent,
@@ -23,8 +24,8 @@ export async function AppSidebar() {
       </SidebarHeader>
       <SidebarContent className="px-2">
         <AppSidebarNav
-          isAdmin={session.user.role === "ADMIN"}
-          canManageInvoices={session.user.role === "ADMIN" || session.user.role === "MANAGER"}
+          isAdmin={isAdmin(session.user.role)}
+          canManageInvoices={canAccessInvoices(session.user.role)}
           isCaregiver={session.user.role === "CAREGIVER"}
         />
       </SidebarContent>

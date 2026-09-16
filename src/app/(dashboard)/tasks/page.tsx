@@ -1,4 +1,5 @@
 import { auth } from "@/auth";
+import { isAdmin } from "@/lib/rbac";
 import { listMyTasks } from "@/lib/actions/tasks";
 import { listAssignableUsers, listTaskAssignableUsers } from "@/lib/actions/applications";
 import { NewStandaloneTaskDialog } from "@/components/tasks/new-standalone-task-dialog";
@@ -40,7 +41,7 @@ export default async function TasksPage() {
           <MyTasksView
             tasks={tasks}
             assignableUsers={assignableUsers}
-            isAdmin={session.user.role === "ADMIN"}
+            isAdmin={isAdmin(session.user.role)}
             isCaregiver={isCaregiver}
           />
         )}

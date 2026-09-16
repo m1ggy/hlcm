@@ -7,7 +7,9 @@ import { recordAudit } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
 import { saveUploadedFile, deleteStoredFile } from "@/lib/storage";
 
-const MANAGE_ROLES: AppRole[] = ["ADMIN", "MANAGER"];
+// Same ACCOUNTANT-exclusive gate as invoices.ts — see canAccessInvoices() in
+// src/lib/rbac.ts.
+const MANAGE_ROLES: AppRole[] = ["ACCOUNTANT"];
 
 const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20MB — keep well under bodySizeLimit's 25MB, same cap as files.ts
 

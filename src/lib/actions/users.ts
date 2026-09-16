@@ -4,11 +4,11 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireRole } from "@/lib/rbac";
+import { requireRole, ForbiddenError, isAdmin } from "@/lib/rbac";
 import { recordAudit, recordFieldChanges } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
 
-const ROLE_VALUES = ["ADMIN", "MANAGER", "STAFF", "CLIENT", "CAREGIVER"] as const;
+const ROLE_VALUES = ["OWNER", "ADMIN", "ACCOUNTANT", "MANAGER", "STAFF", "CLIENT", "CAREGIVER"] as const;
 
 const userSchema = z.object({
   name: z.string().min(1),
@@ -76,6 +76,10 @@ export async function createUser(formData: FormData) {
     role: formData.get("role"),
   });
 
+  if (isAdmin(parsed.role) && session.user.role !== "OWNER") {
+    throw new ForbiddenError("Only an Owner can create an Admin, Accountant, or Owner account");
+  }
+
   const passwordHash = await bcrypt.hash(parsed.password, 12);
   const user = await prisma.user
     .create({
@@ -117,14 +121,20 @@ export async function updateUser(input: z.infer<typeof updateSchema>) {
   const session = await requireRole(["ADMIN"]);
   const parsed = updateSchema.parse(input);
 
-  if (parsed.userId === session.user.id && (!parsed.active || parsed.role !== "ADMIN")) {
-    throw new Error("You can't deactivate or demote your own account — have another admin do it");
-  }
-
   const before = await prisma.user.findUniqueOrThrow({
     where: { id: parsed.userId },
     select: { name: true, email: true, role: true, active: true, phone: true, smsRemindersEnabled: true },
   });
+
+  const actorIsOwner = session.user.role === "OWNER";
+  const isSelfEdit = parsed.userId === session.user.id;
+  if (!isSelfEdit && !actorIsOwner && (isAdmin(before.role) || isAdmin(parsed.role))) {
+    throw new ForbiddenError("Only an Owner can create, edit, or demote an Admin, Accountant, or Owner account");
+  }
+
+  if (isSelfEdit && (!parsed.active || parsed.role !== before.role)) {
+    throw new Error("You can't deactivate or change your own role — have another admin do it");
+  }
 
   const existing = await prisma.user.findUnique({ where: { email: parsed.email } });
   if (existing && existing.id !== parsed.userId) {

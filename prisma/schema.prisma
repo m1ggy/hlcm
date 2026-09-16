@@ -10,8 +10,15 @@ datasource db {
   provider = "postgresql"
 }
 
+// OWNER sits above ADMIN — same access everywhere ADMIN has it, plus
+// exclusive rights to create/edit/demote other ADMIN/ACCOUNTANT/OWNER
+// accounts. ACCOUNTANT carries every ADMIN permission too, plus exclusive
+// access to Invoices that plain ADMIN doesn't get (see
+// requireRole()/isAdmin()/canAccessInvoices() in src/lib/rbac.ts).
 enum Role {
+  OWNER
   ADMIN
+  ACCOUNTANT
   MANAGER
   STAFF
   CLIENT

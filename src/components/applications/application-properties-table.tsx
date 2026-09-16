@@ -108,7 +108,7 @@ export function ApplicationPropertiesTable({
     toDateInputValue(defaultValues.deficiencyResponseSubmittedDate)
   );
 
-  const managers = assignableUsers.filter((u) => u.role === "MANAGER" || u.role === "ADMIN");
+  const managers = assignableUsers.filter((u) => u.role === "MANAGER" || u.role === "ADMIN" || u.role === "OWNER");
 
   function save(overrides: Partial<{ name: string; clientId: string; assignedUserId: string; status: string; description: string }>) {
     const formData = new FormData();

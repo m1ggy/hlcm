@@ -4,7 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
-import { requireRole, requireSession, assertApplicationAccess, ForbiddenError, AppRole } from "@/lib/rbac";
+import { requireRole, requireSession, assertApplicationAccess, ForbiddenError, AppRole, isManagement } from "@/lib/rbac";
 import { recordFieldChanges, recordAudit } from "@/lib/audit";
 import { notify } from "@/lib/notifications";
 import { TASK_CLOSED_STATUSES } from "@/lib/task-status";
@@ -87,7 +87,7 @@ async function ensureTaskAssigneeAccess(applicationId: string, userId: string, g
     prisma.accessGrant.findUnique({ where: { applicationId_userId: { applicationId, userId } } }),
   ]);
   if (!user || !app) return;
-  if (user.role === "ADMIN" || user.role === "MANAGER") return;
+  if (isManagement(user.role as AppRole)) return;
   // Caregivers never get case-level access, however they're assigned — see
   // assertCanEditTask/assertCanCommentOnTask, which check task assignment
   // directly instead of routing through this Application-wide grant.
@@ -124,7 +124,7 @@ async function assertCanEditTask(
     await assertApplicationAccess(session, task.applicationId, "edit");
     return;
   }
-  if (role === "ADMIN" || role === "MANAGER") return;
+  if (isManagement(role)) return;
   if (!task.assignedUserIds.includes(session.user.id)) throw new ForbiddenError("Not your task");
 }
 
@@ -367,7 +367,7 @@ export async function getTaskAuditLog(taskId: string) {
     await assertApplicationAccess(session, task.applicationId, "view");
   } else {
     const isAssignee = task.assignees.some((a) => a.userId === session.user.id);
-    if (!(role === "ADMIN" || role === "MANAGER" || isAssignee)) {
+    if (!(isManagement(role) || isAssignee)) {
       throw new ForbiddenError("Not your task");
     }
   }

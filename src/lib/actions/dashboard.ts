@@ -1,14 +1,14 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { requireSession, applicationVisibilityFilter, AppRole } from "@/lib/rbac";
+import { requireSession, applicationVisibilityFilter, AppRole, isManagement as isManagementRole } from "@/lib/rbac";
 import { APPLICATION_STATUSES } from "@/lib/status";
 import { TASK_CLOSED_STATUSES } from "@/lib/task-status";
 
 export async function getDashboardStats() {
   const session = await requireSession();
   const role = session.user.role as AppRole;
-  const isManagement = role === "ADMIN" || role === "MANAGER";
+  const isManagement = isManagementRole(role);
   const appFilter = { ...applicationVisibilityFilter(session), active: true };
 
   const statusCounts = await prisma.application.groupBy({

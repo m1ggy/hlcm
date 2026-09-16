@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { auth } from "@/auth";
+import { isAdmin, isManagement, canAccessInvoices } from "@/lib/rbac";
 import { getClient, getClientAuditLog, archiveClient, restoreClient } from "@/lib/actions/clients";
 import { listAssignableUsers } from "@/lib/actions/applications";
 import { listClientNotes } from "@/lib/actions/notes";
@@ -77,12 +78,14 @@ export default async function ClientDetailPage({
   }
 
   const session = await auth();
-  // listInvoices is ADMIN/MANAGER only (unlike getClient itself, which
+  // listInvoices is ACCOUNTANT/OWNER only (unlike getClient itself, which
   // STAFF can also reach) — gate the fetch, not just the display, so a
-  // STAFF viewer never triggers a ForbiddenError just for loading this page.
-  const canManageInvoices = session?.user?.role === "ADMIN" || session?.user?.role === "MANAGER";
-  const canArchive = canManageInvoices;
-  const isAdmin = session?.user?.role === "ADMIN";
+  // viewer without invoice access never triggers a ForbiddenError just for
+  // loading this page. Archiving the client itself is a separate,
+  // broader ADMIN/MANAGER permission, not tied to invoice access.
+  const canManageInvoices = canAccessInvoices(session?.user?.role);
+  const canArchive = isManagement(session?.user?.role);
+  const isUserAdmin = isAdmin(session?.user?.role);
 
   const [
     assignableUsers,
@@ -296,7 +299,7 @@ export default async function ClientDetailPage({
         caregivers={caregivers}
         profiles={invoiceProfiles.map((p) => ({ id: p.id, name: p.name }))}
         canManageInvoices={canManageInvoices}
-        isAdmin={isAdmin}
+        isAdmin={isUserAdmin}
       />
 
       <Card>

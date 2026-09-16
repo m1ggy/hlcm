@@ -2,8 +2,33 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 
-export const ROLES = ["ADMIN", "MANAGER", "STAFF", "CLIENT", "CAREGIVER"] as const;
+export const ROLES = ["OWNER", "ADMIN", "ACCOUNTANT", "MANAGER", "STAFF", "CLIENT", "CAREGIVER"] as const;
 export type AppRole = (typeof ROLES)[number];
+
+/**
+ * OWNER inherits every ADMIN permission; ACCOUNTANT also carries full ADMIN
+ * permissions everywhere (on top of the Invoices exclusivity below) — check
+ * this instead of `role === "ADMIN"`. Takes `string` (not `AppRole`) since
+ * it's most often called directly on `session.user.role`, which next-auth
+ * types as `string`.
+ */
+export function isAdmin(role: string | null | undefined): boolean {
+  return role === "ADMIN" || role === "OWNER" || role === "ACCOUNTANT";
+}
+
+/** ADMIN/OWNER/ACCOUNTANT/MANAGER — the "management" tier used across visibility and archive checks. */
+export function isManagement(role: string | null | undefined): boolean {
+  return isAdmin(role) || role === "MANAGER";
+}
+
+/**
+ * Invoices are ACCOUNTANT/OWNER-exclusive — unlike every other ADMIN-gated
+ * feature, plain ADMIN and MANAGER do NOT get this one. See MANAGE_ROLES in
+ * src/lib/actions/invoices.ts / invoice-attachments.ts.
+ */
+export function canAccessInvoices(role: string | null | undefined): boolean {
+  return role === "ACCOUNTANT" || role === "OWNER";
+}
 
 export class UnauthorizedError extends Error {
   constructor(message = "Not authenticated") {
@@ -37,11 +62,19 @@ export async function blockCaregiverRoute(fallback = "/tasks") {
   if (session?.user?.role === "CAREGIVER") redirect(fallback);
 }
 
-/** Throws unless the current user's role is one of `allowed`. */
+/**
+ * Throws unless the current user's role is one of `allowed`. OWNER sits
+ * above every role and always passes, including an ACCOUNTANT-exclusive
+ * `allowed` list (e.g. Invoices) that doesn't even mention ADMIN. ACCOUNTANT
+ * passes any `allowed` list that includes ADMIN — every call site written
+ * as ADMIN-gated doesn't need to separately remember ACCOUNTANT.
+ */
 export async function requireRole(allowed: AppRole[]) {
   const session = await requireSession();
   const role = session.user.role as AppRole;
-  if (!allowed.includes(role)) throw new ForbiddenError();
+  if (role === "OWNER") return session;
+  const permitted = allowed.includes(role) || (role === "ACCOUNTANT" && allowed.includes("ADMIN"));
+  if (!permitted) throw new ForbiddenError();
   return session;
 }
 
@@ -52,7 +85,7 @@ export async function requireRole(allowed: AppRole[]) {
  */
 export function applicationVisibilityFilter(session: Awaited<ReturnType<typeof requireSession>>) {
   const role = session.user.role as AppRole;
-  if (role === "ADMIN" || role === "MANAGER") return {};
+  if (isManagement(role)) return {};
   if (role === "STAFF") {
     return {
       OR: [
@@ -76,7 +109,7 @@ export async function getApplicationAccessLevel(
   applicationId: string
 ): Promise<ApplicationAccessLevel> {
   const role = session.user.role as AppRole;
-  if (role === "ADMIN" || role === "MANAGER") return "edit";
+  if (isManagement(role)) return "edit";
 
   const app = await prisma.application.findUnique({
     where: { id: applicationId },

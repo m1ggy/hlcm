@@ -150,7 +150,7 @@ export async function getApplicationAuditLog(applicationId: string) {
 export async function listAssignableUsers() {
   await requireRole(["ADMIN", "MANAGER", "STAFF"]);
   return prisma.user.findMany({
-    where: { active: true, role: { in: ["ADMIN", "MANAGER", "STAFF"] } },
+    where: { active: true, role: { in: ["ADMIN", "OWNER", "MANAGER", "STAFF"] } },
     orderBy: { name: "asc" },
     select: { id: true, name: true, role: true },
   });
@@ -165,7 +165,7 @@ export async function listAssignableUsers() {
 export async function listTaskAssignableUsers() {
   await requireRole(["ADMIN", "MANAGER", "STAFF", "CAREGIVER"]);
   return prisma.user.findMany({
-    where: { active: true, role: { in: ["ADMIN", "MANAGER", "STAFF", "CAREGIVER"] } },
+    where: { active: true, role: { in: ["ADMIN", "OWNER", "MANAGER", "STAFF", "CAREGIVER"] } },
     orderBy: { name: "asc" },
     select: { id: true, name: true, role: true },
   });

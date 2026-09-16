@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
+import { isAdmin } from "@/lib/rbac";
 import { AppSidebar } from "@/components/app-sidebar";
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { SearchBox } from "@/components/search-box";
@@ -62,7 +63,7 @@ export default async function DashboardLayout({
         </header>
         <main className="w-full min-w-0 flex-1 px-4 py-6 md:px-6">{children}</main>
       </SidebarInset>
-      <CommandPalette isAdmin={session?.user?.role === "ADMIN"} />
+      <CommandPalette isAdmin={isAdmin(session?.user?.role)} />
       <GlobalShortcuts />
       <SessionExpiredDialog />
     </SidebarProvider>

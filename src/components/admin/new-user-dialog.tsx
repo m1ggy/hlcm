@@ -21,12 +21,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-const ROLES = ["ADMIN", "MANAGER", "STAFF", "CLIENT", "CAREGIVER"] as const;
+const ROLES = ["OWNER", "ADMIN", "ACCOUNTANT", "MANAGER", "STAFF", "CLIENT", "CAREGIVER"] as const;
+const ADMIN_TIER_ROLES = new Set<(typeof ROLES)[number]>(["OWNER", "ADMIN", "ACCOUNTANT"]);
 
-export function NewUserDialog() {
+export function NewUserDialog({ canAssignAdmin = false }: { canAssignAdmin?: boolean }) {
   const [open, setOpen] = useState(false);
   const [role, setRole] = useState<(typeof ROLES)[number]>("STAFF");
   const [isPending, startTransition] = useTransition();
+  const availableRoles = canAssignAdmin ? ROLES : ROLES.filter((r) => !ADMIN_TIER_ROLES.has(r));
 
   function handleSubmit(formData: FormData) {
     formData.set("role", role);
@@ -68,7 +70,7 @@ export function NewUserDialog() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {ROLES.map((r) => (
+                {availableRoles.map((r) => (
                   <SelectItem key={r} value={r}>
                     {r}
                   </SelectItem>

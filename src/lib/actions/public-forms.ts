@@ -61,7 +61,7 @@ async function getClientIp() {
 async function resolveNotifyRecipients(template: { notifyUserIds: string[]; notifyEmails: string | null }): Promise<string[]> {
   const hasCustomRecipients = template.notifyUserIds.length > 0 || !!template.notifyEmails?.trim();
   if (!hasCustomRecipients) {
-    const admins = await prisma.user.findMany({ where: { role: "ADMIN", active: true }, select: { email: true } });
+    const admins = await prisma.user.findMany({ where: { role: { in: ["ADMIN", "OWNER"] }, active: true }, select: { email: true } });
     return admins.map((a) => a.email);
   }
 

@@ -7,7 +7,7 @@ import { requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
 
-const ROLE_VALUES = ["ADMIN", "MANAGER", "STAFF", "CLIENT", "CAREGIVER"] as const;
+const ROLE_VALUES = ["OWNER", "ADMIN", "ACCOUNTANT", "MANAGER", "STAFF", "CLIENT", "CAREGIVER"] as const;
 
 const checklistItemTemplateSchema = z.object({
   licenseTypeTemplateId: z.string().optional(),

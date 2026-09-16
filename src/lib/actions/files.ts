@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireSession, requireRole, assertApplicationAccess, ForbiddenError, AppRole } from "@/lib/rbac";
+import { requireSession, requireRole, assertApplicationAccess, ForbiddenError, AppRole, isManagement } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
 import { saveUploadedFile, deleteStoredFile, saveFileVersion, revertToGeneration } from "@/lib/storage";
@@ -23,7 +23,7 @@ async function assertCanAccessTask(
     await assertApplicationAccess(session, task.applicationId, level);
     return;
   }
-  if (role === "ADMIN" || role === "MANAGER") return;
+  if (isManagement(role)) return;
   const isAssignee = task.assignees.some((a) => a.userId === session.user.id);
   if (!isAssignee && task.createdById !== session.user.id) {
     throw new ForbiddenError("Not your task");
@@ -52,7 +52,7 @@ async function assertCanAccessFileAsset(
   // as every other Client sub-record this session.
   if (asset.clientId) {
     const role = session.user.role as AppRole;
-    if (role === "ADMIN" || role === "MANAGER" || role === "STAFF") return;
+    if (isManagement(role) || role === "STAFF") return;
     throw new ForbiddenError("Not accessible");
   }
   throw new ForbiddenError("Not accessible");

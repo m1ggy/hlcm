@@ -21,6 +21,7 @@ import {
 export default async function UsersPage() {
   await blockCaregiverRoute();
   const session = await auth();
+  const isOwner = session?.user?.role === "OWNER";
   let users;
   try {
     users = await listUsers();
@@ -46,7 +47,7 @@ export default async function UsersPage() {
             </p>
           </PageInfoButton>
         </div>
-        <NewUserDialog />
+        <NewUserDialog canAssignAdmin={isOwner} />
       </div>
       <Table>
         <TableHeader>
@@ -74,7 +75,11 @@ export default async function UsersPage() {
                 <RateCell userId={user.id} initialRate={user.hourlyRate} />
               </TableCell>
               <TableCell>
-                <EditUserDialog user={user} isSelf={user.id === session?.user?.id} />
+                <EditUserDialog
+                  user={user}
+                  isSelf={user.id === session?.user?.id}
+                  canManageAdmins={isOwner}
+                />
               </TableCell>
             </TableRow>
           ))}

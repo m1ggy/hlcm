@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { auth } from "@/auth";
+import { isManagement } from "@/lib/rbac";
 import { listClients, listCaregiverClients, archiveClient, restoreClient } from "@/lib/actions/clients";
 import { listProjects } from "@/lib/actions/projects";
 import { PageInfoButton } from "@/components/shared/page-info-button";
@@ -15,7 +16,7 @@ export default async function ClientsPage({
   const { archived } = await searchParams;
   const showArchived = archived === "1";
   const session = await auth();
-  const canArchive = session?.user?.role === "ADMIN" || session?.user?.role === "MANAGER";
+  const canArchive = isManagement(session?.user?.role);
 
   // A Caregiver's client list is just the businesses behind their own task
   // assignments — a much narrower, read-only view, so it gets its own
