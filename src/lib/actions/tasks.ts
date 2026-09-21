@@ -221,6 +221,9 @@ const updateTaskSchema = z.object({
   status: z.enum(TASK_STATUSES).optional(),
   blockedReason: z.string().optional(),
   dueDate: z.string().optional(),
+  // Time-tracking budget (see TaskTimeEntry) — empty string clears it back
+  // to "no budget set", same convention as dueDate above.
+  estimatedHours: z.string().optional(),
 });
 
 export async function updateTask(taskId: string, formData: FormData) {
@@ -246,6 +249,7 @@ export async function updateTask(taskId: string, formData: FormData) {
     status: formData.get("status") || undefined,
     blockedReason: formData.get("blockedReason") ?? undefined,
     dueDate: isCaregiver ? undefined : formData.get("dueDate") ?? undefined,
+    estimatedHours: isCaregiver ? undefined : formData.get("estimatedHours") ?? undefined,
   });
 
   await prisma.$transaction(async (tx) => {
@@ -262,6 +266,8 @@ export async function updateTask(taskId: string, formData: FormData) {
         // A resolved/changed status clears any stale "waiting on X" note.
         blockedReason: parsed.status && parsed.status !== "BLOCKED" ? null : parsed.blockedReason,
         dueDate: parsed.dueDate !== undefined ? (parsed.dueDate ? new Date(parsed.dueDate) : null) : undefined,
+        estimatedHours:
+          parsed.estimatedHours !== undefined ? (parsed.estimatedHours ? Number(parsed.estimatedHours) : null) : undefined,
       },
     });
   });
@@ -289,6 +295,7 @@ export async function updateTask(taskId: string, formData: FormData) {
       status: before.status,
       blockedReason: before.blockedReason,
       dueDate: before.dueDate,
+      estimatedHours: before.estimatedHours,
       assignedUserIds: beforeAssigneeIds,
     },
     after: {
@@ -297,6 +304,7 @@ export async function updateTask(taskId: string, formData: FormData) {
       status: task.status,
       blockedReason: task.blockedReason,
       dueDate: task.dueDate,
+      estimatedHours: task.estimatedHours,
       assignedUserIds: afterAssigneeIds,
     },
   });
@@ -460,6 +468,44 @@ export async function listMyTasks() {
       task.dueDate.getTime() < now &&
       !TASK_CLOSED_STATUSES.includes(task.status as (typeof TASK_CLOSED_STATUSES)[number]),
   }));
+}
+
+/**
+ * Same "my assigned, non-archived, top-level" task set as listMyTasks, but
+ * id/label/application-name only — no assignees/reviewers/subtasks include.
+ * listMyTasks's full shape is overkill for a picker (the task-time-tracker
+ * combobox in the nav and on /time-tracking) that's fetched on every
+ * dashboard page load; this keeps that query cheap.
+ */
+async function taskOptionsFor(userId: string) {
+  const tasks = await prisma.task.findMany({
+    where: {
+      assignees: { some: { userId } },
+      parentTaskId: null,
+      archived: false,
+      OR: [{ applicationId: null }, { application: { active: true } }],
+    },
+    select: { id: true, label: true, application: { select: { name: true } } },
+    orderBy: { createdAt: "desc" },
+  });
+  return tasks.map((t) => ({ id: t.id, label: t.label, applicationName: t.application?.name ?? null }));
+}
+
+export async function listMyTaskOptions() {
+  const session = await requireSession();
+  return taskOptionsFor(session.user.id);
+}
+
+/**
+ * The same picker list for someone else — so a manager editing or logging
+ * time on a teammate's behalf chooses from that teammate's tasks, not the
+ * manager's own. Anyone may ask for themselves; anyone else's needs the
+ * management tier.
+ */
+export async function listTaskOptionsForUser(userId: string) {
+  const session = await requireSession();
+  if (userId !== session.user.id && !isManagement(session.user.role)) throw new ForbiddenError();
+  return taskOptionsFor(userId);
 }
 
 const standaloneTaskSchema = z.object({

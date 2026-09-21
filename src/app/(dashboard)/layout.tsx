@@ -9,11 +9,14 @@ import { GlobalShortcuts } from "@/components/global-shortcuts";
 import { SessionExpiredDialog } from "@/components/auth/session-expired-dialog";
 import { ProductTour } from "@/components/tour/product-tour";
 import { TimeClockWidget } from "@/components/time-clock/time-clock-widget";
+import { TaskTimerWidget } from "@/components/time-clock/task-timer-widget";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { BookOpen } from "lucide-react";
 import { getMyActiveEntry, getMyActiveBreak } from "@/lib/actions/time-entries";
+import { getMyOpenTaskTimer, listMyRecentTimerTasks } from "@/lib/actions/task-time-entries";
 import { listMyCareRecipients } from "@/lib/actions/care-recipients";
+import { listMyTaskOptions } from "@/lib/actions/tasks";
 
 export default async function DashboardLayout({
   children,
@@ -23,10 +26,13 @@ export default async function DashboardLayout({
   const session = await auth();
   if (session?.user?.role === "CLIENT") redirect("/portal");
   const isCaregiver = session?.user?.role === "CAREGIVER";
-  const [activeEntry, activeBreak, careRecipients] = await Promise.all([
+  const [activeEntry, activeBreak, careRecipients, openTimer, myTasks, recentTimerTasks] = await Promise.all([
     getMyActiveEntry(),
     getMyActiveBreak(),
     isCaregiver ? listMyCareRecipients() : Promise.resolve([]),
+    getMyOpenTaskTimer(),
+    listMyTaskOptions(),
+    listMyRecentTimerTasks(5),
   ]);
 
   return (
@@ -45,6 +51,17 @@ export default async function DashboardLayout({
               initialCareRecipientId={activeEntry?.careRecipientId ?? null}
               isCaregiver={isCaregiver}
               careRecipients={careRecipients}
+            />
+            <TaskTimerWidget
+              // Remounts when the server's open timer changes (e.g. started
+              // from the Time tracking page's bar), so both stay in sync.
+              key={`${openTimer?.id ?? "idle"}:${openTimer?.description ?? ""}`}
+              initialTaskId={openTimer?.taskId ?? null}
+              initialTaskLabel={openTimer?.task?.label ?? null}
+              initialStartedAt={openTimer ? openTimer.startedAt.toISOString() : null}
+              initialDescription={openTimer?.description ?? null}
+              tasks={myTasks}
+              recentTaskIds={recentTimerTasks.map((t) => t.id)}
             />
             <Button
               variant="ghost"

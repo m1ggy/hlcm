@@ -341,6 +341,11 @@ const createManualInvoiceSchema = z.object({
   // then marked billed in the same transaction as the invoice itself).
   careRecipientId: z.string().optional(),
   timeEntryIds: z.array(z.string()).optional(),
+  // The Task-time-tracker equivalent of timeEntryIds above — case-work
+  // hours (see TaskTimeEntry, src/lib/actions/task-time-entries.ts) billed
+  // through this invoice's own applicationId, not a Care Recipient. See
+  // UnbilledTaskTimeSection.
+  taskTimeEntryIds: z.array(z.string()).optional(),
 });
 
 // The main way to bill a client outside Stripe entirely — no draft, no
@@ -384,6 +389,19 @@ export async function createManualInvoice(input: z.infer<typeof createManualInvo
     }
   }
 
+  // Same race-safety as timeEntryIds above, scoped through the
+  // Application's own Tasks instead of a CareRecipient — see
+  // listUnbilledTaskTime in src/lib/actions/task-time-entries.ts.
+  if (parsed.taskTimeEntryIds?.length) {
+    if (!parsed.applicationId) throw new Error("Tracked time can only be billed alongside a case");
+    const billableCount = await prisma.taskTimeEntry.count({
+      where: { id: { in: parsed.taskTimeEntryIds }, task: { applicationId: parsed.applicationId }, billedInvoiceId: null },
+    });
+    if (billableCount !== parsed.taskTimeEntryIds.length) {
+      throw new Error("One or more of those time entries is no longer available to bill — someone else may have just billed it");
+    }
+  }
+
   const invoice = await prisma
     .$transaction(async (tx) => {
       const created = await tx.invoice.create({
@@ -411,6 +429,13 @@ export async function createManualInvoice(input: z.infer<typeof createManualInvo
       if (parsed.timeEntryIds?.length) {
         await tx.timeEntry.updateMany({
           where: { id: { in: parsed.timeEntryIds } },
+          data: { billedInvoiceId: created.id },
+        });
+      }
+
+      if (parsed.taskTimeEntryIds?.length) {
+        await tx.taskTimeEntry.updateMany({
+          where: { id: { in: parsed.taskTimeEntryIds } },
           data: { billedInvoiceId: created.id },
         });
       }

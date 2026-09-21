@@ -191,6 +191,7 @@ model User {
   notesAuthored                 Note[]                    @relation("NoteAuthor")
   timeEntries                   TimeEntry[]
   breakEntries                  BreakEntry[]
+  taskTimeEntries               TaskTimeEntry[]
   wiseRecipient                 WiseRecipient?
   wisePayoutsReceived           WiseTransaction[]         @relation("WiseTransactionPayee")
   wisePayoutsInitiated          WiseTransaction[]         @relation("WiseTransactionInitiatedBy")
@@ -1112,6 +1113,12 @@ model Task {
   recurrenceRule String?
   archived       Boolean   @default(false)
 
+  // Budget line for the Everhour-style time tracker (TaskTimeEntry below) —
+  // null means no budget set, the weekly grid/task detail just show tracked
+  // hours with no comparison bar. Purely a display/alert threshold, nothing
+  // blocks logging time past it.
+  estimatedHours Float?
+
   assignees TaskAssignee[]
   reviewers TaskReviewer[]
 
@@ -1124,10 +1131,56 @@ model Task {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  notes Note[]
-  files FileAsset[]
+  notes           Note[]
+  files           FileAsset[]
+  taskTimeEntries TaskTimeEntry[]
 
   @@map("tasks")
+}
+
+enum TaskTimeEntrySource {
+  TIMER
+  MANUAL
+}
+
+// Everhour-style work time tracking, layered on top of (not replacing) the
+// attendance clock above (TimeEntry/BreakEntry) — that's one shift per user
+// for payroll; this is time logged against a specific Task, for case-level
+// reporting and client billing. taskId null is the "Internal/no task"
+// bucket for work that isn't tied to any case.
+model TaskTimeEntry {
+  id     String @id @default(cuid())
+  user   User   @relation(fields: [userId], references: [id])
+  userId String
+
+  task   Task?   @relation(fields: [taskId], references: [id])
+  taskId String?
+
+  startedAt   DateTime
+  // Null = still running — the one open timer for this user (startTimer in
+  // src/lib/actions/task-time-entries.ts closes any other open entry of
+  // theirs before starting a new one). Manual entries always have both set.
+  endedAt     DateTime?
+  description String?
+  // Whether this time should ever be eligible for "bill tracked time" on an
+  // invoice — off for e.g. internal/admin work that shouldn't reach a
+  // client bill. Doesn't affect payroll (User.hourlyRate is used either way
+  // for the $ shown in reports).
+  billable    Boolean             @default(true)
+  source      TaskTimeEntrySource @default(MANUAL)
+
+  // Same shape/reasoning as TimeEntry.billedInvoiceId — set once rolled
+  // into an invoice line item; SetNull so deleting that invoice un-bills
+  // the entry instead of losing it.
+  billedInvoice   Invoice? @relation(fields: [billedInvoiceId], references: [id], onDelete: SetNull)
+  billedInvoiceId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, startedAt])
+  @@index([taskId])
+  @@map("task_time_entries")
 }
 
 model TaskAssignee {
@@ -1445,12 +1498,14 @@ model Invoice {
   careRecipient   CareRecipient? @relation(fields: [careRecipientId], references: [id], onDelete: SetNull)
   careRecipientId String?
 
-  lineItems         InvoiceLineItem[]
-  payments          Payment[]
-  receipts          Receipt[]
-  attachments       InvoiceAttachment[]
+  lineItems             InvoiceLineItem[]
+  payments              Payment[]
+  receipts              Receipt[]
+  attachments           InvoiceAttachment[]
   // TimeEntry rows billed on this invoice — see TimeEntry.billedInvoiceId.
-  billedTimeEntries TimeEntry[]
+  billedTimeEntries     TimeEntry[]
+  // TaskTimeEntry rows billed on this invoice — see TaskTimeEntry.billedInvoiceId.
+  billedTaskTimeEntries TaskTimeEntry[]
 
   @@index([clientId])
   @@map("invoices")

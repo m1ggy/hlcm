@@ -17,9 +17,13 @@ import { MultiUserSelect } from "@/components/ui/multi-user-select";
 import { CommentThread } from "@/components/comment-thread";
 import { AuditLogPanel } from "@/components/applications/audit-log-panel";
 import { TaskFilePool } from "@/components/tasks/task-file-pool";
+import { AddTaskTimeDialog } from "@/components/time-clock/add-task-time-dialog";
 import { updateTask, setTaskReviewers, getTaskAuditLog } from "@/lib/actions/tasks";
 import { listTaskNotes, addTaskNote } from "@/lib/actions/notes";
 import { listTaskFiles } from "@/lib/actions/files";
+import { getTaskTimeSummary } from "@/lib/actions/task-time-entries";
+import { budgetSeverity } from "@/lib/task-time-entries";
+import { formatDuration } from "@/lib/time-entries";
 import { TaskStatusValue } from "@/lib/task-status";
 import { TaskStatusSelect } from "./task-status-select";
 import { Option } from "./task-types";
@@ -89,6 +93,8 @@ export function TaskDetailDialog({
   const [auditLoaded, setAuditLoaded] = useState(false);
   const [files, setFiles] = useState<FileRow[]>([]);
   const [filesLoaded, setFilesLoaded] = useState(false);
+  const [timeSummary, setTimeSummary] = useState<{ hours: number; estimatedHours: number | null } | null>(null);
+  const [timeLoaded, setTimeLoaded] = useState(false);
 
   useEffect(() => {
     if (!open || notesLoaded) return;
@@ -114,6 +120,18 @@ export function TaskDetailDialog({
     });
   }, [open, filesLoaded, taskId]);
 
+  function refreshTimeSummary() {
+    getTaskTimeSummary(taskId).then(setTimeSummary);
+  }
+
+  useEffect(() => {
+    if (!open || timeLoaded) return;
+    getTaskTimeSummary(taskId).then((data) => {
+      setTimeSummary(data);
+      setTimeLoaded(true);
+    });
+  }, [open, timeLoaded, taskId]);
+
   function save(overrides: Partial<{ label: string; description: string; status: string; assignedUserIds: string[]; dueDate: string; blockedReason: string }>) {
     const formData = new FormData();
     formData.set("label", overrides.label ?? localLabel);
@@ -128,6 +146,19 @@ export function TaskDetailDialog({
         router.refresh();
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to update task");
+      }
+    });
+  }
+
+  function handleEstimatedHoursChange(value: string) {
+    const formData = new FormData();
+    formData.set("estimatedHours", value);
+    startTransition(async () => {
+      try {
+        await updateTask(taskId, formData);
+        refreshTimeSummary();
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Failed to update budget");
       }
     });
   }
@@ -274,6 +305,50 @@ export function TaskDetailDialog({
               />
             </div>
           )}
+
+          <div className="border-t pt-4">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h3 className="text-sm font-medium">Time tracked</h3>
+              <AddTaskTimeDialog
+                tasks={[]}
+                fixedTaskId={taskId}
+                accountTimezone={null}
+                triggerLabel="Log time"
+                onAdded={refreshTimeSummary}
+              />
+            </div>
+            {timeSummary && (() => {
+              const severity = budgetSeverity(timeSummary.hours, timeSummary.estimatedHours);
+              const severityClass = severity === "critical" ? "bg-red-500" : severity === "warning" ? "bg-amber-500" : "bg-emerald-500";
+              return (
+              <div className="space-y-1.5">
+                <p className="text-sm">
+                  {formatDuration(timeSummary.hours)}
+                  {timeSummary.estimatedHours != null && ` / ${formatDuration(timeSummary.estimatedHours)} estimated`}
+                </p>
+                {timeSummary.estimatedHours != null && (
+                  <div className="h-1.5 w-full max-w-56 overflow-hidden rounded-full bg-muted">
+                    <div
+                      className={`h-full ${severityClass}`}
+                      style={{ width: `${Math.min(100, (timeSummary.hours / timeSummary.estimatedHours) * 100)}%` }}
+                    />
+                  </div>
+                )}
+                {!isCaregiver && (
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    placeholder="Budget hours"
+                    defaultValue={timeSummary.estimatedHours ?? ""}
+                    onBlur={(e) => handleEstimatedHoursChange(e.target.value)}
+                    className="h-7 w-32 text-xs"
+                  />
+                )}
+              </div>
+              );
+            })()}
+          </div>
 
           <div className="border-t pt-4">
             <h3 className="mb-3 text-sm font-medium">Files</h3>
