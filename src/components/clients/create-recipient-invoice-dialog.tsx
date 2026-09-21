@@ -191,7 +191,7 @@ export function CreateRecipientInvoiceDialog({
 
           <div className="space-y-1">
             <Label>Other line items</Label>
-            <InvoiceLineItemsEditor lineItems={lineItems} onChange={setLineItems} />
+            <InvoiceLineItemsEditor lineItems={lineItems} onChange={setLineItems} rateLabel="Hourly rate" />
           </div>
 
           <div className="space-y-1">
