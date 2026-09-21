@@ -6,8 +6,15 @@ import { requireSession, requireRole, assertApplicationAccess, ForbiddenError, A
 import { recordAudit } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
 import { saveUploadedFile, deleteStoredFile, saveFileVersion, revertToGeneration } from "@/lib/storage";
+import { UserFacingError } from "@/lib/user-facing-error";
+import { toActionResult } from "@/lib/action-result";
+import { MAX_FILE_BYTES, fileTooLargeMessage } from "@/lib/file-limits";
 
-const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20MB — keep well under bodySizeLimit's 25MB
+// The upload/delete/version actions below are exported as thin
+// toActionResult wrappers around a private *Impl: production Next.js redacts
+// the message of anything a Server Action throws, so "File is larger than
+// 200MB" would reach the toast as a generic server-error string. Returning
+// `{ ok: false, error }` instead keeps it intact — see UserFacingError.
 
 // Same CAREGIVER carve-out as assertCanEditTask/assertCanCommentOnTask
 // (src/lib/actions/tasks.ts / notes.ts) — never routes through
@@ -71,7 +78,7 @@ function assertNotModifiable(
   action: "have new versions" | "be deleted" = "have new versions"
 ) {
   if (asset.signatureEvents.length > 0 || asset.envelopeAsCompleted) {
-    throw new Error(`This file has been signed and can't ${action}`);
+    throw new UserFacingError(`This file has been signed and can't ${action}`);
   }
 }
 
@@ -80,7 +87,7 @@ function assertNotModifiable(
 // the envelope's page/x/y placement was defined against these exact bytes.
 function assertNotEnvelopePending(asset: { envelopesAsSource: { id: string }[] }) {
   if (asset.envelopesAsSource.length > 0) {
-    throw new Error("This file is out for signature and can't be changed until that's resolved");
+    throw new UserFacingError("This file is out for signature and can't be changed until that's resolved");
   }
 }
 
@@ -114,15 +121,19 @@ export async function listFiles(applicationId: string) {
 }
 
 export async function uploadFile(applicationId: string, formData: FormData) {
+  return toActionResult(() => uploadFileImpl(applicationId, formData));
+}
+
+async function uploadFileImpl(applicationId: string, formData: FormData) {
   const session = await requireSession();
   await assertApplicationAccess(session, applicationId, "edit");
 
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) {
-    throw new Error("Choose a file to upload");
+    throw new UserFacingError("Choose a file to upload");
   }
   if (file.size > MAX_FILE_BYTES) {
-    throw new Error("File is larger than 20MB");
+    throw new UserFacingError(fileTooLargeMessage());
   }
 
   const { storageKey, sizeBytes, generation } = await saveUploadedFile(file);
@@ -156,6 +167,10 @@ export async function uploadFile(applicationId: string, formData: FormData) {
 }
 
 export async function deleteFile(fileId: string, applicationId: string) {
+  return toActionResult(() => deleteFileImpl(fileId, applicationId));
+}
+
+async function deleteFileImpl(fileId: string, applicationId: string) {
   const session = await requireSession();
   await assertApplicationAccess(session, applicationId, "edit");
 
@@ -215,6 +230,10 @@ export async function listTaskFiles(taskId: string) {
 }
 
 export async function uploadTaskFile(taskId: string, formData: FormData) {
+  return toActionResult(() => uploadTaskFileImpl(taskId, formData));
+}
+
+async function uploadTaskFileImpl(taskId: string, formData: FormData) {
   const session = await requireSession();
   const task = await prisma.task.findUniqueOrThrow({
     where: { id: taskId },
@@ -224,10 +243,10 @@ export async function uploadTaskFile(taskId: string, formData: FormData) {
 
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) {
-    throw new Error("Choose a file to upload");
+    throw new UserFacingError("Choose a file to upload");
   }
   if (file.size > MAX_FILE_BYTES) {
-    throw new Error("File is larger than 20MB");
+    throw new UserFacingError(fileTooLargeMessage());
   }
 
   const { storageKey, sizeBytes, generation } = await saveUploadedFile(file);
@@ -263,6 +282,10 @@ export async function uploadTaskFile(taskId: string, formData: FormData) {
 }
 
 export async function deleteTaskFile(fileId: string, taskId: string) {
+  return toActionResult(() => deleteTaskFileImpl(fileId, taskId));
+}
+
+async function deleteTaskFileImpl(fileId: string, taskId: string) {
   const session = await requireSession();
   const task = await prisma.task.findUniqueOrThrow({
     where: { id: taskId },
@@ -328,14 +351,18 @@ export async function listClientFiles(clientId: string) {
 }
 
 export async function uploadClientFile(clientId: string, formData: FormData) {
+  return toActionResult(() => uploadClientFileImpl(clientId, formData));
+}
+
+async function uploadClientFileImpl(clientId: string, formData: FormData) {
   const session = await requireRole(MANAGE_ROLES);
 
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) {
-    throw new Error("Choose a file to upload");
+    throw new UserFacingError("Choose a file to upload");
   }
   if (file.size > MAX_FILE_BYTES) {
-    throw new Error("File is larger than 20MB");
+    throw new UserFacingError(fileTooLargeMessage());
   }
 
   const { storageKey, sizeBytes, generation } = await saveUploadedFile(file);
@@ -372,6 +399,10 @@ export async function uploadClientFile(clientId: string, formData: FormData) {
 }
 
 export async function deleteClientFile(fileId: string, clientId: string) {
+  return toActionResult(() => deleteClientFileImpl(fileId, clientId));
+}
+
+async function deleteClientFileImpl(fileId: string, clientId: string) {
   const session = await requireRole(MANAGE_ROLES);
 
   const asset = await prisma.fileAsset.findUniqueOrThrow({
@@ -422,6 +453,10 @@ export async function listFileVersions(fileId: string) {
 }
 
 export async function uploadNewFileVersion(fileId: string, formData: FormData) {
+  return toActionResult(() => uploadNewFileVersionImpl(fileId, formData));
+}
+
+async function uploadNewFileVersionImpl(fileId: string, formData: FormData) {
   const session = await requireSession();
   const asset = await prisma.fileAsset.findUniqueOrThrow({
     where: { id: fileId },
@@ -438,10 +473,10 @@ export async function uploadNewFileVersion(fileId: string, formData: FormData) {
 
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) {
-    throw new Error("Choose a file to upload");
+    throw new UserFacingError("Choose a file to upload");
   }
   if (file.size > MAX_FILE_BYTES) {
-    throw new Error("File is larger than 20MB");
+    throw new UserFacingError(fileTooLargeMessage());
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
@@ -486,6 +521,10 @@ export async function uploadNewFileVersion(fileId: string, formData: FormData) {
 }
 
 export async function revertFileVersion(fileId: string, versionId: string) {
+  return toActionResult(() => revertFileVersionImpl(fileId, versionId));
+}
+
+async function revertFileVersionImpl(fileId: string, versionId: string) {
   const session = await requireSession();
   const asset = await prisma.fileAsset.findUniqueOrThrow({
     where: { id: fileId },

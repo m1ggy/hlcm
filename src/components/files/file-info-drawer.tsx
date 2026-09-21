@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { listFileVersions, revertFileVersion, uploadNewFileVersion } from "@/lib/actions/files";
+import { unexpectedErrorMessage } from "@/lib/action-result";
+import { MAX_FILE_BYTES, fileTooLargeMessage } from "@/lib/file-limits";
 import { formatBytes } from "./format-bytes";
 import type { FileRow } from "./types";
 
@@ -68,17 +70,25 @@ export function FileInfoDrawer({
       toast.error("Choose a file to upload");
       return;
     }
+    if (uploaded.size > MAX_FILE_BYTES) {
+      toast.error(fileTooLargeMessage(uploaded.name));
+      return;
+    }
     setIsUploading(true);
     startTransition(async () => {
       try {
-        await uploadNewFileVersion(file.id, formData);
+        const result = await uploadNewFileVersion(file.id, formData);
+        if (!result.ok) {
+          toast.error(result.error);
+          return;
+        }
         const refreshed = await listFileVersions(file.id);
         setVersionsState({ fileId: file.id, rows: refreshed });
         formRef.current?.reset();
         onChanged();
         toast.success("New version uploaded");
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Upload failed");
+        toast.error(unexpectedErrorMessage(error, "Upload failed. Please try again."));
       } finally {
         setIsUploading(false);
       }
@@ -90,13 +100,17 @@ export function FileInfoDrawer({
     setRevertingId(versionId);
     startTransition(async () => {
       try {
-        await revertFileVersion(file.id, versionId);
+        const result = await revertFileVersion(file.id, versionId);
+        if (!result.ok) {
+          toast.error(result.error);
+          return;
+        }
         const refreshed = await listFileVersions(file.id);
         setVersionsState({ fileId: file.id, rows: refreshed });
         onChanged();
         toast.success("Reverted — added as the newest version");
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Revert failed");
+        toast.error(unexpectedErrorMessage(error, "Revert failed. Please try again."));
       } finally {
         setRevertingId(null);
       }

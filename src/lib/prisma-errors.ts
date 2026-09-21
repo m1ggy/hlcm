@@ -1,9 +1,12 @@
+import { UserFacingError } from "@/lib/user-facing-error";
+
 // Turns a raw Prisma write failure into a message someone can actually act
-// on, instead of a stack trace only visible in the server logs. Every
-// server action's client-side catch already does
-// `error instanceof Error ? error.message : "Failed to ..."` — so throwing
-// a plain Error with a clear message here is all it takes for that message
-// to reach the toast. Duck-typed on `.code` (not importing Prisma's error
+// on, instead of a stack trace only visible in the server logs. It throws a
+// UserFacingError; an action wrapped in toActionResult
+// (src/lib/action-result.ts) returns that message to the client, where it
+// reaches the toast. (An action that just lets it propagate still gets the
+// message redacted in production builds — see UserFacingError.)
+// Duck-typed on `.code` (not importing Prisma's error
 // class) — same convention friendlyInvoiceNumberError started in
 // src/lib/actions/invoices.ts, generalized here so every action can use it.
 //
@@ -75,15 +78,15 @@ export function friendlyPrismaError(
     if (known.code === "P2002") {
       const fields = duplicateFields(known);
       const fallback = fields.length > 0 ? `That ${fields.join(" + ")} is already in use.` : "That value is already in use.";
-      throw new Error(options?.duplicateMessages?.[fields.join(",")] ?? fallback);
+      throw new UserFacingError(options?.duplicateMessages?.[fields.join(",")] ?? fallback);
     }
     if (known.code === "P2025") {
-      throw new Error(
+      throw new UserFacingError(
         options?.notFoundMessage ?? "That record no longer exists — someone may have already deleted it. Refresh and try again."
       );
     }
     if (known.code === "P2003") {
-      throw new Error(options?.referencedMessage ?? "Can't complete this — something else still depends on it.");
+      throw new UserFacingError(options?.referencedMessage ?? "Can't complete this — something else still depends on it.");
     }
   }
   throw error;

@@ -7,6 +7,8 @@ import { Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { uploadClientFile, deleteClientFile } from "@/lib/actions/files";
+import { unexpectedErrorMessage } from "@/lib/action-result";
+import { MAX_FILE_BYTES, fileTooLargeMessage } from "@/lib/file-limits";
 import { FileCard } from "@/components/files/file-card";
 import { FileInfoDrawer } from "@/components/files/file-info-drawer";
 import type { FileRow } from "@/components/files/types";
@@ -35,14 +37,22 @@ export function ClientFilePool({ clientId, files, canEdit }: { clientId: string;
       toast.error("Choose a file to upload");
       return;
     }
+    if (file.size > MAX_FILE_BYTES) {
+      toast.error(fileTooLargeMessage(file.name));
+      return;
+    }
     setIsUploading(true);
     startTransition(async () => {
       try {
-        await uploadClientFile(clientId, formData);
+        const result = await uploadClientFile(clientId, formData);
+        if (!result.ok) {
+          toast.error(result.error);
+          return;
+        }
         formRef.current?.reset();
         router.refresh();
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Upload failed");
+        toast.error(unexpectedErrorMessage(error, "Upload failed. Please try again."));
       } finally {
         setIsUploading(false);
       }
@@ -53,11 +63,15 @@ export function ClientFilePool({ clientId, files, canEdit }: { clientId: string;
     setDeletingId(fileId);
     startTransition(async () => {
       try {
-        await deleteClientFile(fileId, clientId);
+        const result = await deleteClientFile(fileId, clientId);
+        if (!result.ok) {
+          toast.error(result.error);
+          return;
+        }
         router.refresh();
         setDrawerOpen(false);
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Delete failed");
+        toast.error(unexpectedErrorMessage(error, "Delete failed. Please try again."));
       } finally {
         setDeletingId(null);
       }

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { UserFacingError } from "@/lib/user-facing-error";
 
 export const ROLES = ["DEVELOPER", "OWNER", "ADMIN", "ACCOUNTANT", "MANAGER", "STAFF", "CLIENT", "CAREGIVER"] as const;
 export type AppRole = (typeof ROLES)[number];
@@ -36,14 +37,14 @@ export function canAccessInvoices(role: string | null | undefined): boolean {
   return role === "ACCOUNTANT" || isSuperuser(role);
 }
 
-export class UnauthorizedError extends Error {
+export class UnauthorizedError extends UserFacingError {
   constructor(message = "Not authenticated") {
     super(message);
     this.name = "UnauthorizedError";
   }
 }
 
-export class ForbiddenError extends Error {
+export class ForbiddenError extends UserFacingError {
   constructor(message = "Not permitted") {
     super(message);
     this.name = "ForbiddenError";

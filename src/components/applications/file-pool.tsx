@@ -6,6 +6,8 @@ import { toast } from "sonner";
 import { Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { uploadFile, deleteFile } from "@/lib/actions/files";
+import { unexpectedErrorMessage } from "@/lib/action-result";
+import { MAX_FILE_BYTES, fileTooLargeMessage } from "@/lib/file-limits";
 import { SendEnvelopeDialog } from "@/components/applications/send-envelope-dialog";
 import { EnvelopeStatusList, type EnvelopeRow } from "@/components/applications/envelope-status-list";
 import { FileCard } from "@/components/files/file-card";
@@ -39,14 +41,22 @@ export function FilePool({
       toast.error("Choose a file to upload");
       return;
     }
+    if (file.size > MAX_FILE_BYTES) {
+      toast.error(fileTooLargeMessage(file.name));
+      return;
+    }
     setIsUploading(true);
     startTransition(async () => {
       try {
-        await uploadFile(applicationId, formData);
+        const result = await uploadFile(applicationId, formData);
+        if (!result.ok) {
+          toast.error(result.error);
+          return;
+        }
         formRef.current?.reset();
         router.refresh();
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Upload failed");
+        toast.error(unexpectedErrorMessage(error, "Upload failed. Please try again."));
       } finally {
         setIsUploading(false);
       }
@@ -57,11 +67,15 @@ export function FilePool({
     setDeletingId(fileId);
     startTransition(async () => {
       try {
-        await deleteFile(fileId, applicationId);
+        const result = await deleteFile(fileId, applicationId);
+        if (!result.ok) {
+          toast.error(result.error);
+          return;
+        }
         router.refresh();
         setDrawerOpen(false);
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Delete failed");
+        toast.error(unexpectedErrorMessage(error, "Delete failed. Please try again."));
       } finally {
         setDeletingId(null);
       }

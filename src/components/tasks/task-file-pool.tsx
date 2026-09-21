@@ -5,6 +5,8 @@ import { toast } from "sonner";
 import { Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { uploadTaskFile, deleteTaskFile, listTaskFiles } from "@/lib/actions/files";
+import { unexpectedErrorMessage } from "@/lib/action-result";
+import { MAX_FILE_BYTES, fileTooLargeMessage } from "@/lib/file-limits";
 import { FileCard } from "@/components/files/file-card";
 import { FileInfoDrawer } from "@/components/files/file-info-drawer";
 import type { FileRow } from "@/components/files/types";
@@ -33,14 +35,22 @@ export function TaskFilePool({
       toast.error("Choose a file to upload");
       return;
     }
+    if (file.size > MAX_FILE_BYTES) {
+      toast.error(fileTooLargeMessage(file.name));
+      return;
+    }
     setIsUploading(true);
     startTransition(async () => {
       try {
-        const asset = await uploadTaskFile(taskId, formData);
-        onFilesChange([asset, ...files]);
+        const result = await uploadTaskFile(taskId, formData);
+        if (!result.ok) {
+          toast.error(result.error);
+          return;
+        }
+        onFilesChange([result.data, ...files]);
         formRef.current?.reset();
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Upload failed");
+        toast.error(unexpectedErrorMessage(error, "Upload failed. Please try again."));
       } finally {
         setIsUploading(false);
       }
@@ -51,11 +61,15 @@ export function TaskFilePool({
     setDeletingId(fileId);
     startTransition(async () => {
       try {
-        await deleteTaskFile(fileId, taskId);
+        const result = await deleteTaskFile(fileId, taskId);
+        if (!result.ok) {
+          toast.error(result.error);
+          return;
+        }
         onFilesChange(files.filter((f) => f.id !== fileId));
         setDrawerOpen(false);
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Delete failed");
+        toast.error(unexpectedErrorMessage(error, "Delete failed. Please try again."));
       } finally {
         setDeletingId(null);
       }
