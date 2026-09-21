@@ -254,6 +254,13 @@ const createManualInvoiceSchema = z.object({
   notes: z.string().optional(),
   internalTag: z.string().optional(),
   lineItems: z.array(lineItemSchema).min(1, "At least one line item is required"),
+  // Case-work hours tracked on the Application's own Tasks (see
+  // TaskTimeEntry, src/lib/actions/task-time-entries.ts), billed through
+  // this invoice's applicationId — see UnbilledTaskTimeSection. Orthogonal
+  // to Care Recipient billing (that's createCareRecipientInvoice's own
+  // flow, in src/lib/actions/care-recipient-invoices.ts), since tracked
+  // task time bills a case, not a recipient.
+  taskTimeEntryIds: z.array(z.string()).optional(),
 });
 
 // The main way to bill a licensing Client outside Stripe entirely — no
@@ -274,26 +281,51 @@ export async function createManualInvoice(input: z.infer<typeof createManualInvo
   // submitted without picking one.
   const profileId = parsed.invoiceProfileId || (await getDefaultInvoiceProfile())?.id;
 
-  const invoice = await prisma.invoice
-    .create({
-      data: {
-        clientId: parsed.clientId,
-        applicationId: parsed.applicationId || undefined,
-        invoiceProfileId: profileId,
-        invoiceNumber: parsed.invoiceNumber || undefined,
-        issueDate: parsed.issueDate ? new Date(parsed.issueDate) : undefined,
-        dueDate: parsed.dueDate ? new Date(parsed.dueDate) : undefined,
-        notes: parsed.notes,
-        internalTag: parsed.internalTag,
-        status: "SENT",
-        total,
-        taxAmount: 0,
-        createdById: session.user.id,
-        lineItems: {
-          create: parsed.lineItems.map((li, index) => ({ ...li, sortOrder: index })),
+  // Race-safety against double-billing the same tracked time (e.g. two
+  // staff opening the same case's invoice dialog at once), not just a
+  // client-side check — scoped through the Application's own Tasks. See
+  // listUnbilledTaskTime in src/lib/actions/task-time-entries.ts.
+  if (parsed.taskTimeEntryIds?.length) {
+    if (!parsed.applicationId) throw new Error("Tracked time can only be billed alongside a case");
+    const billableCount = await prisma.taskTimeEntry.count({
+      where: { id: { in: parsed.taskTimeEntryIds }, task: { applicationId: parsed.applicationId }, billedInvoiceId: null },
+    });
+    if (billableCount !== parsed.taskTimeEntryIds.length) {
+      throw new Error("One or more of those time entries is no longer available to bill — someone else may have just billed it");
+    }
+  }
+
+  const invoice = await prisma
+    .$transaction(async (tx) => {
+      const created = await tx.invoice.create({
+        data: {
+          clientId: parsed.clientId,
+          applicationId: parsed.applicationId || undefined,
+          invoiceProfileId: profileId,
+          invoiceNumber: parsed.invoiceNumber || undefined,
+          issueDate: parsed.issueDate ? new Date(parsed.issueDate) : undefined,
+          dueDate: parsed.dueDate ? new Date(parsed.dueDate) : undefined,
+          notes: parsed.notes,
+          internalTag: parsed.internalTag,
+          status: "SENT",
+          total,
+          taxAmount: 0,
+          createdById: session.user.id,
+          lineItems: {
+            create: parsed.lineItems.map((li, index) => ({ ...li, sortOrder: index })),
+          },
         },
-      },
-      include: invoiceInclude,
+        include: invoiceInclude,
+      });
+
+      if (parsed.taskTimeEntryIds?.length) {
+        await tx.taskTimeEntry.updateMany({
+          where: { id: { in: parsed.taskTimeEntryIds } },
+          data: { billedInvoiceId: created.id },
+        });
+      }
+
+      return created;
     })
     .catch(friendlyInvoiceNumberError);
 

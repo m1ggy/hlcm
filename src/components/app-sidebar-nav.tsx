@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FolderKanban, Users, ClipboardList, UserCog, CheckSquare, Clock, Receipt, Settings, Inbox, MapPin, CalendarCheck } from "lucide-react";
+import { FolderKanban, Users, ClipboardList, UserCog, CheckSquare, Clock, Timer, Receipt, Settings, Inbox, MapPin, CalendarCheck } from "lucide-react";
 import {
   SidebarMenu,
   SidebarMenuButton,
@@ -17,6 +17,7 @@ const LINKS = [
   { href: "/form-submissions", label: "Form Submissions", icon: Inbox, tour: "nav-form-submissions" },
   { href: "/leads", label: "Leads", icon: CalendarCheck, tour: "nav-leads" },
   { href: "/time", label: "Time", icon: Clock, tour: "nav-time" },
+  { href: "/time-tracking", label: "Time Tracking", icon: Timer, tour: "nav-time-tracking" },
 ];
 
 // Caregiver-restricted set — no Projects/Applications/Time/Invoices/Admin,
