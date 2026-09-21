@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { HandCoins } from "lucide-react";
-import { createManualInvoice } from "@/lib/actions/invoices";
+import { createCareRecipientInvoice } from "@/lib/actions/care-recipient-invoices";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,11 +18,12 @@ import {
 } from "@/components/ui/dialog";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { InvoiceLineItemsEditor, emptyLineItem, type LineItem } from "@/components/invoices/invoice-line-items-editor";
-import { UnbilledVisitsSection } from "@/components/invoices/unbilled-visits-section";
+import { UnbilledVisitsSection, type RecipientLineItem } from "@/components/invoices/unbilled-visits-section";
+import { DayRateSection } from "@/components/invoices/day-rate-section";
 
 type ProfileOption = { id: string; name: string };
 type CaregiverOption = { id: string; name: string };
-type VisitBilling = { lineItems: LineItem[]; timeEntryIds: string[] };
+type VisitBilling = { lineItems: RecipientLineItem[]; timeEntryIds: string[] };
 
 const EMPTY_VISIT_BILLING: VisitBilling = { lineItems: [], timeEntryIds: [] };
 
@@ -41,6 +42,7 @@ export function CreateRecipientInvoiceDialog({
   careRecipientId,
   careRecipientName,
   hourlyRate,
+  dailyRate,
   profiles,
   caregivers,
   isAdmin,
@@ -49,6 +51,7 @@ export function CreateRecipientInvoiceDialog({
   careRecipientId: string;
   careRecipientName: string;
   hourlyRate: number | null;
+  dailyRate: number | null;
   profiles: ProfileOption[];
   caregivers: CaregiverOption[];
   isAdmin: boolean;
@@ -57,6 +60,7 @@ export function CreateRecipientInvoiceDialog({
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [visitBilling, setVisitBilling] = useState<VisitBilling>(EMPTY_VISIT_BILLING);
+  const [dayRateLineItems, setDayRateLineItems] = useState<RecipientLineItem[]>([]);
 
   const [profileId, setProfileId] = useState(profiles[0]?.id ?? "");
   const [invoiceNumber, setInvoiceNumber] = useState("");
@@ -68,6 +72,7 @@ export function CreateRecipientInvoiceDialog({
 
   function reset() {
     setVisitBilling(EMPTY_VISIT_BILLING);
+    setDayRateLineItems([]);
     setProfileId(profiles[0]?.id ?? "");
     setInvoiceNumber("");
     setIssueDate(todayInputValue());
@@ -78,20 +83,23 @@ export function CreateRecipientInvoiceDialog({
   }
 
   const visitsSubtotal = visitBilling.lineItems.reduce((sum, li) => sum + li.quantity * li.unitPrice, 0);
+  const dayRateSubtotal = dayRateLineItems.reduce((sum, li) => sum + li.quantity * li.unitPrice, 0);
   const manualSubtotal = lineItems.reduce((sum, li) => sum + li.quantity * li.unitPrice, 0);
-  const subtotal = visitsSubtotal + manualSubtotal;
+  const subtotal = visitsSubtotal + dayRateSubtotal + manualSubtotal;
 
   function handleSubmit() {
-    const manualItems = lineItems.filter((li) => li.description.trim().length > 0);
-    const allItems = [...visitBilling.lineItems, ...manualItems];
+    const manualItems: RecipientLineItem[] = lineItems
+      .filter((li) => li.description.trim().length > 0)
+      .map((li) => ({ ...li, kind: "MANUAL" as const }));
+    const allItems = [...visitBilling.lineItems, ...dayRateLineItems, ...manualItems];
     if (allItems.length === 0) {
-      toast.error("Select a visit or add a line item");
+      toast.error("Select a visit, bill live-in days, or add a line item");
       return;
     }
 
     startTransition(async () => {
       try {
-        await createManualInvoice({
+        await createCareRecipientInvoice({
           clientId,
           careRecipientId,
           timeEntryIds: visitBilling.timeEntryIds.length ? visitBilling.timeEntryIds : undefined,
@@ -146,6 +154,8 @@ export function CreateRecipientInvoiceDialog({
             canLogVisit={isAdmin}
             onVisitsChange={setVisitBilling}
           />
+
+          <DayRateSection key={`${careRecipientId}-daily`} dailyRate={dailyRate} onLineItemsChange={setDayRateLineItems} />
 
           {profiles.length > 1 && (
             <div className="space-y-1">

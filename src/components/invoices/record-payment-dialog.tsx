@@ -17,25 +17,20 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { InvoiceLineItemsEditor, emptyLineItem, type LineItem } from "./invoice-line-items-editor";
-import { UnbilledVisitsSection } from "./unbilled-visits-section";
+import { InvoiceLineItemsEditor, emptyLineItem } from "./invoice-line-items-editor";
 
-// One combobox covers "just a client, no case", "this specific case", and
-// "this specific care recipient" — prefixing the key is simpler than a
-// parallel id/type pair to carry through state, and keeps the three kinds
-// of option unambiguous even though their ids could otherwise collide.
+// One combobox covers "just a client, no case" and "this specific case" —
+// prefixing the key is simpler than a parallel id/type pair to carry
+// through state. Billing a Care Recipient is a separate flow entirely —
+// see CreateRecipientInvoiceDialog, opened from the recipient's own row on
+// the Client page — this dialog is purely the licensing-Client manual
+// invoice flow.
 const CLIENT_PREFIX = "client:";
 const CASE_PREFIX = "case:";
-const RECIPIENT_PREFIX = "recipient:";
 
 type ClientOption = { id: string; name: string };
 type ApplicationOption = { id: string; name: string; clientId: string };
 type ProfileOption = { id: string; name: string };
-type CareRecipientOption = { id: string; name: string; clientId: string; clientName: string; hourlyRate: number | null };
-type CaregiverOption = { id: string; name: string };
-type VisitBilling = { lineItems: LineItem[]; timeEntryIds: string[] };
-
-const EMPTY_VISIT_BILLING: VisitBilling = { lineItems: [], timeEntryIds: [] };
 
 function todayInputValue() {
   const d = new Date();
@@ -50,23 +45,16 @@ function todayInputValue() {
 export function RecordPaymentDialog({
   clients,
   applications,
-  careRecipients,
-  caregivers,
   profiles,
-  isAdmin,
 }: {
   clients: ClientOption[];
   applications: ApplicationOption[];
-  careRecipients: CareRecipientOption[];
-  caregivers: CaregiverOption[];
   profiles: ProfileOption[];
-  isAdmin: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [selection, setSelection] = useState(clients[0] ? `${CLIENT_PREFIX}${clients[0].id}` : "");
-  const [visitBilling, setVisitBilling] = useState<VisitBilling>(EMPTY_VISIT_BILLING);
   // profiles[0] is always the default — see listInvoiceProfiles' ordering
   // (isDefault desc) in src/lib/invoice-profiles.ts.
   const [profileId, setProfileId] = useState(profiles[0]?.id ?? "");
@@ -80,16 +68,8 @@ export function RecordPaymentDialog({
   const selectedCase = selection.startsWith(CASE_PREFIX)
     ? applications.find((a) => a.id === selection.slice(CASE_PREFIX.length))
     : undefined;
-  const selectedRecipient = selection.startsWith(RECIPIENT_PREFIX)
-    ? careRecipients.find((r) => r.id === selection.slice(RECIPIENT_PREFIX.length))
-    : undefined;
-  const clientId = selectedRecipient
-    ? selectedRecipient.clientId
-    : selectedCase
-      ? selectedCase.clientId
-      : selection.slice(CLIENT_PREFIX.length);
+  const clientId = selectedCase ? selectedCase.clientId : selection.slice(CLIENT_PREFIX.length);
   const applicationId = selectedCase?.id;
-  const careRecipientId = selectedRecipient?.id;
 
   const clientNameById = new Map(clients.map((c) => [c.id, c.name]));
   const selectionItems: Record<string, string> = {
@@ -97,18 +77,12 @@ export function RecordPaymentDialog({
     ...Object.fromEntries(
       applications.map((a) => [`${CASE_PREFIX}${a.id}`, `${a.name} — ${clientNameById.get(a.clientId) ?? "Unknown client"}`])
     ),
-    ...Object.fromEntries(
-      careRecipients.map((r) => [`${RECIPIENT_PREFIX}${r.id}`, `${r.name} — ${r.clientName}`])
-    ),
   };
 
-  const visitsSubtotal = visitBilling.lineItems.reduce((sum, li) => sum + li.quantity * li.unitPrice, 0);
-  const manualSubtotal = lineItems.reduce((sum, li) => sum + li.quantity * li.unitPrice, 0);
-  const subtotal = visitsSubtotal + manualSubtotal;
+  const subtotal = lineItems.reduce((sum, li) => sum + li.quantity * li.unitPrice, 0);
 
   function reset() {
     setSelection(clients[0] ? `${CLIENT_PREFIX}${clients[0].id}` : "");
-    setVisitBilling(EMPTY_VISIT_BILLING);
     setProfileId(profiles[0]?.id ?? "");
     setInvoiceNumber("");
     setIssueDate(todayInputValue());
@@ -120,12 +94,11 @@ export function RecordPaymentDialog({
 
   function handleSubmit() {
     if (!clientId) {
-      toast.error("Pick a client, case, or care recipient");
+      toast.error("Pick a client or case");
       return;
     }
     const manualItems = lineItems.filter((li) => li.description.trim().length > 0);
-    const allItems = [...visitBilling.lineItems, ...manualItems];
-    if (allItems.length === 0) {
+    if (manualItems.length === 0) {
       toast.error("Add at least one line item");
       return;
     }
@@ -135,15 +108,13 @@ export function RecordPaymentDialog({
         await createManualInvoice({
           clientId,
           applicationId,
-          careRecipientId,
-          timeEntryIds: visitBilling.timeEntryIds.length ? visitBilling.timeEntryIds : undefined,
           invoiceProfileId: profileId || undefined,
           invoiceNumber: invoiceNumber.trim() || undefined,
           issueDate: issueDate || undefined,
           dueDate: dueDate || undefined,
           notes: notes || undefined,
           internalTag: internalTag || undefined,
-          lineItems: allItems,
+          lineItems: manualItems,
         });
         toast.success("Invoice created");
         setOpen(false);
@@ -171,29 +142,19 @@ export function RecordPaymentDialog({
         <div className="space-y-4">
           <p className="text-xs text-muted-foreground">
             For billing without an online payment link — no draft, no Send step. Created as awaiting payment;
-            record what the client actually pays from the invoice&apos;s own page, whenever it comes in.
+            record what the client actually pays from the invoice&apos;s own page, whenever it comes in. Billing a
+            Care Recipient? Use the &quot;New invoice&quot; button on their own row on the Client page instead.
           </p>
 
           <div className="space-y-1">
-            <Label>Client / case / care recipient</Label>
+            <Label>Client / case</Label>
             <SearchableSelect
               items={selectionItems}
               value={selection || null}
               onValueChange={(v) => setSelection(v ?? selection)}
-              searchPlaceholder="Search clients, cases, or care recipients..."
+              searchPlaceholder="Search clients or cases..."
             />
           </div>
-
-          {selectedRecipient && (
-            <UnbilledVisitsSection
-              key={selectedRecipient.id}
-              careRecipientId={selectedRecipient.id}
-              hourlyRate={selectedRecipient.hourlyRate}
-              caregivers={caregivers}
-              canLogVisit={isAdmin}
-              onVisitsChange={setVisitBilling}
-            />
-          )}
 
           {profiles.length > 1 && (
             <div className="space-y-1">

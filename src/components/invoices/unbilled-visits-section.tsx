@@ -12,6 +12,22 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { type LineItem } from "@/components/invoices/invoice-line-items-editor";
 
+// A Care Recipient invoice's line item, structured beyond the plain
+// description/qty/unit-price shape so generateCareRecipientInvoicePdf can
+// render real Date/Worker/Times/Rate columns instead of parsing them back
+// out of `description` — see the `kind`/visit* fields on InvoiceLineItem
+// in prisma/schema.prisma. `description` is still sent (some UI reads it
+// generically) but the PDF prefers the structured fields when kind isn't
+// MANUAL. Dates are ISO strings, matching how createCareRecipientInvoice's
+// zod schema parses them.
+export type RecipientLineItem = LineItem & {
+  kind: "MANUAL" | "VISIT_HOURLY" | "VISIT_DAILY";
+  visitDate?: string;
+  visitStart?: string;
+  visitEnd?: string;
+  workerName?: string;
+};
+
 type CaregiverOption = { id: string; name: string };
 type UnbilledVisit = {
   id: string;
@@ -34,11 +50,16 @@ function hoursOf(entry: { clockIn: Date; clockOut: Date | null }) {
   return (new Date(entry.clockOut ?? entry.clockIn).getTime() - new Date(entry.clockIn).getTime()) / (1000 * 60 * 60);
 }
 
-function visitLineItemsFor(visits: UnbilledVisit[], hourlyRate: number | null): LineItem[] {
+function visitLineItemsFor(visits: UnbilledVisit[], hourlyRate: number | null): RecipientLineItem[] {
   return visits.map((v) => ({
     description: `${new Date(v.clockIn).toLocaleDateString()} visit — ${v.user.name} (${hoursOf(v).toFixed(2)}h)`,
     quantity: Number(hoursOf(v).toFixed(2)),
     unitPrice: hourlyRate ?? 0,
+    kind: "VISIT_HOURLY",
+    visitDate: new Date(v.clockIn).toISOString(),
+    visitStart: new Date(v.clockIn).toISOString(),
+    visitEnd: new Date(v.clockOut ?? v.clockIn).toISOString(),
+    workerName: v.user.name,
   }));
 }
 
@@ -68,7 +89,7 @@ export function UnbilledVisitsSection({
   hourlyRate: number | null;
   caregivers: CaregiverOption[];
   canLogVisit: boolean;
-  onVisitsChange: (data: { lineItems: LineItem[]; timeEntryIds: string[] }) => void;
+  onVisitsChange: (data: { lineItems: RecipientLineItem[]; timeEntryIds: string[] }) => void;
 }) {
   const [loadingVisits, setLoadingVisits] = useState(true);
   const [visits, setVisits] = useState<UnbilledVisit[] | null>(null);

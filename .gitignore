@@ -44,3 +44,6 @@ next-env.d.ts
 
 # local file pool (dev only — replace with real object storage before prod)
 /storage/uploads
+
+# reference screenshots for invoice format work — contain real PII (SSN, DOB)
+/docs/care recipient invoice format/
