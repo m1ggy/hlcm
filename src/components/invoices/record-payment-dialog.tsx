@@ -17,7 +17,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { InvoiceLineItemsEditor, emptyLineItem } from "./invoice-line-items-editor";
+import { InvoiceLineItemsEditor, emptyLineItem, type LineItem } from "./invoice-line-items-editor";
+import { UnbilledTaskTimeSection } from "./unbilled-task-time-section";
 
 // One combobox covers "just a client, no case" and "this specific case" —
 // prefixing the key is simpler than a parallel id/type pair to carry
@@ -31,6 +32,9 @@ const CASE_PREFIX = "case:";
 type ClientOption = { id: string; name: string };
 type ApplicationOption = { id: string; name: string; clientId: string };
 type ProfileOption = { id: string; name: string };
+type TaskTimeBilling = { lineItems: LineItem[]; taskTimeEntryIds: string[] };
+
+const EMPTY_TASK_TIME_BILLING: TaskTimeBilling = { lineItems: [], taskTimeEntryIds: [] };
 
 function todayInputValue() {
   const d = new Date();
@@ -55,6 +59,7 @@ export function RecordPaymentDialog({
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [selection, setSelection] = useState(clients[0] ? `${CLIENT_PREFIX}${clients[0].id}` : "");
+  const [taskTimeBilling, setTaskTimeBilling] = useState<TaskTimeBilling>(EMPTY_TASK_TIME_BILLING);
   // profiles[0] is always the default — see listInvoiceProfiles' ordering
   // (isDefault desc) in src/lib/invoice-profiles.ts.
   const [profileId, setProfileId] = useState(profiles[0]?.id ?? "");
@@ -79,10 +84,13 @@ export function RecordPaymentDialog({
     ),
   };
 
-  const subtotal = lineItems.reduce((sum, li) => sum + li.quantity * li.unitPrice, 0);
+  const taskTimeSubtotal = taskTimeBilling.lineItems.reduce((sum, li) => sum + li.quantity * li.unitPrice, 0);
+  const manualSubtotal = lineItems.reduce((sum, li) => sum + li.quantity * li.unitPrice, 0);
+  const subtotal = taskTimeSubtotal + manualSubtotal;
 
   function reset() {
     setSelection(clients[0] ? `${CLIENT_PREFIX}${clients[0].id}` : "");
+    setTaskTimeBilling(EMPTY_TASK_TIME_BILLING);
     setProfileId(profiles[0]?.id ?? "");
     setInvoiceNumber("");
     setIssueDate(todayInputValue());
@@ -98,7 +106,8 @@ export function RecordPaymentDialog({
       return;
     }
     const manualItems = lineItems.filter((li) => li.description.trim().length > 0);
-    if (manualItems.length === 0) {
+    const allItems = [...taskTimeBilling.lineItems, ...manualItems];
+    if (allItems.length === 0) {
       toast.error("Add at least one line item");
       return;
     }
@@ -108,13 +117,14 @@ export function RecordPaymentDialog({
         await createManualInvoice({
           clientId,
           applicationId,
+          taskTimeEntryIds: taskTimeBilling.taskTimeEntryIds.length ? taskTimeBilling.taskTimeEntryIds : undefined,
           invoiceProfileId: profileId || undefined,
           invoiceNumber: invoiceNumber.trim() || undefined,
           issueDate: issueDate || undefined,
           dueDate: dueDate || undefined,
           notes: notes || undefined,
           internalTag: internalTag || undefined,
-          lineItems: manualItems,
+          lineItems: allItems,
         });
         toast.success("Invoice created");
         setOpen(false);
@@ -155,6 +165,14 @@ export function RecordPaymentDialog({
               searchPlaceholder="Search clients or cases..."
             />
           </div>
+
+          {selectedCase && (
+            <UnbilledTaskTimeSection
+              key={selectedCase.id}
+              applicationId={selectedCase.id}
+              onSelectionChange={setTaskTimeBilling}
+            />
+          )}
 
           {profiles.length > 1 && (
             <div className="space-y-1">
