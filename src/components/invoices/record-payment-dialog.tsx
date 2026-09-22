@@ -22,9 +22,9 @@ import { InvoiceLineItemsEditor, emptyLineItem } from "./invoice-line-items-edit
 // One combobox covers "just a client, no case" and "this specific case" —
 // prefixing the key is simpler than a parallel id/type pair to carry
 // through state. Billing a Care Recipient is a separate flow entirely —
-// see CreateRecipientInvoiceDialog, opened from the recipient's own row on
-// the Client page — this dialog is purely the licensing-Client manual
-// invoice flow.
+// see CareRecipientInvoiceForm/NewCareRecipientInvoiceDialog, the other
+// option on NewInvoiceMenu — this dialog is purely the licensing-Client
+// manual invoice flow.
 const CLIENT_PREFIX = "client:";
 const CASE_PREFIX = "case:";
 
@@ -46,13 +46,23 @@ export function RecordPaymentDialog({
   clients,
   applications,
   profiles,
+  open: controlledOpen,
+  onOpenChange: setControlledOpen,
 }: {
   clients: ClientOption[];
   applications: ApplicationOption[];
   profiles: ProfileOption[];
+  /** Omit both for a self-contained dialog with its own trigger button
+   * (the default). Pass both to drive it from elsewhere instead — see
+   * NewInvoiceMenu. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const isControlled = controlledOpen !== undefined;
+  const open = isControlled ? controlledOpen : uncontrolledOpen;
+  const setOpen = isControlled ? setControlledOpen! : setUncontrolledOpen;
   const [isPending, startTransition] = useTransition();
   const [selection, setSelection] = useState(clients[0] ? `${CLIENT_PREFIX}${clients[0].id}` : "");
   // profiles[0] is always the default — see listInvoiceProfiles' ordering
@@ -134,7 +144,9 @@ export function RecordPaymentDialog({
         if (!next) reset();
       }}
     >
-      <DialogTrigger render={<Button variant="outline"><HandCoins className="size-3.5" /> New Manual Invoice</Button>} />
+      {!isControlled && (
+        <DialogTrigger render={<Button variant="outline"><HandCoins className="size-3.5" /> New Manual Invoice</Button>} />
+      )}
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>New invoice</DialogTitle>
@@ -143,7 +155,8 @@ export function RecordPaymentDialog({
           <p className="text-xs text-muted-foreground">
             For billing without an online payment link — no draft, no Send step. Created as awaiting payment;
             record what the client actually pays from the invoice&apos;s own page, whenever it comes in. Billing a
-            Care Recipient? Use the &quot;New invoice&quot; button on their own row on the Client page instead.
+            Care Recipient? Pick &quot;Care Recipient&quot; from the New invoice menu instead — it prices by logged
+            visits or a day-rate range rather than a plain description/quantity line.
           </p>
 
           <div className="space-y-1">

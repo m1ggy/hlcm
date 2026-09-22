@@ -254,7 +254,7 @@ function buildStaffSteps(role: string | undefined): TourStep[] {
             element: '[data-tour="new-invoice"]',
             popover: {
               title: "Create an invoice",
-              description: "Pick a client (and optionally a case), add line items, and save as a draft — nothing goes to the client until you hit Send.",
+              description: "Pick Online for a Stripe-hosted \"Pay now\" link, Manual for billing without one, or Care Recipient to bill a specific recipient by their logged visits or a day-rate range.",
               side: "bottom",
             },
           } satisfies TourStep,
