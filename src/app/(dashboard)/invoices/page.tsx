@@ -5,6 +5,7 @@ import { listClients } from "@/lib/actions/clients";
 import { listApplications } from "@/lib/actions/applications";
 import { listCareRecipients, listCaregivers } from "@/lib/actions/care-recipients";
 import { listInvoiceProfiles } from "@/lib/invoice-profiles";
+import { outstandingBalance } from "@/lib/invoice-format";
 import { InvoicesTable } from "@/components/invoices/invoices-table";
 import { NewInvoiceMenu } from "@/components/invoices/new-invoice-menu";
 import { ImportStripeInvoiceDialog } from "@/components/invoices/import-stripe-invoice-dialog";
@@ -81,6 +82,9 @@ export default async function InvoicesPage() {
                 clientName: r.client!.name,
                 hourlyRate: r.hourlyRate,
                 dailyRate: r.dailyRate,
+                // Lets the recipient picker show who actually needs billing
+                // instead of a bare name list — see NewCareRecipientInvoiceDialog.
+                outstandingBalance: r.invoices.reduce((sum, inv) => sum + outstandingBalance(inv), 0),
               }))}
             caregivers={caregivers}
             isAdmin={isAdmin(session?.user?.role)}

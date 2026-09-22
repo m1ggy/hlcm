@@ -37,3 +37,15 @@ export function displayInvoiceNumber(invoice: {
 export function displayReceiptNumber(receipt: { seq: number }) {
   return `R-${String(receipt.seq).padStart(6, "0")}`;
 }
+
+/** Only SENT/PARTIALLY_PAID invoices actually have money still owed — a
+ * Draft was never billed, and Paid/Void (including one voided via
+ * voidInvoiceWithPayments, which resets amountPaid to 0 but not total)
+ * never owe anything regardless of what total minus amountPaid would
+ * otherwise compute to. Shared by InvoicesTable, CareRecipientsCard, and
+ * the New invoice menu's recipient picker — all three used to redefine
+ * this identically. */
+export function outstandingBalance(invoice: { status: string; total: number | null; amountPaid: number | null }): number {
+  if (invoice.status !== "SENT" && invoice.status !== "PARTIALLY_PAID") return 0;
+  return Math.max(0, (invoice.total ?? 0) - (invoice.amountPaid ?? 0));
+}

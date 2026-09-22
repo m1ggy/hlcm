@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SearchableSelect } from "@/components/ui/searchable-select";
@@ -13,6 +13,7 @@ type RecipientOption = {
   clientName: string;
   hourlyRate: number | null;
   dailyRate: number | null;
+  outstandingBalance: number;
 };
 type ProfileOption = { id: string; name: string };
 type CaregiverOption = { id: string; name: string };
@@ -40,6 +41,17 @@ export function NewCareRecipientInvoiceDialog({
   const [recipientId, setRecipientId] = useState<string | null>(null);
   const recipient = recipients.find((r) => r.id === recipientId) ?? null;
 
+  // Whoever owes money floats to the top of the search results instead of
+  // being buried alphabetically among recipients with nothing due — the
+  // whole reason this dialog shows a balance in the first place.
+  const sortedRecipients = useMemo(
+    () =>
+      [...recipients].sort(
+        (a, b) => b.outstandingBalance - a.outstandingBalance || a.name.localeCompare(b.name)
+      ),
+    [recipients]
+  );
+
   return (
     <Dialog
       open={open}
@@ -56,7 +68,12 @@ export function NewCareRecipientInvoiceDialog({
           <div className="space-y-1">
             <Label>Care recipient</Label>
             <SearchableSelect
-              items={Object.fromEntries(recipients.map((r) => [r.id, `${r.name} — ${r.clientName}`]))}
+              items={Object.fromEntries(
+                sortedRecipients.map((r) => [
+                  r.id,
+                  `${r.name} — ${r.clientName}${r.outstandingBalance > 0 ? ` · $${r.outstandingBalance.toFixed(2)} due` : ""}`,
+                ])
+              )}
               value={recipientId}
               onValueChange={setRecipientId}
               searchPlaceholder="Search recipients..."

@@ -24,6 +24,7 @@ type RecipientOption = {
   clientName: string;
   hourlyRate: number | null;
   dailyRate: number | null;
+  outstandingBalance: number;
 };
 
 type InvoiceType = "online" | "manual" | "recipient" | null;
