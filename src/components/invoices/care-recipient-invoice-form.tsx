@@ -19,6 +19,17 @@ type VisitBilling = { lineItems: RecipientLineItem[]; timeEntryIds: string[] };
 
 const EMPTY_VISIT_BILLING: VisitBilling = { lineItems: [], timeEntryIds: [] };
 
+type BillingMode = "HOURLY" | "DAILY";
+
+// A recipient can have either, both, or neither rate set (see
+// CareRecipient.hourlyRate/dailyRate in prisma/schema.prisma). When only
+// one is actually configured there's no real choice to make, so default to
+// whichever one is — the toggle itself only shows up when both are set.
+function defaultBillingMode(hourlyRate: number | null, dailyRate: number | null): BillingMode {
+  if (hourlyRate == null && dailyRate != null) return "DAILY";
+  return "HOURLY";
+}
+
 function todayInputValue() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -57,8 +68,18 @@ export function CareRecipientInvoiceForm({
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [mode, setMode] = useState<BillingMode>(() => defaultBillingMode(hourlyRate, dailyRate));
   const [visitBilling, setVisitBilling] = useState<VisitBilling>(EMPTY_VISIT_BILLING);
   const [dayRateLineItems, setDayRateLineItems] = useState<RecipientLineItem[]>([]);
+
+  // Only ever one of these billed at a time — switching modes clears the
+  // other one's picked line items so they don't linger, hidden, in the
+  // total.
+  function switchMode(next: BillingMode) {
+    setMode(next);
+    if (next === "HOURLY") setDayRateLineItems([]);
+    else setVisitBilling(EMPTY_VISIT_BILLING);
+  }
 
   const [profileId, setProfileId] = useState(profiles[0]?.id ?? "");
   const [invoiceNumber, setInvoiceNumber] = useState("");
@@ -121,16 +142,42 @@ export function CareRecipientInvoiceForm({
         as awaiting payment; record what actually comes in from the invoice&apos;s own page.
       </p>
 
-      <UnbilledVisitsSection
-        key={careRecipientId}
-        careRecipientId={careRecipientId}
-        hourlyRate={hourlyRate}
-        caregivers={caregivers}
-        canLogVisit={isAdmin}
-        onVisitsChange={setVisitBilling}
-      />
+      {hourlyRate != null && dailyRate != null && (
+        <div className="flex items-center gap-1 self-start rounded-full border border-input p-0.5 text-xs">
+          <button
+            type="button"
+            onClick={() => switchMode("HOURLY")}
+            className={`rounded-full px-2.5 py-1 transition-colors ${mode === "HOURLY" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+          >
+            Hourly visits
+          </button>
+          <button
+            type="button"
+            onClick={() => switchMode("DAILY")}
+            className={`rounded-full px-2.5 py-1 transition-colors ${mode === "DAILY" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+          >
+            Day rate
+          </button>
+        </div>
+      )}
 
-      <DayRateSection key={`${careRecipientId}-daily`} dailyRate={dailyRate} onLineItemsChange={setDayRateLineItems} />
+      {mode === "HOURLY" ? (
+        <UnbilledVisitsSection
+          key={careRecipientId}
+          careRecipientId={careRecipientId}
+          hourlyRate={hourlyRate}
+          caregivers={caregivers}
+          canLogVisit={isAdmin}
+          onVisitsChange={setVisitBilling}
+        />
+      ) : (
+        <DayRateSection
+          key={`${careRecipientId}-daily`}
+          dailyRate={dailyRate}
+          caregivers={caregivers}
+          onLineItemsChange={setDayRateLineItems}
+        />
+      )}
 
       {profiles.length > 1 && (
         <div className="space-y-1">

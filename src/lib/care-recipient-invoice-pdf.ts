@@ -107,7 +107,11 @@ function drawVisitTable(page: PDFPage, font: PDFFont, boldFont: PDFFont, yStart:
     }
     const isDaily = li.kind === "VISIT_DAILY";
     const dateStr = li.visitDate ? formatCalendarDate(li.visitDate) : "";
-    const workerStr = isDaily ? (li.visitDate ? formatCalendarWeekday(li.visitDate) : "") : li.workerName ?? "";
+    // A day-rate line can now name the caregiver who provided the care
+    // (see DayRateSection's own caregiver picker) — prefer that when set,
+    // falling back to the day of week only for older invoices made before
+    // that picker existed.
+    const workerStr = li.workerName || (isDaily && li.visitDate ? formatCalendarWeekday(li.visitDate) : "");
     const timesStr = isDaily ? "Live-in" : li.visitStart && li.visitEnd ? `${formatTime(li.visitStart)}-${formatTime(li.visitEnd)}` : "";
     const fees = li.quantity * li.unitPrice;
     const rateStr = isDaily ? `${money(li.unitPrice)}/Daily` : `${money(li.unitPrice)}/Hourly`;
