@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { InvoiceStatusBadge, INVOICE_STATUS_LABELS, InvoiceStatusValue, isInvoiceOverdue, isManualInvoice } from "./invoice-status-badge";
-import { displayInvoiceNumber, formatCalendarDate } from "@/lib/invoice-format";
+import { displayInvoiceNumber, formatCalendarDate, outstandingBalance } from "@/lib/invoice-format";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -72,16 +72,6 @@ function clientLabel(client: InvoiceRow["client"]) {
 // just one, so this column never silently drops one.
 function projectLabel(client: InvoiceRow["client"]) {
   return client.projects.length > 0 ? client.projects.map((p) => p.name).join(", ") : "—";
-}
-
-// Only SENT/PARTIALLY_PAID invoices actually have money still owed — a
-// Draft was never billed, and Paid/Void (including one voided via
-// voidInvoiceWithPayments, which resets amountPaid to 0 but not total)
-// never owe anything regardless of what total minus amountPaid would
-// otherwise compute to.
-function outstandingBalance(invoice: Pick<InvoiceRow, "status" | "total" | "amountPaid">): number {
-  if (invoice.status !== "SENT" && invoice.status !== "PARTIALLY_PAID") return 0;
-  return Math.max(0, (invoice.total ?? 0) - (invoice.amountPaid ?? 0));
 }
 
 export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
@@ -183,6 +173,28 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
             return acc;
           }, {})
         ).sort((a, b) => a.label.localeCompare(b.label));
+
+  // A Client bucket that bills more than one Care Recipient (an agency
+  // like a large home-care client billing many recipients) otherwise reads
+  // as one undifferentiated pile — each invoice only gets a small muted
+  // "For {name}" subtext to tell recipients apart. Sub-bucket by recipient,
+  // same shape/sort as the outer Client(Group) grouping above, so each one
+  // gets its own collapsible row and outstanding total. A bucket with zero
+  // or one recipient (the common case) skips this — see the `.length > 1`
+  // check at the call site — so an ordinary Client's invoices still render
+  // as a single flat table, unchanged.
+  function recipientSubgroups(rows: InvoiceRow[]) {
+    return Object.values(
+      rows.reduce<Record<string, { key: string; label: string; rows: InvoiceRow[] }>>((acc, invoice) => {
+        const key = invoice.careRecipient?.id ?? "__none__";
+        const label = invoice.careRecipient?.name ?? "General (no recipient)";
+        const bucket = acc[key] ?? { key, label, rows: [] };
+        bucket.rows.push(invoice);
+        acc[key] = bucket;
+        return acc;
+      }, {})
+    ).sort((a, b) => (a.key === "__none__" ? -1 : b.key === "__none__" ? 1 : a.label.localeCompare(b.label)));
+  }
 
   function renderTable(rows: InvoiceRow[], { showClient }: { showClient: boolean }) {
     return (
@@ -340,6 +352,7 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
             // inside it so rows stay distinguishable; a single-client
             // bucket doesn't need them, same as before ClientGroup existed.
             const distinctClients = new Set(group.rows.map((r) => r.client.id)).size;
+            const subgroups = recipientSubgroups(group.rows);
             return (
               <details key={group.key} className="group rounded-lg border">
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-4 py-2.5 text-sm font-medium select-none">
@@ -351,7 +364,29 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
                   </span>
                   <span className="tabular-nums text-muted-foreground">${outstanding.toFixed(2)}</span>
                 </summary>
-                <div className="border-t px-4 pb-3">{renderTable(group.rows, { showClient: distinctClients > 1 })}</div>
+                <div className="space-y-2 border-t px-4 pb-3 pt-2">
+                  {subgroups.length > 1
+                    ? subgroups.map((sub) => {
+                        const subOutstanding = sub.rows.reduce((sum, r) => sum + outstandingBalance(r), 0);
+                        return (
+                          <details key={sub.key} className="group/recipient rounded-lg border">
+                            <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-sm select-none">
+                              <span>
+                                {sub.label}{" "}
+                                <span className="font-normal text-muted-foreground">
+                                  ({sub.rows.length} {sub.rows.length === 1 ? "invoice" : "invoices"})
+                                </span>
+                              </span>
+                              <span className="tabular-nums text-muted-foreground">${subOutstanding.toFixed(2)}</span>
+                            </summary>
+                            <div className="border-t px-3 pb-2 pt-1">
+                              {renderTable(sub.rows, { showClient: distinctClients > 1 })}
+                            </div>
+                          </details>
+                        );
+                      })
+                    : renderTable(group.rows, { showClient: distinctClients > 1 })}
+                </div>
               </details>
             );
           })}

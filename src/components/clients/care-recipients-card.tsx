@@ -18,7 +18,7 @@ import { CreateRecipientInvoiceDialog } from "@/components/clients/create-recipi
 import { RecipientSummary, ageFromDob } from "@/components/clients/care-recipient-summary";
 import { AvatarInitials } from "@/components/ui/avatar-initials";
 import { InvoiceStatusBadge } from "@/components/invoices/invoice-status-badge";
-import { displayInvoiceNumber } from "@/lib/invoice-format";
+import { displayInvoiceNumber, outstandingBalance } from "@/lib/invoice-format";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -570,12 +570,6 @@ function ArchivedRecipients({ clientId }: { clientId: string }) {
   );
 }
 
-// Same "only SENT/PARTIALLY_PAID actually owe money" rule as
-// outstandingBalance in src/components/invoices/invoices-table.tsx.
-function outstandingBalance(invoice: Pick<CareRecipientInvoiceRow, "status" | "total" | "amountPaid">): number {
-  if (invoice.status !== "SENT" && invoice.status !== "PARTIALLY_PAID") return 0;
-  return Math.max(0, (invoice.total ?? 0) - (invoice.amountPaid ?? 0));
-}
 
 // Recipients ("who a Caregiver actually visits") are a different thing from
 // the Client itself (the licensing agency) — see prisma/schema.prisma. This
