@@ -35,6 +35,11 @@ const createCareRecipientInvoiceSchema = z.object({
   invoiceNumber: z.string().optional(),
   issueDate: z.string().optional(),
   dueDate: z.string().optional(),
+  // The billing period printed on the PDF — always staff-typed, never
+  // derived from the picked visits/day-rate range (see Invoice.periodStart
+  // in prisma/schema.prisma for why).
+  periodStart: z.string().optional(),
+  periodEnd: z.string().optional(),
   notes: z.string().optional(),
   internalTag: z.string().optional(),
   lineItems: z.array(recipientLineItemSchema).min(1, "At least one visit, day, or line item is required"),
@@ -93,6 +98,8 @@ export async function createCareRecipientInvoice(input: z.infer<typeof createCar
           invoiceNumber: parsed.invoiceNumber || undefined,
           issueDate: parsed.issueDate ? new Date(parsed.issueDate) : undefined,
           dueDate: parsed.dueDate ? new Date(parsed.dueDate) : undefined,
+          periodStart: parsed.periodStart ? new Date(parsed.periodStart) : undefined,
+          periodEnd: parsed.periodEnd ? new Date(parsed.periodEnd) : undefined,
           notes: parsed.notes,
           internalTag: parsed.internalTag,
           status: "SENT",

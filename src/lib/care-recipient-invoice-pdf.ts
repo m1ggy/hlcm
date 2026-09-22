@@ -54,13 +54,19 @@ function maskSsn(ssn: string): string {
   return last4 ? `xxxxx${last4}` : "•••••";
 }
 
-// The invoice's own billing period, derived from its line items rather
-// than stored — Invoice/InvoiceLineItem have no periodStart/periodEnd
-// field. Falls back to issueDate on both ends for an all-manual invoice
-// with no visit-dated line.
-function periodOf(lineItems: CareRecipientLineItem[], issueDate: Date): { start: Date; end: Date } {
-  const times = lineItems.map((li) => li.visitDate?.getTime()).filter((t): t is number => t != null);
-  if (times.length === 0) return { start: issueDate, end: issueDate };
+// The invoice's own billing period — staff-entered (Invoice.periodStart/
+// periodEnd), since the actual billing cycle doesn't necessarily match
+// exactly which days got logged/billed. Only derived from line items'
+// visitDate as a fallback for an invoice nobody set it on (older invoices
+// from before this field existed, or a form left blank), falling back
+// further to issueDate on both ends for an all-manual invoice with no
+// visit-dated line either.
+function periodOf(
+  input: Pick<CareRecipientInvoicePdfInput, "periodStart" | "periodEnd" | "issueDate" | "lineItems">
+): { start: Date; end: Date } {
+  if (input.periodStart && input.periodEnd) return { start: input.periodStart, end: input.periodEnd };
+  const times = input.lineItems.map((li) => li.visitDate?.getTime()).filter((t): t is number => t != null);
+  if (times.length === 0) return { start: input.issueDate, end: input.issueDate };
   return { start: new Date(Math.min(...times)), end: new Date(Math.max(...times)) };
 }
 
@@ -231,7 +237,7 @@ export async function generateCareRecipientInvoicePdf(input: CareRecipientInvoic
     });
   }
 
-  const period = periodOf(input.lineItems, input.issueDate);
+  const period = periodOf(input);
   const total = input.total ?? input.lineItems.reduce((sum, li) => sum + li.quantity * li.unitPrice, 0);
   // This invoice's own balance, not outstandingAccountBalance (the summed
   // balance across every invoice this recipient has) — that combined

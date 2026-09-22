@@ -26,6 +26,8 @@ export function ManualInvoiceEditor({
   internalTag,
   issueDate,
   dueDate,
+  periodStart,
+  periodEnd,
   lineItems,
   isCareRecipientInvoice = false,
 }: {
@@ -34,8 +36,12 @@ export function ManualInvoiceEditor({
   internalTag: string | null;
   issueDate: Date;
   dueDate: Date | null;
+  periodStart: Date | null;
+  periodEnd: Date | null;
   lineItems: LineItem[];
-  /** Renames the price column to "Hourly rate" — see InvoiceLineItemsEditor's rateLabel. */
+  /** Renames the price column to "Hourly rate" and shows the Service
+   * period fields — see InvoiceLineItemsEditor's rateLabel and
+   * Invoice.periodStart in prisma/schema.prisma. */
   isCareRecipientInvoice?: boolean;
 }) {
   const router = useRouter();
@@ -44,6 +50,8 @@ export function ManualInvoiceEditor({
   const [internalTagValue, setInternalTagValue] = useState(internalTag ?? "");
   const [issueDateValue, setIssueDateValue] = useState(toDateInputValue(issueDate));
   const [dueDateValue, setDueDateValue] = useState(toDateInputValue(dueDate));
+  const [periodStartValue, setPeriodStartValue] = useState(toDateInputValue(periodStart));
+  const [periodEndValue, setPeriodEndValue] = useState(toDateInputValue(periodEnd));
   const [items, setItems] = useState<LineItem[]>(lineItems.length ? lineItems : [emptyLineItem()]);
 
   const subtotal = items.reduce((sum, li) => sum + li.quantity * li.unitPrice, 0);
@@ -61,6 +69,8 @@ export function ManualInvoiceEditor({
           internalTag: internalTagValue || undefined,
           issueDate: issueDateValue || undefined,
           dueDate: dueDateValue || undefined,
+          periodStart: periodStartValue || undefined,
+          periodEnd: periodEndValue || undefined,
           lineItems: cleanItems,
         });
         toast.success("Invoice updated");
@@ -85,6 +95,24 @@ export function ManualInvoiceEditor({
           <Input id="editDueDate" type="date" value={dueDateValue} onChange={(e) => setDueDateValue(e.target.value)} />
         </div>
       </div>
+
+      {isCareRecipientInvoice && (
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div className="space-y-1">
+            <Label htmlFor="editPeriodStart">Service period from</Label>
+            <Input
+              id="editPeriodStart"
+              type="date"
+              value={periodStartValue}
+              onChange={(e) => setPeriodStartValue(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="editPeriodEnd">Service period to</Label>
+            <Input id="editPeriodEnd" type="date" value={periodEndValue} onChange={(e) => setPeriodEndValue(e.target.value)} />
+          </div>
+        </div>
+      )}
 
       <div className="space-y-1">
         <Label htmlFor="editNotes">Notes</Label>
