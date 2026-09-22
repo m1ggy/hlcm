@@ -12,7 +12,7 @@ import { generateCareRecipientInvoicePdf } from "@/lib/care-recipient-invoice-pd
 import { generateReceiptPdf } from "@/lib/receipt-pdf";
 import { saveBuffer, readStoredFile, deleteStoredFile } from "@/lib/storage";
 import { getInvoiceProfile, getDefaultInvoiceProfile, getInvoiceLogo, parseCcEmails } from "@/lib/invoice-profiles";
-import { displayInvoiceNumber, displayReceiptNumber } from "@/lib/invoice-format";
+import { displayInvoiceNumber, displayReceiptNumber, formatCalendarDate } from "@/lib/invoice-format";
 import { MANAGE_ROLES, invoiceInclude, lineItemSchema, subtotalOf, friendlyInvoiceNumberError, isManual } from "@/lib/invoice-shared";
 import { computeOutstandingAccountBalance } from "@/lib/actions/care-recipient-invoices";
 import {
@@ -770,7 +770,7 @@ export async function sendManualInvoicePdf(id: string, formData?: FormData) {
     subject: `Invoice ${number} from ${profile?.name ?? "CTK"}`,
     html: renderEmailLayout({
       heading: "Invoice",
-      bodyHtml: `<p style="margin:0 0 8px">Please find invoice ${number} attached${invoice.dueDate ? ` — due ${invoice.dueDate.toLocaleDateString()}` : ""}.</p><p style="margin:0">Amount due: $${amountDue.toFixed(2)}</p>`,
+      bodyHtml: `<p style="margin:0 0 8px">Please find invoice ${number} attached${invoice.dueDate ? ` — due ${formatCalendarDate(invoice.dueDate)}` : ""}.</p><p style="margin:0">Amount due: $${amountDue.toFixed(2)}</p>`,
       preheader: `Invoice ${number} — $${amountDue.toFixed(2)} due`,
     }),
     attachments,

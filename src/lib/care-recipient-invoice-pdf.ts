@@ -8,7 +8,7 @@
 // drawing helpers (wrapText, drawWrappedText, money, drawLogoOrName,
 // PAGE_SIZE, MARGIN) with invoice-pdf.ts rather than duplicating them.
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
-import { displayInvoiceNumber } from "@/lib/invoice-format";
+import { displayInvoiceNumber, formatCalendarDate, formatCalendarWeekday } from "@/lib/invoice-format";
 import { PAGE_SIZE, MARGIN, wrapText, drawWrappedText, money, drawLogoOrName, type InvoicePdfInput } from "@/lib/invoice-pdf";
 import type { $Enums } from "@/generated/prisma/client";
 
@@ -100,8 +100,8 @@ function drawVisitTable(page: PDFPage, font: PDFFont, boldFont: PDFFont, yStart:
       page.drawRectangle({ x: MARGIN, y: y - rowHeight + 6, width: tableWidth, height: rowHeight, color: rgb(0.96, 0.96, 0.96) });
     }
     const isDaily = li.kind === "VISIT_DAILY";
-    const dateStr = li.visitDate ? li.visitDate.toLocaleDateString() : "";
-    const workerStr = isDaily ? (li.visitDate?.toLocaleDateString(undefined, { weekday: "long" }) ?? "") : li.workerName ?? "";
+    const dateStr = li.visitDate ? formatCalendarDate(li.visitDate) : "";
+    const workerStr = isDaily ? (li.visitDate ? formatCalendarWeekday(li.visitDate) : "") : li.workerName ?? "";
     const timesStr = isDaily ? "Live-in" : li.visitStart && li.visitEnd ? `${formatTime(li.visitStart)}-${formatTime(li.visitEnd)}` : "";
     const fees = li.quantity * li.unitPrice;
     const rateStr = isDaily ? `${money(li.unitPrice)}/Daily` : `${money(li.unitPrice)}/Hourly`;
@@ -186,7 +186,7 @@ function drawTotalsBlock(page: PDFPage, font: PDFFont, boldFont: PDFFont, yStart
     input.status === "PAID"
       ? "(Paid in full)"
       : input.dueDate
-        ? `(Due: ${input.dueDate.toLocaleDateString()})`
+        ? `(Due: ${formatCalendarDate(input.dueDate)})`
         : "(Due: Upon Receipt)";
   const dueNoteWidth = font.widthOfTextAtSize(dueNote, 8);
   page.drawText(dueNote, { x: MARGIN + tableWidth - 10 - dueNoteWidth, y: y - 30, size: 8, font, color: rgb(0.4, 0.4, 0.4) });
@@ -220,7 +220,7 @@ export async function generateCareRecipientInvoicePdf(input: CareRecipientInvoic
     if (line) leftLines.push({ text: line, font, size: 10, color: rgb(0.3, 0.3, 0.3) });
   }
   if (recipient.dateOfBirth) {
-    leftLines.push({ text: `Date of Birth: ${recipient.dateOfBirth.toLocaleDateString()}`, font, size: 9, color: rgb(0.3, 0.3, 0.3) });
+    leftLines.push({ text: `Date of Birth: ${formatCalendarDate(recipient.dateOfBirth)}`, font, size: 9, color: rgb(0.3, 0.3, 0.3) });
   }
   if (recipient.socialSecurityNumber) {
     leftLines.push({
@@ -233,13 +233,21 @@ export async function generateCareRecipientInvoicePdf(input: CareRecipientInvoic
 
   const period = periodOf(input.lineItems, input.issueDate);
   const total = input.total ?? input.lineItems.reduce((sum, li) => sum + li.quantity * li.unitPrice, 0);
+  // This invoice's own balance, not outstandingAccountBalance (the summed
+  // balance across every invoice this recipient has) — that combined
+  // figure is deliberately shown further down as "Outstanding Account
+  // Balance (All Invoices)"/"Total Amount Due", clearly labeled as such.
+  // Printing it up here too, under the unqualified "Amount Owed", made two
+  // separate invoices for the same recipient print the identical
+  // account-wide number as if it were each one's own amount due.
+  const currentBalance = total - (input.amountPaid ?? 0);
   const rightLines = [
     `Invoice ID#: ${displayInvoiceNumber(input)}`,
-    `Period: ${period.start.toLocaleDateString()} - ${period.end.toLocaleDateString()}`,
-    `Invoice Date: ${input.issueDate.toLocaleDateString()}`,
-    `Due: ${input.dueDate ? input.dueDate.toLocaleDateString() : "Upon Receipt"}`,
-    `Current Invoice Balance: ${money(total - (input.amountPaid ?? 0))}`,
-    `Amount Owed: ${money(input.outstandingAccountBalance)}`,
+    `Period: ${formatCalendarDate(period.start)} - ${formatCalendarDate(period.end)}`,
+    `Invoice Date: ${formatCalendarDate(input.issueDate)}`,
+    `Due: ${input.dueDate ? formatCalendarDate(input.dueDate) : "Upon Receipt"}`,
+    `Current Invoice Balance: ${money(currentBalance)}`,
+    `Amount Owed: ${money(currentBalance)}`,
   ];
 
   const lineHeight = 15;

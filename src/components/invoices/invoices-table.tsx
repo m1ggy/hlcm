@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { InvoiceStatusBadge, INVOICE_STATUS_LABELS, InvoiceStatusValue, isInvoiceOverdue, isManualInvoice } from "./invoice-status-badge";
-import { displayInvoiceNumber } from "@/lib/invoice-format";
+import { displayInvoiceNumber, formatCalendarDate } from "@/lib/invoice-format";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -244,7 +244,7 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
                 </div>
               </TableCell>
               <TableCell className={isInvoiceOverdue(invoice) ? "text-destructive" : undefined}>
-                {invoice.dueDate ? invoice.dueDate.toLocaleDateString() : "—"}
+                {invoice.dueDate ? formatCalendarDate(invoice.dueDate) : "—"}
               </TableCell>
               <TableCell className="text-right tabular-nums">{invoice.total != null ? `$${invoice.total.toFixed(2)}` : "—"}</TableCell>
               <TableCell className={`text-right tabular-nums ${isInvoiceOverdue(invoice) ? "text-destructive" : ""}`}>

@@ -1609,7 +1609,9 @@ model InvoiceLineItem {
   invoice     Invoice             @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   invoiceId   String
   description String
-  quantity    Int                 @default(1)
+  // Float, not Int — day-rate/prorated lines bill fractional hours (e.g.
+  // 8.5), which an Int column rejects outright.
+  quantity    Float               @default(1)
   unitPrice   Float
   sortOrder   Int                 @default(0)
   kind        InvoiceLineItemKind @default(MANUAL)

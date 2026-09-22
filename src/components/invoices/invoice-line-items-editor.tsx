@@ -63,7 +63,8 @@ export function InvoiceLineItemsEditor({
             />
             <Input
               type="number"
-              min={1}
+              min={0.01}
+              step="0.01"
               value={item.quantity}
               onChange={(e) => updateLineItem(index, { quantity: Number(e.target.value) || 1 })}
               className="w-16"
