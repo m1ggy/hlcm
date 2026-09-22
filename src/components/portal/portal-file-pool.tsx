@@ -14,6 +14,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { uploadFile } from "@/lib/actions/files";
+import { unexpectedErrorMessage } from "@/lib/action-result";
+import { MAX_FILE_BYTES, fileTooLargeMessage } from "@/lib/file-limits";
 
 type FileRow = {
   id: string;
@@ -50,13 +52,21 @@ export function PortalFilePool({
       toast.error("Choose a file to upload");
       return;
     }
+    if (file.size > MAX_FILE_BYTES) {
+      toast.error(fileTooLargeMessage(file.name));
+      return;
+    }
     startTransition(async () => {
       try {
-        await uploadFile(applicationId, formData);
+        const result = await uploadFile(applicationId, formData);
+        if (!result.ok) {
+          toast.error(result.error);
+          return;
+        }
         formRef.current?.reset();
         router.refresh();
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Upload failed");
+        toast.error(unexpectedErrorMessage(error, "Upload failed. Please try again."));
       }
     });
   }

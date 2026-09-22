@@ -11,7 +11,7 @@ import { saveUploadedFile, deleteStoredFile } from "@/lib/storage";
 // src/lib/rbac.ts.
 const MANAGE_ROLES: AppRole[] = ["ACCOUNTANT"];
 
-const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20MB — keep well under bodySizeLimit's 25MB, same cap as files.ts
+const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20MB — attachments get emailed, so this stays lower than files.ts's cap
 
 // Images, PDF, and the two Office formats staff actually send around for
 // invoices (signed contracts, receipts, spreadsheets). Checked by mimeType

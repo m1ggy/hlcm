@@ -27,6 +27,7 @@ export function ManualInvoiceEditor({
   issueDate,
   dueDate,
   lineItems,
+  isCareRecipientInvoice = false,
 }: {
   invoiceId: string;
   notes: string | null;
@@ -34,6 +35,8 @@ export function ManualInvoiceEditor({
   issueDate: Date;
   dueDate: Date | null;
   lineItems: LineItem[];
+  /** Renames the price column to "Hourly rate" — see InvoiceLineItemsEditor's rateLabel. */
+  isCareRecipientInvoice?: boolean;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -70,7 +73,7 @@ export function ManualInvoiceEditor({
 
   return (
     <div className="space-y-4">
-      <InvoiceLineItemsEditor lineItems={items} onChange={setItems} />
+      <InvoiceLineItemsEditor lineItems={items} onChange={setItems} rateLabel={isCareRecipientInvoice ? "Hourly rate" : undefined} />
 
       <div className="grid sm:grid-cols-2 gap-4">
         <div className="space-y-1">

@@ -3,15 +3,18 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireRole, AppRole } from "@/lib/rbac";
+import { requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
 import { sendEmail, renderEmailLayout } from "@/lib/email";
 import { generateInvoicePdf } from "@/lib/invoice-pdf";
+import { generateCareRecipientInvoicePdf } from "@/lib/care-recipient-invoice-pdf";
 import { generateReceiptPdf } from "@/lib/receipt-pdf";
 import { saveBuffer, readStoredFile, deleteStoredFile } from "@/lib/storage";
 import { getInvoiceProfile, getDefaultInvoiceProfile, getInvoiceLogo, parseCcEmails } from "@/lib/invoice-profiles";
 import { displayInvoiceNumber, displayReceiptNumber } from "@/lib/invoice-format";
+import { MANAGE_ROLES, invoiceInclude, lineItemSchema, subtotalOf, friendlyInvoiceNumberError, isManual } from "@/lib/invoice-shared";
+import { computeOutstandingAccountBalance } from "@/lib/actions/care-recipient-invoices";
 import {
   createCustomer,
   createDraftInvoice,
@@ -28,56 +31,6 @@ import {
   listCustomerInvoices,
 } from "@/lib/stripe";
 import type { $Enums, Prisma } from "@/generated/prisma/client";
-
-// Invoices are ACCOUNTANT-exclusive (plus OWNER, who bypasses every
-// requireRole check) — plain ADMIN and MANAGER don't get this module. See
-// canAccessInvoices() in src/lib/rbac.ts, which every invoice UI gate uses.
-const MANAGE_ROLES: AppRole[] = ["ACCOUNTANT"];
-
-const invoiceInclude = {
-  client: {
-    select: {
-      id: true,
-      name: true,
-      businessName: true,
-      businessEmail: true,
-      owners: { select: { email: true }, orderBy: { createdAt: "asc" }, take: 1 },
-      stripeCustomerId: true,
-      billingAddressLine1: true,
-      billingCity: true,
-      billingState: true,
-      billingPostalCode: true,
-      billingCountry: true,
-      clientGroupId: true,
-      clientGroup: { select: { id: true, name: true } },
-      projects: { select: { id: true, name: true } },
-    },
-  },
-  application: { select: { id: true, name: true } },
-  invoiceProfile: { select: { id: true, name: true } },
-  // Manual invoices only — which Care Recipient this bills for, if any.
-  // The extra fields (address/email/billingContact*) are what
-  // generateInvoicePdf's Bill To block and resolveRecipientEmail below
-  // read to address/email the invoice to the actual payer instead of the
-  // agency, when set.
-  careRecipient: {
-    select: {
-      id: true,
-      name: true,
-      address: true,
-      email: true,
-      billingContactName: true,
-      billingContactEmail: true,
-      billingContactPhone: true,
-    },
-  },
-  createdBy: { select: { id: true, name: true } },
-  lineItems: { orderBy: { sortOrder: "asc" as const } },
-  payments: {
-    include: { receipt: true, recordedBy: { select: { id: true, name: true } } },
-    orderBy: { paidAt: "asc" as const },
-  },
-} as const;
 
 export async function listInvoices(filters?: { status?: $Enums.InvoiceStatus; clientId?: string; careRecipientId?: string }) {
   await requireRole(MANAGE_ROLES);
@@ -119,12 +72,6 @@ export async function getInvoiceAuditLog(invoiceId: string) {
   });
 }
 
-const lineItemSchema = z.object({
-  description: z.string().min(1),
-  quantity: z.coerce.number().int().min(1),
-  unitPrice: z.coerce.number().min(0),
-});
-
 const invoiceInputSchema = z.object({
   clientId: z.string().min(1),
   applicationId: z.string().optional(),
@@ -133,12 +80,6 @@ const invoiceInputSchema = z.object({
   internalTag: z.string().optional(),
   lineItems: z.array(lineItemSchema).min(1, "At least one line item is required"),
 });
-
-// Pre-send estimate only (no tax) — the real total + tax come back from
-// Stripe Tax once the invoice is finalized.
-function subtotalOf(lineItems: { quantity: number; unitPrice: number }[]) {
-  return lineItems.reduce((sum, li) => sum + li.quantity * li.unitPrice, 0);
-}
 
 export async function createInvoice(input: z.infer<typeof invoiceInputSchema>) {
   const session = await requireRole(MANAGE_ROLES);
@@ -303,28 +244,6 @@ export async function markInvoicePaid(id: string) {
   revalidatePath(`/invoices/${id}`);
 }
 
-// A duplicate typed invoiceNumber is the one way this insert can fail on a
-// constraint rather than validation — see friendlyPrismaError in
-// src/lib/prisma-errors.ts for the general pattern this follows.
-function friendlyInvoiceNumberError(error: unknown): never {
-  return friendlyPrismaError(error, {
-    duplicateMessages: {
-      invoiceNumber:
-        "That invoice number is already in use on another invoice — including voided ones from before this " +
-        "was fixed, since voiding didn't used to free it up. Pick a different number, or leave it blank to " +
-        "auto-assign one.",
-    },
-  });
-}
-
-// A PAID or PARTIALLY_PAID invoice that never got a Stripe invoice — see
-// isManualInvoice in src/components/invoices/invoice-status-badge.tsx for
-// the fuller version of this check (this one's inlined to avoid importing a
-// client-only component module into a "use server" action file).
-function isManual(invoice: { status: string; stripeInvoiceId: string | null }) {
-  return !invoice.stripeInvoiceId && invoice.status !== "DRAFT";
-}
-
 const createManualInvoiceSchema = z.object({
   clientId: z.string().min(1),
   applicationId: z.string().optional(),
@@ -335,24 +254,16 @@ const createManualInvoiceSchema = z.object({
   notes: z.string().optional(),
   internalTag: z.string().optional(),
   lineItems: z.array(lineItemSchema).min(1, "At least one line item is required"),
-  // Both optional, both Care Recipient billing only — see
-  // CreateRecipientInvoiceDialog. careRecipientId tags who the invoice is
-  // for; timeEntryIds are the logged visits it bills (validated below,
-  // then marked billed in the same transaction as the invoice itself).
-  careRecipientId: z.string().optional(),
-  timeEntryIds: z.array(z.string()).optional(),
-  // The Task-time-tracker equivalent of timeEntryIds above — case-work
-  // hours (see TaskTimeEntry, src/lib/actions/task-time-entries.ts) billed
-  // through this invoice's own applicationId, not a Care Recipient. See
-  // UnbilledTaskTimeSection.
-  taskTimeEntryIds: z.array(z.string()).optional(),
 });
 
-// The main way to bill a client outside Stripe entirely — no draft, no
-// Send, no card payment page. Always created unpaid (status SENT, exactly
-// like a Stripe invoice right after Send — nothing left to do but wait for
-// payment); recording money against it is a separate step (addManualPayment
-// below), whether that happens the same day or weeks later.
+// The main way to bill a licensing Client outside Stripe entirely — no
+// draft, no Send, no card payment page. Always created unpaid (status
+// SENT, exactly like a Stripe invoice right after Send — nothing left to
+// do but wait for payment); recording money against it is a separate step
+// (addManualPayment below), whether that happens the same day or weeks
+// later. Care Recipient billing is a separate flow — see
+// createCareRecipientInvoice in src/lib/actions/care-recipient-invoices.ts
+// — this action never tags a careRecipientId.
 export async function createManualInvoice(input: z.infer<typeof createManualInvoiceSchema>) {
   const session = await requireRole(MANAGE_ROLES);
   const parsed = createManualInvoiceSchema.parse(input);
@@ -363,91 +274,32 @@ export async function createManualInvoice(input: z.infer<typeof createManualInvo
   // submitted without picking one.
   const profileId = parsed.invoiceProfileId || (await getDefaultInvoiceProfile())?.id;
 
-  // A recipient must belong to the Client actually being billed — catches
-  // a stale/mismatched pair rather than silently tagging the wrong
-  // recipient (Invoice always bills through the recipient's own Client,
-  // never independently — see CareRecipient's comment in
-  // prisma/schema.prisma).
-  if (parsed.careRecipientId) {
-    const recipient = await prisma.careRecipient.findUniqueOrThrow({ where: { id: parsed.careRecipientId } });
-    if (recipient.clientId !== parsed.clientId) {
-      throw new Error("That care recipient doesn't belong to this client");
-    }
-  }
-
-  // Visits being billed must actually belong to this recipient and still
-  // be unbilled — race-safety against double-billing the same visit (e.g.
-  // two staff opening the same recipient's invoice dialog at once), not
-  // just a client-side check.
-  if (parsed.timeEntryIds?.length) {
-    if (!parsed.careRecipientId) throw new Error("Visits can only be billed alongside a care recipient");
-    const billableCount = await prisma.timeEntry.count({
-      where: { id: { in: parsed.timeEntryIds }, careRecipientId: parsed.careRecipientId, billedInvoiceId: null },
-    });
-    if (billableCount !== parsed.timeEntryIds.length) {
-      throw new Error("One or more of those visits is no longer available to bill — someone else may have just billed it");
-    }
-  }
-
-  // Same race-safety as timeEntryIds above, scoped through the
-  // Application's own Tasks instead of a CareRecipient — see
-  // listUnbilledTaskTime in src/lib/actions/task-time-entries.ts.
-  if (parsed.taskTimeEntryIds?.length) {
-    if (!parsed.applicationId) throw new Error("Tracked time can only be billed alongside a case");
-    const billableCount = await prisma.taskTimeEntry.count({
-      where: { id: { in: parsed.taskTimeEntryIds }, task: { applicationId: parsed.applicationId }, billedInvoiceId: null },
-    });
-    if (billableCount !== parsed.taskTimeEntryIds.length) {
-      throw new Error("One or more of those time entries is no longer available to bill — someone else may have just billed it");
-    }
-  }
-
-  const invoice = await prisma
-    .$transaction(async (tx) => {
-      const created = await tx.invoice.create({
-        data: {
-          clientId: parsed.clientId,
-          applicationId: parsed.applicationId || undefined,
-          invoiceProfileId: profileId,
-          careRecipientId: parsed.careRecipientId || undefined,
-          invoiceNumber: parsed.invoiceNumber || undefined,
-          issueDate: parsed.issueDate ? new Date(parsed.issueDate) : undefined,
-          dueDate: parsed.dueDate ? new Date(parsed.dueDate) : undefined,
-          notes: parsed.notes,
-          internalTag: parsed.internalTag,
-          status: "SENT",
-          total,
-          taxAmount: 0,
-          createdById: session.user.id,
-          lineItems: {
-            create: parsed.lineItems.map((li, index) => ({ ...li, sortOrder: index })),
-          },
+  const invoice = await prisma.invoice
+    .create({
+      data: {
+        clientId: parsed.clientId,
+        applicationId: parsed.applicationId || undefined,
+        invoiceProfileId: profileId,
+        invoiceNumber: parsed.invoiceNumber || undefined,
+        issueDate: parsed.issueDate ? new Date(parsed.issueDate) : undefined,
+        dueDate: parsed.dueDate ? new Date(parsed.dueDate) : undefined,
+        notes: parsed.notes,
+        internalTag: parsed.internalTag,
+        status: "SENT",
+        total,
+        taxAmount: 0,
+        createdById: session.user.id,
+        lineItems: {
+          create: parsed.lineItems.map((li, index) => ({ ...li, sortOrder: index })),
         },
-        include: invoiceInclude,
-      });
-
-      if (parsed.timeEntryIds?.length) {
-        await tx.timeEntry.updateMany({
-          where: { id: { in: parsed.timeEntryIds } },
-          data: { billedInvoiceId: created.id },
-        });
-      }
-
-      if (parsed.taskTimeEntryIds?.length) {
-        await tx.taskTimeEntry.updateMany({
-          where: { id: { in: parsed.taskTimeEntryIds } },
-          data: { billedInvoiceId: created.id },
-        });
-      }
-
-      return created;
+      },
+      include: invoiceInclude,
     })
     .catch(friendlyInvoiceNumberError);
 
   await recordAudit({ entityType: "Invoice", entityId: invoice.id, action: "create_manual", actorId: session.user.id });
 
   revalidatePath("/invoices");
-  if (parsed.careRecipientId) revalidatePath("/clients");
   return invoice;
 }
 
@@ -898,7 +750,16 @@ export async function sendManualInvoicePdf(id: string, formData?: FormData) {
   const number = displayInvoiceNumber(invoice);
   const profile = await getInvoiceProfile(invoice.invoiceProfileId);
   const logo = await getInvoiceLogo(profile);
-  const pdfBytes = await generateInvoicePdf({ ...invoice, logo, footerText: profile?.footerText ?? null, profileName: profile?.name ?? null });
+  const pdfBytes = invoice.careRecipient
+    ? await generateCareRecipientInvoicePdf({
+        ...invoice,
+        careRecipient: invoice.careRecipient,
+        logo,
+        footerText: profile?.footerText ?? null,
+        profileName: profile?.name ?? null,
+        outstandingAccountBalance: await computeOutstandingAccountBalance(invoice.careRecipient.id),
+      })
+    : await generateInvoicePdf({ ...invoice, logo, footerText: profile?.footerText ?? null, profileName: profile?.name ?? null });
   const amountDue = (invoice.total ?? 0) - (invoice.amountPaid ?? 0);
   const attachments = [{ filename: `invoice-${number}.pdf`, content: pdfBytes }, ...invoiceAttachments, ...extraAttachments];
   assertAttachmentsFitInEmail(attachments);

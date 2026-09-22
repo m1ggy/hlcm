@@ -572,7 +572,12 @@ model CareRecipient {
   name        String
   address     String?
   dateOfBirth DateTime?
-  active      Boolean   @default(true)
+  // Optional, printed masked (last 4 digits only) on a Care Recipient
+  // invoice — see generateCareRecipientInvoicePdf. Plain storage, no
+  // encryption at rest, same trade-off already made for
+  // ClientCredential.password.
+  socialSecurityNumber String?
+  active               Boolean   @default(true)
 
   // The recipient's own reachability — distinct from emergencyContact*
   // below (a different person). preferredContactMethod and contactNotes
@@ -606,6 +611,13 @@ model CareRecipient {
   // src/lib/actions/care-recipients.ts and CreateRecipientInvoiceDialog).
   // Optional: a recipient never billed by the hour just never sets one.
   hourlyRate Float?
+
+  // Flat per-day rate for a live-in/day-rate billing arrangement — a
+  // second, independent pricing mode alongside hourlyRate above. Used to
+  // auto-price a day-rate range on a Care Recipient invoice (see
+  // createCareRecipientInvoice). A recipient can have either, both, or
+  // neither set.
+  dailyRate Float?
 
   // Who actually pays for their care, if different from the recipient
   // themselves — often an adult child or POA. Deliberately separate from
@@ -1581,14 +1593,34 @@ model Receipt {
   @@map("receipts")
 }
 
+// MANUAL is every line item today (a plain typed description) — VISIT_HOURLY
+// and VISIT_DAILY are structured rows a Care Recipient invoice generates
+// from billed visits/day-rate ranges (see createCareRecipientInvoice),
+// letting generateCareRecipientInvoicePdf render real Worker/Times/Date
+// columns instead of parsing them back out of `description`.
+enum InvoiceLineItemKind {
+  MANUAL
+  VISIT_HOURLY
+  VISIT_DAILY
+}
+
 model InvoiceLineItem {
-  id          String  @id @default(cuid())
-  invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  id          String              @id @default(cuid())
+  invoice     Invoice             @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   invoiceId   String
   description String
-  quantity    Int     @default(1)
+  quantity    Int                 @default(1)
   unitPrice   Float
-  sortOrder   Int     @default(0)
+  sortOrder   Int                 @default(0)
+  kind        InvoiceLineItemKind @default(MANUAL)
+
+  // Set only when kind is VISIT_HOURLY or VISIT_DAILY — a snapshot taken
+  // at billing time, not a live join, since the caregiver can be
+  // reassigned/deactivated after the invoice is generated.
+  visitDate  DateTime?
+  visitStart DateTime?
+  visitEnd   DateTime?
+  workerName String?
 
   @@map("invoice_line_items")
 }

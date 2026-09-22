@@ -14,6 +14,7 @@ import { PaymentRowActions } from "@/components/invoices/payment-row-actions";
 import { InvoiceAttachments } from "@/components/invoices/invoice-attachments";
 import { AuditLogPanel } from "@/components/applications/audit-log-panel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Breadcrumb,
@@ -132,6 +133,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                   issueDate={invoice.issueDate}
                   dueDate={invoice.dueDate}
                   lineItems={invoice.lineItems}
+                  isCareRecipientInvoice={!!invoice.careRecipient}
                 />
               ) : (
                 <>
@@ -140,7 +142,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                       <tr className="border-b text-left text-muted-foreground">
                         <th className="pb-2 font-normal">Description</th>
                         <th className="pb-2 font-normal">Quantity</th>
-                        <th className="pb-2 text-right font-normal">Unit Price</th>
+                        <th className="pb-2 text-right font-normal">{invoice.careRecipient ? "Hourly Rate" : "Unit Price"}</th>
                         <th className="pb-2 text-right font-normal">Amount</th>
                       </tr>
                     </thead>
@@ -286,9 +288,27 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         <div className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Details</CardTitle>
+              <CardTitle className="flex items-center justify-between gap-2">
+                Details
+                {invoice.careRecipient && (
+                  <Badge
+                    variant="secondary"
+                    title="Bills a Care Recipient for their care — not the licensing Client directly"
+                  >
+                    Care Recipient Invoice
+                  </Badge>
+                )}
+              </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
+              {invoice.careRecipient && (
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">Care Recipient</span>
+                  <Link href={`/clients/${invoice.client.id}`} className="text-right hover:underline">
+                    {invoice.careRecipient.name}
+                  </Link>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Client</span>
                 <Link href={`/clients/${invoice.client.id}`} className="hover:underline">

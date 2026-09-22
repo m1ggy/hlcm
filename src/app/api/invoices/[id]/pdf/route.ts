@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getInvoice } from "@/lib/actions/invoices";
+import { computeOutstandingAccountBalance } from "@/lib/actions/care-recipient-invoices";
 import { generateInvoicePdf } from "@/lib/invoice-pdf";
+import { generateCareRecipientInvoicePdf } from "@/lib/care-recipient-invoice-pdf";
 import { displayInvoiceNumber } from "@/lib/invoice-format";
 import { getInvoiceProfile, getInvoiceLogo } from "@/lib/invoice-profiles";
 import { UnauthorizedError, ForbiddenError } from "@/lib/rbac";
@@ -11,12 +13,21 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     const invoice = await getInvoice(id);
     const profile = await getInvoiceProfile(invoice.invoiceProfileId);
     const logo = await getInvoiceLogo(profile);
-    const bytes = await generateInvoicePdf({
-      ...invoice,
-      logo,
-      footerText: profile?.footerText ?? null,
-      profileName: profile?.name ?? null,
-    });
+    const bytes = invoice.careRecipient
+      ? await generateCareRecipientInvoicePdf({
+          ...invoice,
+          careRecipient: invoice.careRecipient,
+          logo,
+          footerText: profile?.footerText ?? null,
+          profileName: profile?.name ?? null,
+          outstandingAccountBalance: await computeOutstandingAccountBalance(invoice.careRecipient.id),
+        })
+      : await generateInvoicePdf({
+          ...invoice,
+          logo,
+          footerText: profile?.footerText ?? null,
+          profileName: profile?.name ?? null,
+        });
 
     return new NextResponse(Buffer.from(bytes), {
       headers: {

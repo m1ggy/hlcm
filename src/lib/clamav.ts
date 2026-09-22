@@ -1,4 +1,5 @@
 import net from "net";
+import { UserFacingError } from "@/lib/user-facing-error";
 
 // clamd INSTREAM protocol: a "zINSTREAM\0" command followed by the payload
 // as <4-byte BE length><chunk> pairs, terminated by a zero-length chunk.
@@ -6,12 +7,15 @@ import net from "net";
 // "stream: <signature> FOUND" once it has scanned the whole stream.
 const CLAMAV_HOST = process.env.CLAMAV_HOST || "clamav";
 const CLAMAV_PORT = Number(process.env.CLAMAV_PORT) || 3310;
-const SCAN_TIMEOUT_MS = 15_000;
+// Idle timeout, not total: clamd sends nothing until it's scanned the whole
+// stream, so this has to cover scanning a max-size (200MB) file.
+const SCAN_TIMEOUT_MS = 120_000;
 const CHUNK_SIZE = 64 * 1024;
 
-export class VirusFoundError extends Error {
+export class VirusFoundError extends UserFacingError {
   constructor(public readonly signature: string) {
     super(`File rejected: infected with ${signature}`);
+    this.name = "VirusFoundError";
   }
 }
 
@@ -56,7 +60,8 @@ export async function scanForViruses(buffer: Buffer): Promise<void> {
     reply = await scanOverSocket(buffer);
   } catch (error) {
     if (process.env.NODE_ENV === "production") {
-      throw new Error("Virus scan unavailable, upload rejected");
+      console.error("[clamav] scan could not be completed, rejecting upload:", error);
+      throw new UserFacingError("The virus scan is unavailable right now, so the upload was rejected. Please try again in a few minutes.");
     }
     console.warn("[clamav] scan skipped (clamd unreachable in this environment):", error);
     return;
@@ -66,7 +71,9 @@ export async function scanForViruses(buffer: Buffer): Promise<void> {
   if (match) throw new VirusFoundError(match[1]);
   if (!/^stream:\s*OK$/.test(reply)) {
     if (process.env.NODE_ENV === "production") {
-      throw new Error(`Virus scan returned an unexpected response: ${reply}`);
+      // The raw reply stays in the server log; the user gets a plain message.
+      console.error(`[clamav] unexpected scan response, rejecting upload: ${reply}`);
+      throw new UserFacingError("The virus scan couldn't be completed, so the upload was rejected. Please try again.");
     }
     console.warn(`[clamav] unexpected response, allowing file through in this environment: ${reply}`);
   }

@@ -80,9 +80,17 @@ services:
   # Virus scanning daemon for uploaded files (see src/lib/clamav.ts). The
   # first start takes several minutes while freshclam pulls the signature
   # database into the clamav_data volume; uploads fail closed until then.
+  # The size options below must stay at or above MAX_FILE_BYTES in
+  # src/lib/actions/files.ts: clamd's StreamMaxLength defaults to 25M and
+  # rejects a bigger INSTREAM, and MaxFileSize/MaxScanSize silently skip
+  # scanning anything over their limit.
   clamav:
     image: clamav/clamav:stable
     restart: unless-stopped
+    environment:
+      CLAMD_CONF_StreamMaxLength: 200M
+      CLAMD_CONF_MaxFileSize: 200M
+      CLAMD_CONF_MaxScanSize: 400M
     expose:
       - "3310"
     volumes:

@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { listClientFiles, uploadClientFile } from "@/lib/actions/files";
+import { unexpectedErrorMessage } from "@/lib/action-result";
+import { MAX_FILE_BYTES, fileTooLargeMessage } from "@/lib/file-limits";
 
 // Same deferred-import reasoning as send-envelope-dialog.tsx — react-pdf/
 // pdfjs only needs fetching once a send actually starts.
@@ -60,14 +62,22 @@ export function SendAgreementEnvelopeDialog({ clientId, clientAgreementId }: { c
       toast.error("Only PDF files can be sent for signature");
       return;
     }
+    if (file.size > MAX_FILE_BYTES) {
+      toast.error(fileTooLargeMessage(file.name));
+      return;
+    }
     setIsUploading(true);
     uploadClientFile(clientId, formData)
-      .then((asset) => {
-        setSelectedFileId(asset.id);
-        setSelectedFileName(asset.fileName);
+      .then((result) => {
+        if (!result.ok) {
+          toast.error(result.error);
+          return;
+        }
+        setSelectedFileId(result.data.id);
+        setSelectedFileName(result.data.fileName);
         setStep("sending");
       })
-      .catch((error) => toast.error(error instanceof Error ? error.message : "Upload failed"))
+      .catch((error) => toast.error(unexpectedErrorMessage(error, "Upload failed. Please try again.")))
       .finally(() => setIsUploading(false));
   }
 

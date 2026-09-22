@@ -59,6 +59,12 @@ export type CareRecipientRow = {
   name: string;
   address: string | null;
   dateOfBirth: Date | null;
+  // Optional, staff-entered — never shown outside this Edit form (in
+  // particular, never on RecipientSummary, which this card shares with
+  // the Caregiver's own /care-recipients page). Printed masked (last 4
+  // digits) on a Care Recipient invoice PDF only — see
+  // generateCareRecipientInvoicePdf.
+  socialSecurityNumber: string | null;
   phone: string | null;
   email: string | null;
   preferredContactMethod: string | null;
@@ -71,6 +77,7 @@ export type CareRecipientRow = {
   latitude: number | null;
   longitude: number | null;
   hourlyRate: number | null;
+  dailyRate: number | null;
   billingContactName: string | null;
   billingContactEmail: string | null;
   billingContactPhone: string | null;
@@ -127,6 +134,17 @@ function CareRecipientFields({ defaultValues }: { defaultValues?: CareRecipientR
             defaultValue={toDateInputValue(defaultValues?.dateOfBirth ?? null)}
           />
         </div>
+      </div>
+      <div className="space-y-1">
+        <Label htmlFor="care-recipient-ssn">
+          Social Security Number <span className="font-normal text-muted-foreground">(optional — printed masked on invoices)</span>
+        </Label>
+        <Input
+          id="care-recipient-ssn"
+          name="socialSecurityNumber"
+          placeholder="xxx-xx-xxxx"
+          defaultValue={defaultValues?.socialSecurityNumber ?? ""}
+        />
       </div>
 
       <fieldset className="space-y-2 rounded-lg border p-3">
@@ -238,17 +256,31 @@ function CareRecipientFields({ defaultValues }: { defaultValues?: CareRecipientR
 
       <fieldset className="space-y-2 rounded-lg border p-3">
         <legend className="px-1 text-xs font-medium text-muted-foreground">Billing</legend>
-        <div className="space-y-1">
-          <Label htmlFor="care-recipient-hourly-rate">Hourly rate</Label>
-          <Input
-            id="care-recipient-hourly-rate"
-            name="hourlyRate"
-            type="number"
-            step="0.01"
-            min="0"
-            placeholder="For pricing billed visits automatically"
-            defaultValue={defaultValues?.hourlyRate ?? ""}
-          />
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <Label htmlFor="care-recipient-hourly-rate">Hourly rate</Label>
+            <Input
+              id="care-recipient-hourly-rate"
+              name="hourlyRate"
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="For pricing billed visits"
+              defaultValue={defaultValues?.hourlyRate ?? ""}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="care-recipient-daily-rate">Daily rate</Label>
+            <Input
+              id="care-recipient-daily-rate"
+              name="dailyRate"
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="For live-in/day-rate billing"
+              defaultValue={defaultValues?.dailyRate ?? ""}
+            />
+          </div>
         </div>
         <p className="px-1 text-xs text-muted-foreground">Who pays for their care, if different from them</p>
         <div className="grid grid-cols-2 gap-3">
@@ -652,6 +684,7 @@ export function CareRecipientsCard({
                               careRecipientId={r.id}
                               careRecipientName={r.name}
                               hourlyRate={r.hourlyRate}
+                              dailyRate={r.dailyRate}
                               profiles={profiles}
                               caregivers={caregivers}
                               isAdmin={isAdmin}
