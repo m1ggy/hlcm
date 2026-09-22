@@ -43,15 +43,26 @@ export function InvoiceFormDialog({
   applications,
   invoice,
   trigger,
+  open: controlledOpen,
+  onOpenChange: setControlledOpen,
 }: {
   clients: ClientOption[];
   applications: ApplicationOption[];
   invoice?: ExistingInvoice;
   trigger?: React.ReactElement;
+  /** Omit both for a self-contained dialog with its own trigger button
+   * (the default). Pass both to drive it from elsewhere instead — see
+   * NewInvoiceMenu, which opens this from a shared "New invoice" picker
+   * rather than rendering this dialog's own trigger at all. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const router = useRouter();
   const isEdit = !!invoice;
-  const [open, setOpen] = useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const isControlled = controlledOpen !== undefined;
+  const open = isControlled ? controlledOpen : uncontrolledOpen;
+  const setOpen = isControlled ? setControlledOpen! : setUncontrolledOpen;
   const [isPending, startTransition] = useTransition();
   const [clientId, setClientId] = useState(invoice?.clientId ?? clients[0]?.id ?? "");
   const [applicationId, setApplicationId] = useState(invoice?.applicationId ?? NONE);
@@ -104,7 +115,7 @@ export function InvoiceFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={trigger ?? <Button data-tour="new-invoice">New Online Invoice</Button>} />
+      {!isControlled && <DialogTrigger render={trigger ?? <Button data-tour="new-invoice">New Online Invoice</Button>} />}
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit Invoice" : "New Invoice"}</DialogTitle>
