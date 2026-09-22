@@ -132,6 +132,8 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                   internalTag={invoice.internalTag}
                   issueDate={invoice.issueDate}
                   dueDate={invoice.dueDate}
+                  periodStart={invoice.periodStart}
+                  periodEnd={invoice.periodEnd}
                   lineItems={invoice.lineItems}
                   isCareRecipientInvoice={!!invoice.careRecipient}
                 />
@@ -327,6 +329,15 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                 <span className="text-muted-foreground">Issued</span>
                 <span>{formatCalendarDate(invoice.issueDate)}</span>
               </div>
+              {invoice.careRecipient && (invoice.periodStart || invoice.periodEnd) && (
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">Service period</span>
+                  <span className="text-right">
+                    {invoice.periodStart ? formatCalendarDate(invoice.periodStart) : "—"} –{" "}
+                    {invoice.periodEnd ? formatCalendarDate(invoice.periodEnd) : "—"}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Due</span>
                 <span>{invoice.dueDate ? formatCalendarDate(invoice.dueDate) : "—"}</span>

@@ -308,6 +308,11 @@ const updateManualInvoiceDraftSchema = z.object({
   internalTag: z.string().optional(),
   issueDate: z.string().optional(),
   dueDate: z.string().optional(),
+  // Care Recipient invoices only (see Invoice.periodStart in
+  // prisma/schema.prisma) — harmless no-op for a plain manual invoice,
+  // whose editor never shows these fields.
+  periodStart: z.string().optional(),
+  periodEnd: z.string().optional(),
   lineItems: z.array(lineItemSchema).min(1, "At least one line item is required"),
 });
 
@@ -348,6 +353,8 @@ export async function updateManualInvoiceDraft(id: string, input: z.infer<typeof
         internalTag: parsed.internalTag,
         issueDate: parsed.issueDate ? new Date(parsed.issueDate) : undefined,
         dueDate: parsed.dueDate ? new Date(parsed.dueDate) : null,
+        periodStart: parsed.periodStart ? new Date(parsed.periodStart) : null,
+        periodEnd: parsed.periodEnd ? new Date(parsed.periodEnd) : null,
         total,
         editedAfterSendAt: before.lastSentAt ? new Date() : undefined,
         lineItems: {

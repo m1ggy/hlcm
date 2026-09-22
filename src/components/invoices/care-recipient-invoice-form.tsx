@@ -64,6 +64,12 @@ export function CareRecipientInvoiceForm({
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [issueDate, setIssueDate] = useState(todayInputValue());
   const [dueDate, setDueDate] = useState("");
+  // Always starts blank, even when visits or a day-rate range are already
+  // picked below — the billing period is whatever staff actually says it
+  // is, not necessarily the span of days that happened to get logged (see
+  // Invoice.periodStart in prisma/schema.prisma).
+  const [periodStart, setPeriodStart] = useState("");
+  const [periodEnd, setPeriodEnd] = useState("");
   const [lineItems, setLineItems] = useState<LineItem[]>([emptyLineItem()]);
   const [notes, setNotes] = useState("");
   const [internalTag, setInternalTag] = useState("");
@@ -93,6 +99,8 @@ export function CareRecipientInvoiceForm({
           invoiceNumber: invoiceNumber.trim() || undefined,
           issueDate: issueDate || undefined,
           dueDate: dueDate || undefined,
+          periodStart: periodStart || undefined,
+          periodEnd: periodEnd || undefined,
           notes: notes || undefined,
           internalTag: internalTag || undefined,
           lineItems: allItems,
@@ -153,6 +161,17 @@ export function CareRecipientInvoiceForm({
         <div className="space-y-1">
           <Label htmlFor="recipientDueDate">Due date (optional)</Label>
           <Input id="recipientDueDate" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+        </div>
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-4">
+        <div className="space-y-1">
+          <Label htmlFor="recipientPeriodStart">Service period from (optional)</Label>
+          <Input id="recipientPeriodStart" type="date" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="recipientPeriodEnd">Service period to (optional)</Label>
+          <Input id="recipientPeriodEnd" type="date" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} />
         </div>
       </div>
 

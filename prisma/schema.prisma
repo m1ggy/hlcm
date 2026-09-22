@@ -1379,6 +1379,16 @@ model Invoice {
   status        InvoiceStatus @default(DRAFT)
   issueDate     DateTime      @default(now())
   dueDate       DateTime?
+  // The span of care/service this invoice covers — printed as "Period: X -
+  // Y" on a Care Recipient invoice's PDF (see generateCareRecipientInvoicePdf
+  // in src/lib/care-recipient-invoice-pdf.ts). Always staff-entered, never
+  // auto-derived from line items' own visitDate — a recipient's actual
+  // billing period (e.g. a fixed weekly cycle) doesn't necessarily match
+  // exactly which days got logged/billed. Generic on Invoice rather than
+  // Care-Recipient-exclusive since nothing else about this field needs a
+  // separate table, but only Care Recipient invoices currently expose it.
+  periodStart   DateTime?
+  periodEnd     DateTime?
   notes         String?
   // Free text for whoever created the invoice — their own reference (e.g.
   // "referred by Sarah", "rush job"). Unlike `notes`, never printed on the

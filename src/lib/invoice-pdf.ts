@@ -66,6 +66,10 @@ export type InvoicePdfInput = {
   status: string;
   issueDate: Date;
   dueDate: Date | null;
+  /** The service period this invoice covers — Care Recipient invoices only
+   * (see generateCareRecipientInvoicePdf); staff-entered, never derived. */
+  periodStart: Date | null;
+  periodEnd: Date | null;
   notes: string | null;
   total: number | null;
   taxAmount: number | null;
