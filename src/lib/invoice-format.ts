@@ -3,6 +3,26 @@
 // "use server" module to be an async server action, so a plain sync
 // helper living there silently breaks client bundling (it gets dropped,
 // and any client component importing it fails to resolve the import).
+/** issueDate/dueDate/paidAt are calendar dates picked from a plain
+ * `<input type="date">` (e.g. "2026-09-14"), stored as UTC midnight — a
+ * bare `.toLocaleDateString()` reinterprets that instant in whatever
+ * timezone the caller runs in, which prints the day before whenever that
+ * timezone is behind UTC. Forcing the UTC calendar fields keeps the
+ * printed date the one that was actually typed in, everywhere it's shown. */
+function calendarDate(date: Date): Date {
+  return new Date(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+}
+
+export function formatCalendarDate(date: Date): string {
+  return calendarDate(date).toLocaleDateString();
+}
+
+/** Same UTC-normalization as formatCalendarDate, for the day-of-week a
+ * live-in/day-rate line prints instead of a caregiver name. */
+export function formatCalendarWeekday(date: Date): string {
+  return calendarDate(date).toLocaleDateString(undefined, { weekday: "long" });
+}
+
 export function displayInvoiceNumber(invoice: {
   seq: number;
   stripeInvoiceNumber: string | null;

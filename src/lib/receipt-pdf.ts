@@ -9,7 +9,7 @@
 // stay fixed even if the invoice is edited later.
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { PAGE_SIZE, MARGIN, drawWrappedText, drawLogoOrName, money, projectLabel } from "@/lib/invoice-pdf";
-import { displayInvoiceNumber, displayReceiptNumber } from "@/lib/invoice-format";
+import { displayInvoiceNumber, displayReceiptNumber, formatCalendarDate } from "@/lib/invoice-format";
 
 export type ReceiptPdfInput = {
   seq: number;
@@ -86,7 +86,7 @@ export async function generateReceiptPdf(receipt: ReceiptPdfInput): Promise<Uint
 
   // Date, right column
   const rightX = PAGE_SIZE[0] - MARGIN - 160;
-  page.drawText(`Date: ${receipt.payment.paidAt.toLocaleDateString()}`, {
+  page.drawText(`Date: ${formatCalendarDate(receipt.payment.paidAt)}`, {
     x: rightX,
     y: PAGE_SIZE[1] - MARGIN - 60,
     size: 10,

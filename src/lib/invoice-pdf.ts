@@ -6,7 +6,7 @@
 // email action (sendManualInvoicePdf in src/lib/actions/invoices.ts), so
 // the emailed copy and the downloaded copy are always identical.
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
-import { displayInvoiceNumber } from "@/lib/invoice-format";
+import { displayInvoiceNumber, formatCalendarDate } from "@/lib/invoice-format";
 
 // Exported for receipt-pdf.ts to share — a receipt uses the same page
 // geometry and hand-wrapping helpers, just a much shorter layout.
@@ -188,10 +188,10 @@ export async function generateInvoicePdf(invoice: InvoicePdfInput): Promise<Uint
   // Dates, right column
   let ry = PAGE_SIZE[1] - MARGIN - 60;
   const rightX = PAGE_SIZE[0] - MARGIN - 160;
-  page.drawText(`Issued: ${invoice.issueDate.toLocaleDateString()}`, { x: rightX, y: ry, size: 10, font });
+  page.drawText(`Issued: ${formatCalendarDate(invoice.issueDate)}`, { x: rightX, y: ry, size: 10, font });
   ry -= 15;
   if (invoice.dueDate) {
-    page.drawText(`Due: ${invoice.dueDate.toLocaleDateString()}`, { x: rightX, y: ry, size: 10, font });
+    page.drawText(`Due: ${formatCalendarDate(invoice.dueDate)}`, { x: rightX, y: ry, size: 10, font });
     ry -= 15;
   }
 
@@ -255,7 +255,7 @@ export async function generateInvoicePdf(invoice: InvoicePdfInput): Promise<Uint
   const paid = invoice.amountPaid ?? 0;
   let statusLine: string;
   if (invoice.status === "PAID") {
-    statusLine = invoice.paidAt ? `Paid in full on ${invoice.paidAt.toLocaleDateString()}` : "Paid in full";
+    statusLine = invoice.paidAt ? `Paid in full on ${formatCalendarDate(invoice.paidAt)}` : "Paid in full";
   } else if (invoice.status === "PARTIALLY_PAID") {
     statusLine = `Partially paid: ${money(paid)} of ${money(total)} received — ${money(total - paid)} remaining`;
   } else if (invoice.status === "VOID") {

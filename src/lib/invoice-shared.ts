@@ -63,7 +63,8 @@ export const invoiceInclude = {
 
 export const lineItemSchema = z.object({
   description: z.string().min(1),
-  quantity: z.coerce.number().int().min(1),
+  // Not .int() — day-rate/prorated lines bill fractional hours (e.g. 8.5).
+  quantity: z.coerce.number().min(0.01),
   unitPrice: z.coerce.number().min(0),
 });
 

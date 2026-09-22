@@ -3,7 +3,7 @@ import Link from "next/link";
 import { TriangleAlert, PenLine, Download } from "lucide-react";
 import { getInvoice, getInvoiceAuditLog } from "@/lib/actions/invoices";
 import { listInvoiceAttachments } from "@/lib/actions/invoice-attachments";
-import { displayInvoiceNumber, displayReceiptNumber } from "@/lib/invoice-format";
+import { displayInvoiceNumber, displayReceiptNumber, formatCalendarDate } from "@/lib/invoice-format";
 import { listClients } from "@/lib/actions/clients";
 import { listApplications } from "@/lib/actions/applications";
 import { InvoiceStatusBadge, isInvoiceOverdue, isManualInvoice } from "@/components/invoices/invoice-status-badge";
@@ -205,7 +205,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                   <tbody>
                     {invoice.payments.map((payment) => (
                       <tr key={payment.id} className="border-b last:border-0">
-                        <td className="py-2">{payment.paidAt.toLocaleDateString()}</td>
+                        <td className="py-2">{formatCalendarDate(payment.paidAt)}</td>
                         <td className="py-2 text-muted-foreground">{payment.paymentMethod}</td>
                         <td className="py-2 text-right tabular-nums">${payment.amount.toFixed(2)}</td>
                         <td className="py-2">
@@ -325,11 +325,11 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               )}
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Issued</span>
-                <span>{invoice.issueDate.toLocaleDateString()}</span>
+                <span>{formatCalendarDate(invoice.issueDate)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Due</span>
-                <span>{invoice.dueDate ? invoice.dueDate.toLocaleDateString() : "—"}</span>
+                <span>{invoice.dueDate ? formatCalendarDate(invoice.dueDate) : "—"}</span>
               </div>
               {invoice.sentAt && (
                 <div className="flex justify-between">
@@ -340,7 +340,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               {invoice.paidAt && (
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">{invoice.status === "PARTIALLY_PAID" ? "Last payment" : "Paid"}</span>
-                  <span>{invoice.paidAt.toLocaleDateString()}</span>
+                  <span>{formatCalendarDate(invoice.paidAt)}</span>
                 </div>
               )}
               {invoice.paymentMethod && (
