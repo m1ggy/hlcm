@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { Plus } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { type RecipientLineItem } from "@/components/invoices/unbilled-visits-section";
+
+type CaregiverOption = { id: string; name: string };
 
 function eachDay(startStr: string, endStr: string): Date[] {
   if (!startStr || !endStr) return [];
@@ -19,52 +21,55 @@ function eachDay(startStr: string, endStr: string): Date[] {
   return days;
 }
 
-function dayRateLineItemsFor(days: Date[], dailyRate: number): RecipientLineItem[] {
+function dayRateLineItemsFor(days: Date[], dailyRate: number, workerName: string | undefined): RecipientLineItem[] {
   return days.map((d) => ({
     description: `${d.toLocaleDateString()} — live-in day rate`,
     quantity: 1,
     unitPrice: dailyRate,
     kind: "VISIT_DAILY",
     visitDate: d.toISOString(),
+    workerName,
   }));
 }
 
 /**
  * A flat per-day billing range — the "Live-in" counterpart to
  * UnbilledVisitsSection's hourly visits, for a recipient billed a daily
- * rate instead of (or alongside) hourly. Produces one VISIT_DAILY line
- * item per calendar day in the range, defaulted to the recipient's own
- * `dailyRate` but editable per invoice. Collapsed by default since not
- * every recipient invoice bills day-rate days.
+ * rate. Produces one VISIT_DAILY line item per calendar day in the range,
+ * defaulted to the recipient's own `dailyRate` but editable per invoice.
+ * Which caregiver provided the care is optional — leaving it blank keeps
+ * generateCareRecipientInvoicePdf's existing weekday-name fallback in the
+ * Worker column (see its own comment) rather than a picked name.
+ *
+ * The caller (CareRecipientInvoiceForm) decides whether this even mounts —
+ * it's shown only while its own hourly/day-rate toggle is on Day rate, so
+ * this component has no collapse state of its own.
  */
 export function DayRateSection({
   dailyRate,
+  caregivers,
   onLineItemsChange,
 }: {
   dailyRate: number | null;
+  caregivers: CaregiverOption[];
   onLineItemsChange: (items: RecipientLineItem[]) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [rate, setRate] = useState(dailyRate ?? 0);
+  const [caregiverId, setCaregiverId] = useState("");
 
-  function emit(nextStart: string, nextEnd: string, nextRate: number) {
-    onLineItemsChange(dayRateLineItemsFor(eachDay(nextStart, nextEnd), nextRate));
+  function emit(nextStart: string, nextEnd: string, nextRate: number, nextCaregiverId: string) {
+    const workerName = caregivers.find((c) => c.id === nextCaregiverId)?.name;
+    onLineItemsChange(dayRateLineItemsFor(eachDay(nextStart, nextEnd), nextRate, workerName));
   }
 
-  if (!expanded) {
-    return (
-      <Button
-        type="button"
-        variant="link"
-        size="sm"
-        className="h-auto px-0"
-        onClick={() => setExpanded(true)}
-      >
-        <Plus className="size-3.5" /> Bill live-in / day-rate days
-      </Button>
-    );
+  function clear() {
+    setStartDate("");
+    setEndDate("");
+    setRate(dailyRate ?? 0);
+    setCaregiverId("");
+    onLineItemsChange([]);
   }
 
   const days = eachDay(startDate, endDate);
@@ -73,19 +78,11 @@ export function DayRateSection({
     <div className="space-y-2 rounded-lg border p-3">
       <div className="flex items-center justify-between">
         <p className="text-sm font-medium">Live-in / day-rate days</p>
-        <Button
-          type="button"
-          variant="ghost"
-          size="xs"
-          onClick={() => {
-            setExpanded(false);
-            setStartDate("");
-            setEndDate("");
-            onLineItemsChange([]);
-          }}
-        >
-          Remove
-        </Button>
+        {(startDate || endDate) && (
+          <Button type="button" variant="ghost" size="xs" onClick={clear}>
+            Clear
+          </Button>
+        )}
       </div>
       <div className="grid grid-cols-3 gap-2">
         <div className="space-y-1">
@@ -96,7 +93,7 @@ export function DayRateSection({
             value={startDate}
             onChange={(e) => {
               setStartDate(e.target.value);
-              emit(e.target.value, endDate, rate);
+              emit(e.target.value, endDate, rate, caregiverId);
             }}
           />
         </div>
@@ -108,7 +105,7 @@ export function DayRateSection({
             value={endDate}
             onChange={(e) => {
               setEndDate(e.target.value);
-              emit(startDate, e.target.value, rate);
+              emit(startDate, e.target.value, rate, caregiverId);
             }}
           />
         </div>
@@ -123,10 +120,33 @@ export function DayRateSection({
             onChange={(e) => {
               const next = Number(e.target.value) || 0;
               setRate(next);
-              emit(startDate, endDate, next);
+              emit(startDate, endDate, next, caregiverId);
             }}
           />
         </div>
+      </div>
+      <div className="space-y-1">
+        <Label className="text-xs">Caregiver (optional)</Label>
+        <Select
+          items={Object.fromEntries(caregivers.map((c) => [c.id, c.name]))}
+          value={caregiverId || null}
+          onValueChange={(v) => {
+            const next = v ?? "";
+            setCaregiverId(next);
+            emit(startDate, endDate, rate, next);
+          }}
+        >
+          <SelectTrigger className="h-8 w-full text-xs">
+            <SelectValue placeholder="Not attributed to a specific caregiver" />
+          </SelectTrigger>
+          <SelectContent>
+            {caregivers.map((c) => (
+              <SelectItem key={c.id} value={c.id}>
+                {c.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       {days.length > 0 && (
         <p className="text-xs text-muted-foreground">
