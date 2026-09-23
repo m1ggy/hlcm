@@ -130,6 +130,87 @@ export async function createCareRecipientInvoice(input: z.input<typeof createCar
   return invoice;
 }
 
+const createBatchCareRecipientInvoicesSchema = z.object({
+  clientId: z.string().min(1),
+  recipientIds: z.array(z.string()).min(1),
+  from: z.string().min(1),
+  to: z.string().min(1),
+  invoiceProfileId: z.string().optional(),
+  issueDate: z.string().optional(),
+  dueDate: z.string().optional(),
+});
+
+function hoursOf(entry: { clockIn: Date; clockOut: Date | null }) {
+  return ((entry.clockOut ?? entry.clockIn).getTime() - entry.clockIn.getTime()) / (1000 * 60 * 60);
+}
+
+export type BatchInvoiceResult =
+  | { recipientId: string; recipientName: string; status: "created"; invoiceId: string }
+  | { recipientId: string; recipientName: string; status: "skipped" }
+  | { recipientId: string; recipientName: string; status: "failed"; error: string };
+
+// "This week's Ace invoices" — bills every picked recipient under one
+// Client from their logged unbilled visits in [from, to], one
+// createCareRecipientInvoice call per recipient rather than duplicating
+// its validation/transaction/audit logic. Each recipient succeeds or
+// fails independently (a stale preview — someone else billed that visit
+// in the gap before this ran — only skips that one recipient, it doesn't
+// abort the batch) — see BatchCareRecipientInvoiceDialog, which shows
+// the returned per-recipient results.
+export async function createBatchCareRecipientInvoices(
+  input: z.infer<typeof createBatchCareRecipientInvoicesSchema>
+): Promise<BatchInvoiceResult[]> {
+  await requireRole(MANAGE_ROLES);
+  const parsed = createBatchCareRecipientInvoicesSchema.parse(input);
+  const from = new Date(`${parsed.from}T00:00:00`);
+  const to = new Date(`${parsed.to}T23:59:59.999`);
+
+  const results: BatchInvoiceResult[] = [];
+  for (const recipientId of parsed.recipientIds) {
+    const recipient = await prisma.careRecipient.findUnique({ where: { id: recipientId } });
+    if (!recipient || recipient.clientId !== parsed.clientId) {
+      results.push({ recipientId, recipientName: recipient?.name ?? recipientId, status: "failed", error: "Recipient no longer belongs to this client" });
+      continue;
+    }
+
+    const visits = await prisma.timeEntry.findMany({
+      where: { careRecipientId: recipientId, clockOut: { not: null }, billedInvoiceId: null, clockIn: { gte: from, lte: to } },
+      include: { user: { select: { name: true } } },
+      orderBy: { clockIn: "asc" },
+    });
+    if (visits.length === 0) {
+      results.push({ recipientId, recipientName: recipient.name, status: "skipped" });
+      continue;
+    }
+
+    try {
+      const invoice = await createCareRecipientInvoice({
+        clientId: parsed.clientId,
+        careRecipientId: recipientId,
+        invoiceProfileId: parsed.invoiceProfileId,
+        issueDate: parsed.issueDate,
+        dueDate: parsed.dueDate,
+        timeEntryIds: visits.map((v) => v.id),
+        lineItems: visits.map((v) => ({
+          description: `${v.clockIn.toLocaleDateString()} visit — ${v.user.name} (${hoursOf(v).toFixed(2)}h)`,
+          quantity: Number(hoursOf(v).toFixed(2)),
+          unitPrice: recipient.hourlyRate ?? 0,
+          kind: "VISIT_HOURLY" as const,
+          visitDate: v.clockIn,
+          visitStart: v.clockIn,
+          visitEnd: v.clockOut ?? v.clockIn,
+          workerName: v.user.name,
+        })),
+      });
+      results.push({ recipientId, recipientName: recipient.name, status: "created", invoiceId: invoice.id });
+    } catch (error) {
+      results.push({ recipientId, recipientName: recipient.name, status: "failed", error: error instanceof Error ? error.message : "Failed to create invoice" });
+    }
+  }
+
+  return results;
+}
+
 // Sum of (total - amountPaid) across every non-VOID invoice billed to this
 // recipient, this one included — the "Outstanding Account Balance (All
 // Invoices)" / "Total Amount Due" figures on
