@@ -305,6 +305,36 @@ export async function listUnbilledVisits(careRecipientId: string) {
   });
 }
 
+// The batch-invoicing counterpart to listUnbilledVisits above — every
+// active recipient under a Client, each with their own unbilled visits
+// falling inside [from, to], for BatchCareRecipientInvoiceDialog's preview
+// step (src/components/invoices/batch-care-recipient-invoice-dialog.tsx).
+// A recipient with nothing unbilled in range is simply left out, so the
+// preview never needs a "nothing to bill" row. Same date-range convention
+// (local time, no timezone suffix) as DayRateSection's own From/To range —
+// see eachDay() in src/components/invoices/day-rate-section.tsx.
+export async function listUnbilledVisitsForClient(clientId: string, from: string, to: string) {
+  await requireRole([...MANAGE_ROLES]);
+  const recipients = await prisma.careRecipient.findMany({
+    where: { clientId, active: true },
+    select: { id: true, name: true, hourlyRate: true },
+    orderBy: { name: "asc" },
+  });
+  const visits = await prisma.timeEntry.findMany({
+    where: {
+      careRecipientId: { in: recipients.map((r) => r.id) },
+      clockOut: { not: null },
+      billedInvoiceId: null,
+      clockIn: { gte: new Date(`${from}T00:00:00`), lte: new Date(`${to}T23:59:59.999`) },
+    },
+    include: { user: { select: { name: true } } },
+    orderBy: { clockIn: "asc" },
+  });
+  return recipients
+    .map((r) => ({ ...r, visits: visits.filter((v) => v.careRecipientId === r.id) }))
+    .filter((r) => r.visits.length > 0);
+}
+
 // Both derive the caller's id from the session, never from a caller-supplied
 // parameter — same reasoning as listCaregiverClients/getCaregiverClient in
 // clients.ts: trusting a passed-in userId would let anyone enumerate

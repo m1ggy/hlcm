@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, Globe, FileText, HeartHandshake } from "lucide-react";
+import { ChevronDown, Globe, FileText, HeartHandshake, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -12,6 +12,7 @@ import {
 import { InvoiceFormDialog } from "@/components/invoices/invoice-form-dialog";
 import { RecordPaymentDialog } from "@/components/invoices/record-payment-dialog";
 import { NewCareRecipientInvoiceDialog } from "@/components/invoices/new-care-recipient-invoice-dialog";
+import { BatchCareRecipientInvoiceDialog } from "@/components/invoices/batch-care-recipient-invoice-dialog";
 
 type ClientOption = { id: string; name: string };
 type ApplicationOption = { id: string; name: string; clientId: string };
@@ -27,7 +28,7 @@ type RecipientOption = {
   outstandingBalance: number;
 };
 
-type InvoiceType = "online" | "manual" | "recipient" | null;
+type InvoiceType = "online" | "manual" | "recipient" | "batch" | null;
 
 // One "New invoice" entry point for all three ways to bill — previously
 // three separate always-visible buttons (plus Care Recipient billing not
@@ -72,6 +73,9 @@ export function NewInvoiceMenu({
           <DropdownMenuItem onClick={() => setActiveType("recipient")}>
             <HeartHandshake className="size-3.5" /> Care Recipient
           </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setActiveType("batch")}>
+            <Users className="size-3.5" /> Batch by client
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -95,6 +99,12 @@ export function NewInvoiceMenu({
         isAdmin={isAdmin}
         open={activeType === "recipient"}
         onOpenChange={(next) => setActiveType(next ? "recipient" : null)}
+      />
+      <BatchCareRecipientInvoiceDialog
+        clients={clients}
+        profiles={profiles}
+        open={activeType === "batch"}
+        onOpenChange={(next) => setActiveType(next ? "batch" : null)}
       />
     </>
   );
