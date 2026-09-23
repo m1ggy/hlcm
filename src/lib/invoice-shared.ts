@@ -68,6 +68,53 @@ export const lineItemSchema = z.object({
   unitPrice: z.coerce.number().min(0),
 });
 
+// A Care Recipient invoice's line item, structured beyond the plain
+// description/qty/unit-price shape so generateCareRecipientInvoicePdf can
+// render real Date/Worker/Times/Rate columns instead of parsing them back
+// out of `description` — see the `kind`/visit* fields on InvoiceLineItem
+// in prisma/schema.prisma. Shared between createCareRecipientInvoice
+// (src/lib/actions/care-recipient-invoices.ts) and updateManualInvoiceDraft
+// (src/lib/actions/invoices.ts, which every manual invoice's edit — Care
+// Recipient or not — goes through): a plain manual invoice's editor never
+// sends these fields, so they're simply absent there and every line
+// defaults to MANUAL, same as always. Without this shared schema,
+// updateManualInvoiceDraft's plain lineItemSchema would silently strip
+// kind/visitDate/visitStart/visitEnd/workerName on every save (Zod drops
+// unrecognized keys by default), permanently downgrading a Care Recipient
+// invoice's structured hourly/day-rate lines to plain MANUAL ones the
+// first time anyone edited it after creation.
+export const structuredLineItemSchema = lineItemSchema.extend({
+  // Defaults to MANUAL so a plain typed extra charge (e.g. a supply fee)
+  // needs nothing beyond description/quantity/unitPrice, same as today.
+  kind: z.enum(["MANUAL", "VISIT_HOURLY", "VISIT_DAILY"]).default("MANUAL"),
+  // z.coerce.date(), not z.string() — createCareRecipientInvoice's own
+  // caller always sends fresh ISO strings (from a date input or
+  // .toISOString()), but updateManualInvoiceDraft's caller
+  // (ManualInvoiceEditor) round-trips an *existing* invoice's line items
+  // untouched when only quantity/price/description changed, and those
+  // arrive as real Date objects straight from Prisma, not strings.
+  visitDate: z.coerce.date().optional(),
+  visitStart: z.coerce.date().optional(),
+  visitEnd: z.coerce.date().optional(),
+  workerName: z.string().optional(),
+});
+
+// The DB-ready shape structuredLineItemSchema's dates need — shared by both
+// call sites' `lineItems: { create: [...] }` mapping.
+export function toStructuredLineItemData(li: z.infer<typeof structuredLineItemSchema>, sortOrder: number) {
+  return {
+    description: li.description,
+    quantity: li.quantity,
+    unitPrice: li.unitPrice,
+    sortOrder,
+    kind: li.kind,
+    visitDate: li.visitDate,
+    visitStart: li.visitStart,
+    visitEnd: li.visitEnd,
+    workerName: li.workerName || undefined,
+  };
+}
+
 // Pre-send estimate only (no tax) — the real total + tax come back from
 // Stripe Tax once a Stripe-bound invoice is finalized; a manual/Care
 // Recipient invoice never goes through Stripe, so this is the final total.
