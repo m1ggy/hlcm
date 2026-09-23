@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { InvoiceStatusBadge, INVOICE_STATUS_LABELS, InvoiceStatusValue, isInvoiceOverdue, isManualInvoice } from "./invoice-status-badge";
 import { displayInvoiceNumber, formatCalendarDate, outstandingBalance } from "@/lib/invoice-format";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Table,
@@ -74,8 +75,24 @@ function projectLabel(client: InvoiceRow["client"]) {
   return client.projects.length > 0 ? client.projects.map((p) => p.name).join(", ") : "—";
 }
 
+// Not persisted like filter/groupMode/profileFilter below — a search query
+// is a one-off "find this specific invoice right now", not a lasting view
+// preference worth remembering across visits.
+function matchesSearch(invoice: InvoiceRow, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return (
+    displayInvoiceNumber(invoice).toLowerCase().includes(q) ||
+    clientLabel(invoice.client).toLowerCase().includes(q) ||
+    invoice.client.name.toLowerCase().includes(q) ||
+    (invoice.careRecipient?.name.toLowerCase().includes(q) ?? false) ||
+    (invoice.total != null && invoice.total.toFixed(2).includes(q))
+  );
+}
+
 export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
   const router = useRouter();
+  const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   // Grouped by client is the default — a flat "All" list (today's original
   // view, still newest-first) stays one click away for anyone who prefers it.
@@ -133,11 +150,16 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
     return options;
   }, [invoices]);
 
+  // Searched first — status chip counts and the profile filter both narrow
+  // from there, so typing a query updates counts everywhere else too
+  // instead of only affecting the rows shown.
+  const searched = invoices.filter((invoice) => matchesSearch(invoice, search));
+
   // "All" follows the same hide-by-default pattern as archived clients/
   // projects — a voided invoice is done, nothing left to act on, and
   // shouldn't clutter the main list. It's still one click away via its own
   // "Void" chip, same as archived items get their own explicit view.
-  const filtered = invoices
+  const filtered = searched
     .filter((invoice) => (filter === "all" ? invoice.status !== "VOID" : invoice.status === filter))
     .filter((invoice) => {
       if (profileFilter === ALL_PROFILES_KEY) return true;
@@ -146,11 +168,11 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
     });
 
   const chips: { key: Filter; label: string; count: number }[] = [
-    { key: "all", label: "All", count: invoices.filter((i) => i.status !== "VOID").length },
+    { key: "all", label: "All", count: searched.filter((i) => i.status !== "VOID").length },
     ...(Object.keys(INVOICE_STATUS_LABELS) as InvoiceStatusValue[]).map((s) => ({
       key: s,
       label: INVOICE_STATUS_LABELS[s],
-      count: invoices.filter((i) => i.status === s).length,
+      count: searched.filter((i) => i.status === s).length,
     })),
   ];
 
@@ -160,8 +182,12 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
   // in prisma/schema.prisma — a client group merges several clients into
   // one section, e.g. a holding company's separate locations), falling
   // back to the individual client otherwise.
+  // A search result should be immediately visible, not buried inside a
+  // collapsed-by-default group the user then has to go find and expand —
+  // so an active search flattens the list the same way "All" grouping
+  // does, regardless of which grouping mode is otherwise selected.
   const groups =
-    groupMode === "all"
+    groupMode === "all" || search.trim()
       ? null
       : Object.values(
           filtered.reduce<Record<string, { key: string; label: string; rows: InvoiceRow[] }>>((acc, invoice) => {
@@ -278,6 +304,13 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
 
   return (
     <div className="space-y-4">
+      <Input
+        type="search"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="Search by invoice number, client, recipient, or amount..."
+        className="max-w-sm"
+      />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap gap-1.5">
           {chips.map((chip) => (
