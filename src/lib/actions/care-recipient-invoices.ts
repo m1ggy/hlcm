@@ -16,17 +16,14 @@ import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { getDefaultInvoiceProfile } from "@/lib/invoice-profiles";
-import { MANAGE_ROLES, invoiceInclude, lineItemSchema, subtotalOf, friendlyInvoiceNumberError } from "@/lib/invoice-shared";
-
-const recipientLineItemSchema = lineItemSchema.extend({
-  // Defaults to MANUAL so a plain typed extra charge (e.g. a supply fee)
-  // needs nothing beyond description/quantity/unitPrice, same as today.
-  kind: z.enum(["MANUAL", "VISIT_HOURLY", "VISIT_DAILY"]).default("MANUAL"),
-  visitDate: z.string().optional(),
-  visitStart: z.string().optional(),
-  visitEnd: z.string().optional(),
-  workerName: z.string().optional(),
-});
+import {
+  MANAGE_ROLES,
+  invoiceInclude,
+  structuredLineItemSchema,
+  toStructuredLineItemData,
+  subtotalOf,
+  friendlyInvoiceNumberError,
+} from "@/lib/invoice-shared";
 
 const createCareRecipientInvoiceSchema = z.object({
   clientId: z.string().min(1),
@@ -42,7 +39,7 @@ const createCareRecipientInvoiceSchema = z.object({
   periodEnd: z.string().optional(),
   notes: z.string().optional(),
   internalTag: z.string().optional(),
-  lineItems: z.array(recipientLineItemSchema).min(1, "At least one visit, day, or line item is required"),
+  lineItems: z.array(structuredLineItemSchema).min(1, "At least one visit, day, or line item is required"),
   // The logged visits being billed, if any — validated below, then marked
   // billed in the same transaction as the invoice itself. Not every
   // VISIT_HOURLY line item necessarily comes from a TimeEntry (a missed
@@ -55,7 +52,9 @@ const createCareRecipientInvoiceSchema = z.object({
 // no Send, no card payment page" shape (always created unpaid, status
 // SENT), just always tagged to a recipient and built from visits/day-rate
 // ranges instead of free-typed lines. See CreateRecipientInvoiceDialog.
-export async function createCareRecipientInvoice(input: z.infer<typeof createCareRecipientInvoiceSchema>) {
+// z.input, not z.infer (== z.output) — see updateManualInvoiceDraft's own
+// comment on this in src/lib/actions/invoices.ts.
+export async function createCareRecipientInvoice(input: z.input<typeof createCareRecipientInvoiceSchema>) {
   const session = await requireRole(MANAGE_ROLES);
   const parsed = createCareRecipientInvoiceSchema.parse(input);
   const total = subtotalOf(parsed.lineItems);
@@ -107,17 +106,7 @@ export async function createCareRecipientInvoice(input: z.infer<typeof createCar
           taxAmount: 0,
           createdById: session.user.id,
           lineItems: {
-            create: parsed.lineItems.map((li, index) => ({
-              description: li.description,
-              quantity: li.quantity,
-              unitPrice: li.unitPrice,
-              sortOrder: index,
-              kind: li.kind,
-              visitDate: li.visitDate ? new Date(li.visitDate) : undefined,
-              visitStart: li.visitStart ? new Date(li.visitStart) : undefined,
-              visitEnd: li.visitEnd ? new Date(li.visitEnd) : undefined,
-              workerName: li.workerName || undefined,
-            })),
+            create: parsed.lineItems.map((li, index) => toStructuredLineItemData(li, index)),
           },
         },
         include: invoiceInclude,

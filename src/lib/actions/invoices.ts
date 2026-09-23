@@ -13,7 +13,16 @@ import { generateReceiptPdf } from "@/lib/receipt-pdf";
 import { saveBuffer, readStoredFile, deleteStoredFile } from "@/lib/storage";
 import { getInvoiceProfile, getDefaultInvoiceProfile, getInvoiceLogo, parseCcEmails } from "@/lib/invoice-profiles";
 import { displayInvoiceNumber, displayReceiptNumber, formatCalendarDate } from "@/lib/invoice-format";
-import { MANAGE_ROLES, invoiceInclude, lineItemSchema, subtotalOf, friendlyInvoiceNumberError, isManual } from "@/lib/invoice-shared";
+import {
+  MANAGE_ROLES,
+  invoiceInclude,
+  lineItemSchema,
+  structuredLineItemSchema,
+  toStructuredLineItemData,
+  subtotalOf,
+  friendlyInvoiceNumberError,
+  isManual,
+} from "@/lib/invoice-shared";
 import { computeOutstandingAccountBalance } from "@/lib/actions/care-recipient-invoices";
 import {
   createCustomer,
@@ -345,7 +354,16 @@ const updateManualInvoiceDraftSchema = z.object({
   // whose editor never shows these fields.
   periodStart: z.string().optional(),
   periodEnd: z.string().optional(),
-  lineItems: z.array(lineItemSchema).min(1, "At least one line item is required"),
+  // structuredLineItemSchema, not the plain lineItemSchema — this action
+  // is also how a Care Recipient invoice's line items get edited (see
+  // ManualInvoiceEditor's isCareRecipientInvoice prop), and those carry
+  // kind/visitDate/visitStart/visitEnd/workerName that a plain manual
+  // invoice's editor simply never sends. Using the plain schema here used
+  // to silently strip those fields on every save (Zod drops unrecognized
+  // keys by default), permanently downgrading a recipient's structured
+  // hourly/day-rate lines to plain MANUAL ones — see
+  // toStructuredLineItemData's own comment in src/lib/invoice-shared.ts.
+  lineItems: z.array(structuredLineItemSchema).min(1, "At least one line item is required"),
 });
 
 // A manual invoice is created straight to "awaiting payment" — there's no
@@ -359,7 +377,11 @@ const updateManualInvoiceDraftSchema = z.object({
 // set stamps editedAfterSendAt, which drives the "edited after sending"
 // indicator on the invoice list/detail pages — see sendManualInvoicePdf,
 // which clears it again once a fresh copy actually goes out.
-export async function updateManualInvoiceDraft(id: string, input: z.infer<typeof updateManualInvoiceDraftSchema>) {
+// z.input, not z.infer (== z.output) — structuredLineItemSchema's `kind`
+// has a Zod .default(), which z.output treats as required (a parsed value
+// always has *something* there) even though a caller is free to omit it.
+// A plain manual invoice's editor never sends kind/visitDate/etc. at all.
+export async function updateManualInvoiceDraft(id: string, input: z.input<typeof updateManualInvoiceDraftSchema>) {
   const session = await requireRole(MANAGE_ROLES);
   const parsed = updateManualInvoiceDraftSchema.parse(input);
 
@@ -390,7 +412,7 @@ export async function updateManualInvoiceDraft(id: string, input: z.infer<typeof
         total,
         editedAfterSendAt: before.lastSentAt ? new Date() : undefined,
         lineItems: {
-          create: parsed.lineItems.map((li, index) => ({ ...li, sortOrder: index })),
+          create: parsed.lineItems.map((li, index) => toStructuredLineItemData(li, index)),
         },
       },
       include: invoiceInclude,
