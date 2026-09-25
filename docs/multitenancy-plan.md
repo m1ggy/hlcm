@@ -120,7 +120,7 @@ Rollback: `scripts/multitenancy-phase1-down.sql` (drops the 53 columns, `organiz
 - `NEXTAUTH_URL`/`AUTH_URL` must be unset (they pin every sign-in redirect to one host). Prod never set it; local `.env` files that do must drop it.
 
 **Open from Phase 2:**
-- `orgId` in server error logs (2d bullet) — not done.
+- ~~`orgId` in server error logs~~ — done: `onRequestError` in `src/instrumentation.ts` logs `[tenant <slug>] <routeType> <method> <path> failed (digest …)`.
 - `pg` warns "client.query() while already executing a query" when Prisma runs an `include`'s relation queries in parallel inside a transaction; the per-statement `set_config` transaction makes that happen for most queries. Harmless on pg 8 (it queues); `pg` is pinned `^8`. Revisit before any pg 9 upgrade (Prisma adapter issue).
 - Server actions that validate an id and then write are covered by the triggers + scoped where; no per-action cross-tenant tests yet (the suite tests the client and the DB layer).
 
@@ -284,7 +284,7 @@ Rough effort (solo dev + Claude):
 |---|---|
 | 0 Backups + rehearsal script | done (tested locally, not yet on server) |
 | 1 Schema + backfill | 1–2 d |
-| 2 Tenant context + call sites + FK triggers + tests | done (branch), error-log orgId open |
+| 2 Tenant context + call sites + FK triggers + tests | done (branch) |
 | 3 Uniques / numbering / storage / lookups / stage roles | 1 w |
 | 4 Integrations + jobs | 1–1.5 w |
 | 5 Platform admin, onboarding, TLS, billing, offboarding | 1.5–2 w |

@@ -4,6 +4,9 @@
 // so an in-process interval is the simplest way to run scheduled work — no
 // extra container, secret, or external scheduler needed.
 
+import type { Instrumentation } from "next";
+import { orgSlugFromHost } from "@/lib/tenant-host";
+
 const DIGEST_HOUR = 8; // local server time
 
 let lastSentDate: string | null = null;
@@ -47,3 +50,17 @@ export function register() {
   setInterval(maybeSendDigest, 60 * 60 * 1000);
   setInterval(tickMeetingReminders, 5 * 60 * 1000);
 }
+
+// Next logs the error itself; this adds which tenant it happened in (from
+// the request host — the same rule src/lib/tenant.ts uses), so an incident
+// can be traced to one org. The digest ties it to what the user saw.
+export const onRequestError: Instrumentation.onRequestError = (err, request, context) => {
+  const hostHeader = request.headers.host;
+  const host = Array.isArray(hostHeader) ? hostHeader[0] : hostHeader;
+  const digest = typeof err === "object" && err !== null && "digest" in err ? String(err.digest) : undefined;
+  const message = err instanceof Error ? err.message || err.name : String(err);
+  console.error(
+    `[tenant ${orgSlugFromHost(host) ?? "none"}] ${context.routeType} ${request.method} ${request.path} failed` +
+      `${digest ? ` (digest ${digest})` : ""}: ${message}`
+  );
+};
