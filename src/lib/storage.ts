@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import path from "path";
 import { Storage } from "@google-cloud/storage";
 import { scanForViruses } from "@/lib/clamav";
+import { currentOrgId } from "@/lib/db";
 
 // GCS-backed file pool. `storageKey` is an object name inside the bucket.
 // Auth: relies on Application Default Credentials — `new Storage()` with no
@@ -22,6 +23,14 @@ function getBucket() {
   return bucket;
 }
 
+// New objects live under org/<organizationId>/ so one tenant's files can be
+// listed, exported or deleted as a unit (offboarding — see
+// docs/multitenancy-plan.md). Keys from before this are flat UUIDs and keep
+// working: every read goes by the full key stored in the database.
+async function newStorageKey(ext: string) {
+  return `org/${await currentOrgId()}/${randomUUID()}${ext}`;
+}
+
 async function currentGeneration(storageKey: string): Promise<bigint> {
   const [metadata] = await getBucket().file(storageKey).getMetadata();
   return BigInt(metadata.generation!);
@@ -33,7 +42,7 @@ export async function saveUploadedFile(
   const buffer = Buffer.from(await file.arrayBuffer());
   await scanForViruses(buffer);
   const ext = path.extname(file.name);
-  const storageKey = `${randomUUID()}${ext}`;
+  const storageKey = await newStorageKey(ext);
   await getBucket().file(storageKey).save(buffer, { resumable: false, contentType: file.type || undefined });
   return { storageKey, sizeBytes: buffer.byteLength, generation: await currentGeneration(storageKey) };
 }
@@ -42,7 +51,7 @@ export async function saveBuffer(
   buffer: Buffer,
   ext: string
 ): Promise<{ storageKey: string; sizeBytes: number; generation: bigint }> {
-  const storageKey = `${randomUUID()}${ext}`;
+  const storageKey = await newStorageKey(ext);
   await getBucket().file(storageKey).save(buffer, { resumable: false });
   return { storageKey, sizeBytes: buffer.byteLength, generation: await currentGeneration(storageKey) };
 }
