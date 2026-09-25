@@ -106,14 +106,31 @@ Rollback: `scripts/multitenancy-phase1-down.sql` (drops the 53 columns, `organiz
 
 **Goal:** every query scoped. Org resolved from subdomain + session. Still one tenant in prod.
 
-**2a. Spike first (1–2 days):** prove the Prisma 7 + adapter-pg extension pattern — all operation types (`findUnique` with extra `organizationId`, `upsert`, `updateMany`, nested `create`), interactive transactions (does a `tx` from an extended client keep query extensions?), and `set_config('app.org_id', …, true)` in the same tx.
+**2a. Spike — done 2026-09-26** (Prisma 7.8 + adapter-pg, Postgres 16, two orgs; scripts kept out of the repo). Findings:
 
-**2b. Design (if spike passes):**
-- `src/lib/db.ts` → `tenantDb(orgId)`: reads AND `organizationId` into where; unique ops add it to the unique where; writes run `set_config` first in the same tx.
-- Column default becomes `dbgenerated("current_setting('app.org_id')")` — covers nested creates; a missing setting throws instead of writing to the wrong org.
-- Fallback if spike fails: drop the default, pass `organizationId` explicitly on every create (TS enforces).
-- `withTenantTx(orgId, fn)` for the 19 interactive transactions.
+| Question | Result |
+|---|---|
+| Query extension adds `organizationId` to `findMany/findFirst/count/aggregate/groupBy/updateMany/deleteMany` | ✅ other org's rows invisible / untouched |
+| `findUnique/update/delete` with extra `organizationId` in the unique `where` | ✅ other org's id → `null` / "record not found" |
+| `upsert` on another org's id | ✅ creates a new row in the caller's org, other org's row untouched |
+| Static `@default("org_ctk")` | ⚠️ Prisma sends the literal in the INSERT — a DB default is never consulted. Must become `dbgenerated(...)` |
+| `dbgenerated` default from `set_config` | ✅ top-level and nested creates get the right org |
+| Missing `set_config` | Plain `current_setting('app.org_id')` returns `''` on a reused connection → confusing FK error. Use `nullif(current_setting('app.org_id', true), '')` → clean NOT NULL violation |
+| Interactive tx on a filter-only extended client + `set_config` first | ✅ filters kept, creates stamped, rollback works |
+| `tenantDb.$transaction(async tx => …)` with the per-query `set_config` wrapper | ❌ **not atomic** — each inner query runs in its own tx; writes survive a throw |
+| `tenantDb.$transaction([...])` (array form) | ❌ **not atomic** for the same reason |
+| Cross-tenant FK (`clientGroupId` of another org, or `connect`) | ❌ **leaks** — `include` returns the other org's parent. RLS wouldn't catch it |
+| Raw-SQL composite FK `(fk, organizationId)` | Blocks it and coexists with Prisma `SetNull`, but `prisma migrate diff` wants to DROP it (drift) |
+| Composite relation declared in Prisma | ❌ `SetNull` would null the required `organizationId`; `connect` would copy the *parent's* org onto the child (cross-tenant write) |
+| `BEFORE INSERT/UPDATE` trigger checking parent org | ✅ blocks scalar FK, `connect`, and update-to-other-org; `SetNull` still works; invisible to Prisma drift |
+| Overhead of per-query `set_config` tx | ~+1.6 ms/query on Docker Desktop (Windows); expect less on the droplet. Accepted |
+
+**2b. Design (from the spike):**
+- `src/lib/db.ts` → `tenantDb(orgId)`: filter extension (reads AND `organizationId`; unique ops add it to the unique `where`) + a wrapper that runs every standalone query as `$transaction([set_config, query])`.
+- `tenantDb(orgId).$transaction` is **overridden**: interactive form → one real transaction on the filter-only client with `set_config` first. Array form **throws** — the 7 existing array call sites (`files.ts` ×2, `invoice-profiles.ts`, `mco.ts`, `stage.ts`, `tasks.ts`, `time-entries.ts` ×2) are rewritten to the interactive form.
+- Column default on every table: `@default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))`.
 - `src/lib/tenant.ts`: `requireOrg()` (session org must equal host org, else sign out); `publicOrg()` (host only, for `/forms/*`).
+- Raw `$queryRaw` / `$executeRaw` are not scoped by the extension — banned outside the allowlist.
 
 **2c. Host resolution (`src/proxy.ts`):**
 - Parse `<slug>.<ROOT_DOMAIN>` → org lookup (in-memory cache, 60s TTL) → set internal `x-org-id` header (strip any incoming one).
@@ -129,14 +146,9 @@ Rollback: `scripts/multitenancy-phase1-down.sql` (drops the 53 columns, `organiz
 - `appUrl(org)` helper → `https://<slug>.<ROOT_DOMAIN>` (CTK falls back to `HCLM_DOMAIN` until Phase 5). Replace `HCLM_DOMAIN` usage in `src/lib/email.ts`; jobs (no request) build links from the org, not the host.
 - Add `orgId` to server error logs and audit output so incidents trace to a tenant.
 
-**2e'. Cross-tenant FK linking (must ship with 2e):**
-Most writes pass FK ids straight from input (`clientId: input.clientId`, stage/assignee ids). The column default stamps the *current* org on the new row but nothing checks the linked parent is in that org — org A could attach an Invoice to org B's Client, then `include: { client }` leaks B's data. RLS does **not** catch this (FK checks bypass RLS). Pick one in the spike:
-- **DB:** composite FKs `("clientId", "organizationId") → clients(id, "organizationId")` with `@@unique([id, organizationId])` on parents. Verify Prisma drift detection doesn't try to drop raw-SQL FKs, and that it coexists with `SetNull` relations.
-- **App:** `tenantDb` validates every incoming FK scalar / `connect` id with an `assertOwned()` lookup in the current org.
-Cross-tenant test suite must cover "create child pointing at other org's parent" either way.
-
-**2e. Call-site migration** in per-area PRs: clients → applications → tasks → invoices → care recipients → leads/forms → admin → lib helpers (`rbac.ts`, `audit.ts`, `notifications.ts`, `pipeline.ts`, `caregiver-scope.ts`, search).
-Raw-client allowlist: `auth.ts`, webhooks, instrumentation jobs, `platform/`, seeds/scripts. Enforced by ESLint `no-restricted-imports`.
+**2e'. Cross-tenant FK linking (must ship with 2e) — decided by the spike: triggers.**
+Most writes pass FK ids straight from input; nothing in Prisma or RLS stops a child pointing at another org's parent (then `include` leaks the parent). Fix: one generic plpgsql function `assert_same_org(parent_table, fk_column)` and a `BEFORE INSERT OR UPDATE OF <fk>, "organizationId"` trigger per tenant-to-tenant FK (including `User` FKs like `createdById`/assignees), generated from the Prisma schema by a script into a migration. Raises `foreign_key_violation`. Prisma's drift detection ignores triggers, so no fights with `migrate dev`. A CI check (Phase 6's policy check) also asserts every FK column has its trigger. `_ClientToProject` gets a custom two-sided trigger or becomes an explicit model first.
+Cost: one PK lookup per FK column per write.
 
 **2f. Tests (new):** vitest + test Postgres (docker-compose.dev). `tenantDb` unit tests per operation. Cross-tenant suite: seed org A + B, every list/get action as A returns no B rows; update/delete of B ids as A is a no-op; creating a child that references a B parent as A fails. Add a CI test job with a Postgres service.
 Lint/review rule for later: any future Next.js cache key must include the org id.
@@ -254,7 +266,7 @@ Rough effort (solo dev + Claude):
 |---|---|
 | 0 Backups + rehearsal script | done (tested locally, not yet on server) |
 | 1 Schema + backfill | 1–2 d |
-| 2 Tenant context + call sites + FK ownership + tests | 2–3 w |
+| 2 Tenant context + call sites + FK triggers + tests | 2–3 w (spike done) |
 | 3 Uniques / numbering / storage / lookups / stage roles | 1 w |
 | 4 Integrations + jobs | 1–1.5 w |
 | 5 Platform admin, onboarding, TLS, billing, offboarding | 1.5–2 w |
@@ -295,4 +307,3 @@ Current favorites: 1) Permitwell, 2) Licensure HQ, 3) Stateline.
 2. CTK slug — `ctk`?
 3. Email: platform Resend with per-tenant display name only, or tenant-owned sending domains?
 4. Tenant pricing model (flat / per-seat / per-client).
-5. FK ownership approach (composite FKs vs app-level `assertOwned`) — decided by the Phase 2 spike.
