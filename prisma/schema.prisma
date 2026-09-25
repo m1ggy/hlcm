@@ -10,6 +10,83 @@ datasource db {
   provider = "postgresql"
 }
 
+// --- Multitenancy -------------------------------------------------------------
+// A tenant: one licensing consultancy. Every other model carries an
+// organizationId (see docs/multitenancy-plan.md). The column default of
+// "org_ctk" is a Phase 1 stopgap so existing creates keep working unchanged
+// while everything is backfilled to CTK — Phase 2 replaces it with a
+// per-request value and removes the static default.
+enum OrgStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+model Organization {
+  id        String    @id @default(cuid())
+  // The tenant's subdomain (<slug>.<root domain>).
+  slug      String    @unique
+  name      String
+  status    OrgStatus @default(ACTIVE)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  users                    User[]
+  wiseRecipients           WiseRecipient[]
+  wiseTransactions         WiseTransaction[]
+  timeEntries              TimeEntry[]
+  breakEntries             BreakEntry[]
+  timesheetBreakDeductions TimesheetBreakDeduction[]
+  projects                 Project[]
+  serviceTypes             ServiceType[]
+  clients                  Client[]
+  clientContacts           ClientContact[]
+  clientOwners             ClientOwner[]
+  clientAgreements         ClientAgreement[]
+  clientLicenses           ClientLicense[]
+  careRecipients           CareRecipient[]
+  careInstructions         CareInstruction[]
+  careRecipientAssignments CareRecipientAssignment[]
+  clientGroups             ClientGroup[]
+  licenseTypeTemplates     LicenseTypeTemplate[]
+  caseTypes                CaseType[]
+  checklistItemTemplates   ChecklistItemTemplate[]
+  pipelineStages           PipelineStage[]
+  applications             Application[]
+  stageHistories           StageHistory[]
+  mcoCredentials           McoCredential[]
+  accessGrants             AccessGrant[]
+  fileAssets               FileAsset[]
+  fileVersions             FileVersion[]
+  documentTemplates        DocumentTemplate[]
+  documentTemplateFields   DocumentTemplateField[]
+  generatedDocuments       GeneratedDocument[]
+  phases                   Phase[]
+  tasks                    Task[]
+  taskTimeEntries          TaskTimeEntry[]
+  taskAssignees            TaskAssignee[]
+  taskReviewers            TaskReviewer[]
+  auditLogs                AuditLog[]
+  signatureProfiles        SignatureProfile[]
+  signatureEvents          SignatureEvent[]
+  docusignEnvelopes        DocusignEnvelope[]
+  notifications            Notification[]
+  notes                    Note[]
+  clientCredentials        ClientCredential[]
+  invoices                 Invoice[]
+  invoiceAttachments       InvoiceAttachment[]
+  payments                 Payment[]
+  receipts                 Receipt[]
+  invoiceLineItems         InvoiceLineItem[]
+  invoiceProfiles          InvoiceProfile[]
+  formTemplates            FormTemplate[]
+  formFields               FormField[]
+  leads                    Lead[]
+  formSubmissions          FormSubmission[]
+  formSubmissionFiles      FormSubmissionFile[]
+
+  @@map("organizations")
+}
+
 // DEVELOPER is a break-glass superuser, same reach as OWNER — it exists
 // only to bootstrap the first OWNER (or fix a locked-out account) without
 // touching the database by hand every time. It's deliberately NOT
@@ -134,16 +211,18 @@ enum InvoiceStatus {
 }
 
 model User {
-  id                        String   @id @default(cuid())
+  id                        String       @id @default(cuid())
+  organizationId            String       @default("org_ctk")
+  organization              Organization @relation(fields: [organizationId], references: [id])
   name                      String
-  email                     String   @unique
+  email                     String       @unique
   passwordHash              String
-  role                      Role     @default(STAFF)
+  role                      Role         @default(STAFF)
   mfaSecret                 String?
-  mfaEnabled                Boolean  @default(false)
-  active                    Boolean  @default(true)
+  mfaEnabled                Boolean      @default(false)
+  active                    Boolean      @default(true)
   hourlyRate                Float?
-  emailNotificationsEnabled Boolean  @default(true)
+  emailNotificationsEnabled Boolean      @default(true)
   // IANA zone id (e.g. "America/Chicago") — null means "use the browser's
   // own timezone" (the pre-existing behavior). Set from Account settings;
   // controls both how this user's own times are displayed and how a typed
@@ -155,9 +234,9 @@ model User {
   // default: this is a small opt-in roster ("who gets a text/call for every
   // upcoming meeting"), not a per-user preference everyone starts with.
   phone                     String?
-  smsRemindersEnabled       Boolean  @default(false)
-  createdAt                 DateTime @default(now())
-  updatedAt                 DateTime @updatedAt
+  smsRemindersEnabled       Boolean      @default(false)
+  createdAt                 DateTime     @default(now())
+  updatedAt                 DateTime     @updatedAt
 
   projectsCreated               Project[]                 @relation("ProjectCreatedBy")
   clientsCreated                Client[]                  @relation("ClientCreatedBy")
@@ -214,6 +293,7 @@ model User {
   clientAgreementsCreated       ClientAgreement[]         @relation("ClientAgreementCreatedBy")
   clientLicensesCreated         ClientLicense[]           @relation("ClientLicenseCreatedBy")
 
+  @@index([organizationId])
   @@map("users")
 }
 
@@ -225,17 +305,20 @@ model User {
 // account id Wise returned when we registered it; transfers are created
 // against that id, not the raw fields, so this stays a thin cache.
 model WiseRecipient {
-  id                String   @id @default(cuid())
-  userId            String   @unique
-  user              User     @relation(fields: [userId], references: [id])
+  id                String       @id @default(cuid())
+  organizationId    String       @default("org_ctk")
+  organization      Organization @relation(fields: [organizationId], references: [id])
+  userId            String       @unique
+  user              User         @relation(fields: [userId], references: [id])
   currency          String
   accountHolderName String
   legalType         String
   wiseAccountId     String
   fields            Json
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
 
+  @@index([organizationId])
   @@map("wise_recipients")
 }
 
@@ -243,11 +326,13 @@ model WiseRecipient {
 // partway (status reflects how far it got) so a re-pay attempt for the same
 // period is a deliberate admin action, not something that silently double-pays.
 model WiseTransaction {
-  id             String   @id @default(cuid())
+  id             String       @id @default(cuid())
+  organizationId String       @default("org_ctk")
+  organization   Organization @relation(fields: [organizationId], references: [id])
   userId         String
-  user           User     @relation("WiseTransactionPayee", fields: [userId], references: [id])
+  user           User         @relation("WiseTransactionPayee", fields: [userId], references: [id])
   initiatedById  String
-  initiatedBy    User     @relation("WiseTransactionInitiatedBy", fields: [initiatedById], references: [id])
+  initiatedBy    User         @relation("WiseTransactionInitiatedBy", fields: [initiatedById], references: [id])
   periodFrom     DateTime
   periodTo       DateTime
   hours          Float
@@ -259,10 +344,11 @@ model WiseTransaction {
   wiseTransferId String?
   status         String
   failureReason  String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   @@index([userId])
+  @@index([organizationId])
   @@map("wise_transactions")
 }
 
@@ -270,13 +356,15 @@ model WiseTransaction {
 // user is on the clock — that's how we find "currently active" sessions and
 // how we stop a second clock-in from stacking on top of an open one.
 model TimeEntry {
-  id        String    @id @default(cuid())
-  userId    String
-  user      User      @relation(fields: [userId], references: [id])
-  clockIn   DateTime
-  clockOut  DateTime?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id             String       @id @default(cuid())
+  organizationId String       @default("org_ctk")
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  userId         String
+  user           User         @relation(fields: [userId], references: [id])
+  clockIn        DateTime
+  clockOut       DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   // Which recipient this visit was for — Caregiver clock-ins only, always
   // null for every other role's sessions. Optional even for a Caregiver: a
@@ -308,6 +396,7 @@ model TimeEntry {
 
   @@index([userId, clockIn])
   @@index([careRecipientId])
+  @@index([organizationId])
   @@map("time_entries")
 }
 
@@ -319,15 +408,18 @@ model TimeEntry {
 // same pattern TimeEntry uses for "currently clocked in" — which is how we
 // answer "is this user on a break right now".
 model BreakEntry {
-  id         String    @id @default(cuid())
-  userId     String
-  user       User      @relation(fields: [userId], references: [id])
-  breakStart DateTime
-  breakEnd   DateTime?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  id             String       @id @default(cuid())
+  organizationId String       @default("org_ctk")
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  userId         String
+  user           User         @relation(fields: [userId], references: [id])
+  breakStart     DateTime
+  breakEnd       DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   @@index([userId, breakStart])
+  @@index([organizationId])
   @@map("break_entries")
 }
 
@@ -340,18 +432,21 @@ model BreakEntry {
 // user's hours in range" (a company-wide policy) rather than one employee;
 // multiple overlapping rules (e.g. a blanket one plus a specific one) stack.
 model TimesheetBreakDeduction {
-  id            String   @id @default(cuid())
-  user          User?    @relation("TimesheetBreakDeductionUser", fields: [userId], references: [id], onDelete: Cascade)
-  userId        String?
-  fromDate      DateTime
-  toDate        DateTime
-  minutesPerDay Int
-  note          String?
-  createdBy     User     @relation("TimesheetBreakDeductionCreatedBy", fields: [createdById], references: [id])
-  createdById   String
-  createdAt     DateTime @default(now())
+  id             String       @id @default(cuid())
+  organizationId String       @default("org_ctk")
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  user           User?        @relation("TimesheetBreakDeductionUser", fields: [userId], references: [id], onDelete: Cascade)
+  userId         String?
+  fromDate       DateTime
+  toDate         DateTime
+  minutesPerDay  Int
+  note           String?
+  createdBy      User         @relation("TimesheetBreakDeductionCreatedBy", fields: [createdById], references: [id])
+  createdById    String
+  createdAt      DateTime     @default(now())
 
   @@index([userId])
+  @@index([organizationId])
   @@map("timesheet_break_deductions")
 }
 
@@ -359,14 +454,16 @@ model TimesheetBreakDeduction {
 // company owns the client facilities inside it (e.g. a batch of renewals
 // being worked together), not a customer account.
 model Project {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  active      Boolean  @default(true)
-  createdBy   User     @relation("ProjectCreatedBy", fields: [createdById], references: [id])
-  createdById String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             String       @id @default(cuid())
+  organizationId String       @default("org_ctk")
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  name           String
+  description    String?
+  active         Boolean      @default(true)
+  createdBy      User         @relation("ProjectCreatedBy", fields: [createdById], references: [id])
+  createdById    String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   // Fills the project tag pill on the Clients list (docs/pipeline-stage-plan.md).
   // Nullable — unmapped projects fall back to a neutral default in the UI
@@ -376,6 +473,7 @@ model Project {
 
   clients Client[]
 
+  @@index([organizationId])
   @@map("projects")
 }
 
@@ -384,18 +482,21 @@ model Project {
 // service colors need dark text (Ace Home Care Franchise's yellow) and
 // others need white — never assumed from the background alone.
 model ServiceType {
-  id          String   @id @default(cuid())
-  name        String   @unique
-  hex         String
-  textColor   String
-  active      Boolean  @default(true)
-  createdBy   User     @relation("ServiceTypeCreatedBy", fields: [createdById], references: [id])
-  createdById String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             String       @id @default(cuid())
+  organizationId String       @default("org_ctk")
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  name           String       @unique
+  hex            String
+  textColor      String
+  active         Boolean      @default(true)
+  createdBy      User         @relation("ServiceTypeCreatedBy", fields: [createdById], references: [id])
+  createdById    String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   projects Project[]
 
+  @@index([organizationId])
   @@map("service_types")
 }
 
@@ -411,17 +512,19 @@ enum ClientStatus {
 }
 
 model Client {
-  id          String       @id @default(cuid())
+  id             String       @id @default(cuid())
+  organizationId String       @default("org_ctk")
+  organization   Organization @relation(fields: [organizationId], references: [id])
   // A client can be worked under more than one project (e.g. a facility
   // that comes back for a new batch of renewals next year) — many-to-many
   // rather than a single owning project, so it's added once and linked
   // wherever it's relevant instead of duplicated.
-  projects    Project[]
-  name        String
-  contactInfo String?
-  address     String?
-  active      Boolean      @default(true)
-  status      ClientStatus @default(PROSPECT)
+  projects       Project[]
+  name           String
+  contactInfo    String?
+  address        String?
+  active         Boolean      @default(true)
+  status         ClientStatus @default(PROSPECT)
 
   // Business details — the licensed entity itself.
   businessName  String?
@@ -470,6 +573,7 @@ model Client {
   files           FileAsset[]
 
   @@index([clientGroupId])
+  @@index([organizationId])
   @@map("clients")
 }
 
@@ -477,19 +581,22 @@ model Client {
 // is involved in communication besides the primary owner(s) below. Deliberately
 // separate from ClientOwner: a contact doesn't imply any ownership stake.
 model ClientContact {
-  id          String   @id @default(cuid())
-  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  clientId    String
-  name        String
-  role        String?
-  email       String?
-  phone       String?
-  createdBy   User     @relation("ClientContactCreatedBy", fields: [createdById], references: [id])
-  createdById String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             String       @id @default(cuid())
+  organizationId String       @default("org_ctk")
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  client         Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId       String
+  name           String
+  role           String?
+  email          String?
+  phone          String?
+  createdBy      User         @relation("ClientContactCreatedBy", fields: [createdById], references: [id])
+  createdById    String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   @@index([clientId])
+  @@index([organizationId])
   @@map("client_contacts")
 }
 
@@ -498,44 +605,50 @@ model ClientContact {
 // one. ownershipPercentage is informational only, nothing sums/validates it
 // to 100 (real-world data is often partial or unknown).
 model ClientOwner {
-  id                  String   @id @default(cuid())
-  client              Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  id                  String       @id @default(cuid())
+  organizationId      String       @default("org_ctk")
+  organization        Organization @relation(fields: [organizationId], references: [id])
+  client              Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
   clientId            String
   name                String
   email               String?
   phone               String?
   ownershipPercentage Float?
-  createdBy           User     @relation("ClientOwnerCreatedBy", fields: [createdById], references: [id])
+  createdBy           User         @relation("ClientOwnerCreatedBy", fields: [createdById], references: [id])
   createdById         String
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
 
   @@index([clientId])
+  @@index([organizationId])
   @@map("client_owners")
 }
 
 // Full agreement history, not just the current one — a renewal adds a new
 // row rather than overwriting the last engagement's record.
 model ClientAgreement {
-  id            String    @id @default(cuid())
-  client        Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  clientId      String
-  agreementType String
-  signedDate    DateTime?
-  amount        Float?
+  id             String       @id @default(cuid())
+  organizationId String       @default("org_ctk")
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  client         Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId       String
+  agreementType  String
+  signedDate     DateTime?
+  amount         Float?
   // Plain string, not a Prisma enum — a small closed set ("Unpaid" |
   // "Partial" | "Paid") with no cross-entity filtering need, same call as
   // CareRecipient.preferredContactMethod earlier this session.
-  paymentStatus String?
-  notes         String?
-  createdBy     User      @relation("ClientAgreementCreatedBy", fields: [createdById], references: [id])
-  createdById   String
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  paymentStatus  String?
+  notes          String?
+  createdBy      User         @relation("ClientAgreementCreatedBy", fields: [createdById], references: [id])
+  createdById    String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   docusignEnvelopes DocusignEnvelope[]
 
   @@index([clientId])
+  @@index([organizationId])
   @@map("client_agreements")
 }
 
@@ -544,21 +657,24 @@ model ClientAgreement {
 // dates that feed both the dashboard alerts and the daily digest email
 // (see src/lib/aging-alerts.ts, src/lib/due-date-digest.ts).
 model ClientLicense {
-  id            String    @id @default(cuid())
-  client        Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  clientId      String
-  licenseType   String
-  licenseNumber String?
-  issuedDate    DateTime?
-  expiryDate    DateTime
-  status        String?
-  createdBy     User      @relation("ClientLicenseCreatedBy", fields: [createdById], references: [id])
-  createdById   String
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id             String       @id @default(cuid())
+  organizationId String       @default("org_ctk")
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  client         Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId       String
+  licenseType    String
+  licenseNumber  String?
+  issuedDate     DateTime?
+  expiryDate     DateTime
+  status         String?
+  createdBy      User         @relation("ClientLicenseCreatedBy", fields: [createdById], references: [id])
+  createdById    String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   @@index([clientId])
   @@index([expiryDate])
+  @@index([organizationId])
   @@map("client_licenses")
 }
 
@@ -568,16 +684,18 @@ model ClientLicense {
 // so an agency's page can list its own recipients, but standing up a
 // recipient never requires picking one.
 model CareRecipient {
-  id          String    @id @default(cuid())
-  name        String
-  address     String?
-  dateOfBirth DateTime?
+  id                   String       @id @default(cuid())
+  organizationId       String       @default("org_ctk")
+  organization         Organization @relation(fields: [organizationId], references: [id])
+  name                 String
+  address              String?
+  dateOfBirth          DateTime?
   // Optional, printed masked (last 4 digits only) on a Care Recipient
   // invoice — see generateCareRecipientInvoicePdf. Plain storage, no
   // encryption at rest, same trade-off already made for
   // ClientCredential.password.
   socialSecurityNumber String?
-  active               Boolean   @default(true)
+  active               Boolean      @default(true)
 
   // The recipient's own reachability — distinct from emergencyContact*
   // below (a different person). preferredContactMethod and contactNotes
@@ -656,6 +774,7 @@ model CareRecipient {
   invoices     Invoice[]
 
   @@index([clientId])
+  @@index([organizationId])
   @@map("care_recipients")
 }
 
@@ -667,6 +786,8 @@ model CareRecipient {
 // clock-in — an admin/staff or the assigned Caregiver toggles it directly.
 model CareInstruction {
   id              String        @id @default(cuid())
+  organizationId  String        @default("org_ctk")
+  organization    Organization  @relation(fields: [organizationId], references: [id])
   careRecipient   CareRecipient @relation(fields: [careRecipientId], references: [id], onDelete: Cascade)
   careRecipientId String
   label           String
@@ -678,6 +799,7 @@ model CareInstruction {
   updatedAt       DateTime      @updatedAt
 
   @@index([careRecipientId])
+  @@index([organizationId])
   @@map("care_instructions")
 }
 
@@ -686,6 +808,8 @@ model CareInstruction {
 // TaskAssignee/AccessGrant elsewhere in this schema.
 model CareRecipientAssignment {
   id              String        @id @default(cuid())
+  organizationId  String        @default("org_ctk")
+  organization    Organization  @relation(fields: [organizationId], references: [id])
   careRecipient   CareRecipient @relation(fields: [careRecipientId], references: [id], onDelete: Cascade)
   careRecipientId String
   caregiver       User          @relation("CareRecipientAssignmentCaregiver", fields: [caregiverId], references: [id])
@@ -696,6 +820,7 @@ model CareRecipientAssignment {
 
   @@unique([careRecipientId, caregiverId])
   @@index([caregiverId])
+  @@index([organizationId])
   @@map("care_recipient_assignments")
 }
 
@@ -704,14 +829,17 @@ model CareRecipientAssignment {
 // Deleting a group never deletes or blocks on its clients; they just
 // revert to showing individually (onDelete: SetNull on Client.clientGroup).
 model ClientGroup {
-  id          String   @id @default(cuid())
-  name        String
-  createdBy   User     @relation("ClientGroupCreatedBy", fields: [createdById], references: [id])
-  createdById String
-  createdAt   DateTime @default(now())
+  id             String       @id @default(cuid())
+  organizationId String       @default("org_ctk")
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  name           String
+  createdBy      User         @relation("ClientGroupCreatedBy", fields: [createdById], references: [id])
+  createdById    String
+  createdAt      DateTime     @default(now())
 
   clients Client[]
 
+  @@index([organizationId])
   @@map("client_groups")
 }
 
@@ -719,19 +847,22 @@ model ClientGroup {
 // Optional on Application — some Case Types (Change of Ownership) aren't
 // tied to a license type at all.
 model LicenseTypeTemplate {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  active      Boolean  @default(true)
-  createdBy   User     @relation("LicenseTypeTemplateCreatedBy", fields: [createdById], references: [id])
-  createdById String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             String       @id @default(cuid())
+  organizationId String       @default("org_ctk")
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  name           String
+  description    String?
+  active         Boolean      @default(true)
+  createdBy      User         @relation("LicenseTypeTemplateCreatedBy", fields: [createdById], references: [id])
+  createdById    String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   applications           Application[]
   checklistItemTemplates ChecklistItemTemplate[]
   documentTemplates      DocumentTemplate[]
 
+  @@index([organizationId])
   @@map("license_type_templates")
 }
 
@@ -739,18 +870,21 @@ model LicenseTypeTemplate {
 // Ownership, ...) — orthogonal to license type, drives which checklist
 // template applies.
 model CaseType {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  active      Boolean  @default(true)
-  createdBy   User     @relation("CaseTypeCreatedBy", fields: [createdById], references: [id])
-  createdById String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             String       @id @default(cuid())
+  organizationId String       @default("org_ctk")
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  name           String
+  description    String?
+  active         Boolean      @default(true)
+  createdBy      User         @relation("CaseTypeCreatedBy", fields: [createdById], references: [id])
+  createdById    String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   applications           Application[]
   checklistItemTemplates ChecklistItemTemplate[]
 
+  @@index([organizationId])
   @@map("case_types")
 }
 
@@ -760,6 +894,8 @@ model CaseType {
 // flat/simple checklists (the common case).
 model ChecklistItemTemplate {
   id                    String               @id @default(cuid())
+  organizationId        String               @default("org_ctk")
+  organization          Organization         @relation(fields: [organizationId], references: [id])
   licenseTypeTemplate   LicenseTypeTemplate? @relation(fields: [licenseTypeTemplateId], references: [id])
   licenseTypeTemplateId String?
   caseType              CaseType             @relation(fields: [caseTypeId], references: [id])
@@ -774,6 +910,7 @@ model ChecklistItemTemplate {
   createdAt             DateTime             @default(now())
   updatedAt             DateTime             @updatedAt
 
+  @@index([organizationId])
   @@map("checklist_item_templates")
 }
 
@@ -789,22 +926,24 @@ model ChecklistItemTemplate {
 // existing row (rather than adding a new one) orphans historical records, so
 // treat edits here as an admin-gated action, not a free-form CRUD form.
 model PipelineStage {
-  id                      String   @id @default(cuid())
+  id                      String       @id @default(cuid())
+  organizationId          String       @default("org_ctk")
+  organization            Organization @relation(fields: [organizationId], references: [id])
   pipeline                Pipeline
   abbrev                  String
   name                    String
   sortOrder               Int
   hex                     String
   colorLabel              String
-  isExitStatus            Boolean  @default(false)
-  requiresReason          Boolean  @default(false)
-  requiresFollowUpDate    Boolean  @default(false)
-  allowedBackwardStageIds String[] @default([])
-  active                  Boolean  @default(true)
-  createdBy               User     @relation("PipelineStageCreatedBy", fields: [createdById], references: [id])
+  isExitStatus            Boolean      @default(false)
+  requiresReason          Boolean      @default(false)
+  requiresFollowUpDate    Boolean      @default(false)
+  allowedBackwardStageIds String[]     @default([])
+  active                  Boolean      @default(true)
+  createdBy               User         @relation("PipelineStageCreatedBy", fields: [createdById], references: [id])
   createdById             String
-  createdAt               DateTime @default(now())
-  updatedAt               DateTime @updatedAt
+  createdAt               DateTime     @default(now())
+  updatedAt               DateTime     @updatedAt
 
   applications   Application[]
   mcoCredentials McoCredential[]
@@ -812,6 +951,7 @@ model PipelineStage {
 
   @@unique([pipeline, abbrev])
   @@index([pipeline, sortOrder])
+  @@index([organizationId])
   @@map("pipeline_stages")
 }
 
@@ -819,16 +959,18 @@ model PipelineStage {
 // checklist clone-on-create — those two FKs stay optional so existing
 // Applications created before this migration keep working unchanged.
 model Application {
-  id          String            @id @default(cuid())
-  client      Client            @relation(fields: [clientId], references: [id])
-  clientId    String
-  name        String
-  description String?
+  id             String            @id @default(cuid())
+  organizationId String            @default("org_ctk")
+  organization   Organization      @relation(fields: [organizationId], references: [id])
+  client         Client            @relation(fields: [clientId], references: [id])
+  clientId       String
+  name           String
+  description    String?
   // Superseded by pipeline/stageId (docs/pipeline-stage-plan.md) — kept
   // read-only for one release after the backfill so nothing that still
   // references it breaks mid-rollout, then dropped.
-  status      ApplicationStatus @default(DRAFT)
-  active      Boolean           @default(true)
+  status         ApplicationStatus @default(DRAFT)
+  active         Boolean           @default(true)
 
   // Which stage list this case moves through and where it currently sits.
   // Nullable until the backfill script runs; required after.
@@ -873,6 +1015,7 @@ model Application {
   invoices           Invoice[]
   docusignEnvelopes  DocusignEnvelope[]
 
+  @@index([organizationId])
   @@map("applications")
 }
 
@@ -886,6 +1029,8 @@ model Application {
 // every stage change" history for its own days-in-stage/aging alerts.
 model StageHistory {
   id              String         @id @default(cuid())
+  organizationId  String         @default("org_ctk")
+  organization    Organization   @relation(fields: [organizationId], references: [id])
   application     Application?   @relation(fields: [applicationId], references: [id])
   applicationId   String?
   mcoCredential   McoCredential? @relation(fields: [mcoCredentialId], references: [id])
@@ -903,6 +1048,7 @@ model StageHistory {
 
   @@index([applicationId, enteredAt])
   @@index([mcoCredentialId, enteredAt])
+  @@index([organizationId])
   @@map("stage_history")
 }
 
@@ -910,10 +1056,12 @@ model StageHistory {
 // with five MCOs has five records, each moving through the MCO pipeline
 // independently). Client profile renders these side by side.
 model McoCredential {
-  id       String  @id @default(cuid())
-  client   Client  @relation(fields: [clientId], references: [id])
-  clientId String
-  mcoName  McoName
+  id             String       @id @default(cuid())
+  organizationId String       @default("org_ctk")
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  client         Client       @relation(fields: [clientId], references: [id])
+  clientId       String
+  mcoName        McoName
 
   stage   PipelineStage? @relation(fields: [stageId], references: [id])
   stageId String?
@@ -942,6 +1090,7 @@ model McoCredential {
   stageHistory StageHistory[]
 
   @@unique([clientId, mcoName])
+  @@index([organizationId])
   @@map("mco_credentials")
 }
 
@@ -949,17 +1098,20 @@ model McoCredential {
 // colleague covering while the owner is out, or (Phase 5) a Client portal
 // user. VIEW sees the case; EDIT can also change tasks/properties/files.
 model AccessGrant {
-  id            String          @id @default(cuid())
-  application   Application     @relation(fields: [applicationId], references: [id])
-  applicationId String
-  user          User            @relation("AccessGrantUser", fields: [userId], references: [id])
-  userId        String
-  permission    GrantPermission @default(VIEW)
-  grantedBy     User            @relation("AccessGrantGrantedBy", fields: [grantedById], references: [id])
-  grantedById   String
-  createdAt     DateTime        @default(now())
+  id             String          @id @default(cuid())
+  organizationId String          @default("org_ctk")
+  organization   Organization    @relation(fields: [organizationId], references: [id])
+  application    Application     @relation(fields: [applicationId], references: [id])
+  applicationId  String
+  user           User            @relation("AccessGrantUser", fields: [userId], references: [id])
+  userId         String
+  permission     GrantPermission @default(VIEW)
+  grantedBy      User            @relation("AccessGrantGrantedBy", fields: [grantedById], references: [id])
+  grantedById    String
+  createdAt      DateTime        @default(now())
 
   @@unique([applicationId, userId])
+  @@index([organizationId])
   @@map("access_grants")
 }
 
@@ -970,30 +1122,33 @@ model AccessGrant {
 // fileName/mimeType/sizeBytes mirror the latest FileVersion so list queries
 // don't need to join versions just to show current metadata.
 model FileAsset {
-  id            String       @id @default(cuid())
-  application   Application? @relation(fields: [applicationId], references: [id])
-  applicationId String?
-  task          Task?        @relation(fields: [taskId], references: [id])
-  taskId        String?
+  id             String       @id @default(cuid())
+  organizationId String       @default("org_ctk")
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  application    Application? @relation(fields: [applicationId], references: [id])
+  applicationId  String?
+  task           Task?        @relation(fields: [taskId], references: [id])
+  taskId         String?
   // Third parent kind, alongside applicationId/taskId above — the "one
   // stop shop" ask: a signed agreement, EIN letter, W-9, license, or
   // insurance certificate attached directly to the client, not routed
   // through a case or task.
-  client        Client?      @relation(fields: [clientId], references: [id])
-  clientId      String?
-  fileName      String
-  storageKey    String
-  mimeType      String
-  sizeBytes     Int
-  uploadedBy    User         @relation("FileUploadedBy", fields: [uploadedById], references: [id])
-  uploadedById  String
-  createdAt     DateTime     @default(now())
+  client         Client?      @relation(fields: [clientId], references: [id])
+  clientId       String?
+  fileName       String
+  storageKey     String
+  mimeType       String
+  sizeBytes      Int
+  uploadedBy     User         @relation("FileUploadedBy", fields: [uploadedById], references: [id])
+  uploadedById   String
+  createdAt      DateTime     @default(now())
 
   versions            FileVersion[]
   signatureEvents     SignatureEvent[]
   envelopesAsSource   DocusignEnvelope[] @relation("EnvelopeSourceFile")
   envelopeAsCompleted DocusignEnvelope?  @relation("EnvelopeCompletedFile")
 
+  @@index([organizationId])
   @@map("file_assets")
 }
 
@@ -1004,19 +1159,22 @@ model FileAsset {
 // Files with any SignatureEvent are excluded from new versions/reverts
 // (see assertNotSigned in files.ts) — a signed PDF's bytes must stay fixed.
 model FileVersion {
-  id           String    @id @default(cuid())
-  fileAsset    FileAsset @relation(fields: [fileAssetId], references: [id], onDelete: Cascade)
-  fileAssetId  String
-  version      Int
-  generation   BigInt
-  fileName     String
-  mimeType     String
-  sizeBytes    Int
-  uploadedBy   User      @relation("FileVersionUploadedBy", fields: [uploadedById], references: [id])
-  uploadedById String
-  createdAt    DateTime  @default(now())
+  id             String       @id @default(cuid())
+  organizationId String       @default("org_ctk")
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  fileAsset      FileAsset    @relation(fields: [fileAssetId], references: [id], onDelete: Cascade)
+  fileAssetId    String
+  version        Int
+  generation     BigInt
+  fileName       String
+  mimeType       String
+  sizeBytes      Int
+  uploadedBy     User         @relation("FileVersionUploadedBy", fields: [uploadedById], references: [id])
+  uploadedById   String
+  createdAt      DateTime     @default(now())
 
   @@unique([fileAssetId, version])
+  @@index([organizationId])
   @@map("file_versions")
 }
 
@@ -1025,6 +1183,8 @@ model FileVersion {
 // shows up as an option for every Application.
 model DocumentTemplate {
   id                    String               @id @default(cuid())
+  organizationId        String               @default("org_ctk")
+  organization          Organization         @relation(fields: [organizationId], references: [id])
   name                  String
   description           String?
   licenseTypeTemplate   LicenseTypeTemplate? @relation(fields: [licenseTypeTemplateId], references: [id])
@@ -1040,6 +1200,7 @@ model DocumentTemplate {
   fields             DocumentTemplateField[]
   generatedDocuments GeneratedDocument[]
 
+  @@index([organizationId])
   @@map("document_templates")
 }
 
@@ -1047,16 +1208,19 @@ model DocumentTemplate {
 // Client/Application data at generation time (see src/lib/merge-fields.ts for
 // the fixed registry); CUSTOM fields prompt the VA for a value per generation.
 model DocumentTemplateField {
-  id         String           @id @default(cuid())
-  template   DocumentTemplate @relation(fields: [templateId], references: [id])
-  templateId String
-  key        String
-  label      String
-  source     FieldSource      @default(CUSTOM)
-  autoField  String?
-  sortOrder  Int              @default(0)
+  id             String           @id @default(cuid())
+  organizationId String           @default("org_ctk")
+  organization   Organization     @relation(fields: [organizationId], references: [id])
+  template       DocumentTemplate @relation(fields: [templateId], references: [id])
+  templateId     String
+  key            String
+  label          String
+  source         FieldSource      @default(CUSTOM)
+  autoField      String?
+  sortOrder      Int              @default(0)
 
   @@unique([templateId, key])
+  @@index([organizationId])
   @@map("document_template_fields")
 }
 
@@ -1064,20 +1228,23 @@ model DocumentTemplateField {
 // snapshot of the values used at generation time, kept for audit/reference —
 // regenerating creates a new row rather than overwriting this one.
 model GeneratedDocument {
-  id            String                  @id @default(cuid())
-  template      DocumentTemplate        @relation(fields: [templateId], references: [id])
-  templateId    String
-  application   Application             @relation(fields: [applicationId], references: [id])
-  applicationId String
-  fileName      String
-  storageKey    String
-  status        GeneratedDocumentStatus @default(DRAFT)
-  fieldValues   Json
-  generatedBy   User                    @relation("GeneratedDocumentGeneratedBy", fields: [generatedById], references: [id])
-  generatedById String
-  createdAt     DateTime                @default(now())
-  updatedAt     DateTime                @updatedAt
+  id             String                  @id @default(cuid())
+  organizationId String                  @default("org_ctk")
+  organization   Organization            @relation(fields: [organizationId], references: [id])
+  template       DocumentTemplate        @relation(fields: [templateId], references: [id])
+  templateId     String
+  application    Application             @relation(fields: [applicationId], references: [id])
+  applicationId  String
+  fileName       String
+  storageKey     String
+  status         GeneratedDocumentStatus @default(DRAFT)
+  fieldValues    Json
+  generatedBy    User                    @relation("GeneratedDocumentGeneratedBy", fields: [generatedById], references: [id])
+  generatedById  String
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
 
+  @@index([organizationId])
   @@map("generated_documents")
 }
 
@@ -1085,33 +1252,38 @@ model GeneratedDocument {
 // "Phase 2" for CILA post-license). Most Applications have none — Tasks with
 // no Phase just render as a flat list.
 model Phase {
-  id            String      @id @default(cuid())
-  application   Application @relation(fields: [applicationId], references: [id])
-  applicationId String
-  name          String
-  sortOrder     Int         @default(0)
+  id             String       @id @default(cuid())
+  organizationId String       @default("org_ctk")
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  application    Application  @relation(fields: [applicationId], references: [id])
+  applicationId  String
+  name           String
+  sortOrder      Int          @default(0)
 
   tasks Task[]
 
+  @@index([organizationId])
   @@map("phases")
 }
 
 // A checklist item / task. `applicationId` is null for standalone/recurring
 // ops tasks not tied to any case. `parentTaskId` set = this is a subtask.
 model Task {
-  id            String       @id @default(cuid())
-  application   Application? @relation(fields: [applicationId], references: [id])
-  applicationId String?
-  phase         Phase?       @relation(fields: [phaseId], references: [id])
-  phaseId       String?
+  id             String       @id @default(cuid())
+  organizationId String       @default("org_ctk")
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  application    Application? @relation(fields: [applicationId], references: [id])
+  applicationId  String?
+  phase          Phase?       @relation(fields: [phaseId], references: [id])
+  phaseId        String?
   // Set only for a follow-up task auto-created by changeLeadStage
   // (src/lib/actions/leads.ts) on a NO_SHOW/MISSED transition — purely
   // informational (lets the Leads inbox show/link it), not an access
   // boundary: this is a standalone task like any other with no
   // applicationId, so assertCanAccessTask's existing
   // assignee/creator/ADMIN/MANAGER fallback already covers it unchanged.
-  lead          Lead?        @relation(fields: [leadId], references: [id])
-  leadId        String?
+  lead           Lead?        @relation(fields: [leadId], references: [id])
+  leadId         String?
 
   checklistItemTemplateId String?
 
@@ -1147,6 +1319,7 @@ model Task {
   files           FileAsset[]
   taskTimeEntries TaskTimeEntry[]
 
+  @@index([organizationId])
   @@map("tasks")
 }
 
@@ -1161,9 +1334,11 @@ enum TaskTimeEntrySource {
 // reporting and client billing. taskId null is the "Internal/no task"
 // bucket for work that isn't tied to any case.
 model TaskTimeEntry {
-  id     String @id @default(cuid())
-  user   User   @relation(fields: [userId], references: [id])
-  userId String
+  id             String       @id @default(cuid())
+  organizationId String       @default("org_ctk")
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  user           User         @relation(fields: [userId], references: [id])
+  userId         String
 
   task   Task?   @relation(fields: [taskId], references: [id])
   taskId String?
@@ -1192,45 +1367,55 @@ model TaskTimeEntry {
 
   @@index([userId, startedAt])
   @@index([taskId])
+  @@index([organizationId])
   @@map("task_time_entries")
 }
 
 model TaskAssignee {
-  id     String @id @default(cuid())
-  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  taskId String
-  user   User   @relation(fields: [userId], references: [id])
-  userId String
+  id             String       @id @default(cuid())
+  organizationId String       @default("org_ctk")
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  task           Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  taskId         String
+  user           User         @relation(fields: [userId], references: [id])
+  userId         String
 
   @@unique([taskId, userId])
+  @@index([organizationId])
   @@map("task_assignees")
 }
 
 model TaskReviewer {
-  id     String @id @default(cuid())
-  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  taskId String
-  user   User   @relation(fields: [userId], references: [id])
-  userId String
+  id             String       @id @default(cuid())
+  organizationId String       @default("org_ctk")
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  task           Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  taskId         String
+  user           User         @relation(fields: [userId], references: [id])
+  userId         String
 
   @@unique([taskId, userId])
+  @@index([organizationId])
   @@map("task_reviewers")
 }
 
 model AuditLog {
-  id         String   @id @default(cuid())
-  entityType String
-  entityId   String
-  field      String?
-  oldValue   String?
-  newValue   String?
-  action     String
-  actor      User     @relation(fields: [actorId], references: [id])
-  actorId    String
-  ipAddress  String?
-  createdAt  DateTime @default(now())
+  id             String       @id @default(cuid())
+  organizationId String       @default("org_ctk")
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  entityType     String
+  entityId       String
+  field          String?
+  oldValue       String?
+  newValue       String?
+  action         String
+  actor          User         @relation(fields: [actorId], references: [id])
+  actorId        String
+  ipAddress      String?
+  createdAt      DateTime     @default(now())
 
   @@index([entityType, entityId])
+  @@index([organizationId])
   @@map("audit_logs")
 }
 
@@ -1238,13 +1423,16 @@ model AuditLog {
 // documents — applying it to a specific document is still an explicit
 // per-signing action (SignatureEvent), so accountability stays per-event.
 model SignatureProfile {
-  id                String   @id @default(cuid())
-  user              User     @relation(fields: [userId], references: [id])
-  userId            String   @unique
+  id                String       @id @default(cuid())
+  organizationId    String       @default("org_ctk")
+  organization      Organization @relation(fields: [organizationId], references: [id])
+  user              User         @relation(fields: [userId], references: [id])
+  userId            String       @unique
   signatureImageKey String
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
 
+  @@index([organizationId])
   @@map("signature_profiles")
 }
 
@@ -1261,19 +1449,22 @@ model SignatureProfile {
 // hosted ceremony, so there's no "pre-saved drawn signature" concept in the
 // new flow at all.
 model SignatureEvent {
-  id          String    @id @default(cuid())
-  fileAsset   FileAsset @relation(fields: [fileAssetId], references: [id])
-  fileAssetId String
-  signedBy    User      @relation("SignatureEventSignedBy", fields: [signedById], references: [id])
-  signedById  String
-  pageNumber  Int
-  xRatio      Float
-  yRatio      Float
-  widthRatio  Float
-  heightRatio Float
-  ipAddress   String?
-  createdAt   DateTime  @default(now())
+  id             String       @id @default(cuid())
+  organizationId String       @default("org_ctk")
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  fileAsset      FileAsset    @relation(fields: [fileAssetId], references: [id])
+  fileAssetId    String
+  signedBy       User         @relation("SignatureEventSignedBy", fields: [signedById], references: [id])
+  signedById     String
+  pageNumber     Int
+  xRatio         Float
+  yRatio         Float
+  widthRatio     Float
+  heightRatio    Float
+  ipAddress      String?
+  createdAt      DateTime     @default(now())
 
+  @@index([organizationId])
   @@map("signature_events")
 }
 
@@ -1301,6 +1492,8 @@ enum DocusignEnvelopeStatus {
 // tracked flag that could go stale.
 model DocusignEnvelope {
   id                String           @id @default(cuid())
+  organizationId    String           @default("org_ctk")
+  organization      Organization     @relation(fields: [organizationId], references: [id])
   application       Application?     @relation(fields: [applicationId], references: [id])
   applicationId     String?
   clientAgreement   ClientAgreement? @relation(fields: [clientAgreementId], references: [id])
@@ -1346,6 +1539,7 @@ model DocusignEnvelope {
 
   @@index([applicationId])
   @@index([clientAgreementId])
+  @@index([organizationId])
   @@map("docusign_envelopes")
 }
 
@@ -1354,17 +1548,20 @@ model DocusignEnvelope {
 // background scheduler in this deployment, so everything is created inline
 // by the action that causes it.
 model Notification {
-  id         String           @id @default(cuid())
-  user       User             @relation(fields: [userId], references: [id])
-  userId     String
-  type       NotificationType
-  message    String
-  entityType String
-  entityId   String
-  read       Boolean          @default(false)
-  createdAt  DateTime         @default(now())
+  id             String           @id @default(cuid())
+  organizationId String           @default("org_ctk")
+  organization   Organization     @relation(fields: [organizationId], references: [id])
+  user           User             @relation(fields: [userId], references: [id])
+  userId         String
+  type           NotificationType
+  message        String
+  entityType     String
+  entityId       String
+  read           Boolean          @default(false)
+  createdAt      DateTime         @default(now())
 
   @@index([userId, read])
+  @@index([organizationId])
   @@map("notifications")
 }
 
@@ -1377,18 +1574,21 @@ model Notification {
 // one checklist item or standalone task, Client comments are general notes
 // on that client (not tied to any one case).
 model Note {
-  id            String       @id @default(cuid())
-  application   Application? @relation(fields: [applicationId], references: [id])
-  applicationId String?
-  task          Task?        @relation(fields: [taskId], references: [id])
-  taskId        String?
-  client        Client?      @relation(fields: [clientId], references: [id])
-  clientId      String?
-  body          String
-  author        User         @relation("NoteAuthor", fields: [authorId], references: [id])
-  authorId      String
-  createdAt     DateTime     @default(now())
+  id             String       @id @default(cuid())
+  organizationId String       @default("org_ctk")
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  application    Application? @relation(fields: [applicationId], references: [id])
+  applicationId  String?
+  task           Task?        @relation(fields: [taskId], references: [id])
+  taskId         String?
+  client         Client?      @relation(fields: [clientId], references: [id])
+  clientId       String?
+  body           String
+  author         User         @relation("NoteAuthor", fields: [authorId], references: [id])
+  authorId       String
+  createdAt      DateTime     @default(now())
 
+  @@index([organizationId])
   @@map("notes")
 }
 
@@ -1399,19 +1599,22 @@ model Note {
 // not get buried or overlooked"). Stored as plain fields, same visibility
 // as the rest of a Client record — not encrypted at rest.
 model ClientCredential {
-  id          String   @id @default(cuid())
-  client      Client   @relation(fields: [clientId], references: [id])
-  clientId    String
-  label       String
-  username    String?
-  password    String?
-  url         String?
-  notes       String?
-  createdBy   User     @relation("ClientCredentialCreatedBy", fields: [createdById], references: [id])
-  createdById String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             String       @id @default(cuid())
+  organizationId String       @default("org_ctk")
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  client         Client       @relation(fields: [clientId], references: [id])
+  clientId       String
+  label          String
+  username       String?
+  password       String?
+  url            String?
+  notes          String?
+  createdBy      User         @relation("ClientCredentialCreatedBy", fields: [createdById], references: [id])
+  createdById    String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
+  @@index([organizationId])
   @@map("client_credentials")
 }
 
@@ -1421,17 +1624,19 @@ model ClientCredential {
 // column to keep in sync or race on. `total` is always server-recomputed
 // from lineItems + taxAmount, never trusted from the client.
 model Invoice {
-  id            String        @id @default(cuid())
+  id             String        @id @default(cuid())
+  organizationId String        @default("org_ctk")
+  organization   Organization  @relation(fields: [organizationId], references: [id])
   // Local draft counter — only used to display a number before Stripe
   // assigns its own (stripeInvoiceNumber, set at finalize).
-  seq           Int           @default(autoincrement())
-  client        Client        @relation(fields: [clientId], references: [id])
-  clientId      String
-  application   Application?  @relation(fields: [applicationId], references: [id])
-  applicationId String?
-  status        InvoiceStatus @default(DRAFT)
-  issueDate     DateTime      @default(now())
-  dueDate       DateTime?
+  seq            Int           @default(autoincrement())
+  client         Client        @relation(fields: [clientId], references: [id])
+  clientId       String
+  application    Application?  @relation(fields: [applicationId], references: [id])
+  applicationId  String?
+  status         InvoiceStatus @default(DRAFT)
+  issueDate      DateTime      @default(now())
+  dueDate        DateTime?
   // The span of care/service this invoice covers — printed as "Period: X -
   // Y" on a Care Recipient invoice's PDF (see generateCareRecipientInvoicePdf
   // in src/lib/care-recipient-invoice-pdf.ts). Always staff-entered, never
@@ -1440,15 +1645,15 @@ model Invoice {
   // exactly which days got logged/billed. Generic on Invoice rather than
   // Care-Recipient-exclusive since nothing else about this field needs a
   // separate table, but only Care Recipient invoices currently expose it.
-  periodStart   DateTime?
-  periodEnd     DateTime?
-  notes         String?
+  periodStart    DateTime?
+  periodEnd      DateTime?
+  notes          String?
   // Free text for whoever created the invoice — their own reference (e.g.
   // "referred by Sarah", "rush job"). Unlike `notes`, never printed on the
   // PDF, never included in any invoice/receipt email, and never sent to
   // Stripe — see generateInvoicePdf/generateReceiptPdf and the send*
   // actions in src/lib/actions/invoices.ts, none of which read this field.
-  internalTag   String?
+  internalTag    String?
 
   // Null until Stripe finalizes the invoice — Stripe computes the actual
   // tax (via Stripe Tax) and total at that point, not us.
@@ -1530,6 +1735,7 @@ model Invoice {
   billedTaskTimeEntries TaskTimeEntry[]
 
   @@index([clientId])
+  @@index([organizationId])
   @@map("invoices")
 }
 
@@ -1541,18 +1747,21 @@ model Invoice {
 // ALLOWED_ATTACHMENT_TYPES in src/lib/actions/invoice-attachments.ts at
 // upload time — images, PDF, .xlsx, .docx.
 model InvoiceAttachment {
-  id           String   @id @default(cuid())
-  invoice      Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  invoiceId    String
-  fileName     String
-  storageKey   String
-  mimeType     String
-  sizeBytes    Int
-  uploadedBy   User     @relation("InvoiceAttachmentUploadedBy", fields: [uploadedById], references: [id])
-  uploadedById String
-  createdAt    DateTime @default(now())
+  id             String       @id @default(cuid())
+  organizationId String       @default("org_ctk")
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  invoice        Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoiceId      String
+  fileName       String
+  storageKey     String
+  mimeType       String
+  sizeBytes      Int
+  uploadedBy     User         @relation("InvoiceAttachmentUploadedBy", fields: [uploadedById], references: [id])
+  uploadedById   String
+  createdAt      DateTime     @default(now())
 
   @@index([invoiceId])
+  @@index([organizationId])
   @@map("invoice_attachments")
 }
 
@@ -1563,19 +1772,22 @@ model InvoiceAttachment {
 // generated the moment it's recorded — see addManualPayment in
 // src/lib/actions/invoices.ts.
 model Payment {
-  id            String   @id @default(cuid())
-  invoice       Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  invoiceId     String
-  amount        Float
-  paidAt        DateTime
-  paymentMethod String
-  recordedBy    User     @relation("PaymentRecordedBy", fields: [recordedById], references: [id])
-  recordedById  String
-  createdAt     DateTime @default(now())
+  id             String       @id @default(cuid())
+  organizationId String       @default("org_ctk")
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  invoice        Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoiceId      String
+  amount         Float
+  paidAt         DateTime
+  paymentMethod  String
+  recordedBy     User         @relation("PaymentRecordedBy", fields: [recordedById], references: [id])
+  recordedById   String
+  createdAt      DateTime     @default(now())
 
   receipt Receipt?
 
   @@index([invoiceId])
+  @@index([organizationId])
   @@map("payments")
 }
 
@@ -1585,21 +1797,24 @@ model Payment {
 // in src/lib/actions/invoices.ts) so staff decide per-receipt whether the
 // client gets a copy; sentAt/sentTo track whether/when that happened.
 model Receipt {
-  id         String    @id @default(cuid())
+  id             String       @id @default(cuid())
+  organizationId String       @default("org_ctk")
+  organization   Organization @relation(fields: [organizationId], references: [id])
   // Local counter for a human-readable receipt number ("R-000123", see
   // displayReceiptNumber in src/lib/invoice-format.ts) — same pattern as
   // Invoice.seq.
-  seq        Int       @default(autoincrement())
-  payment    Payment   @relation(fields: [paymentId], references: [id], onDelete: Cascade)
-  paymentId  String    @unique
-  invoice    Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  invoiceId  String
-  storageKey String
-  sentAt     DateTime?
-  sentTo     String?
-  createdAt  DateTime  @default(now())
+  seq            Int          @default(autoincrement())
+  payment        Payment      @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  paymentId      String       @unique
+  invoice        Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoiceId      String
+  storageKey     String
+  sentAt         DateTime?
+  sentTo         String?
+  createdAt      DateTime     @default(now())
 
   @@index([invoiceId])
+  @@index([organizationId])
   @@map("receipts")
 }
 
@@ -1615,16 +1830,18 @@ enum InvoiceLineItemKind {
 }
 
 model InvoiceLineItem {
-  id          String              @id @default(cuid())
-  invoice     Invoice             @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  invoiceId   String
-  description String
+  id             String              @id @default(cuid())
+  organizationId String              @default("org_ctk")
+  organization   Organization        @relation(fields: [organizationId], references: [id])
+  invoice        Invoice             @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoiceId      String
+  description    String
   // Float, not Int — day-rate/prorated lines bill fractional hours (e.g.
   // 8.5), which an Int column rejects outright.
-  quantity    Float               @default(1)
-  unitPrice   Float
-  sortOrder   Int                 @default(0)
-  kind        InvoiceLineItemKind @default(MANUAL)
+  quantity       Float               @default(1)
+  unitPrice      Float
+  sortOrder      Int                 @default(0)
+  kind           InvoiceLineItemKind @default(MANUAL)
 
   // Set only when kind is VISIT_HOURLY or VISIT_DAILY — a snapshot taken
   // at billing time, not a live join, since the caregiver can be
@@ -1634,6 +1851,7 @@ model InvoiceLineItem {
   visitEnd   DateTime?
   workerName String?
 
+  @@index([organizationId])
   @@map("invoice_line_items")
 }
 
@@ -1648,10 +1866,12 @@ model InvoiceLineItem {
 // Stripe-bound invoices aren't touched by this — Stripe emails those
 // itself and has its own branding settings.
 model InvoiceProfile {
-  id        String  @id @default(cuid())
+  id             String       @id @default(cuid())
+  organizationId String       @default("org_ctk")
+  organization   Organization @relation(fields: [organizationId], references: [id])
   // Shown in the picker AND printed on the PDF/emails — one field, not two.
-  name      String
-  isDefault Boolean @default(false)
+  name           String
+  isDefault      Boolean      @default(false)
 
   logoStorageKey String?
   logoMimeType   String?
@@ -1668,6 +1888,7 @@ model InvoiceProfile {
 
   invoices Invoice[]
 
+  @@index([organizationId])
   @@map("invoice_profiles")
 }
 
@@ -1696,14 +1917,16 @@ enum FormSubmissionStatus {
 }
 
 model FormTemplate {
-  id          String  @id @default(cuid())
-  name        String
+  id             String       @id @default(cuid())
+  organizationId String       @default("org_ctk")
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  name           String
   // URL-friendly and unique — the public link is /forms/{slug}, so this is
   // effectively load-bearing (share it wrong and the form 404s), not just
   // cosmetic.
-  slug        String  @unique
-  description String?
-  active      Boolean @default(true)
+  slug           String       @unique
+  description    String?
+  active         Boolean      @default(true)
 
   // Who gets emailed on a new submission — see submitForm in
   // src/lib/actions/public-forms.ts. Both empty falls back to every active
@@ -1720,6 +1943,7 @@ model FormTemplate {
   fields      FormField[]
   submissions FormSubmission[]
 
+  @@index([organizationId])
   @@map("form_templates")
 }
 
@@ -1730,18 +1954,21 @@ model FormTemplate {
 // in the review queue; left null, the answer is still shown for reference
 // but never auto-filled anywhere.
 model FormField {
-  id          String        @id @default(cuid())
-  template    FormTemplate  @relation(fields: [templateId], references: [id])
-  templateId  String
-  key         String
-  label       String
-  type        FormFieldType
-  required    Boolean       @default(false)
-  options     String[] // SELECT only
-  clientField String?
-  sortOrder   Int           @default(0)
+  id             String        @id @default(cuid())
+  organizationId String        @default("org_ctk")
+  organization   Organization  @relation(fields: [organizationId], references: [id])
+  template       FormTemplate  @relation(fields: [templateId], references: [id])
+  templateId     String
+  key            String
+  label          String
+  type           FormFieldType
+  required       Boolean       @default(false)
+  options        String[] // SELECT only
+  clientField    String?
+  sortOrder      Int           @default(0)
 
   @@unique([templateId, key])
+  @@index([organizationId])
   @@map("form_fields")
 }
 
@@ -1778,9 +2005,11 @@ enum LeadStage {
 // src/lib/actions/leads.ts), just with a 6-stage `stage` instead of a
 // 3-value `status`.
 model Lead {
-  id     String     @id @default(cuid())
-  source LeadSource @default(CALENDLY)
-  stage  LeadStage  @default(BOOKED)
+  id             String       @id @default(cuid())
+  organizationId String       @default("org_ctk")
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  source         LeadSource   @default(CALENDLY)
+  stage          LeadStage    @default(BOOKED)
 
   // Invitee details, straight from Calendly's invitee.created payload.
   inviteeName  String
@@ -1848,6 +2077,7 @@ model Lead {
 
   @@index([stage])
   @@index([calendlyEventUri])
+  @@index([organizationId])
   @@map("leads")
 }
 
@@ -1856,21 +2086,24 @@ model Lead {
 // a request, not a person. `client`/`reviewedBy` stay null until staff acts
 // on it (see PENDING in FormSubmissionStatus).
 model FormSubmission {
-  id           String               @id @default(cuid())
-  template     FormTemplate         @relation(fields: [templateId], references: [id])
-  templateId   String
-  answers      Json
-  status       FormSubmissionStatus @default(PENDING)
-  client       Client?              @relation(fields: [clientId], references: [id])
-  clientId     String?
-  reviewedBy   User?                @relation("FormSubmissionReviewedBy", fields: [reviewedById], references: [id])
-  reviewedById String?
-  reviewedAt   DateTime?
-  ipAddress    String?
-  createdAt    DateTime             @default(now())
+  id             String               @id @default(cuid())
+  organizationId String               @default("org_ctk")
+  organization   Organization         @relation(fields: [organizationId], references: [id])
+  template       FormTemplate         @relation(fields: [templateId], references: [id])
+  templateId     String
+  answers        Json
+  status         FormSubmissionStatus @default(PENDING)
+  client         Client?              @relation(fields: [clientId], references: [id])
+  clientId       String?
+  reviewedBy     User?                @relation("FormSubmissionReviewedBy", fields: [reviewedById], references: [id])
+  reviewedById   String?
+  reviewedAt     DateTime?
+  ipAddress      String?
+  createdAt      DateTime             @default(now())
 
   files FormSubmissionFile[]
 
+  @@index([organizationId])
   @@map("form_submissions")
 }
 
@@ -1879,15 +2112,18 @@ model FormSubmission {
 // it ever reaches GCS), just referenced from a submission instead of a
 // Task/Application/Invoice.
 model FormSubmissionFile {
-  id           String         @id @default(cuid())
-  submission   FormSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
-  submissionId String
-  fieldKey     String
-  fileName     String
-  storageKey   String
-  mimeType     String
-  sizeBytes    Int
-  createdAt    DateTime       @default(now())
+  id             String         @id @default(cuid())
+  organizationId String         @default("org_ctk")
+  organization   Organization   @relation(fields: [organizationId], references: [id])
+  submission     FormSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  submissionId   String
+  fieldKey       String
+  fileName       String
+  storageKey     String
+  mimeType       String
+  sizeBytes      Int
+  createdAt      DateTime       @default(now())
 
+  @@index([organizationId])
   @@map("form_submission_files")
 }

@@ -1,6 +1,8 @@
 # Multitenancy plan
 
-Status: **planned, not started** (drafted 2026-09-24).
+Status: **Phase 1 implemented on branch `multitenancy/phase-1`** (not deployed). Plan drafted 2026-09-24.
+
+Note: columns are camelCase like the rest of the schema — the DB column is `"organizationId"`, not `organization_id`.
 
 Goal: turn HCLM from a single-org internal CRM (CTK) into a SaaS that other
 healthcare licensing consultancies can sign up for, each fully isolated.
@@ -70,13 +72,18 @@ model Organization {
 - Add `organizationId String` + relation + `@@index([organizationId])` to all 53 tenant models.
 - Temporary `@default("org_ctk")` so existing creates keep working unchanged (removed in Phase 2).
 
-Migration (`prisma migrate dev --create-only`, hand-edit SQL, single transaction):
-1. Create `organizations`; insert CTK (`id = 'org_ctk'`, `slug = 'ctk'`).
-2. Per table: add nullable column → `UPDATE ... SET organization_id = 'org_ctk'` → `NOT NULL` + default + FK + index.
+Migration `20260925154029_add_organizations` (generated with `--create-only`, then hand-edited):
+1. `ADD COLUMN "organizationId" TEXT NOT NULL DEFAULT 'org_ctk'` on every table — Postgres fills existing rows from the constant default, so no separate UPDATE/backfill step is needed (and on PG 11+ it's metadata-only, no table rewrite).
+2. Create `organizations`; hand-added `INSERT` of CTK (`id = 'org_ctk'`, `slug = 'ctk'`, `name = 'CTK'`) before the foreign keys.
+3. Index + FK (`ON DELETE RESTRICT`) per table.
 
 Also: update `prisma/seed.ts`, `scripts/seed-*.ts`, `scripts/reset-data.sql` to create/keep the CTK org.
 
-Verify: run on a restored prod dump; row counts unchanged, no null `organization_id`; smoke-test main pages. Risk: low.
+Verify: run on a restored prod dump; row counts unchanged, no null `organizationId`; smoke-test main pages. Risk: low.
+
+Done locally (2026-09-25): migration applied; `scripts/seed-demo.ts` run afterwards with no code changes (nested creates included) → 148 rows across 53 tables, all in `org_ctk`; `tsc` + eslint clean. The local DB is nearly empty, so the prod-dump rehearsal on staging (Phase 0) is still required before deploy.
+
+**Known gap:** `_ClientToProject` (the implicit Client↔Project many-to-many) can't carry a column — Prisma owns implicit join tables. Both sides are org-scoped, so no data leaks through it, but Phase 6 needs a policy on it. Convert it to an explicit `ClientProject` model with `organizationId` in Phase 2 or 3 (touches the `clients`/`projects` connect/set code).
 
 ## Phase 2 — Tenant context + `tenantDb()`
 
@@ -107,7 +114,7 @@ Verify: run on a restored prod dump; row counts unchanged, no null `organization
 
 **2e'. Cross-tenant FK linking (must ship with 2e):**
 Most writes pass FK ids straight from input (`clientId: input.clientId`, stage/assignee ids). The column default stamps the *current* org on the new row but nothing checks the linked parent is in that org — org A could attach an Invoice to org B's Client, then `include: { client }` leaks B's data. RLS does **not** catch this (FK checks bypass RLS). Pick one in the spike:
-- **DB:** composite FKs `(client_id, organization_id) → clients(id, organization_id)` with `@@unique([id, organizationId])` on parents. Verify Prisma drift detection doesn't try to drop raw-SQL FKs, and that it coexists with `SetNull` relations.
+- **DB:** composite FKs `("clientId", "organizationId") → clients(id, "organizationId")` with `@@unique([id, organizationId])` on parents. Verify Prisma drift detection doesn't try to drop raw-SQL FKs, and that it coexists with `SetNull` relations.
 - **App:** `tenantDb` validates every incoming FK scalar / `connect` id with an `assertOwned()` lookup in the current org.
 Cross-tenant test suite must cover "create child pointing at other org's parent" either way.
 
@@ -211,13 +218,13 @@ Risk: medium — test webhook cutover in Stripe/DocuSign sandbox first.
 ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clients FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON clients
-  USING (organization_id = current_setting('app.org_id', true))
-  WITH CHECK (organization_id = current_setting('app.org_id', true));
+  USING ("organizationId" = current_setting('app.org_id', true))
+  WITH CHECK ("organizationId" = current_setting('app.org_id', true));
 ```
 
 - Roles: `hclm_owner` (owns tables, migrations — `MIGRATE_DATABASE_URL`), `hclm_app` (CRUD, not owner, `NOBYPASSRLS` — `DATABASE_URL`), `hclm_system` (`BYPASSRLS` for jobs, webhook org lookup, platform console, proxy org lookup — `SYSTEM_DATABASE_URL`). `ALTER DEFAULT PRIVILEGES` for new tables.
-- Migration: ENABLE + FORCE + policy on every table with `organization_id`. `organizations` readable only by system role (or current org's row).
-- Guards: CI script fails if any `organization_id` table lacks a policy in `pg_policies`; dev-only policy raises when `app.org_id` unset. Cross-tenant FK linking is handled in Phase 2 (2e') — RLS doesn't cover it.
+- Migration: ENABLE + FORCE + policy on every table with `organizationId`. `organizations` readable only by system role (or current org's row).
+- Guards: CI script fails if any `organizationId` table lacks a policy in `pg_policies`; dev-only policy raises when `app.org_id` unset. Cross-tenant FK linking is handled in Phase 2 (2e') — RLS doesn't cover it.
 - Rollout: measure page p95 before/after; run on prod copy; enable in prod. Rollback = `DISABLE ROW LEVEL SECURITY` migration.
 
 ## Cross-cutting
