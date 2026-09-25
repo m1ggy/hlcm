@@ -1,6 +1,14 @@
 # Multitenancy plan
 
-Status (2026-09-26): **Phase 0 + 1 on branch `multitenancy/phase-1`, Phase 2 on `multitenancy/phase-2`** (built on phase-1). Nothing merged or deployed. Plan drafted 2026-09-24.
+Status (2026-09-26): **Phase 0 + 1 on branch `multitenancy/phase-1`, Phase 2 on `multitenancy/phase-2`, Phase 3 in progress on `multitenancy/phase-3`** (each built on the previous). Nothing merged or deployed. Plan drafted 2026-09-24.
+
+**Resume point (paused 2026-09-26):** Phase 3 — 3a, 3b, 3c done; 3d part 1 done (commit cf2615c: `picklist_options` table + enum columns → text, seeded with the old hardcoded values). Next, 3d part 2:
+1. `src/lib/picklists.ts` — `getPicklists()` (org's options incl. inactive, sorted), label lookup, "active + current value" choices, `DEFAULT_PICKLISTS` for new orgs (generic: AGENCY/PAYER just "Other"; BALL_WITH "<org name>"/Client/Government).
+2. Validation: `applications.ts` `updateApplicationCaseFields` (replace `AGENCY_VALUES`/`BALL_WITH_VALUES` + `parseNullableEnum`) and `mco.ts` `createMcoCredential` (replace `MCO_NAMES`) — validate codes against the org's list.
+3. UI: `application-properties-table.tsx` (drop `AGENCY_LABELS`/`BALL_WITH_LABELS`, take options as props from `applications/[id]/page.tsx`), `mco-credentials-card.tsx` (drop `MCO_LABELS`, props from `clients/[id]/page.tsx`), dashboard `page.tsx` + `actions/alerts.ts` (show payer label, not code).
+4. `audit-format.ts`: drop hardcoded maps; take `agencies`/`ballWith` label maps via `lookups`, passed by the AuditLogPanel callers.
+5. Admin > Lists page (`/admin/lists`, link in `admin/page.tsx` ADMIN_LINKS): per list — add option (code derived from label), rename label, activate/deactivate. Server actions in `src/lib/actions/picklists.ts` (ADMIN, audited).
+6. Tests (per-org lists, validation rejects other org's/unknown codes), then 3d' stage roles and 3e `seedOrganization()`.
 
 Note: columns are camelCase like the rest of the schema — the DB column is `"organizationId"`, not `organization_id`.
 
