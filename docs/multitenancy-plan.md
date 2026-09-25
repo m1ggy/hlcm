@@ -16,7 +16,7 @@ healthcare licensing consultancies can sign up for, each fully isolated.
 | Tenant resolution | **Subdomain** per tenant (`acme.<root-domain>`) |
 | Integrations (Stripe, DocuSign, Calendly, Wise, Twilio, Teams) | **Each tenant brings its own** accounts/credentials |
 | Postgres RLS | **Yes**, as Phase 6. Phase 2 already pays the per-query transaction cost (`set_config` feeds the column default), so the remaining cost is just policies + roles |
-| Staging | **Required before any prod deploy** of multitenancy migrations (Phase 0) |
+| Staging | **Single server** — no staging box. Migrations rehearsed on a scratch copy of the live DB on the prod server, plus an automatic backup before every migrate (Phase 0) |
 
 ## Current state (what has to change)
 
@@ -45,14 +45,27 @@ healthcare licensing consultancies can sign up for, each fully isolated.
 
 ---
 
-## Phase 0 — Staging environment
+## Phase 0 — Safe migrations on a single server
 
-**Goal:** a place to rehearse migrations against real-shaped data before prod. Today every push to `main` deploys straight to prod.
+**Goal:** rehearse every migration against real data before it touches prod, without a second server. (Decided 2026-09-26: single server, no separate staging box.)
 
-- Second droplet (or same droplet, separate compose project + DB) deployed from a `staging` branch via a copy of `.github/workflows/deploy.yml`.
-- Restore a scrubbed or access-controlled prod `pg_dump` into it before each risky migration (Phases 1, 3, 6).
-- Sandbox credentials only for Stripe/DocuSign/Calendly/Twilio — never prod keys.
-- `pg_dump` of prod before every migration deploy.
+Existing setup: `deploy.yml` already has two environments — push to `dev` → dev, push to `main` → production. App-level testing happens on `dev`; what was missing is testing *migrations* against real data, and a backup before migrating.
+
+- **Pre-migration backup (every deploy, automatic):** the deploy step now runs `pg_dump -Fc` into `<deploy path>/backups/pre-migrate-<utc timestamp>.dump` right before `migrate`, owner-only perms, last 7 kept. Restore:
+  ```bash
+  docker compose stop app
+  docker compose exec -T postgres sh -c 'dropdb -U "$POSTGRES_USER" "$POSTGRES_DB" && createdb -U "$POSTGRES_USER" "$POSTGRES_DB"'
+  docker compose exec -T postgres sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --no-owner' < backups/pre-migrate-<ts>.dump
+  docker compose up -d app   # with the previous app image
+  ```
+- **Migration rehearsal (manual, before merging a risky migration to `main`):** `scripts/rehearse-migration.sh`, synced to the deploy directory on every deploy. Copies the live DB into a scratch `hclm_rehearsal` database in the same Postgres container, runs the given migrator image against it, diffs per-table row counts (fails on any lost rows/tables), then drops the copy. PHI never leaves the server.
+  ```bash
+  cd /opt/hclm-app
+  bash rehearse-migration.sh ghcr.io/<owner>/<repo>:migrate-dev-latest
+  ```
+  Flow per risky phase (1, 3, 6): merge phase branch → `dev` (builds `migrate-dev-latest`, deploys to dev) → run the rehearsal on the prod server with that image → merge → `main`.
+- Rehearsal load: one `pg_dump` of prod + a restore into the same Postgres — run off-hours.
+- Not yet run end-to-end (no Docker locally); first real run is the Phase 1 rehearsal.
 
 ## Phase 1 — Organization model + backfill
 
@@ -81,7 +94,7 @@ Also: update `prisma/seed.ts`, `scripts/seed-*.ts`, `scripts/reset-data.sql` to 
 
 Verify: run on a restored prod dump; row counts unchanged, no null `organizationId`; smoke-test main pages. Risk: low.
 
-Done locally (2026-09-25): migration applied; `scripts/seed-demo.ts` run afterwards with no code changes (nested creates included) → 148 rows across 53 tables, all in `org_ctk`; `tsc` + eslint clean. The local DB is nearly empty, so the prod-dump rehearsal on staging (Phase 0) is still required before deploy.
+Done locally (2026-09-25): migration applied; `scripts/seed-demo.ts` run afterwards with no code changes (nested creates included) → 148 rows across 53 tables, all in `org_ctk`; `tsc` + eslint clean. The local DB is nearly empty, so the Phase 0 rehearsal against a copy of prod is still required before deploying to `main`.
 
 **Known gap:** `_ClientToProject` (the implicit Client↔Project many-to-many) can't carry a column — Prisma owns implicit join tables. Both sides are org-scoped, so no data leaks through it, but Phase 6 needs a policy on it. Convert it to an explicit `ClientProject` model with `organizationId` in Phase 2 or 3 (touches the `clients`/`projects` connect/set code).
 
@@ -235,7 +248,7 @@ Rough effort (solo dev + Claude):
 
 | Phase | Estimate |
 |---|---|
-| 0 Staging | 0.5–1 d |
+| 0 Backups + rehearsal script | done (untested on server) |
 | 1 Schema + backfill | 1–2 d |
 | 2 Tenant context + call sites + FK ownership + tests | 2–3 w |
 | 3 Uniques / numbering / storage / lookups / stage roles | 1 w |

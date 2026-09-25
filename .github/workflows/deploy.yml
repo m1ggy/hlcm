@@ -116,7 +116,7 @@ jobs:
         run: |
           ssh -p "${{ secrets.DROPLET_SSH_PORT || 22 }}" "${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}" \
             "mkdir -p '${{ env.DEPLOY_PATH }}'"
-          scp -P "${{ secrets.DROPLET_SSH_PORT || 22 }}" docker-compose.yml Caddyfile \
+          scp -P "${{ secrets.DROPLET_SSH_PORT || 22 }}" docker-compose.yml Caddyfile scripts/rehearse-migration.sh \
             "${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}:${{ env.DEPLOY_PATH }}/"
 
       - name: Deploy on droplet
@@ -145,6 +145,23 @@ jobs:
 
           docker compose pull app
           docker compose --profile tools pull migrate
+
+          # Snapshot the database before migrating — a bad migration is then
+          # a pg_restore away instead of a data-loss incident. Dumps hold
+          # PHI: owner-only perms, same box as the DB itself, last 7 kept.
+          docker compose up -d postgres
+          for _ in $(seq 1 60); do
+            docker compose exec -T postgres sh -c 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"' >/dev/null 2>&1 && break
+            sleep 2
+          done
+          docker compose exec -T postgres sh -c 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+          mkdir -p backups
+          chmod 700 backups
+          backup="backups/pre-migrate-$(date -u +%Y%m%dT%H%M%SZ).dump"
+          ( umask 077; docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -Fc "$POSTGRES_DB"' > "$backup" )
+          test -s "$backup"
+          ls -1t backups/pre-migrate-*.dump | tail -n +8 | xargs -r rm --
+
           docker compose --profile tools run --rm -T migrate < /dev/null
           docker compose up -d app caddy postgres
           # -a also clears out the previous deploy's now-unused tagged
