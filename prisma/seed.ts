@@ -7,7 +7,7 @@ async function main() {
   const email = process.env.SEED_ADMIN_EMAIL ?? "admin@hclm.local";
   const password = process.env.SEED_ADMIN_PASSWORD ?? "ChangeMe123!";
 
-  const existing = await prisma.user.findUnique({ where: { email } });
+  const existing = await prisma.user.findFirst({ where: { email } });
   if (existing) {
     console.log(`Admin user already exists: ${email}`);
     return;

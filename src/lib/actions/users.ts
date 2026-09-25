@@ -143,7 +143,7 @@ export async function updateUser(input: z.infer<typeof updateSchema>) {
     throw new Error("You can't deactivate or change your own role — have another admin do it");
   }
 
-  const existing = await db.user.findUnique({ where: { email: parsed.email } });
+  const existing = await db.user.findFirst({ where: { email: parsed.email } });
   if (existing && existing.id !== parsed.userId) {
     throw new Error("Another user already has that email");
   }

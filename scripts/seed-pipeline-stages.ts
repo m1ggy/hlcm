@@ -11,7 +11,7 @@
 // Run: npx tsx scripts/seed-pipeline-stages.ts
 import "dotenv/config";
 import { Pipeline } from "../src/generated/prisma/client";
-import { db as prisma, runScriptAsTenant } from "./lib/tenant-script";
+import { currentOrgId, db as prisma, runScriptAsTenant } from "./lib/tenant-script";
 
 
 type StageSeed = {
@@ -121,10 +121,11 @@ async function main() {
   if (!admin) throw new Error("No ADMIN user found — seed a user first.");
 
   const stageIds = new Map<string, string>(); // `${pipeline}:${abbrev}` -> id
+  const organizationId = await currentOrgId();
 
   for (const stage of ALL_STAGES) {
     const row = await prisma.pipelineStage.upsert({
-      where: { pipeline_abbrev: { pipeline: stage.pipeline, abbrev: stage.abbrev } },
+      where: { organizationId_pipeline_abbrev: { organizationId, pipeline: stage.pipeline, abbrev: stage.abbrev } },
       update: {
         name: stage.name,
         sortOrder: stage.sortOrder,

@@ -25,7 +25,7 @@ export async function loginAction(
   if (!org || org.status !== "ACTIVE") return { error: "This workspace doesn't exist. Check the address you're signing in at." };
 
   // Scoped to the request host's org — see authorize() in src/auth.ts.
-  const user = await db.user.findUnique({ where: { email } });
+  const user = await db.user.findFirst({ where: { email } });
   if (!user || !user.active) return { error: "Invalid email or password." };
 
   const passwordValid = await bcrypt.compare(password, user.passwordHash);

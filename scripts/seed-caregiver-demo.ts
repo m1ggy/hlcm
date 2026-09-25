@@ -13,7 +13,7 @@ async function main() {
   const client = await prisma.client.findFirst({ where: { name: "Riverbend Senior Living" } });
 
   const email = "caregiver@hclm.local";
-  let caregiver = await prisma.user.findUnique({ where: { email } });
+  let caregiver = await prisma.user.findFirst({ where: { email } });
   if (!caregiver) {
     caregiver = await prisma.user.create({
       data: {

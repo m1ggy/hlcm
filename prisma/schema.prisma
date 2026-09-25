@@ -216,7 +216,7 @@ model User {
   organizationId            String       @default(dbgenerated("current_org_id()"))
   organization              Organization @relation(fields: [organizationId], references: [id])
   name                      String
-  email                     String       @unique
+  email                     String
   passwordHash              String
   role                      Role         @default(STAFF)
   mfaSecret                 String?
@@ -294,6 +294,7 @@ model User {
   clientAgreementsCreated       ClientAgreement[]         @relation("ClientAgreementCreatedBy")
   clientLicensesCreated         ClientLicense[]           @relation("ClientLicenseCreatedBy")
 
+  @@unique([organizationId, email])
   @@index([organizationId])
   @@map("users")
 }
@@ -486,7 +487,7 @@ model ServiceType {
   id             String       @id @default(cuid())
   organizationId String       @default(dbgenerated("current_org_id()"))
   organization   Organization @relation(fields: [organizationId], references: [id])
-  name           String       @unique
+  name           String
   hex            String
   textColor      String
   active         Boolean      @default(true)
@@ -497,6 +498,7 @@ model ServiceType {
 
   projects Project[]
 
+  @@unique([organizationId, name])
   @@index([organizationId])
   @@map("service_types")
 }
@@ -950,7 +952,7 @@ model PipelineStage {
   mcoCredentials McoCredential[]
   stageHistory   StageHistory[]
 
-  @@unique([pipeline, abbrev])
+  @@unique([organizationId, pipeline, abbrev])
   @@index([pipeline, sortOrder])
   @@index([organizationId])
   @@map("pipeline_stages")
@@ -1672,9 +1674,10 @@ model Invoice {
   // A manually-typed number for a recordManualPayment invoice — lets it
   // match an existing paper receipt/QuickBooks number instead of showing
   // the generic DRAFT-##### placeholder (see displayInvoiceNumber in
-  // src/lib/invoice-format.ts). @unique still allows any number of nulls;
-  // only actual duplicate typed numbers collide.
-  invoiceNumber String? @unique
+  // src/lib/invoice-format.ts). Unique per organization (see @@unique below),
+  // which still allows any number of nulls — only duplicate typed numbers
+  // within one org collide.
+  invoiceNumber String?
 
   sentAt            DateTime?
   paidAt            DateTime?
@@ -1735,6 +1738,7 @@ model Invoice {
   // TaskTimeEntry rows billed on this invoice — see TaskTimeEntry.billedInvoiceId.
   billedTaskTimeEntries TaskTimeEntry[]
 
+  @@unique([organizationId, invoiceNumber])
   @@index([clientId])
   @@index([organizationId])
   @@map("invoices")
@@ -1925,7 +1929,7 @@ model FormTemplate {
   // URL-friendly and unique — the public link is /forms/{slug}, so this is
   // effectively load-bearing (share it wrong and the form 404s), not just
   // cosmetic.
-  slug           String       @unique
+  slug           String
   description    String?
   active         Boolean      @default(true)
 
@@ -1944,6 +1948,7 @@ model FormTemplate {
   fields      FormField[]
   submissions FormSubmission[]
 
+  @@unique([organizationId, slug])
   @@index([organizationId])
   @@map("form_templates")
 }

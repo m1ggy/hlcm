@@ -8,7 +8,7 @@
 //
 // Run: npx tsx scripts/seed-service-types.ts
 import "dotenv/config";
-import { db as prisma, runScriptAsTenant } from "./lib/tenant-script";
+import { currentOrgId, db as prisma, runScriptAsTenant } from "./lib/tenant-script";
 
 
 const SERVICE_TYPES = [
@@ -23,10 +23,11 @@ const SERVICE_TYPES = [
 async function main() {
   const admin = await prisma.user.findFirst({ where: { role: "ADMIN" } });
   if (!admin) throw new Error("No ADMIN user found — seed a user first.");
+  const organizationId = await currentOrgId();
 
   for (const service of SERVICE_TYPES) {
     await prisma.serviceType.upsert({
-      where: { name: service.name },
+      where: { organizationId_name: { organizationId, name: service.name } },
       update: { hex: service.hex, textColor: service.textColor },
       create: { ...service, createdById: admin.id },
     });

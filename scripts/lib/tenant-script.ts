@@ -7,6 +7,7 @@ import { prisma } from "../../src/lib/prisma";
 import { db, runAsTenant } from "../../src/lib/db";
 
 export { db };
+export { currentOrgId } from "../../src/lib/db";
 
 export function runScriptAsTenant(main: () => Promise<void>) {
   const slug = process.env.ORG_SLUG ?? "ctk";

@@ -7,7 +7,7 @@ import bcrypt from "bcryptjs";
 
 
 async function main() {
-  const admin = await prisma.user.findUniqueOrThrow({ where: { email: "admin@hclm.local" } });
+  const admin = await prisma.user.findFirstOrThrow({ where: { email: "admin@hclm.local" } });
 
   const alreadySeeded = await prisma.client.findFirst({ where: { name: "Riverbend Senior Living" } });
   if (alreadySeeded) {
