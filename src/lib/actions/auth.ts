@@ -6,6 +6,7 @@ import bcrypt from "bcryptjs";
 import { AuthError } from "next-auth";
 import { signIn } from "@/auth";
 import { db } from "@/lib/db";
+import { getHostOrg } from "@/lib/tenant";
 import { createMfaChallenge } from "@/lib/mfa-challenge";
 
 const CHALLENGE_COOKIE = "mfa_challenge";
@@ -17,6 +18,11 @@ export async function loginAction(
   const email = formData.get("email") as string | null;
   const password = formData.get("password") as string | null;
   if (!email || !password) return { error: "Email and password are required." };
+
+  // No organization behind this host (unknown subdomain, suspended org, or
+  // the bare root domain) — nothing to sign in to.
+  const org = await getHostOrg();
+  if (!org || org.status !== "ACTIVE") return { error: "This workspace doesn't exist. Check the address you're signing in at." };
 
   // Scoped to the request host's org — see authorize() in src/auth.ts.
   const user = await db.user.findUnique({ where: { email } });

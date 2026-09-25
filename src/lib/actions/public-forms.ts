@@ -2,6 +2,7 @@
 
 import { headers } from "next/headers";
 import { db } from "@/lib/db";
+import { getHostOrg } from "@/lib/tenant";
 import { sendEmail, renderEmailLayout, getAppUrl } from "@/lib/email";
 import { saveUploadedFile } from "@/lib/storage";
 
@@ -74,8 +75,11 @@ async function resolveNotifyRecipients(template: { notifyUserIds: string[]; noti
 
 // Only ever returns an active template — an inactive/unknown slug is
 // indistinguishable from "doesn't exist" to the public page, which just
-// 404s either way (see src/app/forms/[slug]/page.tsx).
+// 404s either way (see src/app/forms/[slug]/page.tsx). Same for a host with
+// no organization behind it: slugs are per org, so there's nothing to find.
 export async function getPublicFormTemplate(slug: string) {
+  const org = await getHostOrg();
+  if (!org || org.status !== "ACTIVE") return null;
   return db.formTemplate.findFirst({
     where: { slug, active: true },
     include: { fields: { orderBy: { sortOrder: "asc" } } },
