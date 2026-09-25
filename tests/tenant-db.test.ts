@@ -138,13 +138,13 @@ describe("db (request-scoped)", () => {
   });
 
   it("uses the runAsTenant scope", async () => {
-    const names = await runAsTenant(ORG_B, async () => (await db.clientGroup.findMany()).map((g) => g.name));
+    const names = await runAsTenant({ id: ORG_B, slug: "test-b" }, async () => (await db.clientGroup.findMany()).map((g) => g.name));
     expect(names).toContain("b-group");
     expect(names).not.toContain("scoped-a");
   });
 
   it("supports interactive transactions", async () => {
-    const org = await runAsTenant(ORG_A, () =>
+    const org = await runAsTenant({ id: ORG_A, slug: "test-a" }, () =>
       db.$transaction(async (tx) => (await tx.clientGroup.create({ data: { name: "db-tx", createdById: userA.id } })).organizationId)
     );
     expect(org).toBe(ORG_A);

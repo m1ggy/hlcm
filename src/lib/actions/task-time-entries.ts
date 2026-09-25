@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { requireSession, requireRole, isManagement } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
@@ -17,7 +17,7 @@ const entryInclude = {
  * page-load hydration, same shape as getMyActiveEntry in time-entries.ts. */
 export async function getMyOpenTaskTimer() {
   const session = await requireSession();
-  return prisma.taskTimeEntry.findFirst({
+  return db.taskTimeEntry.findFirst({
     where: { userId: session.user.id, endedAt: null },
     include: entryInclude,
     orderBy: { startedAt: "desc" },
@@ -34,12 +34,12 @@ export async function startTaskTimer(input: { taskId?: string; description?: str
   const session = await requireSession();
   const now = new Date();
 
-  await prisma.taskTimeEntry.updateMany({
+  await db.taskTimeEntry.updateMany({
     where: { userId: session.user.id, endedAt: null },
     data: { endedAt: now },
   });
 
-  const entry = await prisma.taskTimeEntry.create({
+  const entry = await db.taskTimeEntry.create({
     data: {
       userId: session.user.id,
       taskId: input.taskId || undefined,
@@ -59,13 +59,13 @@ export async function startTaskTimer(input: { taskId?: string; description?: str
  * clockOut's "not clocked in" guard in time-entries.ts. */
 export async function stopTaskTimer() {
   const session = await requireSession();
-  const open = await prisma.taskTimeEntry.findFirst({
+  const open = await db.taskTimeEntry.findFirst({
     where: { userId: session.user.id, endedAt: null },
     orderBy: { startedAt: "desc" },
   });
   if (!open) throw new TaskTimeError("No timer is running");
 
-  const entry = await prisma.taskTimeEntry.update({ where: { id: open.id }, data: { endedAt: new Date() }, include: entryInclude });
+  const entry = await db.taskTimeEntry.update({ where: { id: open.id }, data: { endedAt: new Date() }, include: entryInclude });
 
   await recordAudit({ entityType: "TaskTimeEntry", entityId: entry.id, action: "stop_timer", actorId: session.user.id });
   revalidatePath("/", "layout");
@@ -77,12 +77,12 @@ export async function stopTaskTimer() {
  * start with one click and say what they're actually doing afterwards. */
 export async function setOpenTaskTimerDescription(description: string) {
   const session = await requireSession();
-  const open = await prisma.taskTimeEntry.findFirst({
+  const open = await db.taskTimeEntry.findFirst({
     where: { userId: session.user.id, endedAt: null },
     orderBy: { startedAt: "desc" },
   });
   if (!open) throw new TaskTimeError("No timer is running");
-  await prisma.taskTimeEntry.update({ where: { id: open.id }, data: { description: description.trim() || null } });
+  await db.taskTimeEntry.update({ where: { id: open.id }, data: { description: description.trim() || null } });
   revalidatePath("/time-tracking");
 }
 
@@ -94,7 +94,7 @@ export async function setOpenTaskTimerDescription(description: string) {
  */
 export async function listMyRecentTimerTasks(limit = 5) {
   const session = await requireSession();
-  const rows = await prisma.taskTimeEntry.findMany({
+  const rows = await db.taskTimeEntry.findMany({
     where: {
       userId: session.user.id,
       taskId: { not: null },
@@ -152,7 +152,7 @@ export async function addManualTaskTimeEntry(input: {
     throw new TaskTimeError("Only an admin or manager can log time for someone else");
   }
 
-  const entry = await prisma.taskTimeEntry.create({
+  const entry = await db.taskTimeEntry.create({
     data: {
       userId,
       taskId: parsed.taskId || undefined,
@@ -188,7 +188,7 @@ const updateEntrySchema = z
   .refine((v) => v.endedAt > v.startedAt, { message: "End time must be after start time" });
 
 async function assertCanEditEntry(entryId: string, actorId: string, actorRole: string) {
-  const entry = await prisma.taskTimeEntry.findUniqueOrThrow({ where: { id: entryId } });
+  const entry = await db.taskTimeEntry.findUniqueOrThrow({ where: { id: entryId } });
   if (entry.billedInvoiceId) throw new TaskTimeError("This entry has already been billed and can no longer be edited");
   if (entry.userId !== actorId && !isManagement(actorRole)) throw new TaskTimeError("You can only edit your own time entries");
   return entry;
@@ -205,7 +205,7 @@ export async function updateTaskTimeEntry(
   const existing = await assertCanEditEntry(id, session.user.id, session.user.role);
   const parsed = updateEntrySchema.parse(input);
 
-  const entry = await prisma.taskTimeEntry.update({
+  const entry = await db.taskTimeEntry.update({
     where: { id },
     data: {
       taskId: parsed.taskId ?? null,
@@ -237,7 +237,7 @@ export async function deleteTaskTimeEntry(id: string) {
   const session = await requireSession();
   const entry = await assertCanEditEntry(id, session.user.id, session.user.role);
 
-  await prisma.taskTimeEntry
+  await db.taskTimeEntry
     .delete({ where: { id } })
     .catch((e) => friendlyPrismaError(e, { notFoundMessage: "That time entry is already gone — someone else may have just removed it" }));
 
@@ -261,7 +261,7 @@ const rangeSchema = z.object({ from: z.coerce.date(), to: z.coerce.date() });
 export async function listMyTaskTimeEntries(input: { from: Date; to: Date }) {
   const session = await requireSession();
   const { from, to } = rangeSchema.parse(input);
-  return prisma.taskTimeEntry.findMany({
+  return db.taskTimeEntry.findMany({
     where: {
       userId: session.user.id,
       startedAt: { lte: to },
@@ -279,7 +279,7 @@ const teamRangeSchema = z.object({ userId: z.string().optional(), from: z.coerce
 export async function listTeamTaskTimeEntries(input: { userId?: string; from: Date; to: Date }) {
   await requireRole(["ADMIN", "MANAGER"]);
   const { userId, from, to } = teamRangeSchema.parse(input);
-  return prisma.taskTimeEntry.findMany({
+  return db.taskTimeEntry.findMany({
     where: {
       ...(userId ? { userId } : {}),
       startedAt: { lte: to },
@@ -298,7 +298,7 @@ export async function listTeamTaskTimeEntries(input: { userId?: string; from: Da
  */
 export async function listOpenTeamTimers() {
   await requireRole(["ADMIN", "MANAGER"]);
-  const entries = await prisma.taskTimeEntry.findMany({
+  const entries = await db.taskTimeEntry.findMany({
     where: { endedAt: null },
     include: entryInclude,
     orderBy: { startedAt: "asc" },
@@ -321,8 +321,8 @@ export async function listOpenTeamTimers() {
 export async function getTaskTimeSummary(taskId: string) {
   await requireSession();
   const [entries, task] = await Promise.all([
-    prisma.taskTimeEntry.findMany({ where: { taskId, endedAt: { not: null } }, select: { startedAt: true, endedAt: true } }),
-    prisma.task.findUniqueOrThrow({ where: { id: taskId }, select: { estimatedHours: true } }),
+    db.taskTimeEntry.findMany({ where: { taskId, endedAt: { not: null } }, select: { startedAt: true, endedAt: true } }),
+    db.task.findUniqueOrThrow({ where: { id: taskId }, select: { estimatedHours: true } }),
   ]);
   const hours = entries.reduce((sum, e) => sum + (e.endedAt!.getTime() - e.startedAt.getTime()) / 3_600_000, 0);
   return { hours, estimatedHours: task.estimatedHours };
@@ -339,7 +339,7 @@ export async function listUnbilledTaskTime(applicationId: string) {
   // Accounting without listing it explicitly, same as every other
   // ADMIN-gated action in invoices.ts.
   await requireRole(["ADMIN", "MANAGER"]);
-  return prisma.taskTimeEntry.findMany({
+  return db.taskTimeEntry.findMany({
     where: {
       task: { applicationId },
       endedAt: { not: null },

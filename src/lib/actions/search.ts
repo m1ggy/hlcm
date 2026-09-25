@@ -1,6 +1,6 @@
 "use server";
 
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { requireSession, applicationVisibilityFilter, AppRole, isManagement } from "@/lib/rbac";
 import { caregiverClientScope } from "@/lib/caregiver-scope";
 
@@ -10,7 +10,7 @@ export async function searchAll(query: string) {
   const q = query.trim();
   if (!q) return { applications: [], clients: [], tasks: [] };
 
-  const applications = await prisma.application.findMany({
+  const applications = await db.application.findMany({
     where: {
       AND: [
         applicationVisibilityFilter(session),
@@ -24,12 +24,12 @@ export async function searchAll(query: string) {
 
   const clients =
     isManagement(role) || role === "STAFF"
-      ? await prisma.client.findMany({
+      ? await db.client.findMany({
           where: { name: { contains: q, mode: "insensitive" }, active: true },
           take: 10,
         })
       : role === "CAREGIVER"
-        ? await prisma.client.findMany({
+        ? await db.client.findMany({
             where: { name: { contains: q, mode: "insensitive" }, active: true, ...caregiverClientScope(session.user.id) },
             take: 10,
           })
@@ -42,7 +42,7 @@ export async function searchAll(query: string) {
           label: { contains: q, mode: "insensitive" as const },
           assignees: { some: { userId: session.user.id } },
         };
-  const tasks = await prisma.task.findMany({
+  const tasks = await db.task.findMany({
     where: taskWhere,
     include: { application: { select: { id: true, name: true } } },
     take: 10,

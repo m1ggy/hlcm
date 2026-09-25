@@ -12,7 +12,7 @@
 // renders as a real table instead of a typed description.
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { getDefaultInvoiceProfile } from "@/lib/invoice-profiles";
@@ -64,7 +64,7 @@ export async function createCareRecipientInvoice(input: z.input<typeof createCar
   // recipient (Invoice always bills through the recipient's own Client,
   // never independently — see CareRecipient's comment in
   // prisma/schema.prisma).
-  const recipient = await prisma.careRecipient.findUniqueOrThrow({ where: { id: parsed.careRecipientId } });
+  const recipient = await db.careRecipient.findUniqueOrThrow({ where: { id: parsed.careRecipientId } });
   if (recipient.clientId !== parsed.clientId) {
     throw new Error("That care recipient doesn't belong to this client");
   }
@@ -74,7 +74,7 @@ export async function createCareRecipientInvoice(input: z.input<typeof createCar
   // two staff opening the same recipient's invoice dialog at once), not
   // just a client-side check.
   if (parsed.timeEntryIds?.length) {
-    const billableCount = await prisma.timeEntry.count({
+    const billableCount = await db.timeEntry.count({
       where: { id: { in: parsed.timeEntryIds }, careRecipientId: parsed.careRecipientId, billedInvoiceId: null },
     });
     if (billableCount !== parsed.timeEntryIds.length) {
@@ -87,7 +87,7 @@ export async function createCareRecipientInvoice(input: z.input<typeof createCar
   // somehow submitted without picking one.
   const profileId = parsed.invoiceProfileId || (await getDefaultInvoiceProfile())?.id;
 
-  const invoice = await prisma
+  const invoice = await db
     .$transaction(async (tx) => {
       const created = await tx.invoice.create({
         data: {
@@ -167,13 +167,13 @@ export async function createBatchCareRecipientInvoices(
 
   const results: BatchInvoiceResult[] = [];
   for (const recipientId of parsed.recipientIds) {
-    const recipient = await prisma.careRecipient.findUnique({ where: { id: recipientId } });
+    const recipient = await db.careRecipient.findUnique({ where: { id: recipientId } });
     if (!recipient || recipient.clientId !== parsed.clientId) {
       results.push({ recipientId, recipientName: recipient?.name ?? recipientId, status: "failed", error: "Recipient no longer belongs to this client" });
       continue;
     }
 
-    const visits = await prisma.timeEntry.findMany({
+    const visits = await db.timeEntry.findMany({
       where: { careRecipientId: recipientId, clockOut: { not: null }, billedInvoiceId: null, clockIn: { gte: from, lte: to } },
       include: { user: { select: { name: true } } },
       orderBy: { clockIn: "asc" },
@@ -219,7 +219,7 @@ export async function createBatchCareRecipientInvoices(
 // rather than inside that otherwise-pure renderer.
 export async function computeOutstandingAccountBalance(careRecipientId: string): Promise<number> {
   await requireRole(MANAGE_ROLES);
-  const invoices = await prisma.invoice.findMany({
+  const invoices = await db.invoice.findMany({
     where: { careRecipientId, status: { not: "VOID" } },
     select: { total: true, amountPaid: true },
   });

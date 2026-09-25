@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 
 /**
  * Clones ChecklistItemTemplate rows matching an Application's case type
@@ -23,7 +23,7 @@ export async function cloneChecklistForApplication(params: {
   // A template with no license type ("Any" in the admin UI) is a wildcard —
   // it clones onto every Application for that case type regardless of which
   // license type (if any) was picked, in addition to any license-specific match.
-  const templates = await prisma.checklistItemTemplate.findMany({
+  const templates = await db.checklistItemTemplate.findMany({
     where: {
       caseTypeId,
       OR: licenseTypeTemplateId
@@ -42,7 +42,7 @@ export async function cloneChecklistForApplication(params: {
     if (template.phaseName) {
       phaseId = phaseIdByName.get(template.phaseName);
       if (!phaseId) {
-        const phase = await prisma.phase.create({
+        const phase = await db.phase.create({
           data: { applicationId, name: template.phaseName, sortOrder: phaseSortOrder++ },
         });
         phaseId = phase.id;
@@ -50,7 +50,7 @@ export async function cloneChecklistForApplication(params: {
       }
     }
 
-    await prisma.task.create({
+    await db.task.create({
       data: {
         applicationId,
         phaseId,

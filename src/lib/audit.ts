@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 
 type AuditEntry = {
   entityType: string;
@@ -28,7 +28,7 @@ function stringify(value: unknown): string | undefined {
  * bytes) is what makes the log useful later.
  */
 export async function recordAudit(entry: AuditEntry) {
-  await prisma.auditLog.create({
+  await db.auditLog.create({
     data: {
       entityType: entry.entityType,
       entityId: entry.entityId,

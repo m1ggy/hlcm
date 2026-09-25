@@ -4,12 +4,9 @@
 // against without extra manual setup. Additive, idempotent, local dev DB
 // only — same convention as seed-demo.ts/seed-demo-credentials.ts.
 import "dotenv/config";
-import { PrismaClient } from "../src/generated/prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
+import { db as prisma, runScriptAsTenant } from "./lib/tenant-script";
 import bcrypt from "bcryptjs";
 
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
-const prisma = new PrismaClient({ adapter });
 
 async function main() {
   const admin = await prisma.user.findFirstOrThrow({ where: { role: "ADMIN" } });
@@ -65,11 +62,4 @@ async function main() {
   }
 }
 
-main()
-  .catch((error) => {
-    console.error(error);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+runScriptAsTenant(main);

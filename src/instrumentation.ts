@@ -17,8 +17,11 @@ async function maybeSendDigest() {
   lastSentDate = today;
 
   const { sendDueDateDigests } = await import("@/lib/due-date-digest");
+  const { forEachActiveOrg } = await import("@/lib/db");
   try {
-    await sendDueDateDigests();
+    // Each org's data lives behind its own tenant scope (src/lib/db.ts) —
+    // there's no request host here, so run the job once per org.
+    await forEachActiveOrg("Due-date digest", () => sendDueDateDigests());
   } catch (error) {
     console.error("Due-date digest run failed:", error);
   }
@@ -31,8 +34,9 @@ async function maybeSendDigest() {
 // timely; no per-run state to track in this file at all.
 async function tickMeetingReminders() {
   const { sendMeetingReminders } = await import("@/lib/meeting-reminders");
+  const { forEachActiveOrg } = await import("@/lib/db");
   try {
-    await sendMeetingReminders();
+    await forEachActiveOrg("Meeting reminders", () => sendMeetingReminders());
   } catch (error) {
     console.error("Meeting reminder run failed:", error);
   }

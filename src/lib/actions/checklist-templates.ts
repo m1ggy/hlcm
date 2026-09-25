@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
@@ -21,7 +21,7 @@ const checklistItemTemplateSchema = z.object({
 
 export async function listChecklistItemTemplates() {
   await requireRole(["ADMIN", "MANAGER", "STAFF"]);
-  return prisma.checklistItemTemplate.findMany({
+  return db.checklistItemTemplate.findMany({
     include: { licenseTypeTemplate: true, caseType: true },
     orderBy: [{ caseTypeId: "asc" }, { sortOrder: "asc" }],
   });
@@ -39,7 +39,7 @@ export async function createChecklistItemTemplate(formData: FormData) {
     sortOrder: formData.get("sortOrder") || 0,
   });
 
-  const item = await prisma.checklistItemTemplate.create({
+  const item = await db.checklistItemTemplate.create({
     data: { ...parsed, createdById: session.user.id },
   });
 
@@ -56,7 +56,7 @@ export async function createChecklistItemTemplate(formData: FormData) {
 
 export async function deleteChecklistItemTemplate(id: string) {
   const session = await requireRole(["ADMIN"]);
-  await prisma.checklistItemTemplate
+  await db.checklistItemTemplate
     .delete({ where: { id } })
     .catch((e) => friendlyPrismaError(e, { notFoundMessage: "That checklist item is already gone — someone else may have just removed it" }));
 

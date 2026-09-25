@@ -1,11 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { requireRole, AppRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
-import { sendEmail, renderEmailLayout } from "@/lib/email";
+import { sendEmail, renderEmailLayout, getAppUrl } from "@/lib/email";
 import { createSingleUseSchedulingLink, cancelScheduledEvent } from "@/lib/calendly";
 import type { $Enums } from "@/generated/prisma/client";
 
@@ -17,7 +17,7 @@ const taskLinkSelect = { id: true, label: true, status: true, dueDate: true } as
 
 export async function listLeads(stage?: $Enums.LeadStage) {
   await requireRole(REVIEW_ROLES);
-  return prisma.lead.findMany({
+  return db.lead.findMany({
     where: { stage },
     include: {
       client: { select: { id: true, name: true } },
@@ -31,7 +31,7 @@ export async function listLeads(stage?: $Enums.LeadStage) {
 
 export async function getLead(id: string) {
   await requireRole(REVIEW_ROLES);
-  return prisma.lead.findUniqueOrThrow({
+  return db.lead.findUniqueOrThrow({
     where: { id },
     include: {
       client: { select: { id: true, name: true } },
@@ -47,8 +47,8 @@ export async function getLead(id: string) {
 export async function assignLead(leadId: string, userId: string | null) {
   const session = await requireRole(REVIEW_ROLES);
 
-  const before = await prisma.lead.findUniqueOrThrow({ where: { id: leadId }, select: { assignedToId: true } });
-  const lead = await prisma.lead
+  const before = await db.lead.findUniqueOrThrow({ where: { id: leadId }, select: { assignedToId: true } });
+  const lead = await db.lead
     .update({
       where: { id: leadId },
       data: { assignedToId: userId },
@@ -82,8 +82,8 @@ export async function assignLead(leadId: string, userId: string | null) {
 export async function changeLeadStage(id: string, stage: $Enums.LeadStage) {
   const session = await requireRole(REVIEW_ROLES);
 
-  const before = await prisma.lead.findUniqueOrThrow({ where: { id }, select: { stage: true } });
-  const lead = await prisma.lead
+  const before = await db.lead.findUniqueOrThrow({ where: { id }, select: { stage: true } });
+  const lead = await db.lead
     .update({ where: { id }, data: { stage } })
     .catch((e) => friendlyPrismaError(e, { notFoundMessage: "That lead is already gone — someone else may have just deleted it" }));
 
@@ -103,9 +103,9 @@ export async function changeLeadStage(id: string, stage: $Enums.LeadStage) {
   // duplicates so re-clicking (or moving away and back) never creates a
   // second one for the same lead.
   if (stage === "NO_SHOW" || stage === "MISSED") {
-    const alreadyHasTask = await prisma.task.findFirst({ where: { leadId: id }, select: { id: true } });
+    const alreadyHasTask = await db.task.findFirst({ where: { leadId: id }, select: { id: true } });
     if (!alreadyHasTask) {
-      await prisma.task.create({
+      await db.task.create({
         data: {
           leadId: id,
           label: `Follow up: ${lead.inviteeName} (${stage === "NO_SHOW" ? "No-show" : "Missed"})`,
@@ -129,7 +129,7 @@ export async function changeLeadStage(id: string, stage: $Enums.LeadStage) {
 export async function linkLeadToClient(leadId: string, clientId: string) {
   const session = await requireRole(REVIEW_ROLES);
 
-  const lead = await prisma.lead
+  const lead = await db.lead
     .update({
       where: { id: leadId },
       data: { clientId, stage: "CONVERTED", reviewedById: session.user.id, reviewedAt: new Date() },
@@ -153,7 +153,7 @@ export async function linkLeadToClient(leadId: string, clientId: string) {
 export async function markLeadLost(id: string, reason?: string) {
   const session = await requireRole(REVIEW_ROLES);
 
-  await prisma.lead
+  await db.lead
     .update({ where: { id }, data: { stage: "LOST" } })
     .catch((e) => friendlyPrismaError(e, { notFoundMessage: "That lead is already gone — someone else may have just deleted it" }));
 
@@ -183,7 +183,7 @@ const CALENDLY_BOOKING_URL = "https://calendly.com/ctkadvisorsinc";
 // Leads inbox already is (not CONVERTED/LOST).
 export async function sendFollowUpEmail(leadId: string) {
   const session = await requireRole(REVIEW_ROLES);
-  const lead = await prisma.lead.findUniqueOrThrow({ where: { id: leadId } });
+  const lead = await db.lead.findUniqueOrThrow({ where: { id: leadId } });
 
   // A real single-use link (same event type as their original booking)
   // beats the generic org page when we can get one — but a Calendly hiccup
@@ -196,6 +196,7 @@ export async function sendFollowUpEmail(leadId: string) {
     console.error("Falling back to the generic Calendly link:", error);
   }
 
+  const appUrl = await getAppUrl();
   await sendEmail({
     to: lead.inviteeEmail,
     subject: "Let's find a new time",
@@ -205,10 +206,11 @@ export async function sendFollowUpEmail(leadId: string) {
       ctaLabel: "Rebook a time",
       ctaUrl: bookingUrl,
       preheader: "Pick a new time that works for you",
+      appUrl,
     }),
   });
 
-  await prisma.lead.update({ where: { id: leadId }, data: { stage: "FOLLOW_UP_SENT" } });
+  await db.lead.update({ where: { id: leadId }, data: { stage: "FOLLOW_UP_SENT" } });
 
   await recordAudit({
     entityType: "Lead",
@@ -230,7 +232,7 @@ export async function sendFollowUpEmail(leadId: string) {
 // API error surfaces as a toast rather than silently no-op'ing.
 export async function cancelLeadBooking(leadId: string, reason?: string) {
   const session = await requireRole(REVIEW_ROLES);
-  const lead = await prisma.lead.findUniqueOrThrow({ where: { id: leadId } });
+  const lead = await db.lead.findUniqueOrThrow({ where: { id: leadId } });
   if (lead.canceledAt) throw new Error("This booking is already canceled");
 
   await cancelScheduledEvent(lead.calendlyEventUri, reason || "Canceled by CTK staff");
@@ -240,7 +242,7 @@ export async function cancelLeadBooking(leadId: string, reason?: string) {
   // When that webhook does arrive afterward, the existing idempotency check
   // in src/app/api/webhooks/calendly/route.ts (`if (lead && !lead.canceledAt)`)
   // sees it's already set and no-ops — no duplicate notify, no feedback loop.
-  await prisma.lead.update({
+  await db.lead.update({
     where: { id: leadId },
     data: { canceledAt: new Date(), cancelReason: reason || "Canceled by CTK staff" },
   });

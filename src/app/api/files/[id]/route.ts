@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { requireSession, assertApplicationAccess, UnauthorizedError, ForbiddenError, AppRole, isManagement } from "@/lib/rbac";
 import { readStoredFile } from "@/lib/storage";
 
@@ -8,7 +8,7 @@ export async function GET(_req: NextRequest, ctx: RouteContext<"/api/files/[id]"
 
   try {
     const session = await requireSession();
-    const asset = await prisma.fileAsset.findUnique({
+    const asset = await db.fileAsset.findUnique({
       where: { id },
       include: { task: { include: { assignees: { select: { userId: true } } } } },
     });

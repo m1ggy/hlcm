@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
@@ -16,7 +16,7 @@ const nameSchema = z.object({ name: z.string().min(1, "Name is required") });
  * "Group" select. Same read gate as listClients itself. */
 export async function listClientGroups() {
   await requireRole(["ADMIN", "MANAGER", "STAFF"]);
-  return prisma.clientGroup.findMany({
+  return db.clientGroup.findMany({
     include: { _count: { select: { clients: true } } },
     orderBy: { name: "asc" },
   });
@@ -26,7 +26,7 @@ export async function createClientGroup(input: { name: string }) {
   const session = await requireRole([...ADMIN_ONLY]);
   const parsed = nameSchema.parse(input);
 
-  const group = await prisma.clientGroup.create({ data: { name: parsed.name, createdById: session.user.id } });
+  const group = await db.clientGroup.create({ data: { name: parsed.name, createdById: session.user.id } });
 
   await recordAudit({ entityType: "ClientGroup", entityId: group.id, action: "create", actorId: session.user.id });
 
@@ -39,8 +39,8 @@ export async function renameClientGroup(id: string, input: { name: string }) {
   const session = await requireRole([...ADMIN_ONLY]);
   const parsed = nameSchema.parse(input);
 
-  const before = await prisma.clientGroup.findUniqueOrThrow({ where: { id } });
-  const group = await prisma.clientGroup.update({ where: { id }, data: { name: parsed.name } });
+  const before = await db.clientGroup.findUniqueOrThrow({ where: { id } });
+  const group = await db.clientGroup.update({ where: { id }, data: { name: parsed.name } });
 
   await recordAudit({
     entityType: "ClientGroup",
@@ -60,9 +60,9 @@ export async function renameClientGroup(id: string, input: { name: string }) {
  * is onDelete: SetNull, so they just revert to showing individually. */
 export async function deleteClientGroup(id: string) {
   const session = await requireRole([...ADMIN_ONLY]);
-  const group = await prisma.clientGroup.findUniqueOrThrow({ where: { id } });
+  const group = await db.clientGroup.findUniqueOrThrow({ where: { id } });
 
-  await prisma.clientGroup
+  await db.clientGroup
     .delete({ where: { id } })
     .catch((e) => friendlyPrismaError(e, { notFoundMessage: "That group is already gone — someone else may have just removed it" }));
 

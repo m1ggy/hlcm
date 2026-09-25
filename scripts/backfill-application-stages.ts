@@ -13,12 +13,10 @@
 //
 // Run: npx tsx scripts/backfill-application-stages.ts
 import "dotenv/config";
-import { PrismaClient, Pipeline } from "../src/generated/prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
+import { Pipeline } from "../src/generated/prisma/client";
+import { db as prisma, runScriptAsTenant } from "./lib/tenant-script";
 import { pipelineForLicenseType, STATUS_TO_STAGE } from "../src/lib/pipeline";
 
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
-const prisma = new PrismaClient({ adapter });
 
 async function main() {
   const apps = await prisma.application.findMany({
@@ -62,12 +60,12 @@ async function main() {
       continue;
     }
 
-    await prisma.$transaction([
-      prisma.application.update({ where: { id: app.id }, data: { pipeline, stageId: id } }),
-      prisma.stageHistory.create({
+    await prisma.$transaction(async (tx) => {
+      await tx.application.update({ where: { id: app.id }, data: { pipeline, stageId: id } });
+      await tx.stageHistory.create({
         data: { applicationId: app.id, stageId: id, enteredAt: app.updatedAt, actorId: app.createdById },
-      }),
-    ]);
+      });
+    });
     updated++;
   }
 
@@ -78,11 +76,4 @@ async function main() {
   }
 }
 
-main()
-  .catch((error) => {
-    console.error(error);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+runScriptAsTenant(main);

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
 import { notify } from "@/lib/notifications";
 import { verifyWebhookSignature, StripeApiError } from "@/lib/stripe";
@@ -34,11 +34,11 @@ export async function POST(req: Request) {
   const stripeInvoice = event.data.object as unknown as StripeInvoiceObject;
 
   if (event.type === "invoice.paid") {
-    const invoice = await prisma.invoice.findUnique({ where: { stripeInvoiceId: stripeInvoice.id } });
+    const invoice = await db.invoice.findUnique({ where: { stripeInvoiceId: stripeInvoice.id } });
     // Idempotent: ignore unknown invoices or one already marked paid — a
     // redelivered webhook event must never double-fire the notification.
     if (invoice && invoice.status !== "PAID") {
-      await prisma.invoice.update({
+      await db.invoice.update({
         where: { id: invoice.id },
         data: {
           status: "PAID",
@@ -72,13 +72,13 @@ export async function POST(req: Request) {
       );
     }
   } else if (event.type === "invoice.voided") {
-    const invoice = await prisma.invoice.findUnique({ where: { stripeInvoiceId: stripeInvoice.id } });
+    const invoice = await db.invoice.findUnique({ where: { stripeInvoiceId: stripeInvoice.id } });
     if (invoice && invoice.status !== "VOID") {
-      await prisma.invoice.update({ where: { id: invoice.id }, data: { status: "VOID" } });
+      await db.invoice.update({ where: { id: invoice.id }, data: { status: "VOID" } });
       await recordAudit({ entityType: "Invoice", entityId: invoice.id, action: "void", actorId: invoice.createdById });
     }
   } else if (event.type === "invoice.payment_failed" || event.type === "invoice.finalization_failed") {
-    const invoice = await prisma.invoice.findUnique({ where: { stripeInvoiceId: stripeInvoice.id } });
+    const invoice = await db.invoice.findUnique({ where: { stripeInvoiceId: stripeInvoice.id } });
     if (invoice) {
       await recordAudit({
         entityType: "Invoice",

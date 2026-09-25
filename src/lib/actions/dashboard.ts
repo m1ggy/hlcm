@@ -1,6 +1,6 @@
 "use server";
 
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { requireSession, applicationVisibilityFilter, AppRole, isManagement as isManagementRole } from "@/lib/rbac";
 import { APPLICATION_STATUSES } from "@/lib/status";
 import { TASK_CLOSED_STATUSES } from "@/lib/task-status";
@@ -11,7 +11,7 @@ export async function getDashboardStats() {
   const isManagement = isManagementRole(role);
   const appFilter = { ...applicationVisibilityFilter(session), active: true };
 
-  const statusCounts = await prisma.application.groupBy({
+  const statusCounts = await db.application.groupBy({
     by: ["status"],
     where: appFilter,
     _count: { status: true },
@@ -27,7 +27,7 @@ export async function getDashboardStats() {
     OR: [{ applicationId: null }, { application: { active: true } }],
     ...(isManagement ? {} : { assignees: { some: { userId: session.user.id } } }),
   };
-  const overdueTasks = await prisma.task.findMany({
+  const overdueTasks = await db.task.findMany({
     where: overdueWhere,
     include: {
       assignees: { include: { user: { select: { name: true } } } },
@@ -42,7 +42,7 @@ export async function getDashboardStats() {
   // counts toward both people's totals.
   let workload: { userId: string; name: string; count: number }[] = [];
   if (isManagement) {
-    const tasks = await prisma.task.findMany({
+    const tasks = await db.task.findMany({
       where: { status: { notIn: [...TASK_CLOSED_STATUSES] } },
       select: { assignees: { select: { userId: true } } },
     });
@@ -52,7 +52,7 @@ export async function getDashboardStats() {
         counts.set(a.userId, (counts.get(a.userId) ?? 0) + 1);
       }
     }
-    const users = await prisma.user.findMany({
+    const users = await db.user.findMany({
       where: { id: { in: [...counts.keys()] } },
       select: { id: true, name: true },
     });

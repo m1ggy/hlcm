@@ -8,11 +8,8 @@
 //
 // Run: npx tsx scripts/seed-service-types.ts
 import "dotenv/config";
-import { PrismaClient } from "../src/generated/prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
+import { db as prisma, runScriptAsTenant } from "./lib/tenant-script";
 
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
-const prisma = new PrismaClient({ adapter });
 
 const SERVICE_TYPES = [
   { name: "Ace Home Care Franchise", hex: "#FDD835", textColor: "#4A3B00" },
@@ -37,11 +34,4 @@ async function main() {
   console.log(`Upserted ${SERVICE_TYPES.length} service types.`);
 }
 
-main()
-  .catch((error) => {
-    console.error(error);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+runScriptAsTenant(main);

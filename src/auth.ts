@@ -1,7 +1,8 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
-import { prisma } from "@/lib/prisma";
+import { getDb } from "@/lib/db";
+import { getHostOrg } from "@/lib/tenant";
 import { verifyTotpToken } from "@/lib/totp";
 import { verifyMfaChallenge } from "@/lib/mfa-challenge";
 import { authConfig } from "@/auth.config";
@@ -19,7 +20,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         otp: { label: "MFA code", type: "text" },
         challenge: { label: "Challenge", type: "text" },
       },
+      // Users are looked up in the request host's organization only (the
+      // tenant client adds organizationId to every lookup) — the same email
+      // can exist in two orgs, and signing in on one org's host can never
+      // produce a session for the other.
       async authorize(credentials) {
+        const org = await getHostOrg();
+        if (!org || org.status !== "ACTIVE") return null;
+        const db = await getDb();
+
         const challenge = credentials?.challenge as string | undefined;
         const otp = credentials?.otp as string | undefined;
 
@@ -29,18 +38,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           const userId = await verifyMfaChallenge(challenge);
           if (!userId) return null;
 
-          const user = await prisma.user.findUnique({ where: { id: userId } });
+          const user = await db.user.findUnique({ where: { id: userId } });
           if (!user || !user.active || !user.mfaEnabled || !user.mfaSecret) return null;
           if (!otp || !verifyTotpToken(otp, user.mfaSecret)) return null;
 
-          return { id: user.id, name: user.name, email: user.email, role: user.role };
+          return { id: user.id, name: user.name, email: user.email, role: user.role, organizationId: org.id, orgSlug: org.slug };
         }
 
         const email = credentials?.email as string | undefined;
         const password = credentials?.password as string | undefined;
         if (!email || !password) return null;
 
-        const user = await prisma.user.findUnique({ where: { email } });
+        const user = await db.user.findUnique({ where: { email } });
         if (!user || !user.active) return null;
 
         const passwordValid = await bcrypt.compare(password, user.passwordHash);
@@ -55,6 +64,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           name: user.name,
           email: user.email,
           role: user.role,
+          organizationId: org.id,
+          orgSlug: org.slug,
         };
       },
     }),
@@ -64,7 +75,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
-        token.role = (user as { role: string }).role;
+        token.role = user.role;
+        token.organizationId = user.organizationId;
+        token.orgSlug = user.orgSlug;
       }
       return token;
     },
@@ -72,6 +85,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (session.user) {
         session.user.id = token.id as string;
         session.user.role = token.role as string;
+        session.user.organizationId = token.organizationId as string;
+        session.user.orgSlug = token.orgSlug as string;
       }
       return session;
     },

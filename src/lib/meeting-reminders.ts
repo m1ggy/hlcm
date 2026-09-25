@@ -14,7 +14,7 @@
 //     roster from Admin > Users, independent of per-lead assignment
 //
 // Meant to be invoked every few minutes — see src/instrumentation.ts.
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { sendEmail, renderEmailLayout, getAppUrl } from "@/lib/email";
 import { isTeamsConfigured, postTeamsMessage } from "@/lib/teams";
 import { isTwilioConfigured, sendSms, placeCall } from "@/lib/twilio";
@@ -40,7 +40,7 @@ type LeadWithAssignee = Lead & { assignedTo: Pick<User, "id" | "name" | "email" 
 // silently skipping a lead whose exact window was missed.
 async function dueForOffset(offset: ReminderOffset): Promise<LeadWithAssignee[]> {
   const cutoff = new Date(Date.now() + offset.hoursBefore * 60 * 60 * 1000);
-  return prisma.lead.findMany({
+  return db.lead.findMany({
     where: {
       canceledAt: null,
       stage: { notIn: ["CONVERTED", "LOST"] satisfies $Enums.LeadStage[] },
@@ -63,12 +63,13 @@ async function notifyAssignee(lead: LeadWithAssignee, label: string) {
   if (!lead.assignedToId || !lead.assignedTo) return; // nothing to notify — no owner set
   const message = `Meeting with ${lead.inviteeName} in ${label}`;
 
-  await prisma.notification.create({
+  await db.notification.create({
     data: { userId: lead.assignedToId, type: "MEETING_REMINDER", message, entityType: "Lead", entityId: lead.id },
   });
 
   if (!lead.assignedTo.emailNotificationsEnabled) return;
   try {
+    const appUrl = await getAppUrl();
     await sendEmail({
       to: lead.assignedTo.email,
       subject: message,
@@ -76,8 +77,9 @@ async function notifyAssignee(lead: LeadWithAssignee, label: string) {
         heading: "Meeting reminder",
         bodyHtml: `<p style="margin:0">${message}</p>`,
         ctaLabel: "View in HCLM",
-        ctaUrl: `${getAppUrl()}/leads`,
+        ctaUrl: `${appUrl}/leads`,
         preheader: message,
+        appUrl,
       }),
     });
   } catch (error) {
@@ -117,7 +119,7 @@ async function tryTexts(lead: LeadWithAssignee, label: string, roster: User[], a
 }
 
 export async function sendMeetingReminders() {
-  const smsRoster = await prisma.user.findMany({
+  const smsRoster = await db.user.findMany({
     where: { smsRemindersEnabled: true, active: true, phone: { not: null } },
   });
 
@@ -132,7 +134,7 @@ export async function sendMeetingReminders() {
       // succeeded — this field's job is "don't re-process this lead/offset
       // every tick," not "retry until every channel confirms delivery."
       // Each channel already logs and moves on independently.
-      await prisma.lead.update({ where: { id: lead.id }, data: { [offset.sentAtField]: new Date() } });
+      await db.lead.update({ where: { id: lead.id }, data: { [offset.sentAtField]: new Date() } });
     }
   }
 }

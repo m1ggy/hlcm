@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 
@@ -13,7 +13,7 @@ const caseTypeSchema = z.object({
 
 export async function listCaseTypes() {
   await requireRole(["ADMIN", "MANAGER", "STAFF"]);
-  return prisma.caseType.findMany({ where: { active: true }, orderBy: { name: "asc" } });
+  return db.caseType.findMany({ where: { active: true }, orderBy: { name: "asc" } });
 }
 
 export async function createCaseType(formData: FormData) {
@@ -23,7 +23,7 @@ export async function createCaseType(formData: FormData) {
     description: formData.get("description") || undefined,
   });
 
-  const caseType = await prisma.caseType.create({
+  const caseType = await db.caseType.create({
     data: { ...parsed, createdById: session.user.id },
   });
 

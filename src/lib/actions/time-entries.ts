@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { requireSession, requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
@@ -10,7 +10,7 @@ import { TimeClockError, summarizeByUser, DEFAULT_TIMEZONE, type TimeEntryRangeI
 
 export async function getMyActiveEntry() {
   const session = await requireSession();
-  return prisma.timeEntry.findFirst({
+  return db.timeEntry.findFirst({
     where: { userId: session.user.id, clockOut: null },
     orderBy: { clockIn: "desc" },
   });
@@ -20,7 +20,7 @@ export async function getMyActiveEntry() {
  * same open-row pattern as getMyActiveEntry, mirrored for BreakEntry. */
 export async function getMyActiveBreak() {
   const session = await requireSession();
-  return prisma.breakEntry.findFirst({
+  return db.breakEntry.findFirst({
     where: { userId: session.user.id, breakEnd: null },
     orderBy: { breakStart: "desc" },
   });
@@ -39,12 +39,12 @@ type LocationInput = {
 
 export async function clockIn(input: { careRecipientId?: string } & LocationInput = {}) {
   const session = await requireSession();
-  const open = await prisma.timeEntry.findFirst({
+  const open = await db.timeEntry.findFirst({
     where: { userId: session.user.id, clockOut: null },
   });
   if (open) throw new TimeClockError("Already clocked in");
 
-  const entry = await prisma.timeEntry.create({
+  const entry = await db.timeEntry.create({
     data: {
       userId: session.user.id,
       clockIn: new Date(),
@@ -69,13 +69,13 @@ export async function clockIn(input: { careRecipientId?: string } & LocationInpu
 
 export async function clockOut(input: LocationInput = {}) {
   const session = await requireSession();
-  const open = await prisma.timeEntry.findFirst({
+  const open = await db.timeEntry.findFirst({
     where: { userId: session.user.id, clockOut: null },
     orderBy: { clockIn: "desc" },
   });
   if (!open) throw new TimeClockError("Not clocked in");
 
-  const entry = await prisma.timeEntry.update({
+  const entry = await db.timeEntry.update({
     where: { id: open.id },
     data: {
       clockOut: new Date(),
@@ -106,17 +106,17 @@ export async function clockOut(input: LocationInput = {}) {
 export async function startBreak() {
   const session = await requireSession();
   const [openEntry, openBreak] = await Promise.all([
-    prisma.timeEntry.findFirst({ where: { userId: session.user.id, clockOut: null } }),
-    prisma.breakEntry.findFirst({ where: { userId: session.user.id, breakEnd: null } }),
+    db.timeEntry.findFirst({ where: { userId: session.user.id, clockOut: null } }),
+    db.breakEntry.findFirst({ where: { userId: session.user.id, breakEnd: null } }),
   ]);
   if (!openEntry) throw new TimeClockError("Not clocked in");
   if (openBreak) throw new TimeClockError("Already on a break");
 
   const now = new Date();
-  const [, breakEntry] = await prisma.$transaction([
-    prisma.timeEntry.update({ where: { id: openEntry.id }, data: { clockOut: now } }),
-    prisma.breakEntry.create({ data: { userId: session.user.id, breakStart: now } }),
-  ]);
+  const [, breakEntry] = await db.$transaction(async (tx) => [
+    await tx.timeEntry.update({ where: { id: openEntry.id }, data: { clockOut: now } }),
+    await tx.breakEntry.create({ data: { userId: session.user.id, breakStart: now } }),
+  ] as const);
 
   await recordAudit({
     entityType: "BreakEntry",
@@ -134,17 +134,17 @@ export async function startBreak() {
  * for the day rather than a return to work. */
 export async function endBreak() {
   const session = await requireSession();
-  const openBreak = await prisma.breakEntry.findFirst({
+  const openBreak = await db.breakEntry.findFirst({
     where: { userId: session.user.id, breakEnd: null },
     orderBy: { breakStart: "desc" },
   });
   if (!openBreak) throw new TimeClockError("Not on a break");
 
   const now = new Date();
-  const [, entry] = await prisma.$transaction([
-    prisma.breakEntry.update({ where: { id: openBreak.id }, data: { breakEnd: now } }),
-    prisma.timeEntry.create({ data: { userId: session.user.id, clockIn: now } }),
-  ]);
+  const [, entry] = await db.$transaction(async (tx) => [
+    await tx.breakEntry.update({ where: { id: openBreak.id }, data: { breakEnd: now } }),
+    await tx.timeEntry.create({ data: { userId: session.user.id, clockIn: now } }),
+  ] as const);
 
   await recordAudit({
     entityType: "BreakEntry",
@@ -162,13 +162,13 @@ export async function endBreak() {
  * stays closed, so no new session opens (unlike endBreak). */
 export async function endBreakForDay() {
   const session = await requireSession();
-  const openBreak = await prisma.breakEntry.findFirst({
+  const openBreak = await db.breakEntry.findFirst({
     where: { userId: session.user.id, breakEnd: null },
     orderBy: { breakStart: "desc" },
   });
   if (!openBreak) throw new TimeClockError("Not on a break");
 
-  const entry = await prisma.breakEntry.update({ where: { id: openBreak.id }, data: { breakEnd: new Date() } });
+  const entry = await db.breakEntry.update({ where: { id: openBreak.id }, data: { breakEnd: new Date() } });
 
   await recordAudit({
     entityType: "BreakEntry",
@@ -184,7 +184,7 @@ export async function endBreakForDay() {
 /** Most recent sessions for the signed-in user — used on their own account page. */
 export async function listMyTimeEntries(limit = 25) {
   const session = await requireSession();
-  return prisma.timeEntry.findMany({
+  return db.timeEntry.findMany({
     where: { userId: session.user.id },
     orderBy: { clockIn: "desc" },
     take: limit,
@@ -202,7 +202,7 @@ const entriesInRangeSchema = z.object({ from: z.coerce.date(), to: z.coerce.date
 export async function getMyEntriesInRange(input: { from: Date; to: Date }) {
   const session = await requireSession();
   const { from, to } = entriesInRangeSchema.parse(input);
-  return prisma.timeEntry.findMany({
+  return db.timeEntry.findMany({
     where: {
       userId: session.user.id,
       clockIn: { lte: to },
@@ -218,7 +218,7 @@ export async function getMyEntriesInRange(input: { from: Date; to: Date }) {
 export async function getMyBreaksInRange(input: { from: Date; to: Date }) {
   const session = await requireSession();
   const { from, to } = entriesInRangeSchema.parse(input);
-  return prisma.breakEntry.findMany({
+  return db.breakEntry.findMany({
     where: {
       userId: session.user.id,
       breakStart: { lte: to },
@@ -246,7 +246,7 @@ export async function listTimeEntries(input: TimeEntryRangeInput) {
   await requireRole(["ADMIN", "MANAGER"]);
   const { userId, from, to } = rangeSchema.parse(input);
 
-  return prisma.timeEntry.findMany({
+  return db.timeEntry.findMany({
     where: {
       ...(userId ? { userId } : {}),
       clockIn: { lte: to },
@@ -267,7 +267,7 @@ export async function listBreakEntries(input: TimeEntryRangeInput) {
   await requireRole(["ADMIN", "MANAGER"]);
   const { userId, from, to } = rangeSchema.parse(input);
 
-  return prisma.breakEntry.findMany({
+  return db.breakEntry.findMany({
     where: {
       ...(userId ? { userId } : {}),
       breakStart: { lte: to },
@@ -288,7 +288,7 @@ export async function listBreakEntries(input: TimeEntryRangeInput) {
  */
 export async function listBreakDeductions(input: { userId?: string; from: Date; to: Date }) {
   await requireRole(["ADMIN", "MANAGER"]);
-  return prisma.timesheetBreakDeduction.findMany({
+  return db.timesheetBreakDeduction.findMany({
     where: {
       fromDate: { lte: input.to },
       toDate: { gte: input.from },
@@ -341,7 +341,7 @@ export async function createBreakDeduction(input: {
   const session = await requireRole(["ADMIN"]);
   const parsed = breakDeductionSchema.parse(input);
 
-  const deduction = await prisma.timesheetBreakDeduction.create({
+  const deduction = await db.timesheetBreakDeduction.create({
     data: {
       userId: parsed.userId || null,
       fromDate: parsed.fromDate,
@@ -366,9 +366,9 @@ export async function createBreakDeduction(input: {
 
 export async function deleteBreakDeduction(id: string) {
   const session = await requireRole(["ADMIN"]);
-  const deduction = await prisma.timesheetBreakDeduction.findUniqueOrThrow({ where: { id } });
+  const deduction = await db.timesheetBreakDeduction.findUniqueOrThrow({ where: { id } });
 
-  await prisma.timesheetBreakDeduction
+  await db.timesheetBreakDeduction
     .delete({ where: { id } })
     .catch((e) => friendlyPrismaError(e, { notFoundMessage: "That deduction is already gone — someone else may have just removed it" }));
 
@@ -413,7 +413,7 @@ export async function createManualTimeEntry(input: {
   const session = await requireRole(["ADMIN"]);
   const parsed = manualEntrySchema.parse(input);
 
-  const entry = await prisma.timeEntry.create({
+  const entry = await db.timeEntry.create({
     data: {
       userId: parsed.userId,
       clockIn: parsed.clockIn,
@@ -450,17 +450,17 @@ const updateEntrySchema = z
  */
 export async function updateTimeEntry(id: string, input: { clockIn: string; clockOut: string | null }) {
   const session = await requireRole(["ADMIN"]);
-  const existing = await prisma.timeEntry.findUniqueOrThrow({ where: { id } });
+  const existing = await db.timeEntry.findUniqueOrThrow({ where: { id } });
   const parsed = updateEntrySchema.parse(input);
 
   if (!parsed.clockOut) {
-    const otherOpen = await prisma.timeEntry.findFirst({
+    const otherOpen = await db.timeEntry.findFirst({
       where: { userId: existing.userId, clockOut: null, id: { not: id } },
     });
     if (otherOpen) throw new TimeClockError("This user already has an open entry");
   }
 
-  const entry = await prisma.timeEntry.update({
+  const entry = await db.timeEntry.update({
     where: { id },
     data: { clockIn: parsed.clockIn, clockOut: parsed.clockOut },
   });
@@ -481,9 +481,9 @@ export async function updateTimeEntry(id: string, input: { clockIn: string; cloc
 /** Admin-only: removes a mistaken or duplicate entry (e.g. a double clock-in left dangling open). */
 export async function deleteTimeEntry(id: string) {
   const session = await requireRole(["ADMIN"]);
-  const entry = await prisma.timeEntry.findUniqueOrThrow({ where: { id } });
+  const entry = await db.timeEntry.findUniqueOrThrow({ where: { id } });
 
-  await prisma.timeEntry
+  await db.timeEntry
     .delete({ where: { id } })
     .catch((e) => friendlyPrismaError(e, { notFoundMessage: "That time entry is already gone — someone else may have just removed it" }));
 
@@ -514,17 +514,17 @@ const updateBreakEntrySchema = z
  */
 export async function updateBreakEntry(id: string, input: { breakStart: string; breakEnd: string | null }) {
   const session = await requireRole(["ADMIN"]);
-  const existing = await prisma.breakEntry.findUniqueOrThrow({ where: { id } });
+  const existing = await db.breakEntry.findUniqueOrThrow({ where: { id } });
   const parsed = updateBreakEntrySchema.parse(input);
 
   if (!parsed.breakEnd) {
-    const otherOpen = await prisma.breakEntry.findFirst({
+    const otherOpen = await db.breakEntry.findFirst({
       where: { userId: existing.userId, breakEnd: null, id: { not: id } },
     });
     if (otherOpen) throw new TimeClockError("This user already has an open break");
   }
 
-  const entry = await prisma.breakEntry.update({
+  const entry = await db.breakEntry.update({
     where: { id },
     data: { breakStart: parsed.breakStart, breakEnd: parsed.breakEnd },
   });
@@ -545,9 +545,9 @@ export async function updateBreakEntry(id: string, input: { breakStart: string; 
 /** Admin-only: removes a mistaken or duplicate break (e.g. a double break-start left dangling open). */
 export async function deleteBreakEntry(id: string) {
   const session = await requireRole(["ADMIN"]);
-  const entry = await prisma.breakEntry.findUniqueOrThrow({ where: { id } });
+  const entry = await db.breakEntry.findUniqueOrThrow({ where: { id } });
 
-  await prisma.breakEntry
+  await db.breakEntry
     .delete({ where: { id } })
     .catch((e) => friendlyPrismaError(e, { notFoundMessage: "That break is already gone — someone else may have just removed it" }));
 

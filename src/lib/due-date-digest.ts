@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { sendEmail, renderEmailLayout, getAppUrl } from "@/lib/email";
 import { TASK_CLOSED_STATUSES } from "@/lib/task-status";
 import { computeLicenseAlerts, computeEnvelopeAlerts } from "@/lib/aging-alerts";
@@ -29,7 +29,7 @@ function formatLicense(license: { licenseType: string; expiryDate: Date; client:
 // Built once and reused rather than a per-recipient query.
 async function buildLicenseSectionHtml(now: Date): Promise<string> {
   const windowEnd = new Date(now.getTime() + LICENSE_WINDOW_DAYS * 24 * 60 * 60 * 1000);
-  const licenses = await prisma.clientLicense.findMany({
+  const licenses = await db.clientLicense.findMany({
     where: { expiryDate: { lte: windowEnd }, client: { active: true } },
     select: { licenseType: true, expiryDate: true, client: { select: { name: true } } },
     orderBy: { expiryDate: "asc" },
@@ -61,7 +61,7 @@ function formatEnvelope(
 // license section's broadcast rather than a per-sender digest.
 async function buildEnvelopeSectionHtml(now: Date): Promise<string> {
   const windowEnd = new Date(now.getTime() + ENVELOPE_WINDOW_DAYS * 24 * 60 * 60 * 1000);
-  const envelopes = await prisma.docusignEnvelope.findMany({
+  const envelopes = await db.docusignEnvelope.findMany({
     where: { status: { in: ["SENT", "DELIVERED"] }, expiresAt: { lte: windowEnd } },
     select: {
       signerName: true,
@@ -85,10 +85,11 @@ async function buildEnvelopeSectionHtml(now: Date): Promise<string> {
 // a day — see src/instrumentation.ts for the scheduler.
 export async function sendDueDateDigests() {
   const now = new Date();
+  const appUrl = await getAppUrl();
   const windowEnd = new Date(now.getTime() + DUE_SOON_WINDOW_DAYS * 24 * 60 * 60 * 1000);
 
   const [tasks, licenseSectionHtml, envelopeSectionHtml, managers] = await Promise.all([
-    prisma.task.findMany({
+    db.task.findMany({
       where: {
         dueDate: { lte: windowEnd },
         status: { notIn: [...TASK_CLOSED_STATUSES] },
@@ -102,7 +103,7 @@ export async function sendDueDateDigests() {
     }),
     buildLicenseSectionHtml(now),
     buildEnvelopeSectionHtml(now),
-    prisma.user.findMany({
+    db.user.findMany({
       where: { role: { in: ["ADMIN", "OWNER", "MANAGER"] }, active: true, emailNotificationsEnabled: true },
       select: { id: true, email: true },
     }),
@@ -149,8 +150,9 @@ export async function sendDueDateDigests() {
           heading: "Daily task digest",
           bodyHtml: sections,
           ctaLabel: "View your tasks",
-          ctaUrl: `${getAppUrl()}/tasks`,
+          ctaUrl: `${appUrl}/tasks`,
           preheader: `${total} task${total === 1 ? "" : "s"} due or overdue`,
+          appUrl,
         }),
       });
     } catch (error) {
@@ -174,8 +176,9 @@ export async function sendDueDateDigests() {
             heading: "Expiry digest",
             bodyHtml: expirySectionHtml,
             ctaLabel: "View clients",
-            ctaUrl: `${getAppUrl()}/clients`,
+            ctaUrl: `${appUrl}/clients`,
             preheader: "Licenses or DocuSign envelopes expiring soon",
+            appUrl,
           }),
         });
       } catch (error) {

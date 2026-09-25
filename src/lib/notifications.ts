@@ -1,5 +1,5 @@
 import { after } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { currentOrg, db, runAsTenant } from "@/lib/db";
 import { sendEmail, renderEmailLayout, getAppUrl } from "@/lib/email";
 import { ENTITY_LINKS } from "@/lib/entity-links";
 import type { $Enums } from "@/generated/prisma/client";
@@ -40,17 +40,22 @@ const NOTIFICATION_HEADINGS: Record<$Enums.NotificationType, string> = {
 // break the actual action, and never notify a user about their own action.
 export async function notify(entry: NotifyEntry, actorId: string) {
   if (entry.userId === actorId) return;
-  await prisma.notification.create({ data: entry });
+  await db.notification.create({ data: entry });
 
-  after(async () => {
+  // after() runs once the response is sent, where the request host may no
+  // longer be readable (Server Components can't use request APIs in after()),
+  // so pin the tenant now and re-enter it explicitly.
+  const org = await currentOrg();
+  after(() => runAsTenant(org, async () => {
     try {
-      const user = await prisma.user.findUnique({
+      const user = await db.user.findUnique({
         where: { id: entry.userId },
         select: { email: true, role: true, emailNotificationsEnabled: true },
       });
       if (!user || !user.emailNotificationsEnabled) return;
 
-      const link = `${getAppUrl()}${entityPath(user.role, entry.entityType, entry.entityId)}`;
+      const appUrl = await getAppUrl();
+      const link = `${appUrl}${entityPath(user.role, entry.entityType, entry.entityId)}`;
       await sendEmail({
         to: user.email,
         subject: entry.message,
@@ -60,6 +65,7 @@ export async function notify(entry: NotifyEntry, actorId: string) {
           ctaLabel: "View in HCLM",
           ctaUrl: link,
           preheader: entry.message,
+          appUrl,
         }),
       });
     } catch (error) {
@@ -67,5 +73,5 @@ export async function notify(entry: NotifyEntry, actorId: string) {
       // the in-app notification above already landed regardless.
       console.error("Failed to send notification email:", error);
     }
-  });
+  }));
 }

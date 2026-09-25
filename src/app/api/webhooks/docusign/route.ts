@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { notify } from "@/lib/notifications";
 import { verifyDocusignWebhookSignature, downloadCompletedDocument, DocusignWebhookError, DocusignConfigError } from "@/lib/docusign";
 import { saveBuffer } from "@/lib/storage";
@@ -34,7 +34,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ received: true }); // nothing this route understands — ack anyway so DocuSign stops retrying
   }
 
-  const envelope = await prisma.docusignEnvelope.findUnique({ where: { docusignEnvelopeId: envelopeId } });
+  const envelope = await db.docusignEnvelope.findUnique({ where: { docusignEnvelopeId: envelopeId } });
   // Unknown to us (a test ping, or an envelope not sent through HCLM) — ack
   // and no-op, same as the Calendly route's "ignore unknown" idempotency.
   if (!envelope) return NextResponse.json({ received: true });
@@ -44,7 +44,7 @@ export async function POST(req: Request) {
 
   const now = new Date();
   const statusUpper = rawStatus.toUpperCase() as DocusignEnvelope["status"];
-  const updated = await prisma.docusignEnvelope.update({
+  const updated = await db.docusignEnvelope.update({
     where: { id: envelope.id },
     data: {
       status: statusUpper,
@@ -89,7 +89,7 @@ export async function POST(req: Request) {
 async function entityRefFor(envelope: DocusignEnvelope): Promise<{ entityType: string; entityId: string } | null> {
   if (envelope.applicationId) return { entityType: "Application", entityId: envelope.applicationId };
   if (envelope.clientAgreementId) {
-    const agreement = await prisma.clientAgreement.findUnique({
+    const agreement = await db.clientAgreement.findUnique({
       where: { id: envelope.clientAgreementId },
       select: { clientId: true },
     });
@@ -101,12 +101,12 @@ async function entityRefFor(envelope: DocusignEnvelope): Promise<{ entityType: s
 async function downloadCompleted(envelope: DocusignEnvelope) {
   try {
     const buffer = await downloadCompletedDocument(envelope.docusignEnvelopeId);
-    const source = await prisma.fileAsset.findUniqueOrThrow({ where: { id: envelope.sourceFileAssetId } });
+    const source = await db.fileAsset.findUniqueOrThrow({ where: { id: envelope.sourceFileAssetId } });
     const { storageKey, sizeBytes, generation } = await saveBuffer(buffer, ".pdf");
     const ref = await entityRefFor(envelope);
     const fileName = `Signed - ${source.fileName}`;
 
-    const fileAsset = await prisma.fileAsset.create({
+    const fileAsset = await db.fileAsset.create({
       data: {
         applicationId: envelope.applicationId,
         clientId: ref?.entityType === "Client" ? ref.entityId : null,
@@ -121,7 +121,7 @@ async function downloadCompleted(envelope: DocusignEnvelope) {
       },
     });
 
-    await prisma.docusignEnvelope.update({
+    await db.docusignEnvelope.update({
       where: { id: envelope.id },
       data: { completedFileAssetId: fileAsset.id },
     });

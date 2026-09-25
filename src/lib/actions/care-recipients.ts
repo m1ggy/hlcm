@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { requireRole, requireSession, ForbiddenError } from "@/lib/rbac";
 import { recordAudit, recordFieldChanges } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
@@ -10,7 +10,7 @@ import { geocodeAddress } from "@/lib/geocoding";
 
 // A CareRecipient is the person a Caregiver actually visits and gives
 // hands-on care to — a different thing from Client (the licensed
-// business/facility), see prisma/schema.prisma. Optionally tied to the
+// business/facility), see prisma/schema.db. Optionally tied to the
 // agency Client they're served under; every action here follows the exact
 // shape src/lib/actions/clients.ts already uses for the same reason: no
 // point inventing new conventions for a record this close in spirit.
@@ -23,7 +23,7 @@ const INCLUDE = {
   instructions: { orderBy: { sortOrder: "asc" as const } },
   // Powers the recipient-scoped "Invoices" section in CareRecipientsCard —
   // reads off the same fetch the Client detail page already does, no extra
-  // round trip. See Invoice.careRecipientId in prisma/schema.prisma.
+  // round trip. See Invoice.careRecipientId in prisma/schema.db.
   invoices: {
     select: {
       id: true as const,
@@ -120,7 +120,7 @@ function auditTargetFor(recipient: { id: string; clientId: string | null }) {
 export async function listCareRecipients(opts: { clientId?: string; filter?: "active" | "archived" | "all" } = {}) {
   await requireRole([...MANAGE_ROLES]);
   const filter = opts.filter ?? "active";
-  return prisma.careRecipient.findMany({
+  return db.careRecipient.findMany({
     where: {
       ...(filter === "all" ? {} : { active: filter === "active" }),
       ...(opts.clientId ? { clientId: opts.clientId } : {}),
@@ -132,7 +132,7 @@ export async function listCareRecipients(opts: { clientId?: string; filter?: "ac
 
 export async function getCareRecipient(id: string) {
   await requireRole([...MANAGE_ROLES]);
-  return prisma.careRecipient.findUniqueOrThrow({ where: { id }, include: INCLUDE });
+  return db.careRecipient.findUniqueOrThrow({ where: { id }, include: INCLUDE });
 }
 
 // Every active Caregiver — for the "Assign caregiver" picker. Not gated to
@@ -140,7 +140,7 @@ export async function getCareRecipient(id: string) {
 // from.
 export async function listCaregivers() {
   await requireRole([...MANAGE_ROLES]);
-  return prisma.user.findMany({
+  return db.user.findMany({
     where: { role: "CAREGIVER", active: true },
     orderBy: { name: "asc" },
     select: { id: true, name: true },
@@ -154,7 +154,7 @@ export async function createCareRecipient(formData: FormData) {
 
   const geo = await geocodeFields(address);
 
-  const recipient = await prisma.careRecipient
+  const recipient = await db.careRecipient
     .create({
       data: {
         ...rest,
@@ -184,13 +184,13 @@ export async function updateCareRecipient(id: string, formData: FormData) {
   const parsed = updateSchema.parse(readFields(formData));
   const { dateOfBirth, address, ...rest } = parsed;
 
-  const before = await prisma.careRecipient.findUniqueOrThrow({ where: { id } });
+  const before = await db.careRecipient.findUniqueOrThrow({ where: { id } });
   // Only re-geocode when the address text actually changed — editing the
   // emergency contact shouldn't re-hit the API for an address that's
   // already correctly pinned.
   const geo = address !== before.address ? await geocodeFields(address) : {};
 
-  const recipient = await prisma.careRecipient
+  const recipient = await db.careRecipient
     .update({
       where: { id },
       data: {
@@ -219,7 +219,7 @@ export async function updateCareRecipient(id: string, formData: FormData) {
 
 export async function archiveCareRecipient(id: string) {
   const session = await requireRole(["ADMIN", "MANAGER"]);
-  const recipient = await prisma.careRecipient.update({ where: { id }, data: { active: false } });
+  const recipient = await db.careRecipient.update({ where: { id }, data: { active: false } });
 
   await recordAudit({ ...auditTargetFor(recipient), action: "archive", actorId: session.user.id });
 
@@ -230,7 +230,7 @@ export async function archiveCareRecipient(id: string) {
 
 export async function restoreCareRecipient(id: string) {
   const session = await requireRole(["ADMIN", "MANAGER"]);
-  const recipient = await prisma.careRecipient.update({ where: { id }, data: { active: true } });
+  const recipient = await db.careRecipient.update({ where: { id }, data: { active: true } });
 
   await recordAudit({ ...auditTargetFor(recipient), action: "restore", actorId: session.user.id });
 
@@ -242,12 +242,12 @@ export async function restoreCareRecipient(id: string) {
 export async function assignCaregiver(careRecipientId: string, caregiverId: string) {
   const session = await requireRole([...MANAGE_ROLES]);
   const [recipient, caregiver] = await Promise.all([
-    prisma.careRecipient.findUniqueOrThrow({ where: { id: careRecipientId } }),
-    prisma.user.findUniqueOrThrow({ where: { id: caregiverId } }),
+    db.careRecipient.findUniqueOrThrow({ where: { id: careRecipientId } }),
+    db.user.findUniqueOrThrow({ where: { id: caregiverId } }),
   ]);
   if (caregiver.role !== "CAREGIVER") throw new Error("That user isn't a Caregiver");
 
-  await prisma.careRecipientAssignment
+  await db.careRecipientAssignment
     .create({
       data: { careRecipientId, caregiverId, assignedById: session.user.id },
     })
@@ -272,11 +272,11 @@ export async function assignCaregiver(careRecipientId: string, caregiverId: stri
 export async function unassignCaregiver(careRecipientId: string, caregiverId: string) {
   const session = await requireRole([...MANAGE_ROLES]);
   const [recipient, caregiver] = await Promise.all([
-    prisma.careRecipient.findUniqueOrThrow({ where: { id: careRecipientId } }),
-    prisma.user.findUnique({ where: { id: caregiverId }, select: { name: true } }),
+    db.careRecipient.findUniqueOrThrow({ where: { id: careRecipientId } }),
+    db.user.findUnique({ where: { id: caregiverId }, select: { name: true } }),
   ]);
 
-  await prisma.careRecipientAssignment.deleteMany({ where: { careRecipientId, caregiverId } });
+  await db.careRecipientAssignment.deleteMany({ where: { careRecipientId, caregiverId } });
 
   await recordAudit({
     ...auditTargetFor(recipient),
@@ -298,7 +298,7 @@ export async function unassignCaregiver(careRecipientId: string, caregiverId: st
 // clocked in) session never shows up here since its hours aren't final yet.
 export async function listUnbilledVisits(careRecipientId: string) {
   await requireRole([...MANAGE_ROLES]);
-  return prisma.timeEntry.findMany({
+  return db.timeEntry.findMany({
     where: { careRecipientId, clockOut: { not: null }, billedInvoiceId: null },
     include: { user: { select: { name: true } } },
     orderBy: { clockIn: "asc" },
@@ -315,12 +315,12 @@ export async function listUnbilledVisits(careRecipientId: string) {
 // see eachDay() in src/components/invoices/day-rate-section.tsx.
 export async function listUnbilledVisitsForClient(clientId: string, from: string, to: string) {
   await requireRole([...MANAGE_ROLES]);
-  const recipients = await prisma.careRecipient.findMany({
+  const recipients = await db.careRecipient.findMany({
     where: { clientId, active: true },
     select: { id: true, name: true, hourlyRate: true },
     orderBy: { name: "asc" },
   });
-  const visits = await prisma.timeEntry.findMany({
+  const visits = await db.timeEntry.findMany({
     where: {
       careRecipientId: { in: recipients.map((r) => r.id) },
       clockOut: { not: null },
@@ -341,7 +341,7 @@ export async function listUnbilledVisitsForClient(clientId: string, from: string
 // another Caregiver's recipients.
 export async function listMyCareRecipients() {
   const session = await requireRole(["CAREGIVER"]);
-  return prisma.careRecipient.findMany({
+  return db.careRecipient.findMany({
     where: { active: true, assignments: { some: { caregiverId: session.user.id } } },
     include: {
       client: { select: { id: true, name: true } },
@@ -358,11 +358,11 @@ export async function createCareInstruction(careRecipientId: string, label: stri
   if (!label.trim()) throw new Error("Instruction can't be empty");
 
   const [recipient, count] = await Promise.all([
-    prisma.careRecipient.findUniqueOrThrow({ where: { id: careRecipientId } }),
-    prisma.careInstruction.count({ where: { careRecipientId } }),
+    db.careRecipient.findUniqueOrThrow({ where: { id: careRecipientId } }),
+    db.careInstruction.count({ where: { careRecipientId } }),
   ]);
 
-  await prisma.careInstruction.create({
+  await db.careInstruction.create({
     data: { careRecipientId, label: label.trim(), sortOrder: count, createdById: session.user.id },
   });
 
@@ -385,17 +385,17 @@ export async function toggleCareInstruction(id: string, completed: boolean) {
   const session = await requireSession();
   const role = session.user.role as (typeof MANAGE_ROLES)[number] | "OWNER" | "CAREGIVER" | string;
 
-  const instruction = await prisma.careInstruction.findUniqueOrThrow({ where: { id } });
+  const instruction = await db.careInstruction.findUniqueOrThrow({ where: { id } });
 
   if (role !== "OWNER" && !MANAGE_ROLES.includes(role as (typeof MANAGE_ROLES)[number])) {
     if (role !== "CAREGIVER") throw new ForbiddenError();
-    const assigned = await prisma.careRecipientAssignment.findUnique({
+    const assigned = await db.careRecipientAssignment.findUnique({
       where: { careRecipientId_caregiverId: { careRecipientId: instruction.careRecipientId, caregiverId: session.user.id } },
     });
     if (!assigned) throw new ForbiddenError();
   }
 
-  await prisma.careInstruction.update({ where: { id }, data: { completed } });
+  await db.careInstruction.update({ where: { id }, data: { completed } });
 
   revalidatePath("/clients");
   revalidatePath("/care-recipients");
@@ -403,12 +403,12 @@ export async function toggleCareInstruction(id: string, completed: boolean) {
 
 export async function deleteCareInstruction(id: string) {
   const session = await requireRole([...MANAGE_ROLES]);
-  const instruction = await prisma.careInstruction.findUniqueOrThrow({
+  const instruction = await db.careInstruction.findUniqueOrThrow({
     where: { id },
     include: { careRecipient: true },
   });
 
-  await prisma.careInstruction.delete({ where: { id } });
+  await db.careInstruction.delete({ where: { id } });
 
   await recordAudit({
     ...auditTargetFor(instruction.careRecipient),

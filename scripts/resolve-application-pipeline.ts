@@ -8,12 +8,10 @@
 //
 // Run: npx tsx scripts/resolve-application-pipeline.ts <applicationId> <HOME_CARE|CILA_GROUP_HOME|MCO>
 import "dotenv/config";
-import { PrismaClient, Pipeline } from "../src/generated/prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
+import { Pipeline } from "../src/generated/prisma/client";
+import { db as prisma, runScriptAsTenant } from "./lib/tenant-script";
 import { STATUS_TO_STAGE } from "../src/lib/pipeline";
 
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
-const prisma = new PrismaClient({ adapter });
 
 async function main() {
   const [applicationId, pipelineArg] = process.argv.slice(2);
@@ -45,21 +43,14 @@ async function main() {
 
   const stage = await prisma.pipelineStage.findFirstOrThrow({ where: { pipeline, abbrev: targetAbbrev } });
 
-  await prisma.$transaction([
-    prisma.application.update({ where: { id: app.id }, data: { pipeline, stageId: stage.id } }),
-    prisma.stageHistory.create({
+  await prisma.$transaction(async (tx) => {
+    await tx.application.update({ where: { id: app.id }, data: { pipeline, stageId: stage.id } });
+    await tx.stageHistory.create({
       data: { applicationId: app.id, stageId: stage.id, enteredAt: app.updatedAt, actorId: app.createdById },
-    }),
-  ]);
+    });
+  });
 
   console.log(`"${app.name}" -> ${pipeline} / ${stage.abbrev} (${stage.name})`);
 }
 
-main()
-  .catch((error) => {
-    console.error(error);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+runScriptAsTenant(main);

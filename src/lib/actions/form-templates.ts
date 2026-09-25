@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
@@ -31,7 +31,7 @@ function validateNotifyEmails(raw: string | undefined): string | null {
 // is ADMIN-only, same split Document Templates already uses.
 export async function listFormTemplates() {
   await requireRole(["ADMIN", "MANAGER", "STAFF"]);
-  return prisma.formTemplate.findMany({
+  return db.formTemplate.findMany({
     include: { fields: { orderBy: { sortOrder: "asc" } }, _count: { select: { submissions: true } } },
     orderBy: { createdAt: "desc" },
   });
@@ -39,7 +39,7 @@ export async function listFormTemplates() {
 
 export async function getFormTemplate(id: string) {
   await requireRole(["ADMIN", "MANAGER", "STAFF"]);
-  return prisma.formTemplate.findUniqueOrThrow({
+  return db.formTemplate.findUniqueOrThrow({
     where: { id },
     include: { fields: { orderBy: { sortOrder: "asc" } } },
   });
@@ -71,7 +71,7 @@ export async function createFormTemplate(input: z.infer<typeof createSchema>) {
   const parsed = createSchema.parse(input);
   const notifyEmails = validateNotifyEmails(parsed.notifyEmails);
 
-  const template = await prisma.formTemplate
+  const template = await db.formTemplate
     .create({
       data: {
         name: parsed.name,
@@ -118,7 +118,7 @@ export async function updateFormTemplate(id: string, input: z.infer<typeof updat
   const parsed = updateSchema.parse(input);
   const notifyEmails = validateNotifyEmails(parsed.notifyEmails);
 
-  const template = await prisma
+  const template = await db
     .$transaction(async (tx) => {
       await tx.formField.deleteMany({ where: { templateId: id } });
       return tx.formTemplate.update({

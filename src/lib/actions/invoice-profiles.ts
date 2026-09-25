@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
@@ -17,7 +17,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export async function listInvoiceProfilesForAdmin() {
   await requireRole([...ADMIN_ONLY]);
-  return prisma.invoiceProfile.findMany({ orderBy: [{ isDefault: "desc" }, { name: "asc" }] });
+  return db.invoiceProfile.findMany({ orderBy: [{ isDefault: "desc" }, { name: "asc" }] });
 }
 
 const textSchema = z.object({
@@ -47,9 +47,9 @@ export async function createInvoiceProfile(input: z.infer<typeof textSchema>) {
   // The very first profile ever created is always the default — there's
   // no "no profile selected" state for the invoice dialog to fall back
   // to otherwise.
-  const existingCount = await prisma.invoiceProfile.count();
+  const existingCount = await db.invoiceProfile.count();
 
-  const profile = await prisma.invoiceProfile.create({
+  const profile = await db.invoiceProfile.create({
     data: { name: parsed.name.trim(), ccEmails, footerText, isDefault: existingCount === 0 },
   });
 
@@ -72,7 +72,7 @@ export async function updateInvoiceProfileText(id: string, input: z.infer<typeof
   const ccEmails = validateCcEmails(parsed.ccEmails);
   const footerText = parsed.footerText?.trim() || null;
 
-  const updated = await prisma.invoiceProfile.update({
+  const updated = await db.invoiceProfile.update({
     where: { id },
     data: { name: parsed.name.trim(), ccEmails, footerText },
   });
@@ -95,10 +95,10 @@ export async function updateInvoiceProfileLogo(id: string, formData: FormData) {
   if (!(file instanceof File) || file.size === 0) throw new Error("Choose an image file");
   if (!ALLOWED_LOGO_TYPES.has(file.type)) throw new Error("Logo must be a PNG or JPEG image");
 
-  const before = await prisma.invoiceProfile.findUniqueOrThrow({ where: { id } });
+  const before = await db.invoiceProfile.findUniqueOrThrow({ where: { id } });
   const { storageKey } = await saveUploadedFile(file);
 
-  const updated = await prisma.invoiceProfile.update({
+  const updated = await db.invoiceProfile.update({
     where: { id },
     data: { logoStorageKey: storageKey, logoMimeType: file.type },
   });
@@ -120,10 +120,10 @@ export async function updateInvoiceProfileLogo(id: string, formData: FormData) {
 
 export async function removeInvoiceProfileLogo(id: string) {
   const session = await requireRole([...ADMIN_ONLY]);
-  const before = await prisma.invoiceProfile.findUniqueOrThrow({ where: { id } });
+  const before = await db.invoiceProfile.findUniqueOrThrow({ where: { id } });
   if (!before.logoStorageKey) return before;
 
-  const updated = await prisma.invoiceProfile.update({
+  const updated = await db.invoiceProfile.update({
     where: { id },
     data: { logoStorageKey: null, logoMimeType: null },
   });
@@ -143,10 +143,10 @@ export async function removeInvoiceProfileLogo(id: string) {
 export async function setDefaultInvoiceProfile(id: string) {
   const session = await requireRole([...ADMIN_ONLY]);
 
-  await prisma.$transaction([
-    prisma.invoiceProfile.updateMany({ where: { isDefault: true }, data: { isDefault: false } }),
-    prisma.invoiceProfile.update({ where: { id }, data: { isDefault: true } }),
-  ]);
+  await db.$transaction(async (tx) => [
+    await tx.invoiceProfile.updateMany({ where: { isDefault: true }, data: { isDefault: false } }),
+    await tx.invoiceProfile.update({ where: { id }, data: { isDefault: true } }),
+  ] as const);
 
   await recordAudit({
     entityType: "InvoiceProfile",
@@ -162,17 +162,17 @@ export async function setDefaultInvoiceProfile(id: string) {
 export async function deleteInvoiceProfile(id: string) {
   const session = await requireRole([...ADMIN_ONLY]);
 
-  const profile = await prisma.invoiceProfile.findUniqueOrThrow({ where: { id } });
+  const profile = await db.invoiceProfile.findUniqueOrThrow({ where: { id } });
   if (profile.isDefault) throw new Error("Set another profile as default before deleting this one");
 
-  const total = await prisma.invoiceProfile.count();
+  const total = await db.invoiceProfile.count();
   if (total <= 1) throw new Error("At least one invoice profile is required");
 
   // Historical invoices keep their own record of what they were billed
   // under regardless — the FK is onDelete: SetNull, so this never blocks
   // on or destroys an existing invoice.
   if (profile.logoStorageKey) await deleteStoredFile(profile.logoStorageKey);
-  await prisma.invoiceProfile
+  await db.invoiceProfile
     .delete({ where: { id } })
     .catch((e) => friendlyPrismaError(e, { notFoundMessage: "That profile is already gone — someone else may have just removed it" }));
 

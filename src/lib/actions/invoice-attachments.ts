@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { requireRole, AppRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
@@ -39,7 +39,7 @@ function assertAllowedType(file: File) {
 
 export async function listInvoiceAttachments(invoiceId: string) {
   await requireRole(MANAGE_ROLES);
-  return prisma.invoiceAttachment.findMany({
+  return db.invoiceAttachment.findMany({
     where: { invoiceId },
     include: { uploadedBy: { select: { id: true, name: true } } },
     orderBy: { createdAt: "desc" },
@@ -58,12 +58,12 @@ export async function uploadInvoiceAttachment(invoiceId: string, formData: FormD
   }
   assertAllowedType(file);
 
-  await prisma.invoice.findUniqueOrThrow({ where: { id: invoiceId }, select: { id: true } });
+  await db.invoice.findUniqueOrThrow({ where: { id: invoiceId }, select: { id: true } });
 
   const { storageKey, sizeBytes } = await saveUploadedFile(file);
   const mimeType = file.type || "application/octet-stream";
 
-  const attachment = await prisma.invoiceAttachment.create({
+  const attachment = await db.invoiceAttachment.create({
     data: {
       invoiceId,
       fileName: file.name,
@@ -91,10 +91,10 @@ export async function uploadInvoiceAttachment(invoiceId: string, formData: FormD
 export async function deleteInvoiceAttachment(attachmentId: string, invoiceId: string) {
   const session = await requireRole(MANAGE_ROLES);
 
-  const attachment = await prisma.invoiceAttachment.findUniqueOrThrow({ where: { id: attachmentId } });
+  const attachment = await db.invoiceAttachment.findUniqueOrThrow({ where: { id: attachmentId } });
   if (attachment.invoiceId !== invoiceId) throw new Error("Attachment does not belong to this invoice");
 
-  await prisma.invoiceAttachment
+  await db.invoiceAttachment
     .delete({ where: { id: attachmentId } })
     .catch((e) =>
       friendlyPrismaError(e, {
@@ -120,5 +120,5 @@ export async function deleteInvoiceAttachment(attachmentId: string, invoiceId: s
 // rather than duplicating the role check inline in the route.
 export async function getInvoiceAttachment(attachmentId: string) {
   await requireRole(MANAGE_ROLES);
-  return prisma.invoiceAttachment.findUniqueOrThrow({ where: { id: attachmentId } });
+  return db.invoiceAttachment.findUniqueOrThrow({ where: { id: attachmentId } });
 }

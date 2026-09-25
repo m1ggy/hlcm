@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
@@ -13,7 +13,7 @@ import { extractMergeTags } from "@/lib/docx-merge";
 // Application; only Admins manage them — same split as License Types.
 export async function listDocumentTemplates() {
   await requireRole(["ADMIN", "MANAGER", "STAFF"]);
-  return prisma.documentTemplate.findMany({
+  return db.documentTemplate.findMany({
     where: { active: true },
     include: {
       licenseTypeTemplate: { select: { name: true } },
@@ -71,7 +71,7 @@ export async function createDocumentTemplate(input: z.infer<typeof createSchema>
   const session = await requireRole(["ADMIN"]);
   const parsed = createSchema.parse(input);
 
-  const template = await prisma.documentTemplate
+  const template = await db.documentTemplate
     .create({
       data: {
         name: parsed.name,
@@ -111,7 +111,7 @@ export async function createDocumentTemplate(input: z.infer<typeof createSchema>
 
 export async function deactivateDocumentTemplate(id: string) {
   const session = await requireRole(["ADMIN"]);
-  await prisma.documentTemplate.update({ where: { id }, data: { active: false } });
+  await db.documentTemplate.update({ where: { id }, data: { active: false } });
 
   await recordAudit({
     entityType: "DocumentTemplate",

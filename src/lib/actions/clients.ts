@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { requireRole } from "@/lib/rbac";
 import { recordAudit, recordFieldChanges } from "@/lib/audit";
 import { caregiverClientScope } from "@/lib/caregiver-scope";
@@ -63,7 +63,7 @@ function readClientFields(formData: FormData) {
 export async function listClients(opts: { filter?: "active" | "archived" | "all" } = {}) {
   await requireRole(["ADMIN", "MANAGER", "STAFF"]);
   const filter = opts.filter ?? "active";
-  return prisma.client.findMany({
+  return db.client.findMany({
     where: filter === "all" ? {} : { active: filter === "active" },
     orderBy: { name: "asc" },
     include: { projects: { include: { serviceType: true } }, clientGroup: { select: { id: true, name: true } } },
@@ -72,7 +72,7 @@ export async function listClients(opts: { filter?: "active" | "archived" | "all"
 
 export async function getClient(id: string) {
   await requireRole(["ADMIN", "MANAGER", "STAFF"]);
-  return prisma.client.findUniqueOrThrow({
+  return db.client.findUniqueOrThrow({
     where: { id },
     include: {
       projects: { orderBy: { name: "asc" }, include: { serviceType: true } },
@@ -92,7 +92,7 @@ export async function getClient(id: string) {
 // Caregiver's clients.
 export async function listCaregiverClients() {
   const session = await requireRole(["CAREGIVER"]);
-  return prisma.client.findMany({
+  return db.client.findMany({
     where: { active: true, ...caregiverClientScope(session.user.id) },
     orderBy: { name: "asc" },
   });
@@ -105,7 +105,7 @@ export async function listCaregiverClients() {
 export async function getCaregiverClient(clientId: string) {
   const session = await requireRole(["CAREGIVER"]);
   const userId = session.user.id;
-  const client = await prisma.client.findFirstOrThrow({
+  const client = await db.client.findFirstOrThrow({
     where: { id: clientId, ...caregiverClientScope(userId) },
     select: {
       id: true,
@@ -141,7 +141,7 @@ export async function getCaregiverClient(clientId: string) {
 
 export async function getClientAuditLog(clientId: string) {
   await requireRole(["ADMIN", "MANAGER", "STAFF"]);
-  return prisma.auditLog.findMany({
+  return db.auditLog.findMany({
     where: { entityType: "Client", entityId: clientId },
     include: { actor: { select: { name: true, email: true } } },
     orderBy: { createdAt: "desc" },
@@ -170,7 +170,7 @@ export async function checkSimilarClientNames(name: string) {
   const normalized = normalizeClientName(name);
   if (normalized.length < 2) return [];
 
-  const candidates = await prisma.client.findMany({
+  const candidates = await db.client.findMany({
     where: { active: true },
     select: { id: true, name: true },
   });
@@ -185,7 +185,7 @@ export async function createClient(formData: FormData) {
   });
   const { projectId, ...rest } = parsed;
 
-  const client = await prisma.client.create({
+  const client = await db.client.create({
     data: {
       ...rest,
       createdById: session.user.id,
@@ -216,8 +216,8 @@ export async function updateClient(id: string, formData: FormData) {
   // in from `rest`.
   const clientGroupId = formData.get("clientGroupId");
 
-  const before = await prisma.client.findUniqueOrThrow({ where: { id } });
-  const client = await prisma.client.update({
+  const before = await db.client.findUniqueOrThrow({ where: { id } });
+  const client = await db.client.update({
     where: { id },
     data: {
       ...parsed,
@@ -241,7 +241,7 @@ export async function updateClient(id: string, formData: FormData) {
 
 export async function archiveClient(id: string) {
   const session = await requireRole(["ADMIN", "MANAGER"]);
-  await prisma.client.update({ where: { id }, data: { active: false } });
+  await db.client.update({ where: { id }, data: { active: false } });
 
   await recordAudit({ entityType: "Client", entityId: id, action: "archive", actorId: session.user.id });
 
@@ -251,7 +251,7 @@ export async function archiveClient(id: string) {
 
 export async function restoreClient(id: string) {
   const session = await requireRole(["ADMIN", "MANAGER"]);
-  await prisma.client.update({ where: { id }, data: { active: true } });
+  await db.client.update({ where: { id }, data: { active: true } });
 
   await recordAudit({ entityType: "Client", entityId: id, action: "restore", actorId: session.user.id });
 
@@ -263,9 +263,9 @@ export async function restoreClient(id: string) {
 // same business's details — the whole point of the many-to-many relation.
 export async function importClientToProject(clientId: string, projectId: string) {
   const session = await requireRole(["ADMIN", "MANAGER", "STAFF"]);
-  const project = await prisma.project.findUniqueOrThrow({ where: { id: projectId } });
+  const project = await db.project.findUniqueOrThrow({ where: { id: projectId } });
 
-  await prisma.client.update({
+  await db.client.update({
     where: { id: clientId },
     data: { projects: { connect: { id: projectId } } },
   });
@@ -288,7 +288,7 @@ export async function importClientToProject(clientId: string, projectId: string)
 // archive the client instead if it shouldn't be active anywhere anymore.
 export async function removeClientFromProject(clientId: string, projectId: string) {
   const session = await requireRole(["ADMIN", "MANAGER"]);
-  const client = await prisma.client.findUniqueOrThrow({
+  const client = await db.client.findUniqueOrThrow({
     where: { id: clientId },
     include: { projects: { select: { id: true, name: true } } },
   });
@@ -297,7 +297,7 @@ export async function removeClientFromProject(clientId: string, projectId: strin
   }
   const project = client.projects.find((p) => p.id === projectId);
 
-  await prisma.client.update({
+  await db.client.update({
     where: { id: clientId },
     data: { projects: { disconnect: { id: projectId } } },
   });

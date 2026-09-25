@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { requireSession, assertApplicationAccess, UnauthorizedError, ForbiddenError, AppRole, isManagement } from "@/lib/rbac";
 import { readStoredFileGeneration } from "@/lib/storage";
 
@@ -8,7 +8,7 @@ export async function GET(_req: NextRequest, ctx: RouteContext<"/api/files/[id]/
 
   try {
     const session = await requireSession();
-    const asset = await prisma.fileAsset.findUnique({
+    const asset = await db.fileAsset.findUnique({
       where: { id },
       include: { task: { include: { assignees: { select: { userId: true } } } } },
     });
@@ -36,7 +36,7 @@ export async function GET(_req: NextRequest, ctx: RouteContext<"/api/files/[id]/
       throw new ForbiddenError("Not accessible");
     }
 
-    const version = await prisma.fileVersion.findUnique({ where: { id: versionId } });
+    const version = await db.fileVersion.findUnique({ where: { id: versionId } });
     if (!version || version.fileAssetId !== id) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
     const buffer = await readStoredFileGeneration(asset.storageKey, version.generation);

@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { requireSession, requireRole, assertApplicationAccess, ForbiddenError, AppRole, isManagement } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
@@ -105,7 +105,7 @@ function revalidateForAsset(asset: {
 export async function listFiles(applicationId: string) {
   const session = await requireSession();
   await assertApplicationAccess(session, applicationId, "view");
-  const assets = await prisma.fileAsset.findMany({
+  const assets = await db.fileAsset.findMany({
     where: { applicationId },
     include: {
       uploadedBy: { select: { id: true, name: true } },
@@ -139,7 +139,7 @@ async function uploadFileImpl(applicationId: string, formData: FormData) {
   const { storageKey, sizeBytes, generation } = await saveUploadedFile(file);
   const mimeType = file.type || "application/octet-stream";
 
-  const asset = await prisma.fileAsset.create({
+  const asset = await db.fileAsset.create({
     data: {
       applicationId,
       fileName: file.name,
@@ -174,7 +174,7 @@ async function deleteFileImpl(fileId: string, applicationId: string) {
   const session = await requireSession();
   await assertApplicationAccess(session, applicationId, "edit");
 
-  const asset = await prisma.fileAsset.findUniqueOrThrow({
+  const asset = await db.fileAsset.findUniqueOrThrow({
     where: { id: fileId },
     include: {
       signatureEvents: { select: { id: true } },
@@ -184,7 +184,7 @@ async function deleteFileImpl(fileId: string, applicationId: string) {
   });
   assertNotModifiable(asset, "be deleted");
   assertNotEnvelopePending(asset);
-  await prisma.fileAsset
+  await db.fileAsset
     .delete({ where: { id: fileId } })
     .catch((e) =>
       friendlyPrismaError(e, {
@@ -208,13 +208,13 @@ async function deleteFileImpl(fileId: string, applicationId: string) {
 
 export async function listTaskFiles(taskId: string) {
   const session = await requireSession();
-  const task = await prisma.task.findUniqueOrThrow({
+  const task = await db.task.findUniqueOrThrow({
     where: { id: taskId },
     include: { assignees: { select: { userId: true } } },
   });
   await assertCanAccessTask(session, task, "view");
 
-  const assets = await prisma.fileAsset.findMany({
+  const assets = await db.fileAsset.findMany({
     where: { taskId },
     include: {
       uploadedBy: { select: { id: true, name: true } },
@@ -235,7 +235,7 @@ export async function uploadTaskFile(taskId: string, formData: FormData) {
 
 async function uploadTaskFileImpl(taskId: string, formData: FormData) {
   const session = await requireSession();
-  const task = await prisma.task.findUniqueOrThrow({
+  const task = await db.task.findUniqueOrThrow({
     where: { id: taskId },
     include: { assignees: { select: { userId: true } } },
   });
@@ -252,7 +252,7 @@ async function uploadTaskFileImpl(taskId: string, formData: FormData) {
   const { storageKey, sizeBytes, generation } = await saveUploadedFile(file);
   const mimeType = file.type || "application/octet-stream";
 
-  const asset = await prisma.fileAsset.create({
+  const asset = await db.fileAsset.create({
     data: {
       taskId,
       fileName: file.name,
@@ -287,13 +287,13 @@ export async function deleteTaskFile(fileId: string, taskId: string) {
 
 async function deleteTaskFileImpl(fileId: string, taskId: string) {
   const session = await requireSession();
-  const task = await prisma.task.findUniqueOrThrow({
+  const task = await db.task.findUniqueOrThrow({
     where: { id: taskId },
     include: { assignees: { select: { userId: true } } },
   });
   await assertCanAccessTask(session, task, "edit");
 
-  const asset = await prisma.fileAsset.findUniqueOrThrow({
+  const asset = await db.fileAsset.findUniqueOrThrow({
     where: { id: fileId },
     include: {
       signatureEvents: { select: { id: true } },
@@ -303,7 +303,7 @@ async function deleteTaskFileImpl(fileId: string, taskId: string) {
   });
   assertNotModifiable(asset, "be deleted");
   assertNotEnvelopePending(asset);
-  await prisma.fileAsset
+  await db.fileAsset
     .delete({ where: { id: fileId } })
     .catch((e) =>
       friendlyPrismaError(e, {
@@ -335,7 +335,7 @@ const MANAGE_ROLES: AppRole[] = ["ADMIN", "MANAGER", "STAFF"];
 
 export async function listClientFiles(clientId: string) {
   await requireRole(MANAGE_ROLES);
-  const assets = await prisma.fileAsset.findMany({
+  const assets = await db.fileAsset.findMany({
     where: { clientId },
     include: {
       uploadedBy: { select: { id: true, name: true } },
@@ -368,7 +368,7 @@ async function uploadClientFileImpl(clientId: string, formData: FormData) {
   const { storageKey, sizeBytes, generation } = await saveUploadedFile(file);
   const mimeType = file.type || "application/octet-stream";
 
-  const asset = await prisma.fileAsset
+  const asset = await db.fileAsset
     .create({
       data: {
         clientId,
@@ -405,7 +405,7 @@ export async function deleteClientFile(fileId: string, clientId: string) {
 async function deleteClientFileImpl(fileId: string, clientId: string) {
   const session = await requireRole(MANAGE_ROLES);
 
-  const asset = await prisma.fileAsset.findUniqueOrThrow({
+  const asset = await db.fileAsset.findUniqueOrThrow({
     where: { id: fileId },
     include: {
       signatureEvents: { select: { id: true } },
@@ -415,7 +415,7 @@ async function deleteClientFileImpl(fileId: string, clientId: string) {
   });
   assertNotModifiable(asset, "be deleted");
   assertNotEnvelopePending(asset);
-  await prisma.fileAsset
+  await db.fileAsset
     .delete({ where: { id: fileId } })
     .catch((e) =>
       friendlyPrismaError(e, {
@@ -439,13 +439,13 @@ async function deleteClientFileImpl(fileId: string, clientId: string) {
 
 export async function listFileVersions(fileId: string) {
   const session = await requireSession();
-  const asset = await prisma.fileAsset.findUniqueOrThrow({
+  const asset = await db.fileAsset.findUniqueOrThrow({
     where: { id: fileId },
     include: { task: { include: { assignees: { select: { userId: true } } } } },
   });
   await assertCanAccessFileAsset(session, asset, "view");
 
-  return prisma.fileVersion.findMany({
+  return db.fileVersion.findMany({
     where: { fileAssetId: fileId },
     include: { uploadedBy: { select: { id: true, name: true } } },
     orderBy: { version: "desc" },
@@ -458,7 +458,7 @@ export async function uploadNewFileVersion(fileId: string, formData: FormData) {
 
 async function uploadNewFileVersionImpl(fileId: string, formData: FormData) {
   const session = await requireSession();
-  const asset = await prisma.fileAsset.findUniqueOrThrow({
+  const asset = await db.fileAsset.findUniqueOrThrow({
     where: { id: fileId },
     include: {
       task: { include: { assignees: { select: { userId: true } } } },
@@ -483,11 +483,11 @@ async function uploadNewFileVersionImpl(fileId: string, formData: FormData) {
   const mimeType = file.type || "application/octet-stream";
   const { generation } = await saveFileVersion(asset.storageKey, buffer, mimeType);
 
-  const latest = await prisma.fileVersion.findFirst({ where: { fileAssetId: fileId }, orderBy: { version: "desc" } });
+  const latest = await db.fileVersion.findFirst({ where: { fileAssetId: fileId }, orderBy: { version: "desc" } });
   const nextVersion = (latest?.version ?? 0) + 1;
 
-  const [, updated] = await prisma.$transaction([
-    prisma.fileVersion.create({
+  const [, updated] = await db.$transaction(async (tx) => [
+    await tx.fileVersion.create({
       data: {
         fileAssetId: fileId,
         version: nextVersion,
@@ -498,12 +498,12 @@ async function uploadNewFileVersionImpl(fileId: string, formData: FormData) {
         uploadedById: session.user.id,
       },
     }),
-    prisma.fileAsset.update({
+    await tx.fileAsset.update({
       where: { id: fileId },
       data: { fileName: file.name, mimeType, sizeBytes: buffer.byteLength },
       include: { uploadedBy: { select: { id: true, name: true } } },
     }),
-  ]);
+  ] as const);
 
   const entityType = asset.applicationId ? "Application" : asset.clientId ? "Client" : "Task";
   const entityId = asset.applicationId ?? asset.clientId ?? asset.taskId!;
@@ -526,7 +526,7 @@ export async function revertFileVersion(fileId: string, versionId: string) {
 
 async function revertFileVersionImpl(fileId: string, versionId: string) {
   const session = await requireSession();
-  const asset = await prisma.fileAsset.findUniqueOrThrow({
+  const asset = await db.fileAsset.findUniqueOrThrow({
     where: { id: fileId },
     include: {
       task: { include: { assignees: { select: { userId: true } } } },
@@ -539,16 +539,16 @@ async function revertFileVersionImpl(fileId: string, versionId: string) {
   assertNotModifiable(asset);
   assertNotEnvelopePending(asset);
 
-  const target = await prisma.fileVersion.findUniqueOrThrow({ where: { id: versionId } });
+  const target = await db.fileVersion.findUniqueOrThrow({ where: { id: versionId } });
   if (target.fileAssetId !== fileId) throw new ForbiddenError("Version does not belong to this file");
 
   const { generation } = await revertToGeneration(asset.storageKey, target.generation);
 
-  const latest = await prisma.fileVersion.findFirst({ where: { fileAssetId: fileId }, orderBy: { version: "desc" } });
+  const latest = await db.fileVersion.findFirst({ where: { fileAssetId: fileId }, orderBy: { version: "desc" } });
   const nextVersion = (latest?.version ?? 0) + 1;
 
-  const [, updated] = await prisma.$transaction([
-    prisma.fileVersion.create({
+  const [, updated] = await db.$transaction(async (tx) => [
+    await tx.fileVersion.create({
       data: {
         fileAssetId: fileId,
         version: nextVersion,
@@ -559,12 +559,12 @@ async function revertFileVersionImpl(fileId: string, versionId: string) {
         uploadedById: session.user.id,
       },
     }),
-    prisma.fileAsset.update({
+    await tx.fileAsset.update({
       where: { id: fileId },
       data: { fileName: target.fileName, mimeType: target.mimeType, sizeBytes: target.sizeBytes },
       include: { uploadedBy: { select: { id: true, name: true } } },
     }),
-  ]);
+  ] as const);
 
   const entityType = asset.applicationId ? "Application" : asset.clientId ? "Client" : "Task";
   const entityId = asset.applicationId ?? asset.clientId ?? asset.taskId!;

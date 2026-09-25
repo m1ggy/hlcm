@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
@@ -45,7 +45,7 @@ function toAmount(value: string | undefined) {
 // ask, so the card can just take element 0 as the current agreement.
 export async function listClientAgreements(clientId: string) {
   await requireRole([...MANAGE_ROLES]);
-  return prisma.clientAgreement.findMany({
+  return db.clientAgreement.findMany({
     where: { clientId },
     orderBy: [{ signedDate: "desc" }, { createdAt: "desc" }],
     include: {
@@ -62,7 +62,7 @@ export async function createClientAgreement(formData: FormData) {
   const parsed = createSchema.parse({ clientId: formData.get("clientId"), ...readFields(formData) });
   const { clientId, signedDate, amount, ...rest } = parsed;
 
-  const agreement = await prisma.clientAgreement
+  const agreement = await db.clientAgreement
     .create({
       data: {
         ...rest,
@@ -91,8 +91,8 @@ export async function updateClientAgreement(id: string, formData: FormData) {
   const parsed = updateSchema.parse(readFields(formData));
   const { signedDate, amount, ...rest } = parsed;
 
-  const before = await prisma.clientAgreement.findUniqueOrThrow({ where: { id } });
-  const agreement = await prisma.clientAgreement.update({
+  const before = await db.clientAgreement.findUniqueOrThrow({ where: { id } });
+  const agreement = await db.clientAgreement.update({
     where: { id },
     data: { ...rest, signedDate: signedDate ? new Date(signedDate) : null, amount: toAmount(amount) ?? null },
   });
@@ -112,7 +112,7 @@ export async function updateClientAgreement(id: string, formData: FormData) {
 
 export async function deleteClientAgreement(id: string) {
   const session = await requireRole([...MANAGE_ROLES]);
-  const agreement = await prisma.clientAgreement.delete({ where: { id } });
+  const agreement = await db.clientAgreement.delete({ where: { id } });
 
   await recordAudit({
     entityType: "Client",

@@ -1,7 +1,7 @@
 "use server";
 
 import { headers } from "next/headers";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { sendEmail, renderEmailLayout, getAppUrl } from "@/lib/email";
 import { saveUploadedFile } from "@/lib/storage";
 
@@ -61,12 +61,12 @@ async function getClientIp() {
 async function resolveNotifyRecipients(template: { notifyUserIds: string[]; notifyEmails: string | null }): Promise<string[]> {
   const hasCustomRecipients = template.notifyUserIds.length > 0 || !!template.notifyEmails?.trim();
   if (!hasCustomRecipients) {
-    const admins = await prisma.user.findMany({ where: { role: { in: ["ADMIN", "OWNER"] }, active: true }, select: { email: true } });
+    const admins = await db.user.findMany({ where: { role: { in: ["ADMIN", "OWNER"] }, active: true }, select: { email: true } });
     return admins.map((a) => a.email);
   }
 
   const users = template.notifyUserIds.length
-    ? await prisma.user.findMany({ where: { id: { in: template.notifyUserIds }, active: true }, select: { email: true } })
+    ? await db.user.findMany({ where: { id: { in: template.notifyUserIds }, active: true }, select: { email: true } })
     : [];
   const extra = (template.notifyEmails ?? "").split(",").map((s) => s.trim()).filter(Boolean);
   return [...new Set([...users.map((u) => u.email), ...extra])];
@@ -76,7 +76,7 @@ async function resolveNotifyRecipients(template: { notifyUserIds: string[]; noti
 // indistinguishable from "doesn't exist" to the public page, which just
 // 404s either way (see src/app/forms/[slug]/page.tsx).
 export async function getPublicFormTemplate(slug: string) {
-  return prisma.formTemplate.findFirst({
+  return db.formTemplate.findFirst({
     where: { slug, active: true },
     include: { fields: { orderBy: { sortOrder: "asc" } } },
   });
@@ -96,7 +96,7 @@ export async function submitForm(templateId: string, formData: FormData) {
     throw new Error("Too many submissions from this connection — please try again later.");
   }
 
-  const template = await prisma.formTemplate.findFirst({
+  const template = await db.formTemplate.findFirst({
     where: { id: templateId, active: true },
     include: { fields: true },
   });
@@ -140,7 +140,7 @@ export async function submitForm(templateId: string, formData: FormData) {
     }
   }
 
-  const submission = await prisma.formSubmission.create({
+  const submission = await db.formSubmission.create({
     data: { templateId: template.id, answers, ipAddress: ip },
   });
 
@@ -149,7 +149,7 @@ export async function submitForm(templateId: string, formData: FormData) {
   // submission itself is always valid even if a file attached to it isn't.
   for (const { fieldKey, file } of fileUploads) {
     const { storageKey, sizeBytes } = await saveUploadedFile(file);
-    await prisma.formSubmissionFile.create({
+    await db.formSubmissionFile.create({
       data: {
         submissionId: submission.id,
         fieldKey,
@@ -165,6 +165,7 @@ export async function submitForm(templateId: string, formData: FormData) {
   // itself look like it failed to whoever just filled the form out.
   try {
     const recipients = await resolveNotifyRecipients(template);
+    const appUrl = await getAppUrl();
     for (const email of recipients) {
       await sendEmail({
         to: email,
@@ -174,7 +175,8 @@ export async function submitForm(templateId: string, formData: FormData) {
           bodyHtml: `<p style="margin:0">Someone just filled out &quot;${template.name}&quot;.</p>`,
           preheader: `New submission for ${template.name}`,
           ctaLabel: "Review it",
-          ctaUrl: `${getAppUrl()}/form-submissions`,
+          ctaUrl: `${appUrl}/form-submissions`,
+          appUrl,
         }),
       });
     }

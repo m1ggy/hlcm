@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import bcrypt from "bcryptjs";
 import { AuthError } from "next-auth";
 import { signIn } from "@/auth";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { createMfaChallenge } from "@/lib/mfa-challenge";
 
 const CHALLENGE_COOKIE = "mfa_challenge";
@@ -18,7 +18,8 @@ export async function loginAction(
   const password = formData.get("password") as string | null;
   if (!email || !password) return { error: "Email and password are required." };
 
-  const user = await prisma.user.findUnique({ where: { email } });
+  // Scoped to the request host's org — see authorize() in src/auth.ts.
+  const user = await db.user.findUnique({ where: { email } });
   if (!user || !user.active) return { error: "Invalid email or password." };
 
   const passwordValid = await bcrypt.compare(password, user.passwordHash);

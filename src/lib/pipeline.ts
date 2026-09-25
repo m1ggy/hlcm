@@ -1,5 +1,5 @@
 import type { $Enums } from "@/generated/prisma/client";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 
 export { PIPELINE_LABELS } from "@/lib/pipeline-labels";
 
@@ -24,7 +24,7 @@ export function pipelineForLicenseType(name: string | null | undefined): $Enums.
 // excluding exit statuses (On Hold / Withdrawn / Hearing Lost are reachable
 // from anywhere but never where a case begins).
 export async function getInitialStage(pipeline: $Enums.Pipeline) {
-  return prisma.pipelineStage.findFirst({
+  return db.pipelineStage.findFirst({
     where: { pipeline, isExitStatus: false, active: true },
     orderBy: { sortOrder: "asc" },
   });

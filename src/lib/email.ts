@@ -3,6 +3,9 @@
 //
 // Docs: https://resend.com/docs/api-reference/emails/send-email
 
+import { currentOrg } from "@/lib/db";
+import { orgAppUrl } from "@/lib/tenant-host";
+
 const API_BASE = "https://api.resend.com";
 
 export class EmailConfigError extends Error {}
@@ -28,11 +31,10 @@ function getFrom() {
   return from;
 }
 
-/** Base URL for building absolute links in email bodies — reuses the same
- * domain Caddy is already configured with in production. */
-export function getAppUrl() {
-  const domain = process.env.HCLM_DOMAIN;
-  return domain ? `https://${domain}` : "http://localhost:3000";
+/** Base URL for building absolute links in email bodies — the current
+ * organization's workspace (see orgAppUrl in src/lib/tenant-host.ts). */
+export async function getAppUrl() {
+  return orgAppUrl((await currentOrg()).slug);
 }
 
 // Shared visual wrapper for every transactional email this app sends
@@ -51,8 +53,10 @@ export function renderEmailLayout(opts: {
   ctaUrl?: string;
   /** Hidden preview text shown next to the subject in most inboxes. */
   preheader?: string;
+  /** From getAppUrl() — the footer links to this workspace's account settings. */
+  appUrl: string;
 }): string {
-  const { heading, bodyHtml, ctaLabel, ctaUrl, preheader } = opts;
+  const { heading, bodyHtml, ctaLabel, ctaUrl, preheader, appUrl } = opts;
   const button =
     ctaLabel && ctaUrl
       ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:24px 0 4px">
@@ -86,7 +90,7 @@ export function renderEmailLayout(opts: {
               <td style="padding:16px 28px;border-top:1px solid #e5e7eb">
                 <p style="margin:0;font-size:12px;color:#9ca3af">
                   You're getting this because you have email notifications on for ${BRAND}'s case management system.
-                  <a href="${getAppUrl()}/account" style="color:#9ca3af">Manage notification settings</a>.
+                  <a href="${appUrl}/account" style="color:#9ca3af">Manage notification settings</a>.
                 </p>
               </td>
             </tr>

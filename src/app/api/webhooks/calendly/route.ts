@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { notify } from "@/lib/notifications";
 import { verifyCalendlyWebhookSignature, extractPhoneAnswer, CalendlyWebhookError } from "@/lib/calendly";
 import type { Lead } from "@/generated/prisma/client";
@@ -45,9 +45,9 @@ export async function POST(req: Request) {
     const location = scheduledEvent?.location;
 
     // Idempotent: a redelivered event must never create a second Lead.
-    const existing = await prisma.lead.findUnique({ where: { calendlyInviteeUri: p.uri } });
+    const existing = await db.lead.findUnique({ where: { calendlyInviteeUri: p.uri } });
     if (!existing) {
-      const lead = await prisma.lead.create({
+      const lead = await db.lead.create({
         data: {
           source: "CALENDLY",
           stage: "BOOKED",
@@ -74,11 +74,11 @@ export async function POST(req: Request) {
     }
   } else if (event.event === "invitee.canceled") {
     const p = event.payload as unknown as CalendlyInviteePayload;
-    const lead = await prisma.lead.findUnique({ where: { calendlyInviteeUri: p.uri } });
+    const lead = await db.lead.findUnique({ where: { calendlyInviteeUri: p.uri } });
     // Idempotent: ignore an unknown or already-canceled lead — a
     // redelivered event must not double-fire the notification.
     if (lead && !lead.canceledAt) {
-      const updated = await prisma.lead.update({
+      const updated = await db.lead.update({
         where: { id: lead.id },
         data: { canceledAt: new Date(), cancelReason: p.cancellation?.reason ?? null },
       });
@@ -98,7 +98,7 @@ export async function POST(req: Request) {
 // not a user's own action — notify()'s self-skip check must never
 // accidentally suppress it (same sentinel the Stripe webhook uses).
 async function notifyLeadStaff(lead: Lead, type: "LEAD_BOOKED" | "LEAD_CANCELED", message: string) {
-  const recipients = await prisma.user.findMany({
+  const recipients = await db.user.findMany({
     where: { role: { in: ["ADMIN", "OWNER", "MANAGER"] }, active: true },
     select: { id: true },
   });

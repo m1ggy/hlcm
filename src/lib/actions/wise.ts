@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { requireSession, requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { listTimeEntries, listBreakDeductions } from "@/lib/actions/time-entries";
@@ -22,7 +22,7 @@ const SOURCE_CURRENCY = process.env.WISE_SOURCE_CURRENCY ?? "USD";
 
 export async function getMyWiseRecipient() {
   const session = await requireSession();
-  const recipient = await prisma.wiseRecipient.findUnique({
+  const recipient = await db.wiseRecipient.findUnique({
     where: { userId: session.user.id },
     select: { currency: true, accountHolderName: true, updatedAt: true },
   });
@@ -78,7 +78,7 @@ export async function saveMyWiseRecipient(input: z.infer<typeof saveRecipientSch
     throw error;
   }
 
-  await prisma.wiseRecipient.upsert({
+  await db.wiseRecipient.upsert({
     where: { userId: session.user.id },
     create: {
       userId: session.user.id,
@@ -126,8 +126,8 @@ export async function payUserViaWise(input: z.infer<typeof payoutRangeSchema>) {
   const { userId, from, to, timeZone } = payoutRangeSchema.parse(input);
 
   const [user, recipient] = await Promise.all([
-    prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { name: true, hourlyRate: true } }),
-    prisma.wiseRecipient.findUnique({ where: { userId } }),
+    db.user.findUniqueOrThrow({ where: { id: userId }, select: { name: true, hourlyRate: true } }),
+    db.wiseRecipient.findUnique({ where: { userId } }),
   ]);
   if (!user.hourlyRate) throw new Error(`${user.name} has no hourly rate set`);
   if (!recipient) throw new Error(`${user.name} hasn't added payout details yet`);
@@ -158,7 +158,7 @@ export async function payUserViaWise(input: z.infer<typeof payoutRangeSchema>) {
           : error instanceof Error
             ? error.message
             : "Unknown error";
-    await prisma.wiseTransaction.create({
+    await db.wiseTransaction.create({
       data: {
         userId,
         initiatedById: session.user.id,
@@ -206,7 +206,7 @@ export async function payUserViaWise(input: z.infer<typeof payoutRangeSchema>) {
   } catch (error) {
     // The transfer exists at Wise even if funding failed — record what we
     // have rather than silently dropping a transaction Wise knows about.
-    await prisma.wiseTransaction.create({
+    await db.wiseTransaction.create({
       data: {
         userId,
         initiatedById: session.user.id,
@@ -226,7 +226,7 @@ export async function payUserViaWise(input: z.infer<typeof payoutRangeSchema>) {
     throw new Error(`Transfer created but funding failed: ${error instanceof Error ? error.message : "Unknown error"}`);
   }
 
-  const record = await prisma.wiseTransaction.create({
+  const record = await db.wiseTransaction.create({
     data: {
       userId,
       initiatedById: session.user.id,
@@ -258,7 +258,7 @@ export async function payUserViaWise(input: z.infer<typeof payoutRangeSchema>) {
 
 export async function listWiseTransactions(limit = 25) {
   await requireRole(["ADMIN", "MANAGER"]);
-  return prisma.wiseTransaction.findMany({
+  return db.wiseTransaction.findMany({
     orderBy: { createdAt: "desc" },
     take: limit,
     include: {

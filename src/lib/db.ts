@@ -63,7 +63,7 @@ function filteredClient(orgId: string) {
     query: {
       $allModels: {
         $allOperations({ operation, args, query }) {
-          return query(scopeArgs(orgId, operation, args as Args));
+          return query(scopeArgs(orgId, operation, args as Args) as typeof args);
         },
       },
     },
@@ -77,7 +77,7 @@ function standaloneClient(orgId: string) {
     query: {
       $allModels: {
         async $allOperations({ operation, args, query }) {
-          const [, result] = await prisma.$transaction([setOrgSql(orgId), query(scopeArgs(orgId, operation, args as Args))]);
+          const [, result] = await prisma.$transaction([setOrgSql(orgId), query(scopeArgs(orgId, operation, args as Args) as typeof args)]);
           return result;
         },
       },
@@ -137,11 +137,13 @@ export function tenantDb(orgId: string): TenantClient {
   return client;
 }
 
-const tenantScope = new AsyncLocalStorage<string>();
+export type TenantRef = { id: string; slug: string };
 
-/** Runs `fn` with `db` scoped to `orgId` — for code with no request (jobs, scripts). */
-export function runAsTenant<T>(orgId: string, fn: () => Promise<T>): Promise<T> {
-  return tenantScope.run(orgId, fn);
+const tenantScope = new AsyncLocalStorage<TenantRef>();
+
+/** Runs `fn` with `db` scoped to `org` — for code with no request (jobs, scripts). */
+export function runAsTenant<T>(org: TenantRef, fn: () => Promise<T>): Promise<T> {
+  return tenantScope.run(org, fn);
 }
 
 export class TenantNotResolvedError extends Error {
@@ -151,13 +153,32 @@ export class TenantNotResolvedError extends Error {
   }
 }
 
-/** The current organization's id — runAsTenant() scope first, then the request host. */
-export async function currentOrgId(): Promise<string> {
+/** The current organization — runAsTenant() scope first, then the request host. */
+export async function currentOrg(): Promise<TenantRef> {
   const scoped = tenantScope.getStore();
   if (scoped) return scoped;
   const org = await getHostOrg();
   if (!org || org.status !== "ACTIVE") throw new TenantNotResolvedError();
-  return org.id;
+  return { id: org.id, slug: org.slug };
+}
+
+export async function currentOrgId(): Promise<string> {
+  return (await currentOrg()).id;
+}
+
+/**
+ * Runs `fn` once per active organization, each inside its own runAsTenant()
+ * scope — for scheduled jobs. One org failing doesn't stop the rest.
+ */
+export async function forEachActiveOrg(label: string, fn: (org: TenantRef) => Promise<void>) {
+  const orgs = await prisma.organization.findMany({ where: { status: "ACTIVE" }, select: { id: true, slug: true } });
+  for (const org of orgs) {
+    try {
+      await runAsTenant(org, () => fn(org));
+    } catch (error) {
+      console.error(`${label} failed for org ${org.slug} (${org.id}):`, error);
+    }
+  }
 }
 
 /** The current organization's client. */

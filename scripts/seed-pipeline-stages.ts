@@ -10,11 +10,9 @@
 //
 // Run: npx tsx scripts/seed-pipeline-stages.ts
 import "dotenv/config";
-import { PrismaClient, Pipeline } from "../src/generated/prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
+import { Pipeline } from "../src/generated/prisma/client";
+import { db as prisma, runScriptAsTenant } from "./lib/tenant-script";
 
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
-const prisma = new PrismaClient({ adapter });
 
 type StageSeed = {
   pipeline: Pipeline;
@@ -175,11 +173,4 @@ async function main() {
   console.log(`Wired backward-move whitelist for ${backwardByFrom.size} stages.`);
 }
 
-main()
-  .catch((error) => {
-    console.error(error);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+runScriptAsTenant(main);

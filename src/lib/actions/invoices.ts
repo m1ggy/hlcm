@@ -2,11 +2,11 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import { db, type TenantTx } from "@/lib/db";
 import { requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
-import { sendEmail, renderEmailLayout } from "@/lib/email";
+import { sendEmail, renderEmailLayout, getAppUrl } from "@/lib/email";
 import { generateInvoicePdf } from "@/lib/invoice-pdf";
 import { generateCareRecipientInvoicePdf } from "@/lib/care-recipient-invoice-pdf";
 import { generateReceiptPdf } from "@/lib/receipt-pdf";
@@ -39,12 +39,12 @@ import {
   findCustomersByEmail,
   listCustomerInvoices,
 } from "@/lib/stripe";
-import type { $Enums, Prisma } from "@/generated/prisma/client";
+import type { $Enums } from "@/generated/prisma/client";
 
 export async function listInvoices(filters?: { status?: $Enums.InvoiceStatus; clientId?: string; careRecipientId?: string }) {
   await requireRole(MANAGE_ROLES);
 
-  return prisma.invoice.findMany({
+  return db.invoice.findMany({
     where: {
       status: filters?.status,
       clientId: filters?.clientId || undefined,
@@ -57,7 +57,7 @@ export async function listInvoices(filters?: { status?: $Enums.InvoiceStatus; cl
 
 export async function getInvoice(id: string) {
   await requireRole(MANAGE_ROLES);
-  return prisma.invoice.findUniqueOrThrow({ where: { id }, include: invoiceInclude });
+  return db.invoice.findUniqueOrThrow({ where: { id }, include: invoiceInclude });
 }
 
 // A receipt's own PDF is generated once, at payment time, and its bytes
@@ -66,7 +66,7 @@ export async function getInvoice(id: string) {
 // time, the download route for this just streams the stored file back.
 export async function getReceipt(id: string) {
   await requireRole(MANAGE_ROLES);
-  return prisma.receipt.findUniqueOrThrow({
+  return db.receipt.findUniqueOrThrow({
     where: { id },
     include: { payment: true, invoice: { include: invoiceInclude } },
   });
@@ -74,7 +74,7 @@ export async function getReceipt(id: string) {
 
 export async function getInvoiceAuditLog(invoiceId: string) {
   await requireRole(MANAGE_ROLES);
-  return prisma.auditLog.findMany({
+  return db.auditLog.findMany({
     where: { entityType: "Invoice", entityId: invoiceId },
     include: { actor: { select: { name: true } } },
     orderBy: { createdAt: "desc" },
@@ -94,7 +94,7 @@ export async function createInvoice(input: z.infer<typeof invoiceInputSchema>) {
   const session = await requireRole(MANAGE_ROLES);
   const parsed = invoiceInputSchema.parse(input);
 
-  const invoice = await prisma.invoice.create({
+  const invoice = await db.invoice.create({
     data: {
       clientId: parsed.clientId,
       applicationId: parsed.applicationId || undefined,
@@ -120,10 +120,10 @@ export async function updateInvoice(id: string, input: z.infer<typeof invoiceInp
   const session = await requireRole(MANAGE_ROLES);
   const parsed = invoiceInputSchema.parse(input);
 
-  const before = await prisma.invoice.findUniqueOrThrow({ where: { id } });
+  const before = await db.invoice.findUniqueOrThrow({ where: { id } });
   if (before.status !== "DRAFT") throw new Error("Only draft invoices can be edited");
 
-  const invoice = await prisma.$transaction(async (tx) => {
+  const invoice = await db.$transaction(async (tx) => {
     await tx.invoiceLineItem.deleteMany({ where: { invoiceId: id } });
     return tx.invoice.update({
       where: { id },
@@ -151,7 +151,7 @@ export async function updateInvoice(id: string, input: z.infer<typeof invoiceInp
 
 export async function deleteInvoice(id: string) {
   const session = await requireRole(MANAGE_ROLES);
-  const invoice = await prisma.invoice.findUniqueOrThrow({ where: { id } });
+  const invoice = await db.invoice.findUniqueOrThrow({ where: { id } });
   // An imported row is deletable regardless of status — it's just a local
   // mirror of an invoice that already fully exists in Stripe (see
   // importStripeInvoice below), so removing it never touches Stripe itself
@@ -160,7 +160,7 @@ export async function deleteInvoice(id: string) {
     throw new Error("Only draft invoices can be deleted");
   }
 
-  await prisma.invoice
+  await db.invoice
     .delete({ where: { id } })
     .catch((e) => friendlyPrismaError(e, { notFoundMessage: "That invoice is already gone — someone else may have just deleted it" }));
   await recordAudit({ entityType: "Invoice", entityId: id, action: "delete", actorId: session.user.id });
@@ -170,7 +170,7 @@ export async function deleteInvoice(id: string) {
 
 export async function voidInvoice(id: string) {
   const session = await requireRole(MANAGE_ROLES);
-  const before = await prisma.invoice.findUniqueOrThrow({ where: { id } });
+  const before = await db.invoice.findUniqueOrThrow({ where: { id } });
   if (before.status === "PAID") throw new Error("A paid invoice can't be voided");
 
   if (before.stripeInvoiceId) await voidInvoiceRemote(before.stripeInvoiceId);
@@ -178,7 +178,7 @@ export async function voidInvoice(id: string) {
   // frees it up for reuse on a future invoice instead of silently sitting on
   // a voided one forever (see friendlyInvoiceNumberError below for what
   // happens when it isn't freed and someone types the same number again).
-  await prisma.invoice.update({ where: { id }, data: { status: "VOID", invoiceNumber: null } });
+  await db.invoice.update({ where: { id }, data: { status: "VOID", invoiceNumber: null } });
   // No `field` here — see the "void" case in formatEventDescription
   // (src/lib/audit-format.ts): this used to conditionally set
   // field: "invoiceNumber", which routed it through the generic "X changed
@@ -208,7 +208,7 @@ export async function voidInvoice(id: string) {
  */
 export async function voidInvoiceWithPayments(id: string) {
   const session = await requireRole(MANAGE_ROLES);
-  const before = await prisma.invoice.findUniqueOrThrow({ where: { id } });
+  const before = await db.invoice.findUniqueOrThrow({ where: { id } });
   if (!isManual(before)) {
     throw new Error("Only manually-recorded invoices can be voided this way — a Stripe-paid invoice needs a refund instead");
   }
@@ -218,7 +218,7 @@ export async function voidInvoiceWithPayments(id: string) {
 
   // Same reasoning as voidInvoice above — invoiceNumber is @unique
   // regardless of status, so it's freed up for reuse here too.
-  await prisma.invoice.update({
+  await db.invoice.update({
     where: { id },
     data: { status: "VOID", amountPaid: 0, paidAt: null, paymentMethod: null, invoiceNumber: null },
   });
@@ -241,12 +241,12 @@ export async function voidInvoiceWithPayments(id: string) {
 // no-op since we update here first.
 export async function markInvoicePaid(id: string) {
   const session = await requireRole(MANAGE_ROLES);
-  const before = await prisma.invoice.findUniqueOrThrow({ where: { id } });
+  const before = await db.invoice.findUniqueOrThrow({ where: { id } });
   if (before.status === "PAID") return;
   if (isManual(before)) throw new Error("Use 'Record payment' for a manually-recorded invoice");
 
   if (before.stripeInvoiceId) await payInvoiceOutOfBand(before.stripeInvoiceId);
-  await prisma.invoice.update({ where: { id }, data: { status: "PAID", paidAt: new Date() } });
+  await db.invoice.update({ where: { id }, data: { status: "PAID", paidAt: new Date() } });
   await recordAudit({ entityType: "Invoice", entityId: id, action: "mark_paid", actorId: session.user.id });
 
   revalidatePath("/invoices");
@@ -296,7 +296,7 @@ export async function createManualInvoice(input: z.infer<typeof createManualInvo
   // listUnbilledTaskTime in src/lib/actions/task-time-entries.ts.
   if (parsed.taskTimeEntryIds?.length) {
     if (!parsed.applicationId) throw new Error("Tracked time can only be billed alongside a case");
-    const billableCount = await prisma.taskTimeEntry.count({
+    const billableCount = await db.taskTimeEntry.count({
       where: { id: { in: parsed.taskTimeEntryIds }, task: { applicationId: parsed.applicationId }, billedInvoiceId: null },
     });
     if (billableCount !== parsed.taskTimeEntryIds.length) {
@@ -304,7 +304,7 @@ export async function createManualInvoice(input: z.infer<typeof createManualInvo
     }
   }
 
-  const invoice = await prisma
+  const invoice = await db
     .$transaction(async (tx) => {
       const created = await tx.invoice.create({
         data: {
@@ -385,7 +385,7 @@ export async function updateManualInvoiceDraft(id: string, input: z.input<typeof
   const session = await requireRole(MANAGE_ROLES);
   const parsed = updateManualInvoiceDraftSchema.parse(input);
 
-  const before = await prisma.invoice.findUniqueOrThrow({ where: { id } });
+  const before = await db.invoice.findUniqueOrThrow({ where: { id } });
   if (!isManual(before)) throw new Error("This invoice isn't a manually-recorded one");
   if (before.status !== "SENT" && before.status !== "PARTIALLY_PAID") {
     throw new Error("This invoice can no longer be edited — it's already been paid in full or voided");
@@ -398,7 +398,7 @@ export async function updateManualInvoiceDraft(id: string, input: z.input<typeof
     );
   }
 
-  const invoice = await prisma.$transaction(async (tx) => {
+  const invoice = await db.$transaction(async (tx) => {
     await tx.invoiceLineItem.deleteMany({ where: { invoiceId: id } });
     return tx.invoice.update({
       where: { id },
@@ -447,7 +447,7 @@ export async function addManualPayment(id: string, input: z.infer<typeof additio
   const session = await requireRole(MANAGE_ROLES);
   const parsed = additionalPaymentInputSchema.parse(input);
 
-  const before = await prisma.invoice.findUniqueOrThrow({ where: { id } });
+  const before = await db.invoice.findUniqueOrThrow({ where: { id } });
   if (!isManual(before)) throw new Error("This invoice isn't a manually-recorded one");
   if (before.status !== "SENT" && before.status !== "PARTIALLY_PAID") {
     throw new Error("This invoice isn't awaiting payment");
@@ -458,7 +458,7 @@ export async function addManualPayment(id: string, input: z.infer<typeof additio
   const newStatus = amountPaid >= total ? "PAID" : "PARTIALLY_PAID";
   const paidAt = new Date(parsed.paidAt);
 
-  const { invoice, payment, receipt } = await prisma.$transaction(async (tx) => {
+  const { invoice, payment, receipt } = await db.$transaction(async (tx) => {
     const invoice = await tx.invoice.update({
       where: { id },
       data: { amountPaid, paidAt, paymentMethod: parsed.paymentMethod, status: newStatus },
@@ -501,7 +501,7 @@ export async function addManualPayment(id: string, input: z.infer<typeof additio
       profileName: profile?.name ?? null,
     });
     const { storageKey } = await saveBuffer(Buffer.from(pdfBytes), ".pdf");
-    await prisma.receipt.update({ where: { id: receipt.id }, data: { storageKey } });
+    await db.receipt.update({ where: { id: receipt.id }, data: { storageKey } });
   } catch (error) {
     console.error(`Failed to generate/store receipt for payment ${payment.id}:`, error);
   }
@@ -516,7 +516,7 @@ export async function addManualPayment(id: string, input: z.infer<typeof additio
 // summary shown outside the Payments card) need to be recomputed from
 // whatever Payment rows are left, not just adjusted incrementally the way
 // addManualPayment can when it's only ever adding a new one.
-async function recomputeInvoiceFromPayments(tx: Prisma.TransactionClient, invoiceId: string, total: number) {
+async function recomputeInvoiceFromPayments(tx: TenantTx, invoiceId: string, total: number) {
   const payments = await tx.payment.findMany({ where: { invoiceId }, orderBy: { paidAt: "desc" } });
   const amountPaid = payments.reduce((sum, p) => sum + p.amount, 0);
   const latest = payments[0];
@@ -546,7 +546,7 @@ export async function updatePayment(paymentId: string, input: z.infer<typeof add
   const session = await requireRole(MANAGE_ROLES);
   const parsed = additionalPaymentInputSchema.parse(input);
 
-  const before = await prisma.payment.findUniqueOrThrow({
+  const before = await db.payment.findUniqueOrThrow({
     where: { id: paymentId },
     include: { invoice: true, receipt: true },
   });
@@ -555,7 +555,7 @@ export async function updatePayment(paymentId: string, input: z.infer<typeof add
   const paidAt = new Date(parsed.paidAt);
   const total = before.invoice.total ?? 0;
 
-  const invoice = await prisma.$transaction(async (tx) => {
+  const invoice = await db.$transaction(async (tx) => {
     await tx.payment.update({
       where: { id: paymentId },
       data: { amount: parsed.amount, paidAt, paymentMethod: parsed.paymentMethod },
@@ -592,7 +592,7 @@ export async function updatePayment(paymentId: string, input: z.infer<typeof add
       });
       const { storageKey } = await saveBuffer(Buffer.from(pdfBytes), ".pdf");
       if (before.receipt.storageKey) await deleteStoredFile(before.receipt.storageKey);
-      await prisma.receipt.update({ where: { id: before.receipt.id }, data: { storageKey } });
+      await db.receipt.update({ where: { id: before.receipt.id }, data: { storageKey } });
     } catch (error) {
       console.error(`Failed to regenerate receipt for payment ${paymentId}:`, error);
     }
@@ -612,7 +612,7 @@ export async function updatePayment(paymentId: string, input: z.infer<typeof add
 export async function deletePayment(paymentId: string) {
   const session = await requireRole(MANAGE_ROLES);
 
-  const before = await prisma.payment.findUniqueOrThrow({
+  const before = await db.payment.findUniqueOrThrow({
     where: { id: paymentId },
     include: { invoice: true, receipt: true },
   });
@@ -622,7 +622,7 @@ export async function deletePayment(paymentId: string) {
   if (before.receipt?.storageKey) await deleteStoredFile(before.receipt.storageKey);
 
   const total = before.invoice.total ?? 0;
-  const invoice = await prisma.$transaction(async (tx) => {
+  const invoice = await db.$transaction(async (tx) => {
     await tx.payment.delete({ where: { id: paymentId } }); // cascades the Receipt row
     return recomputeInvoiceFromPayments(tx, before.invoiceId, total);
   });
@@ -697,7 +697,7 @@ function assertAttachmentsFitInEmail(attachments: { filename: string; content: U
 // its own hosted-invoice email directly and has no way to attach arbitrary
 // files to it.
 async function loadInvoiceAttachments(invoiceId: string) {
-  const rows = await prisma.invoiceAttachment.findMany({ where: { invoiceId } });
+  const rows = await db.invoiceAttachment.findMany({ where: { invoiceId } });
   return Promise.all(
     rows.map(async (row) => ({ filename: row.fileName, content: await readStoredFile(row.storageKey) }))
   );
@@ -707,7 +707,7 @@ export async function sendReceiptEmail(receiptId: string, recipientEmailOverride
   const session = await requireRole(MANAGE_ROLES);
   const id = sendReceiptEmailInputSchema.parse(receiptId);
 
-  const receipt = await prisma.receipt.findUniqueOrThrow({
+  const receipt = await db.receipt.findUniqueOrThrow({
     where: { id },
     include: { payment: true, invoice: { include: invoiceInclude } },
   });
@@ -728,6 +728,7 @@ export async function sendReceiptEmail(receiptId: string, recipientEmailOverride
   const invoiceAttachments = await loadInvoiceAttachments(invoice.id);
   const attachments = [{ filename: `receipt-${receiptNumber}.pdf`, content: pdfBytes }, ...invoiceAttachments];
   assertAttachmentsFitInEmail(attachments);
+  const appUrl = await getAppUrl();
 
   await sendEmail({
     to: recipientEmail,
@@ -737,11 +738,12 @@ export async function sendReceiptEmail(receiptId: string, recipientEmailOverride
       heading: "Payment received",
       bodyHtml: `<p style="margin:0 0 8px">Thank you for your payment of $${payment.amount.toFixed(2)} on invoice ${number}.</p><p style="margin:0">A copy of your receipt is attached for your records.</p>`,
       preheader: `Receipt for your payment on invoice ${number}`,
+      appUrl,
     }),
     attachments,
   });
 
-  await prisma.receipt.update({ where: { id }, data: { sentAt: new Date(), sentTo: recipientEmail } });
+  await db.receipt.update({ where: { id }, data: { sentAt: new Date(), sentTo: recipientEmail } });
 
   await recordAudit({
     entityType: "Receipt",
@@ -794,7 +796,7 @@ async function readExtraAttachments(formData: FormData | undefined) {
 // persisted — picked fresh for this one send only.
 export async function sendManualInvoicePdf(id: string, formData?: FormData) {
   const session = await requireRole(MANAGE_ROLES);
-  const invoice = await prisma.invoice.findUniqueOrThrow({ where: { id }, include: invoiceInclude });
+  const invoice = await db.invoice.findUniqueOrThrow({ where: { id }, include: invoiceInclude });
 
   if (!isManual(invoice)) throw new Error("This invoice isn't a manually-recorded one");
   if (invoice.status === "PAID" || invoice.status === "VOID") {
@@ -824,6 +826,7 @@ export async function sendManualInvoicePdf(id: string, formData?: FormData) {
   const amountDue = (invoice.total ?? 0) - (invoice.amountPaid ?? 0);
   const attachments = [{ filename: `invoice-${number}.pdf`, content: pdfBytes }, ...invoiceAttachments, ...extraAttachments];
   assertAttachmentsFitInEmail(attachments);
+  const appUrl = await getAppUrl();
 
   await sendEmail({
     to: recipientEmail,
@@ -833,11 +836,12 @@ export async function sendManualInvoicePdf(id: string, formData?: FormData) {
       heading: "Invoice",
       bodyHtml: `<p style="margin:0 0 8px">Please find invoice ${number} attached${invoice.dueDate ? ` — due ${formatCalendarDate(invoice.dueDate)}` : ""}.</p><p style="margin:0">Amount due: $${amountDue.toFixed(2)}</p>`,
       preheader: `Invoice ${number} — $${amountDue.toFixed(2)} due`,
+      appUrl,
     }),
     attachments,
   });
 
-  const updated = await prisma.invoice.update({
+  const updated = await db.invoice.update({
     where: { id },
     data: { lastSentAt: new Date(), editedAfterSendAt: null },
   });
@@ -862,7 +866,7 @@ export async function sendManualInvoicePdf(id: string, formData?: FormData) {
 // invoice already exists — just re-trigger the email.
 export async function sendInvoice(id: string, recipientEmailOverride?: string) {
   const session = await requireRole(MANAGE_ROLES);
-  const invoice = await prisma.invoice.findUniqueOrThrow({ where: { id }, include: invoiceInclude });
+  const invoice = await db.invoice.findUniqueOrThrow({ where: { id }, include: invoiceInclude });
 
   const recipientEmail = resolveRecipientEmail(recipientEmailOverride, invoice.client);
 
@@ -886,7 +890,7 @@ export async function sendInvoice(id: string, recipientEmailOverride?: string) {
 
   if (invoice.stripeInvoiceId) {
     await sendInvoiceRemote(invoice.stripeInvoiceId);
-    await prisma.invoice.update({ where: { id }, data: { sentAt: new Date() } });
+    await db.invoice.update({ where: { id }, data: { sentAt: new Date() } });
     await recordAudit({ entityType: "Invoice", entityId: id, action: "send", actorId: session.user.id, newValue: recipientEmail });
     revalidatePath("/invoices");
     revalidatePath(`/invoices/${id}`);
@@ -915,7 +919,7 @@ export async function sendInvoice(id: string, recipientEmailOverride?: string) {
       metadata: { clientId: invoice.client.id },
     });
     customerId = customer.id;
-    await prisma.client.update({ where: { id: invoice.client.id }, data: { stripeCustomerId: customerId } });
+    await db.client.update({ where: { id: invoice.client.id }, data: { stripeCustomerId: customerId } });
   }
 
   const draft = await createDraftInvoice({
@@ -938,7 +942,7 @@ export async function sendInvoice(id: string, recipientEmailOverride?: string) {
   const finalized = await finalizeInvoice(draft.id);
   await sendInvoiceRemote(finalized.id);
 
-  const updated = await prisma.invoice.update({
+  const updated = await db.invoice.update({
     where: { id },
     data: {
       status: "SENT",
@@ -984,7 +988,7 @@ export async function findStripeInvoicesForClient(input: { clientId?: string; em
   let customers: { id: string; name: string | null; email: string | null }[] = [];
 
   if (input.clientId) {
-    const client = await prisma.client.findUniqueOrThrow({ where: { id: input.clientId } });
+    const client = await db.client.findUniqueOrThrow({ where: { id: input.clientId } });
     if (client.stripeCustomerId) customers = [await retrieveCustomer(client.stripeCustomerId)];
   }
   if (customers.length === 0 && input.email?.trim()) {
@@ -1002,7 +1006,7 @@ export async function findStripeInvoicesForClient(input: { clientId?: string; em
 
   const existingIds = new Set(
     (
-      await prisma.invoice.findMany({
+      await db.invoice.findMany({
         where: { stripeInvoiceId: { in: invoices.map((inv) => inv.id) } },
         select: { stripeInvoiceId: true },
       })
@@ -1035,7 +1039,7 @@ export async function previewStripeInvoice(rawStripeInvoiceId: string) {
   const stripeInvoiceId = rawStripeInvoiceId.trim();
   if (!stripeInvoiceId) throw new Error("Enter a Stripe invoice ID");
 
-  const existing = await prisma.invoice.findUnique({ where: { stripeInvoiceId } });
+  const existing = await db.invoice.findUnique({ where: { stripeInvoiceId } });
   if (existing) throw new Error("This Stripe invoice has already been imported");
 
   const [invoice, lines] = await Promise.all([retrieveInvoice(stripeInvoiceId), listInvoiceLines(stripeInvoiceId)]);
@@ -1046,7 +1050,7 @@ export async function previewStripeInvoice(rawStripeInvoiceId: string) {
 
   const [customer, suggestedClient] = await Promise.all([
     retrieveCustomer(invoice.customer),
-    prisma.client.findFirst({ where: { stripeCustomerId: invoice.customer }, select: { id: true, name: true } }),
+    db.client.findFirst({ where: { stripeCustomerId: invoice.customer }, select: { id: true, name: true } }),
   ]);
 
   return {
@@ -1084,13 +1088,13 @@ export async function importStripeInvoice(input: z.infer<typeof importStripeInvo
   const session = await requireRole(MANAGE_ROLES);
   const parsed = importStripeInvoiceSchema.parse(input);
 
-  const existing = await prisma.invoice.findUnique({ where: { stripeInvoiceId: parsed.stripeInvoiceId } });
+  const existing = await db.invoice.findUnique({ where: { stripeInvoiceId: parsed.stripeInvoiceId } });
   if (existing) throw new Error("This Stripe invoice has already been imported");
 
   const [invoice, lines, client] = await Promise.all([
     retrieveInvoice(parsed.stripeInvoiceId),
     listInvoiceLines(parsed.stripeInvoiceId),
-    prisma.client.findUniqueOrThrow({ where: { id: parsed.clientId } }),
+    db.client.findUniqueOrThrow({ where: { id: parsed.clientId } }),
   ]);
 
   const status = STRIPE_IMPORT_STATUS_MAP[invoice.status];
@@ -1106,7 +1110,7 @@ export async function importStripeInvoice(input: z.infer<typeof importStripeInvo
     );
   }
 
-  const created = await prisma
+  const created = await db
     .$transaction(async (tx) => {
       if (!client.stripeCustomerId) {
         await tx.client.update({ where: { id: client.id }, data: { stripeCustomerId: invoice.customer } });

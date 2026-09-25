@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireRole, UnauthorizedError, ForbiddenError } from "@/lib/rbac";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { readStoredFile } from "@/lib/storage";
 
 // Serves one profile's logo — used only for the preview thumbnail on
@@ -10,7 +10,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   try {
     await requireRole(["ADMIN"]);
     const { id } = await params;
-    const profile = await prisma.invoiceProfile.findUnique({ where: { id } });
+    const profile = await db.invoiceProfile.findUnique({ where: { id } });
     if (!profile?.logoStorageKey || !profile.logoMimeType) {
       return NextResponse.json({ error: "No logo set" }, { status: 404 });
     }

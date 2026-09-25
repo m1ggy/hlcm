@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
@@ -20,7 +20,7 @@ const credentialSchema = z.object({
 // from the spec (a VA needs to actually use these to log into a portal).
 export async function listClientCredentials(clientId: string) {
   await requireRole(["ADMIN", "MANAGER", "STAFF"]);
-  return prisma.clientCredential.findMany({
+  return db.clientCredential.findMany({
     where: { clientId },
     orderBy: { createdAt: "asc" },
   });
@@ -36,7 +36,7 @@ export async function createClientCredential(clientId: string, formData: FormDat
     notes: formData.get("notes") || undefined,
   });
 
-  const credential = await prisma.clientCredential.create({
+  const credential = await db.clientCredential.create({
     data: { ...parsed, clientId, createdById: session.user.id },
   });
 
@@ -62,7 +62,7 @@ export async function updateClientCredential(id: string, formData: FormData) {
     notes: formData.get("notes") || undefined,
   });
 
-  const credential = await prisma.clientCredential.update({
+  const credential = await db.clientCredential.update({
     where: { id },
     data: parsed,
   });
@@ -81,8 +81,8 @@ export async function updateClientCredential(id: string, formData: FormData) {
 
 export async function deleteClientCredential(id: string) {
   const session = await requireRole(["ADMIN", "MANAGER", "STAFF"]);
-  const credential = await prisma.clientCredential.findUniqueOrThrow({ where: { id } });
-  await prisma.clientCredential
+  const credential = await db.clientCredential.findUniqueOrThrow({ where: { id } });
+  await db.clientCredential
     .delete({ where: { id } })
     .catch((e) => friendlyPrismaError(e, { notFoundMessage: "That credential is already gone — someone else may have just removed it" }));
 

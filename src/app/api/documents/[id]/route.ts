@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { requireSession, assertApplicationAccess, UnauthorizedError, ForbiddenError } from "@/lib/rbac";
 import { readStoredFile } from "@/lib/storage";
 
@@ -8,7 +8,7 @@ export async function GET(_req: NextRequest, ctx: RouteContext<"/api/documents/[
 
   try {
     const session = await requireSession();
-    const doc = await prisma.generatedDocument.findUnique({ where: { id } });
+    const doc = await db.generatedDocument.findUnique({ where: { id } });
     if (!doc) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
     await assertApplicationAccess(session, doc.applicationId, "view");

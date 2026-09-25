@@ -9,11 +9,8 @@
 //
 // Run: npx tsx scripts/seed-reference-data.ts
 import "dotenv/config";
-import { PrismaClient } from "../src/generated/prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
+import { db as prisma, runScriptAsTenant } from "./lib/tenant-script";
 
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
-const prisma = new PrismaClient({ adapter });
 
 async function ensureLicenseType(name: string, description: string, createdById: string) {
   const existing = await prisma.licenseTypeTemplate.findFirst({ where: { name } });
@@ -119,11 +116,4 @@ async function main() {
   console.log("Checklist item templates seeded.");
 }
 
-main()
-  .catch((error) => {
-    console.error(error);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+runScriptAsTenant(main);

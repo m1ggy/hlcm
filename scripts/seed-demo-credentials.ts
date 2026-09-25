@@ -3,11 +3,8 @@
 // something real to show. Additive, idempotent, local dev DB only — same
 // convention as seed-demo.ts.
 import "dotenv/config";
-import { PrismaClient } from "../src/generated/prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
+import { db as prisma, runScriptAsTenant } from "./lib/tenant-script";
 
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
-const prisma = new PrismaClient({ adapter });
 
 async function main() {
   const client = await prisma.client.findFirstOrThrow({ where: { name: "Riverbend Senior Living" } });
@@ -56,11 +53,4 @@ async function main() {
   console.log("Seeded 1 MCO credential (Aetna, In Review) and 1 login credential for Riverbend Senior Living.");
 }
 
-main()
-  .catch((e) => {
-    console.error(e);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+runScriptAsTenant(main);

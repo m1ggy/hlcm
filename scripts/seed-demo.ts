@@ -2,12 +2,9 @@
 // deletes or touches existing rows. Safe to re-run (checks for its own
 // marker client name before inserting). Local dev DB only.
 import "dotenv/config";
-import { PrismaClient } from "../src/generated/prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
+import { db as prisma, runScriptAsTenant } from "./lib/tenant-script";
 import bcrypt from "bcryptjs";
 
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
-const prisma = new PrismaClient({ adapter });
 
 async function main() {
   const admin = await prisma.user.findUniqueOrThrow({ where: { email: "admin@hclm.local" } });
@@ -259,11 +256,4 @@ async function main() {
   console.log("Demo data seeded: 2 users, 3 clients, 6 applications, checklist tasks, files, notifications, 2 standalone tasks.");
 }
 
-main()
-  .catch((e) => {
-    console.error(e);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+runScriptAsTenant(main);

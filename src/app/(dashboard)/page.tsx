@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { auth } from "@/auth";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { applicationVisibilityFilter, blockCaregiverRoute } from "@/lib/rbac";
 import { getDashboardStats } from "@/lib/actions/dashboard";
 import { listApplicationAlerts, listMcoAlerts, listLicenseAlerts } from "@/lib/actions/alerts";
@@ -40,9 +40,9 @@ export default async function HomePage() {
   if (!session?.user) return null;
 
   const [projectCount, clientCount, applicationCount, stats, applicationAlerts, mcoAlerts, licenseAlerts] = await Promise.all([
-    prisma.project.count({ where: { active: true } }),
-    prisma.client.count({ where: { active: true } }),
-    prisma.application.count({ where: { ...applicationVisibilityFilter(session), active: true } }),
+    db.project.count({ where: { active: true } }),
+    db.client.count({ where: { active: true } }),
+    db.application.count({ where: { ...applicationVisibilityFilter(session), active: true } }),
     getDashboardStats(),
     listApplicationAlerts(),
     listMcoAlerts(),

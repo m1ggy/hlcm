@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import {
   requireRole,
   requireSession,
@@ -41,7 +41,7 @@ const applicationSchema = z.object({
 
 export async function listApplications(opts: { archived?: boolean } = {}) {
   const session = await requireSession();
-  const applications = await prisma.application.findMany({
+  const applications = await db.application.findMany({
     where: { ...applicationVisibilityFilter(session), active: !opts.archived },
     include: { client: true, assignedUser: true, stage: true, tasks: { select: { status: true } } },
     orderBy: { createdAt: "desc" },
@@ -52,7 +52,7 @@ export async function listApplications(opts: { archived?: boolean } = {}) {
     .map((a) => a.id);
 
   const statusChangeLogs = staleCandidateIds.length
-    ? await prisma.auditLog.findMany({
+    ? await db.auditLog.findMany({
         where: { entityType: "Application", entityId: { in: staleCandidateIds }, field: "status" },
         orderBy: { createdAt: "desc" },
         select: { entityId: true, createdAt: true },
@@ -87,7 +87,7 @@ async function notifyApplicationStakeholders(
   application: { name: string; status: string; assignedUserId: string },
   actorId: string
 ) {
-  const grantees = await prisma.accessGrant.findMany({
+  const grantees = await db.accessGrant.findMany({
     where: { applicationId },
     select: { userId: true },
   });
@@ -116,7 +116,7 @@ async function assertCanEditApplication(
 export async function getApplication(id: string) {
   const session = await requireSession();
   await assertApplicationAccess(session, id, "view");
-  const application = await prisma.application.findUniqueOrThrow({
+  const application = await db.application.findUniqueOrThrow({
     where: { id },
     include: {
       client: true,
@@ -141,7 +141,7 @@ export async function getApplication(id: string) {
 export async function getApplicationAuditLog(applicationId: string) {
   const session = await requireSession();
   await assertApplicationAccess(session, applicationId, "view");
-  return prisma.auditLog.findMany({
+  return db.auditLog.findMany({
     where: { entityType: "Application", entityId: applicationId },
     include: { actor: { select: { name: true, email: true } } },
     orderBy: { createdAt: "desc" },
@@ -155,7 +155,7 @@ const INTERNAL_STAFF_ROLES: AppRole[] = ["OWNER", "DEVELOPER", "ADMIN", "ACCOUNT
 
 export async function listAssignableUsers() {
   await requireRole(["ADMIN", "MANAGER", "STAFF"]);
-  return prisma.user.findMany({
+  return db.user.findMany({
     where: { active: true, role: { in: INTERNAL_STAFF_ROLES } },
     orderBy: { name: "asc" },
     select: { id: true, name: true, role: true },
@@ -170,7 +170,7 @@ export async function listAssignableUsers() {
 // in the query below.
 export async function listTaskAssignableUsers() {
   await requireRole(["ADMIN", "MANAGER", "STAFF", "CAREGIVER"]);
-  return prisma.user.findMany({
+  return db.user.findMany({
     where: { active: true, role: { in: [...INTERNAL_STAFF_ROLES, "CAREGIVER"] } },
     orderBy: { name: "asc" },
     select: { id: true, name: true, role: true },
@@ -194,12 +194,12 @@ export async function createApplication(formData: FormData) {
   // license type at all, e.g. Change of Ownership) — every case lands on a
   // real pipeline now, none stay unassigned.
   const licenseType = parsed.licenseTypeTemplateId
-    ? await prisma.licenseTypeTemplate.findUnique({ where: { id: parsed.licenseTypeTemplateId } })
+    ? await db.licenseTypeTemplate.findUnique({ where: { id: parsed.licenseTypeTemplateId } })
     : null;
   const pipeline = pipelineForLicenseType(licenseType?.name) ?? "MCO";
   const initialStage = await getInitialStage(pipeline);
 
-  const application = await prisma.application.create({
+  const application = await db.application.create({
     data: {
       clientId: parsed.clientId,
       name: parsed.name,
@@ -214,7 +214,7 @@ export async function createApplication(formData: FormData) {
   });
 
   if (initialStage) {
-    await prisma.stageHistory.create({
+    await db.stageHistory.create({
       data: { applicationId: application.id, stageId: initialStage.id, actorId: session.user.id },
     });
   }
@@ -250,8 +250,8 @@ export async function updateApplication(id: string, formData: FormData) {
     status: formData.get("status") || undefined,
   });
 
-  const before = await prisma.application.findUniqueOrThrow({ where: { id } });
-  const application = await prisma.application.update({
+  const before = await db.application.findUniqueOrThrow({ where: { id } });
+  const application = await db.application.update({
     where: { id },
     data: {
       clientId: parsed.clientId,
@@ -293,15 +293,15 @@ export async function updateApplicationLicenseType(id: string, licenseTypeTempla
   const session = await requireSession();
   await assertCanEditApplication(session, id);
 
-  const before = await prisma.application.findUniqueOrThrow({ where: { id }, include: { stage: true } });
+  const before = await db.application.findUniqueOrThrow({ where: { id }, include: { stage: true } });
   const licenseType = licenseTypeTemplateId
-    ? await prisma.licenseTypeTemplate.findUniqueOrThrow({ where: { id: licenseTypeTemplateId } })
+    ? await db.licenseTypeTemplate.findUniqueOrThrow({ where: { id: licenseTypeTemplateId } })
     : null;
   const newPipeline = pipelineForLicenseType(licenseType?.name) ?? "MCO";
   const pipelineChanged = newPipeline !== before.pipeline;
   const initialStage = pipelineChanged ? await getInitialStage(newPipeline) : null;
 
-  const application = await prisma.application.update({
+  const application = await db.application.update({
     where: { id },
     data: {
       licenseTypeTemplateId,
@@ -310,7 +310,7 @@ export async function updateApplicationLicenseType(id: string, licenseTypeTempla
   });
 
   if (pipelineChanged && initialStage) {
-    await prisma.stageHistory.create({
+    await db.stageHistory.create({
       data: {
         applicationId: id,
         stageId: initialStage.id,
@@ -387,8 +387,8 @@ export async function updateApplicationCaseFields(id: string, formData: FormData
   const session = await requireSession();
   await assertCanEditApplication(session, id);
 
-  const before = await prisma.application.findUniqueOrThrow({ where: { id } });
-  const application = await prisma.application.update({
+  const before = await db.application.findUniqueOrThrow({ where: { id } });
+  const application = await db.application.update({
     where: { id },
     data: {
       agency: parseNullableEnum(formData.get("agency"), AGENCY_VALUES),
@@ -426,8 +426,8 @@ export async function updateApplicationStatus(id: string, status: (typeof APPLIC
   await assertCanEditApplication(session, id);
   const parsedStatus = z.enum(APPLICATION_STATUSES).parse(status);
 
-  const before = await prisma.application.findUniqueOrThrow({ where: { id } });
-  const application = await prisma.application.update({ where: { id }, data: { status: parsedStatus } });
+  const before = await db.application.findUniqueOrThrow({ where: { id } });
+  const application = await db.application.update({ where: { id }, data: { status: parsedStatus } });
 
   await recordFieldChanges({
     entityType: "Application",
@@ -463,8 +463,8 @@ export async function bulkUpdateApplications(input: z.infer<typeof bulkUpdateSch
   }
 
   for (const id of parsed.ids) {
-    const before = await prisma.application.findUniqueOrThrow({ where: { id } });
-    const application = await prisma.application.update({
+    const before = await db.application.findUniqueOrThrow({ where: { id } });
+    const application = await db.application.update({
       where: { id },
       data: {
         assignedUserId: parsed.assignedUserId,
@@ -492,7 +492,7 @@ export async function bulkUpdateApplications(input: z.infer<typeof bulkUpdateSch
 
 export async function archiveApplication(id: string) {
   const session = await requireRole(["ADMIN", "MANAGER"]);
-  await prisma.application.update({ where: { id }, data: { active: false } });
+  await db.application.update({ where: { id }, data: { active: false } });
 
   await recordAudit({ entityType: "Application", entityId: id, action: "archive", actorId: session.user.id });
 
@@ -502,7 +502,7 @@ export async function archiveApplication(id: string) {
 
 export async function restoreApplication(id: string) {
   const session = await requireRole(["ADMIN", "MANAGER"]);
-  await prisma.application.update({ where: { id }, data: { active: true } });
+  await db.application.update({ where: { id }, data: { active: true } });
 
   await recordAudit({ entityType: "Application", entityId: id, action: "restore", actorId: session.user.id });
 

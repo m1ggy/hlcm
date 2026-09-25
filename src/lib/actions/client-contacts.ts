@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
@@ -36,7 +36,7 @@ function readFields(formData: FormData) {
 
 export async function listClientContacts(clientId: string) {
   await requireRole([...MANAGE_ROLES]);
-  return prisma.clientContact.findMany({ where: { clientId }, orderBy: { createdAt: "asc" } });
+  return db.clientContact.findMany({ where: { clientId }, orderBy: { createdAt: "asc" } });
 }
 
 export async function createClientContact(formData: FormData) {
@@ -44,7 +44,7 @@ export async function createClientContact(formData: FormData) {
   const parsed = createSchema.parse({ clientId: formData.get("clientId"), ...readFields(formData) });
   const { clientId, ...rest } = parsed;
 
-  const contact = await prisma.clientContact
+  const contact = await db.clientContact
     .create({ data: { ...rest, clientId, createdById: session.user.id } })
     .catch((e) => friendlyPrismaError(e, { notFoundMessage: "That client no longer exists" }));
 
@@ -64,8 +64,8 @@ export async function updateClientContact(id: string, formData: FormData) {
   const session = await requireRole([...MANAGE_ROLES]);
   const parsed = updateSchema.parse(readFields(formData));
 
-  const before = await prisma.clientContact.findUniqueOrThrow({ where: { id } });
-  const contact = await prisma.clientContact.update({ where: { id }, data: parsed });
+  const before = await db.clientContact.findUniqueOrThrow({ where: { id } });
+  const contact = await db.clientContact.update({ where: { id }, data: parsed });
 
   await recordAudit({
     entityType: "Client",
@@ -82,7 +82,7 @@ export async function updateClientContact(id: string, formData: FormData) {
 
 export async function deleteClientContact(id: string) {
   const session = await requireRole([...MANAGE_ROLES]);
-  const contact = await prisma.clientContact.delete({ where: { id } });
+  const contact = await db.clientContact.delete({ where: { id } });
 
   await recordAudit({
     entityType: "Client",

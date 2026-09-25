@@ -4,7 +4,7 @@
 // call from generateInvoicePdf's callers and from the "New Manual
 // Invoice" dialog's own action, unlike the admin-only write actions in
 // src/lib/actions/invoice-profiles.ts.
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { readStoredFile } from "@/lib/storage";
 
 export type InvoiceProfileData = {
@@ -18,17 +18,17 @@ export type InvoiceProfileData = {
 };
 
 export async function listInvoiceProfiles(): Promise<InvoiceProfileData[]> {
-  return prisma.invoiceProfile.findMany({ orderBy: [{ isDefault: "desc" }, { name: "asc" }] });
+  return db.invoiceProfile.findMany({ orderBy: [{ isDefault: "desc" }, { name: "asc" }] });
 }
 
 export async function getDefaultInvoiceProfile(): Promise<InvoiceProfileData | null> {
-  const profile = await prisma.invoiceProfile.findFirst({ where: { isDefault: true } });
-  return profile ?? (await prisma.invoiceProfile.findFirst({ orderBy: { createdAt: "asc" } }));
+  const profile = await db.invoiceProfile.findFirst({ where: { isDefault: true } });
+  return profile ?? (await db.invoiceProfile.findFirst({ orderBy: { createdAt: "asc" } }));
 }
 
 export async function getInvoiceProfile(id: string | null): Promise<InvoiceProfileData | null> {
   if (!id) return getDefaultInvoiceProfile();
-  const profile = await prisma.invoiceProfile.findUnique({ where: { id } });
+  const profile = await db.invoiceProfile.findUnique({ where: { id } });
   return profile ?? getDefaultInvoiceProfile();
 }
 

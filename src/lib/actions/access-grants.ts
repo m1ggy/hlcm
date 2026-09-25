@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { requireSession, assertApplicationAccess } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
@@ -13,7 +13,7 @@ const GRANT_PERMISSIONS = ["VIEW", "EDIT"] as const;
 export async function listAccessGrants(applicationId: string) {
   const session = await requireSession();
   await assertApplicationAccess(session, applicationId, "view");
-  return prisma.accessGrant.findMany({
+  return db.accessGrant.findMany({
     where: { applicationId },
     include: { user: { select: { id: true, name: true, email: true } } },
     orderBy: { createdAt: "asc" },
@@ -27,12 +27,12 @@ export async function listGrantableUsers(applicationId: string) {
   await assertApplicationAccess(session, applicationId, "edit");
 
   const [app, existingGrants] = await Promise.all([
-    prisma.application.findUniqueOrThrow({ where: { id: applicationId }, select: { assignedUserId: true } }),
-    prisma.accessGrant.findMany({ where: { applicationId }, select: { userId: true } }),
+    db.application.findUniqueOrThrow({ where: { id: applicationId }, select: { assignedUserId: true } }),
+    db.accessGrant.findMany({ where: { applicationId }, select: { userId: true } }),
   ]);
   const excluded = new Set([app.assignedUserId, ...existingGrants.map((g) => g.userId)]);
 
-  const users = await prisma.user.findMany({
+  const users = await db.user.findMany({
     where: { active: true },
     orderBy: { name: "asc" },
     select: { id: true, name: true, email: true },
@@ -54,7 +54,7 @@ export async function addAccessGrant(applicationId: string, formData: FormData) 
     permission: formData.get("permission") || "VIEW",
   });
 
-  const grant = await prisma.accessGrant
+  const grant = await db.accessGrant
     .create({
       data: {
         applicationId,
@@ -76,7 +76,7 @@ export async function addAccessGrant(applicationId: string, formData: FormData) 
     newValue: `${parsed.userId}:${parsed.permission}`,
   });
 
-  const application = await prisma.application.findUniqueOrThrow({ where: { id: applicationId }, select: { name: true } });
+  const application = await db.application.findUniqueOrThrow({ where: { id: applicationId }, select: { name: true } });
   await notify(
     {
       userId: parsed.userId,
@@ -96,7 +96,7 @@ export async function updateAccessGrant(grantId: string, applicationId: string, 
   const session = await requireSession();
   await assertApplicationAccess(session, applicationId, "edit");
 
-  await prisma.accessGrant.update({ where: { id: grantId }, data: { permission } });
+  await db.accessGrant.update({ where: { id: grantId }, data: { permission } });
 
   await recordAudit({
     entityType: "Application",
@@ -114,7 +114,7 @@ export async function removeAccessGrant(grantId: string, applicationId: string) 
   const session = await requireSession();
   await assertApplicationAccess(session, applicationId, "edit");
 
-  await prisma.accessGrant
+  await db.accessGrant
     .delete({ where: { id: grantId } })
     .catch((e) => friendlyPrismaError(e, { notFoundMessage: "That access grant is already gone — someone else may have just removed it" }));
 

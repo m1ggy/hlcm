@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
+import { getHostOrgSlug } from "@/lib/tenant";
 import { UserFacingError } from "@/lib/user-facing-error";
 
 export const ROLES = ["DEVELOPER", "OWNER", "ADMIN", "ACCOUNTANT", "MANAGER", "STAFF", "CLIENT", "CAREGIVER"] as const;
@@ -51,10 +52,16 @@ export class ForbiddenError extends UserFacingError {
   }
 }
 
-/** Throws if there's no session. Use at the top of every server action / route handler. */
+/**
+ * Throws if there's no session, or if the session belongs to a different
+ * organization than the request host (see src/lib/tenant.ts). Use at the top
+ * of every server action / route handler.
+ */
 export async function requireSession() {
   const session = await auth();
   if (!session?.user) throw new UnauthorizedError();
+  const hostSlug = await getHostOrgSlug();
+  if (!hostSlug || session.user.orgSlug !== hostSlug) throw new UnauthorizedError();
   return session;
 }
 
@@ -119,14 +126,14 @@ export async function getApplicationAccessLevel(
   const role = session.user.role as AppRole;
   if (isManagement(role)) return "edit";
 
-  const app = await prisma.application.findUnique({
+  const app = await db.application.findUnique({
     where: { id: applicationId },
     select: { assignedUserId: true },
   });
   if (!app) return "none";
   if (app.assignedUserId === session.user.id) return "edit";
 
-  const grant = await prisma.accessGrant.findUnique({
+  const grant = await db.accessGrant.findUnique({
     where: { applicationId_userId: { applicationId, userId: session.user.id } },
   });
   if (!grant) return "none";

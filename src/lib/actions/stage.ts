@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { requireSession, assertApplicationAccess, requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { notify } from "@/lib/notifications";
@@ -15,7 +15,7 @@ import type { $Enums } from "@/generated/prisma/client";
 // here — reaching them still works via the picker on the case detail page.
 export async function listPipelineStages(pipeline: $Enums.Pipeline, opts: { includeExit?: boolean } = {}) {
   await requireRole(["ADMIN", "MANAGER", "STAFF"]);
-  return prisma.pipelineStage.findMany({
+  return db.pipelineStage.findMany({
     where: { pipeline, active: true, ...(opts.includeExit ? {} : { isExitStatus: false }) },
     orderBy: { sortOrder: "asc" },
   });
@@ -26,7 +26,7 @@ export async function listPipelineStages(pipeline: $Enums.Pipeline, opts: { incl
 // where the record could point at a stage from any of the three catalogs.
 export async function listAllStageNames() {
   await requireRole(["ADMIN", "MANAGER", "STAFF"]);
-  const stages = await prisma.pipelineStage.findMany({ select: { id: true, name: true } });
+  const stages = await db.pipelineStage.findMany({ select: { id: true, name: true } });
   return Object.fromEntries(stages.map((s) => [s.id, s.name]));
 }
 
@@ -44,7 +44,7 @@ export async function changeApplicationStage(
   const session = await requireSession();
   await assertApplicationAccess(session, applicationId, "edit");
 
-  const application = await prisma.application.findUniqueOrThrow({
+  const application = await db.application.findUniqueOrThrow({
     where: { id: applicationId },
     include: { stage: true },
   });
@@ -52,7 +52,7 @@ export async function changeApplicationStage(
     throw new Error("This case doesn't have a pipeline stage set yet — contact an admin.");
   }
 
-  const targetStage = await prisma.pipelineStage.findUniqueOrThrow({ where: { id: targetStageId } });
+  const targetStage = await db.pipelineStage.findUniqueOrThrow({ where: { id: targetStageId } });
 
   const followUpDate = opts.followUpDate ? new Date(opts.followUpDate) : null;
   const result = resolveStageChange(application.stage, targetStage, { reason: opts.reason, followUpDate });
@@ -60,9 +60,9 @@ export async function changeApplicationStage(
     throw new Error(result.message);
   }
 
-  const [updated] = await prisma.$transaction([
-    prisma.application.update({ where: { id: applicationId }, data: { stageId: targetStage.id } }),
-    prisma.stageHistory.create({
+  const [updated] = await db.$transaction(async (tx) => [
+    await tx.application.update({ where: { id: applicationId }, data: { stageId: targetStage.id } }),
+    await tx.stageHistory.create({
       data: {
         applicationId,
         stageId: targetStage.id,
@@ -71,7 +71,7 @@ export async function changeApplicationStage(
         actorId: session.user.id,
       },
     }),
-  ]);
+  ] as const);
 
   await recordAudit({
     entityType: "Application",
@@ -85,7 +85,7 @@ export async function changeApplicationStage(
   // Reuses the existing status-change notification type — same category of
   // event (case moved somewhere) from the recipient's point of view, no need
   // for a parallel enum value.
-  const grantees = await prisma.accessGrant.findMany({ where: { applicationId }, select: { userId: true } });
+  const grantees = await db.accessGrant.findMany({ where: { applicationId }, select: { userId: true } });
   const recipients = new Set([application.assignedUserId, ...grantees.map((g) => g.userId)]);
   for (const userId of recipients) {
     await notify(
@@ -112,13 +112,13 @@ export async function listReachableStages(applicationId: string) {
   const session = await requireSession();
   await assertApplicationAccess(session, applicationId, "view");
 
-  const application = await prisma.application.findUniqueOrThrow({
+  const application = await db.application.findUniqueOrThrow({
     where: { id: applicationId },
     include: { stage: true },
   });
   if (!application.stage || !application.pipeline) return [];
 
-  const allStages = await prisma.pipelineStage.findMany({
+  const allStages = await db.pipelineStage.findMany({
     where: { pipeline: application.pipeline, active: true },
     orderBy: { sortOrder: "asc" },
   });

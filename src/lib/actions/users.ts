@@ -3,7 +3,7 @@
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { requireRole, ForbiddenError, isAdmin, isSuperuser } from "@/lib/rbac";
 import { recordAudit, recordFieldChanges } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
@@ -19,7 +19,7 @@ const userSchema = z.object({
 
 export async function listUsers() {
   await requireRole(["ADMIN"]);
-  return prisma.user.findMany({
+  return db.user.findMany({
     orderBy: { name: "asc" },
     select: {
       id: true,
@@ -44,11 +44,11 @@ export async function setHourlyRate(input: { userId: string; hourlyRate: number 
   const session = await requireRole(["ADMIN"]);
   const parsed = rateSchema.parse(input);
 
-  const before = await prisma.user.findUniqueOrThrow({
+  const before = await db.user.findUniqueOrThrow({
     where: { id: parsed.userId },
     select: { hourlyRate: true },
   });
-  const user = await prisma.user.update({
+  const user = await db.user.update({
     where: { id: parsed.userId },
     data: { hourlyRate: parsed.hourlyRate },
   });
@@ -81,7 +81,7 @@ export async function createUser(formData: FormData) {
   }
 
   const passwordHash = await bcrypt.hash(parsed.password, 12);
-  const user = await prisma.user
+  const user = await db.user
     .create({
       data: {
         name: parsed.name,
@@ -121,7 +121,7 @@ export async function updateUser(input: z.infer<typeof updateSchema>) {
   const session = await requireRole(["ADMIN"]);
   const parsed = updateSchema.parse(input);
 
-  const before = await prisma.user.findUniqueOrThrow({
+  const before = await db.user.findUniqueOrThrow({
     where: { id: parsed.userId },
     select: { name: true, email: true, role: true, active: true, phone: true, smsRemindersEnabled: true },
   });
@@ -143,12 +143,12 @@ export async function updateUser(input: z.infer<typeof updateSchema>) {
     throw new Error("You can't deactivate or change your own role — have another admin do it");
   }
 
-  const existing = await prisma.user.findUnique({ where: { email: parsed.email } });
+  const existing = await db.user.findUnique({ where: { email: parsed.email } });
   if (existing && existing.id !== parsed.userId) {
     throw new Error("Another user already has that email");
   }
 
-  const user = await prisma.user.update({
+  const user = await db.user.update({
     where: { id: parsed.userId },
     data: {
       name: parsed.name,

@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
@@ -11,7 +11,7 @@ const REVIEW_ROLES = ["ADMIN", "MANAGER", "STAFF"] as const;
 
 export async function listFormSubmissions(status?: $Enums.FormSubmissionStatus) {
   await requireRole([...REVIEW_ROLES]);
-  return prisma.formSubmission.findMany({
+  return db.formSubmission.findMany({
     where: { status },
     include: {
       template: { include: { fields: { orderBy: { sortOrder: "asc" } } } },
@@ -24,7 +24,7 @@ export async function listFormSubmissions(status?: $Enums.FormSubmissionStatus) 
 
 export async function getFormSubmission(id: string) {
   await requireRole([...REVIEW_ROLES]);
-  return prisma.formSubmission.findUniqueOrThrow({
+  return db.formSubmission.findUniqueOrThrow({
     where: { id },
     include: {
       template: { include: { fields: { orderBy: { sortOrder: "asc" } } } },
@@ -43,7 +43,7 @@ export async function getFormSubmission(id: string) {
 export async function linkSubmissionToClient(submissionId: string, clientId: string) {
   const session = await requireRole([...REVIEW_ROLES]);
 
-  await prisma.formSubmission
+  await db.formSubmission
     .update({
       where: { id: submissionId },
       data: { clientId, status: "REVIEWED", reviewedById: session.user.id, reviewedAt: new Date() },
@@ -64,7 +64,7 @@ export async function linkSubmissionToClient(submissionId: string, clientId: str
 export async function dismissSubmission(id: string) {
   const session = await requireRole([...REVIEW_ROLES]);
 
-  await prisma.formSubmission
+  await db.formSubmission
     .update({
       where: { id },
       data: { status: "DISMISSED", reviewedById: session.user.id, reviewedAt: new Date() },
@@ -81,5 +81,5 @@ export async function dismissSubmission(id: string) {
 // way getInvoiceAttachment does, rather than duplicating it inline.
 export async function getFormSubmissionFile(fileId: string) {
   await requireRole([...REVIEW_ROLES]);
-  return prisma.formSubmissionFile.findUniqueOrThrow({ where: { id: fileId } });
+  return db.formSubmissionFile.findUniqueOrThrow({ where: { id: fileId } });
 }

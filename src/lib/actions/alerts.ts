@@ -1,6 +1,6 @@
 "use server";
 
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { requireRole } from "@/lib/rbac";
 import { computeAgingAlerts, computeLicenseAlerts, AgingAlert } from "@/lib/aging-alerts";
 import { daysInStage } from "@/lib/stage-transitions";
@@ -36,7 +36,7 @@ export type LicenseAlertGroup = {
 // this needed to page someone unprompted.
 export async function listApplicationAlerts(): Promise<ApplicationAlertGroup[]> {
   await requireRole(["ADMIN", "MANAGER", "STAFF"]);
-  const apps = await prisma.application.findMany({
+  const apps = await db.application.findMany({
     where: { active: true, stageId: { not: null } },
     include: {
       client: { select: { name: true } },
@@ -70,7 +70,7 @@ export async function listApplicationAlerts(): Promise<ApplicationAlertGroup[]> 
 
 export async function listMcoAlerts(): Promise<McoAlertGroup[]> {
   await requireRole(["ADMIN", "MANAGER", "STAFF"]);
-  const credentials = await prisma.mcoCredential.findMany({
+  const credentials = await db.mcoCredential.findMany({
     include: {
       client: { select: { id: true, name: true } },
       stage: true,
@@ -106,7 +106,7 @@ export async function listMcoAlerts(): Promise<McoAlertGroup[]> {
 // active-only everywhere else in this app.
 export async function listLicenseAlerts(): Promise<LicenseAlertGroup[]> {
   await requireRole(["ADMIN", "MANAGER", "STAFF"]);
-  const licenses = await prisma.clientLicense.findMany({
+  const licenses = await db.clientLicense.findMany({
     where: { client: { active: true } },
     include: { client: { select: { id: true, name: true } } },
     orderBy: { expiryDate: "asc" },

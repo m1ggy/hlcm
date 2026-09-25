@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 
@@ -15,7 +15,7 @@ const licenseTypeSchema = z.object({
 // only Admins can define them — they're structural config, not case data.
 export async function listLicenseTypes() {
   await requireRole(["ADMIN", "MANAGER", "STAFF"]);
-  return prisma.licenseTypeTemplate.findMany({ where: { active: true }, orderBy: { name: "asc" } });
+  return db.licenseTypeTemplate.findMany({ where: { active: true }, orderBy: { name: "asc" } });
 }
 
 export async function createLicenseType(formData: FormData) {
@@ -25,7 +25,7 @@ export async function createLicenseType(formData: FormData) {
     description: formData.get("description") || undefined,
   });
 
-  const licenseType = await prisma.licenseTypeTemplate.create({
+  const licenseType = await db.licenseTypeTemplate.create({
     data: { ...parsed, createdById: session.user.id },
   });
 

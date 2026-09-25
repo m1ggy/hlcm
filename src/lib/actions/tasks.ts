@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import type { Prisma } from "@/generated/prisma/client";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { requireRole, requireSession, assertApplicationAccess, ForbiddenError, AppRole, isManagement } from "@/lib/rbac";
 import { recordFieldChanges, recordAudit } from "@/lib/audit";
 import { notify } from "@/lib/notifications";
@@ -82,9 +82,9 @@ function newlyAdded(before: string[], after: string[]) {
  */
 async function ensureTaskAssigneeAccess(applicationId: string, userId: string, grantedById: string) {
   const [user, app, existingGrant] = await Promise.all([
-    prisma.user.findUnique({ where: { id: userId }, select: { role: true } }),
-    prisma.application.findUnique({ where: { id: applicationId }, select: { assignedUserId: true } }),
-    prisma.accessGrant.findUnique({ where: { applicationId_userId: { applicationId, userId } } }),
+    db.user.findUnique({ where: { id: userId }, select: { role: true } }),
+    db.application.findUnique({ where: { id: applicationId }, select: { assignedUserId: true } }),
+    db.accessGrant.findUnique({ where: { applicationId_userId: { applicationId, userId } } }),
   ]);
   if (!user || !app) return;
   if (isManagement(user.role as AppRole)) return;
@@ -95,7 +95,7 @@ async function ensureTaskAssigneeAccess(applicationId: string, userId: string, g
   if (app.assignedUserId === userId) return;
   if (existingGrant?.permission === "EDIT") return;
 
-  await prisma.accessGrant.upsert({
+  await db.accessGrant.upsert({
     where: { applicationId_userId: { applicationId, userId } },
     create: { applicationId, userId, permission: "EDIT", grantedById },
     update: { permission: "EDIT" },
@@ -133,8 +133,8 @@ export async function listTasksForApplication(applicationId: string) {
   await assertApplicationAccess(session, applicationId, "view");
 
   const [phases, tasks] = await Promise.all([
-    prisma.phase.findMany({ where: { applicationId }, orderBy: { sortOrder: "asc" } }),
-    prisma.task.findMany({
+    db.phase.findMany({ where: { applicationId }, orderBy: { sortOrder: "asc" } }),
+    db.task.findMany({
       where: { applicationId, parentTaskId: null, archived: false },
       include: taskInclude,
       orderBy: { sortOrder: "asc" },
@@ -175,7 +175,7 @@ export async function createTask(formData: FormData) {
 
   await assertCanEditTask(session, { applicationId: parsed.applicationId, assignedUserIds: [session.user.id] });
 
-  const task = await prisma.task.create({
+  const task = await db.task.create({
     data: {
       applicationId: parsed.applicationId,
       phaseId: parsed.phaseId,
@@ -228,7 +228,7 @@ const updateTaskSchema = z.object({
 
 export async function updateTask(taskId: string, formData: FormData) {
   const session = await requireSession();
-  const before = await prisma.task.findUniqueOrThrow({
+  const before = await db.task.findUniqueOrThrow({
     where: { id: taskId },
     include: { assignees: { select: { userId: true } } },
   });
@@ -252,7 +252,7 @@ export async function updateTask(taskId: string, formData: FormData) {
     estimatedHours: isCaregiver ? undefined : formData.get("estimatedHours") ?? undefined,
   });
 
-  await prisma.$transaction(async (tx) => {
+  await db.$transaction(async (tx) => {
     if (parsed.assignedUserIds) {
       await tx.taskAssignee.deleteMany({ where: { taskId } });
       await tx.taskAssignee.createMany({ data: parsed.assignedUserIds.map((userId) => ({ taskId, userId })) });
@@ -272,7 +272,7 @@ export async function updateTask(taskId: string, formData: FormData) {
     });
   });
 
-  const task = await prisma.task.findUniqueOrThrow({
+  const task = await db.task.findUniqueOrThrow({
     where: { id: taskId },
     include: { assignees: { select: { userId: true } }, reviewers: { select: { userId: true } } },
   });
@@ -352,18 +352,18 @@ export async function reorderTasks(applicationId: string, orderedTaskIds: string
   }
   await assertApplicationAccess(session, applicationId, "edit");
 
-  await prisma.$transaction(
-    orderedTaskIds.map((id, index) =>
-      prisma.task.updateMany({ where: { id, applicationId }, data: { sortOrder: index } })
-    )
-  );
+  await db.$transaction(async (tx) => {
+    for (const [index, id] of orderedTaskIds.entries()) {
+      await tx.task.updateMany({ where: { id, applicationId }, data: { sortOrder: index } });
+    }
+  });
 
   revalidatePath(`/applications/${applicationId}`);
 }
 
 export async function getTaskAuditLog(taskId: string) {
   const session = await requireSession();
-  const task = await prisma.task.findUniqueOrThrow({
+  const task = await db.task.findUniqueOrThrow({
     where: { id: taskId },
     include: { assignees: { select: { userId: true } } },
   });
@@ -380,7 +380,7 @@ export async function getTaskAuditLog(taskId: string) {
     }
   }
 
-  return prisma.auditLog.findMany({
+  return db.auditLog.findMany({
     where: { entityType: "Task", entityId: taskId },
     include: { actor: { select: { name: true } } },
     orderBy: { createdAt: "desc" },
@@ -392,7 +392,7 @@ export async function setTaskReviewers(taskId: string, reviewerUserIds: string[]
   if ((session.user.role as AppRole) === "CAREGIVER") {
     throw new ForbiddenError("Caregivers can't set reviewers");
   }
-  const task = await prisma.task.findUniqueOrThrow({
+  const task = await db.task.findUniqueOrThrow({
     where: { id: taskId },
     include: { assignees: { select: { userId: true } }, reviewers: { select: { userId: true } } },
   });
@@ -404,10 +404,10 @@ export async function setTaskReviewers(taskId: string, reviewerUserIds: string[]
   const before = sortedIds(task.reviewers.map((r) => r.userId));
   const after = sortedIds(reviewerUserIds);
 
-  await prisma.$transaction([
-    prisma.taskReviewer.deleteMany({ where: { taskId } }),
-    prisma.taskReviewer.createMany({ data: after.map((userId) => ({ taskId, userId })) }),
-  ]);
+  await db.$transaction(async (tx) => [
+    await tx.taskReviewer.deleteMany({ where: { taskId } }),
+    await tx.taskReviewer.createMany({ data: after.map((userId) => ({ taskId, userId })) }),
+  ] as const);
 
   await recordFieldChanges({
     entityType: "Task",
@@ -446,7 +446,7 @@ export async function setTaskReviewers(taskId: string, reviewerUserIds: string[]
 export async function listMyTasks() {
   const session = await requireSession();
 
-  const tasks = await prisma.task.findMany({
+  const tasks = await db.task.findMany({
     where: {
       assignees: { some: { userId: session.user.id } },
       parentTaskId: null,
@@ -478,7 +478,7 @@ export async function listMyTasks() {
  * dashboard page load; this keeps that query cheap.
  */
 async function taskOptionsFor(userId: string) {
-  const tasks = await prisma.task.findMany({
+  const tasks = await db.task.findMany({
     where: {
       assignees: { some: { userId } },
       parentTaskId: null,
@@ -530,7 +530,7 @@ export async function createStandaloneTask(formData: FormData) {
   });
 
   if (parsed.parentTaskId) {
-    const parent = await prisma.task.findUniqueOrThrow({
+    const parent = await db.task.findUniqueOrThrow({
       where: { id: parsed.parentTaskId },
       include: { assignees: { select: { userId: true } } },
     });
@@ -540,7 +540,7 @@ export async function createStandaloneTask(formData: FormData) {
     });
   }
 
-  const task = await prisma.task.create({
+  const task = await db.task.create({
     data: {
       label: parsed.label,
       description: parsed.description,
@@ -582,7 +582,7 @@ export async function createStandaloneTask(formData: FormData) {
 // the DB, so nothing here needs cascading deletes or FK cleanup.
 export async function archiveTask(taskId: string) {
   const session = await requireRole(["ADMIN"]);
-  const task = await prisma.task.update({ where: { id: taskId }, data: { archived: true } });
+  const task = await db.task.update({ where: { id: taskId }, data: { archived: true } });
 
   await recordAudit({ entityType: "Task", entityId: taskId, action: "archive", actorId: session.user.id });
 
@@ -593,7 +593,7 @@ export async function archiveTask(taskId: string) {
 
 export async function restoreTask(taskId: string) {
   const session = await requireRole(["ADMIN"]);
-  const task = await prisma.task.update({ where: { id: taskId }, data: { archived: false } });
+  const task = await db.task.update({ where: { id: taskId }, data: { archived: false } });
 
   await recordAudit({ entityType: "Task", entityId: taskId, action: "restore", actorId: session.user.id });
 

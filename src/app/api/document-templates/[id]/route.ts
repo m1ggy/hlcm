@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { requireRole, UnauthorizedError, ForbiddenError } from "@/lib/rbac";
 import { readStoredFile } from "@/lib/storage";
 
@@ -10,7 +10,7 @@ export async function GET(_req: NextRequest, ctx: RouteContext<"/api/document-te
 
   try {
     await requireRole(["ADMIN", "MANAGER", "STAFF"]);
-    const template = await prisma.documentTemplate.findUnique({ where: { id } });
+    const template = await db.documentTemplate.findUnique({ where: { id } });
     if (!template) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
     const buffer = await readStoredFile(template.storageKey);

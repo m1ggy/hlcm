@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
@@ -42,7 +42,7 @@ function readFields(formData: FormData) {
 // needs renewing next.
 export async function listClientLicenses(clientId: string) {
   await requireRole([...MANAGE_ROLES]);
-  return prisma.clientLicense.findMany({ where: { clientId }, orderBy: { expiryDate: "asc" } });
+  return db.clientLicense.findMany({ where: { clientId }, orderBy: { expiryDate: "asc" } });
 }
 
 export async function createClientLicense(formData: FormData) {
@@ -50,7 +50,7 @@ export async function createClientLicense(formData: FormData) {
   const parsed = createSchema.parse({ clientId: formData.get("clientId"), ...readFields(formData) });
   const { clientId, issuedDate, expiryDate, ...rest } = parsed;
 
-  const license = await prisma.clientLicense
+  const license = await db.clientLicense
     .create({
       data: {
         ...rest,
@@ -80,8 +80,8 @@ export async function updateClientLicense(id: string, formData: FormData) {
   const parsed = updateSchema.parse(readFields(formData));
   const { issuedDate, expiryDate, ...rest } = parsed;
 
-  const before = await prisma.clientLicense.findUniqueOrThrow({ where: { id } });
-  const license = await prisma.clientLicense.update({
+  const before = await db.clientLicense.findUniqueOrThrow({ where: { id } });
+  const license = await db.clientLicense.update({
     where: { id },
     data: { ...rest, issuedDate: issuedDate ? new Date(issuedDate) : null, expiryDate: new Date(expiryDate) },
   });
@@ -102,7 +102,7 @@ export async function updateClientLicense(id: string, formData: FormData) {
 
 export async function deleteClientLicense(id: string) {
   const session = await requireRole([...MANAGE_ROLES]);
-  const license = await prisma.clientLicense.delete({ where: { id } });
+  const license = await db.clientLicense.delete({ where: { id } });
 
   await recordAudit({
     entityType: "Client",

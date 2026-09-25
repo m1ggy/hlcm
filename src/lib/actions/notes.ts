@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { requireSession, requireRole, assertApplicationAccess, ForbiddenError, AppRole, isManagement } from "@/lib/rbac";
 import { notify } from "@/lib/notifications";
 
@@ -30,7 +30,7 @@ export async function listNotes(applicationId: string) {
   const session = await requireSession();
   await assertApplicationAccess(session, applicationId, "view");
 
-  return prisma.note.findMany({
+  return db.note.findMany({
     where: { applicationId },
     include: { author: { select: { id: true, name: true } } },
     orderBy: { createdAt: "asc" },
@@ -48,12 +48,12 @@ export async function addNote(input: z.infer<typeof addNoteSchema>) {
   const session = await requireSession();
   await assertApplicationAccess(session, parsed.applicationId, "view");
 
-  const application = await prisma.application.findUniqueOrThrow({
+  const application = await db.application.findUniqueOrThrow({
     where: { id: parsed.applicationId },
     select: { name: true },
   });
 
-  const note = await prisma.note.create({
+  const note = await db.note.create({
     data: {
       applicationId: parsed.applicationId,
       body: parsed.body,
@@ -81,13 +81,13 @@ export async function addNote(input: z.infer<typeof addNoteSchema>) {
 
 export async function listTaskNotes(taskId: string) {
   const session = await requireSession();
-  const task = await prisma.task.findUniqueOrThrow({
+  const task = await db.task.findUniqueOrThrow({
     where: { id: taskId },
     include: { assignees: { select: { userId: true } } },
   });
   await assertCanCommentOnTask(session, task);
 
-  return prisma.note.findMany({
+  return db.note.findMany({
     where: { taskId },
     include: { author: { select: { id: true, name: true } } },
     orderBy: { createdAt: "asc" },
@@ -103,13 +103,13 @@ const addTaskNoteSchema = z.object({
 export async function addTaskNote(input: z.infer<typeof addTaskNoteSchema>) {
   const parsed = addTaskNoteSchema.parse(input);
   const session = await requireSession();
-  const task = await prisma.task.findUniqueOrThrow({
+  const task = await db.task.findUniqueOrThrow({
     where: { id: parsed.taskId },
     include: { assignees: { select: { userId: true } } },
   });
   await assertCanCommentOnTask(session, task);
 
-  const note = await prisma.note.create({
+  const note = await db.note.create({
     data: {
       taskId: parsed.taskId,
       body: parsed.body,
@@ -141,7 +141,7 @@ export async function addTaskNote(input: z.infer<typeof addTaskNoteSchema>) {
 export async function listClientNotes(clientId: string) {
   await requireRole(["ADMIN", "MANAGER", "STAFF"]);
 
-  return prisma.note.findMany({
+  return db.note.findMany({
     where: { clientId },
     include: { author: { select: { id: true, name: true } } },
     orderBy: { createdAt: "asc" },
@@ -158,12 +158,12 @@ export async function addClientNote(input: z.infer<typeof addClientNoteSchema>) 
   const parsed = addClientNoteSchema.parse(input);
   const session = await requireRole(["ADMIN", "MANAGER", "STAFF"]);
 
-  const client = await prisma.client.findUniqueOrThrow({
+  const client = await db.client.findUniqueOrThrow({
     where: { id: parsed.clientId },
     select: { name: true },
   });
 
-  const note = await prisma.note.create({
+  const note = await db.note.create({
     data: {
       clientId: parsed.clientId,
       body: parsed.body,

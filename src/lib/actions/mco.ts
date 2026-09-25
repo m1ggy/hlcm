@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { requireRole, requireSession } from "@/lib/rbac";
 import { recordAudit, recordFieldChanges } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
@@ -12,7 +12,7 @@ const MCO_NAMES = ["AETNA", "BCBS_IL", "COUNTY_CARE", "HUMANA", "MERIDIAN", "MOL
 
 export async function listMcoCredentialsForClient(clientId: string) {
   await requireRole(["ADMIN", "MANAGER", "STAFF"]);
-  const credentials = await prisma.mcoCredential.findMany({
+  const credentials = await db.mcoCredential.findMany({
     where: { clientId },
     include: {
       stage: true,
@@ -44,7 +44,7 @@ export async function createMcoCredential(clientId: string, mcoName: (typeof MCO
     throw new Error("No MCO pipeline stages configured — run the stage seed first.");
   }
 
-  const credential = await prisma.mcoCredential
+  const credential = await db.mcoCredential
     .create({
       data: { clientId, mcoName, stageId: initialStage.id, createdById: session.user.id },
     })
@@ -52,7 +52,7 @@ export async function createMcoCredential(clientId: string, mcoName: (typeof MCO
       friendlyPrismaError(e, { duplicateMessages: { "clientId,mcoName": "This client already has a credential in progress for that MCO" } })
     );
 
-  await prisma.stageHistory.create({
+  await db.stageHistory.create({
     data: { mcoCredentialId: credential.id, stageId: initialStage.id, actorId: session.user.id },
   });
 
@@ -79,7 +79,7 @@ export async function changeMcoStage(
 ) {
   const session = await requireRole(["ADMIN", "MANAGER", "STAFF"]);
 
-  const credential = await prisma.mcoCredential.findUniqueOrThrow({
+  const credential = await db.mcoCredential.findUniqueOrThrow({
     where: { id: mcoCredentialId },
     include: { stage: true },
   });
@@ -87,7 +87,7 @@ export async function changeMcoStage(
     throw new Error("This MCO credential doesn't have a stage set yet — contact an admin.");
   }
 
-  const targetStage = await prisma.pipelineStage.findUniqueOrThrow({ where: { id: targetStageId } });
+  const targetStage = await db.pipelineStage.findUniqueOrThrow({ where: { id: targetStageId } });
 
   const followUpDate = opts.followUpDate ? new Date(opts.followUpDate) : null;
   const result = resolveStageChange(credential.stage, targetStage, { reason: opts.reason, followUpDate });
@@ -95,9 +95,9 @@ export async function changeMcoStage(
     throw new Error(result.message);
   }
 
-  const [updated] = await prisma.$transaction([
-    prisma.mcoCredential.update({ where: { id: mcoCredentialId }, data: { stageId: targetStage.id } }),
-    prisma.stageHistory.create({
+  const [updated] = await db.$transaction(async (tx) => [
+    await tx.mcoCredential.update({ where: { id: mcoCredentialId }, data: { stageId: targetStage.id } }),
+    await tx.stageHistory.create({
       data: {
         mcoCredentialId,
         stageId: targetStage.id,
@@ -106,7 +106,7 @@ export async function changeMcoStage(
         actorId: session.user.id,
       },
     }),
-  ]);
+  ] as const);
 
   await recordAudit({
     entityType: "Client",
@@ -127,13 +127,13 @@ export async function changeMcoStage(
 export async function listReachableMcoStages(mcoCredentialId: string) {
   await requireRole(["ADMIN", "MANAGER", "STAFF"]);
 
-  const credential = await prisma.mcoCredential.findUniqueOrThrow({
+  const credential = await db.mcoCredential.findUniqueOrThrow({
     where: { id: mcoCredentialId },
     include: { stage: true },
   });
   if (!credential.stage) return [];
 
-  const allStages = await prisma.pipelineStage.findMany({
+  const allStages = await db.pipelineStage.findMany({
     where: { pipeline: "MCO", active: true },
     orderBy: { sortOrder: "asc" },
   });
@@ -155,8 +155,8 @@ export async function updateMcoCredential(id: string, formData: FormData) {
   const session = await requireSession();
   await requireRole(["ADMIN", "MANAGER", "STAFF"]);
 
-  const before = await prisma.mcoCredential.findUniqueOrThrow({ where: { id } });
-  const credential = await prisma.mcoCredential.update({
+  const before = await db.mcoCredential.findUniqueOrThrow({ where: { id } });
+  const credential = await db.mcoCredential.update({
     where: { id },
     data: {
       npi: (formData.get("npi")?.toString() || null),

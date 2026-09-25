@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { requireSession, assertApplicationAccess } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
@@ -14,12 +14,12 @@ export async function listApplicableTemplates(applicationId: string) {
   const session = await requireSession();
   await assertApplicationAccess(session, applicationId, "view");
 
-  const application = await prisma.application.findUniqueOrThrow({
+  const application = await db.application.findUniqueOrThrow({
     where: { id: applicationId },
     select: { licenseTypeTemplateId: true },
   });
 
-  return prisma.documentTemplate.findMany({
+  return db.documentTemplate.findMany({
     where: {
       active: true,
       OR: [{ licenseTypeTemplateId: null }, { licenseTypeTemplateId: application.licenseTypeTemplateId }],
@@ -33,7 +33,7 @@ export async function listGeneratedDocuments(applicationId: string) {
   const session = await requireSession();
   await assertApplicationAccess(session, applicationId, "view");
 
-  return prisma.generatedDocument.findMany({
+  return db.generatedDocument.findMany({
     where: { applicationId },
     include: {
       template: { select: { name: true } },
@@ -54,12 +54,12 @@ export async function generateDocument(input: z.infer<typeof generateSchema>) {
   const session = await requireSession();
   await assertApplicationAccess(session, applicationId, "edit");
 
-  const template = await prisma.documentTemplate.findUniqueOrThrow({
+  const template = await db.documentTemplate.findUniqueOrThrow({
     where: { id: templateId },
     include: { fields: true },
   });
 
-  const application = await prisma.application.findUniqueOrThrow({
+  const application = await db.application.findUniqueOrThrow({
     where: { id: applicationId },
     include: { licenseTypeTemplate: true, caseType: true, client: true },
   });
@@ -77,7 +77,7 @@ export async function generateDocument(input: z.infer<typeof generateSchema>) {
   const fileName = `${template.name} - ${application.name}.docx`;
   const { storageKey } = await saveBuffer(merged, ".docx");
 
-  const doc = await prisma.generatedDocument.create({
+  const doc = await db.generatedDocument.create({
     data: {
       templateId,
       applicationId,
@@ -112,7 +112,7 @@ export async function updateGeneratedDocumentStatus(
   const session = await requireSession();
   await assertApplicationAccess(session, applicationId, "edit");
 
-  const doc = await prisma.generatedDocument.update({ where: { id }, data: { status: parsedStatus } });
+  const doc = await db.generatedDocument.update({ where: { id }, data: { status: parsedStatus } });
 
   await recordAudit({
     entityType: "Application",
@@ -131,8 +131,8 @@ export async function deleteGeneratedDocument(id: string, applicationId: string)
   const session = await requireSession();
   await assertApplicationAccess(session, applicationId, "edit");
 
-  const doc = await prisma.generatedDocument.findUniqueOrThrow({ where: { id } });
-  await prisma.generatedDocument
+  const doc = await db.generatedDocument.findUniqueOrThrow({ where: { id } });
+  await db.generatedDocument
     .delete({ where: { id } })
     .catch((e) => friendlyPrismaError(e, { notFoundMessage: "That document is already gone — someone else may have just removed it" }));
   await deleteStoredFile(doc.storageKey);

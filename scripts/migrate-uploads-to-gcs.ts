@@ -9,10 +9,8 @@
 import path from "path";
 import { readFile } from "fs/promises";
 import { Storage } from "@google-cloud/storage";
-import { PrismaClient } from "@/generated/prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
+import { db as prisma, runScriptAsTenant } from "./lib/tenant-script";
 
-const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }) });
 
 async function main() {
   const uploadDir = process.env.UPLOAD_DIR;
@@ -50,7 +48,4 @@ async function main() {
   await prisma.$disconnect();
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+runScriptAsTenant(main);

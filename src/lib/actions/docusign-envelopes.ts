@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { PDFDocument } from "pdf-lib";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { requireSession, requireRole, assertApplicationAccess, AppRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { readStoredFile } from "@/lib/storage";
@@ -47,7 +47,7 @@ async function sendEnvelope(
   },
   sentById: string
 ) {
-  const asset = await prisma.fileAsset.findUniqueOrThrow({ where: { id: input.fileAssetId } });
+  const asset = await db.fileAsset.findUniqueOrThrow({ where: { id: input.fileAssetId } });
   if (asset.mimeType !== "application/pdf") throw new Error("Only PDF files can be sent for signature");
   if (parent.entityType === "Application" && asset.applicationId !== parent.applicationId) {
     throw new Error("That file doesn't belong to this application");
@@ -76,7 +76,7 @@ async function sendEnvelope(
   const now = new Date();
   const expiresAt = new Date(now.getTime() + (input.expirationDays ?? 30) * 24 * 60 * 60 * 1000);
 
-  const envelope = await prisma.docusignEnvelope.create({
+  const envelope = await db.docusignEnvelope.create({
     data: {
       applicationId: parent.entityType === "Application" ? parent.applicationId : undefined,
       clientAgreementId: parent.entityType === "Client" ? parent.clientAgreementId : undefined,
@@ -125,7 +125,7 @@ export async function createAndSendEnvelopeForApplication(input: z.infer<typeof 
 export async function createAndSendEnvelopeForClientAgreement(input: z.infer<typeof clientAgreementSendSchema>) {
   const session = await requireRole(MANAGE_ROLES);
   const parsed = clientAgreementSendSchema.parse(input);
-  const agreement = await prisma.clientAgreement.findUniqueOrThrow({
+  const agreement = await db.clientAgreement.findUniqueOrThrow({
     where: { id: parsed.clientAgreementId },
     select: { clientId: true },
   });
@@ -142,12 +142,12 @@ export async function createAndSendEnvelopeForClientAgreement(input: z.infer<typ
 export async function listEnvelopesForApplication(applicationId: string) {
   const session = await requireSession();
   await assertApplicationAccess(session, applicationId, "view");
-  return prisma.docusignEnvelope.findMany({ where: { applicationId }, orderBy: { createdAt: "desc" } });
+  return db.docusignEnvelope.findMany({ where: { applicationId }, orderBy: { createdAt: "desc" } });
 }
 
 export async function listEnvelopesForClientAgreement(clientAgreementId: string) {
   await requireRole(MANAGE_ROLES);
-  return prisma.docusignEnvelope.findMany({ where: { clientAgreementId }, orderBy: { createdAt: "desc" } });
+  return db.docusignEnvelope.findMany({ where: { clientAgreementId }, orderBy: { createdAt: "desc" } });
 }
 
 // A real operational necessity ("sent to the wrong person") — kept in v1,
@@ -156,13 +156,13 @@ export async function listEnvelopesForClientAgreement(clientAgreementId: string)
 // meanwhile).
 export async function voidEnvelope(envelopeId: string, reason: string) {
   const session = await requireRole(MANAGE_ROLES);
-  const envelope = await prisma.docusignEnvelope.findUniqueOrThrow({ where: { id: envelopeId } });
+  const envelope = await db.docusignEnvelope.findUniqueOrThrow({ where: { id: envelopeId } });
   if (envelope.status === "COMPLETED" || envelope.status === "VOIDED" || envelope.status === "DECLINED") {
     throw new Error("This envelope is already finished and can't be voided");
   }
 
   await docusignVoidEnvelope(envelope.docusignEnvelopeId, reason);
-  await prisma.docusignEnvelope.update({
+  await db.docusignEnvelope.update({
     where: { id: envelopeId },
     data: { status: "VOIDED", voidedAt: new Date(), voidReason: reason },
   });
@@ -181,6 +181,6 @@ export async function voidEnvelope(envelopeId: string, reason: string) {
 
 async function clientIdForAgreement(clientAgreementId: string | null) {
   if (!clientAgreementId) return null;
-  const agreement = await prisma.clientAgreement.findUnique({ where: { id: clientAgreementId }, select: { clientId: true } });
+  const agreement = await db.clientAgreement.findUnique({ where: { id: clientAgreementId }, select: { clientId: true } });
   return agreement?.clientId ?? null;
 }

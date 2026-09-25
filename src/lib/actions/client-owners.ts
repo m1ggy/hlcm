@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
@@ -41,7 +41,7 @@ function toPercentage(value: string | undefined) {
 
 export async function listClientOwners(clientId: string) {
   await requireRole([...MANAGE_ROLES]);
-  return prisma.clientOwner.findMany({ where: { clientId }, orderBy: { createdAt: "asc" } });
+  return db.clientOwner.findMany({ where: { clientId }, orderBy: { createdAt: "asc" } });
 }
 
 export async function createClientOwner(formData: FormData) {
@@ -49,7 +49,7 @@ export async function createClientOwner(formData: FormData) {
   const parsed = createSchema.parse({ clientId: formData.get("clientId"), ...readFields(formData) });
   const { clientId, ownershipPercentage, ...rest } = parsed;
 
-  const owner = await prisma.clientOwner
+  const owner = await db.clientOwner
     .create({
       data: { ...rest, ownershipPercentage: toPercentage(ownershipPercentage), clientId, createdById: session.user.id },
     })
@@ -72,8 +72,8 @@ export async function updateClientOwner(id: string, formData: FormData) {
   const parsed = updateSchema.parse(readFields(formData));
   const { ownershipPercentage, ...rest } = parsed;
 
-  const before = await prisma.clientOwner.findUniqueOrThrow({ where: { id } });
-  const owner = await prisma.clientOwner.update({
+  const before = await db.clientOwner.findUniqueOrThrow({ where: { id } });
+  const owner = await db.clientOwner.update({
     where: { id },
     data: { ...rest, ownershipPercentage: toPercentage(ownershipPercentage) ?? null },
   });
@@ -93,7 +93,7 @@ export async function updateClientOwner(id: string, formData: FormData) {
 
 export async function deleteClientOwner(id: string) {
   const session = await requireRole([...MANAGE_ROLES]);
-  const owner = await prisma.clientOwner.delete({ where: { id } });
+  const owner = await db.clientOwner.delete({ where: { id } });
 
   await recordAudit({
     entityType: "Client",

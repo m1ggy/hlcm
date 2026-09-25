@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 
@@ -16,7 +16,7 @@ const projectSchema = z.object({
 // isn't needed yet; revisit if that changes.
 export async function listProjects(opts: { archived?: boolean } = {}) {
   await requireRole(["ADMIN", "MANAGER", "STAFF"]);
-  return prisma.project.findMany({
+  return db.project.findMany({
     where: { active: !opts.archived },
     orderBy: { name: "asc" },
     include: { _count: { select: { clients: true } } },
@@ -25,7 +25,7 @@ export async function listProjects(opts: { archived?: boolean } = {}) {
 
 export async function getProject(id: string) {
   await requireRole(["ADMIN", "MANAGER", "STAFF"]);
-  return prisma.project.findUniqueOrThrow({
+  return db.project.findUniqueOrThrow({
     where: { id },
     include: {
       clients: { where: { active: true }, orderBy: { name: "asc" } },
@@ -36,7 +36,7 @@ export async function getProject(id: string) {
 
 export async function archiveProject(id: string) {
   const session = await requireRole(["ADMIN", "MANAGER"]);
-  await prisma.project.update({ where: { id }, data: { active: false } });
+  await db.project.update({ where: { id }, data: { active: false } });
 
   await recordAudit({ entityType: "Project", entityId: id, action: "archive", actorId: session.user.id });
 
@@ -46,7 +46,7 @@ export async function archiveProject(id: string) {
 
 export async function restoreProject(id: string) {
   const session = await requireRole(["ADMIN", "MANAGER"]);
-  await prisma.project.update({ where: { id }, data: { active: true } });
+  await db.project.update({ where: { id }, data: { active: true } });
 
   await recordAudit({ entityType: "Project", entityId: id, action: "restore", actorId: session.user.id });
 
@@ -56,15 +56,15 @@ export async function restoreProject(id: string) {
 
 export async function listServiceTypes() {
   await requireRole(["ADMIN", "MANAGER", "STAFF"]);
-  return prisma.serviceType.findMany({ where: { active: true }, orderBy: { name: "asc" } });
+  return db.serviceType.findMany({ where: { active: true }, orderBy: { name: "asc" } });
 }
 
 // Empty string clears the color back to the neutral default — distinct from
 // not sending the field at all, same convention as the case-fields update.
 export async function updateProjectServiceType(id: string, serviceTypeId: string) {
   const session = await requireRole(["ADMIN", "MANAGER", "STAFF"]);
-  const before = await prisma.project.findUniqueOrThrow({ where: { id } });
-  const project = await prisma.project.update({
+  const before = await db.project.findUniqueOrThrow({ where: { id } });
+  const project = await db.project.update({
     where: { id },
     data: { serviceTypeId: serviceTypeId === "" ? null : serviceTypeId },
   });
@@ -92,7 +92,7 @@ export async function createProject(formData: FormData) {
     description: formData.get("description") || undefined,
   });
 
-  const project = await prisma.project.create({
+  const project = await db.project.create({
     data: { ...parsed, createdById: session.user.id },
   });
 

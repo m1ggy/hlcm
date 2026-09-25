@@ -3,14 +3,14 @@
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import QRCode from "qrcode";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
 import { requireSession } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { generateMfaSecret, getOtpAuthUrl, verifyTotpToken } from "@/lib/totp";
 
 export async function getAccount() {
   const session = await requireSession();
-  return prisma.user.findUniqueOrThrow({
+  return db.user.findUniqueOrThrow({
     where: { id: session.user.id },
     select: { id: true, name: true, email: true, mfaEnabled: true, emailNotificationsEnabled: true, timezone: true },
   });
@@ -25,7 +25,7 @@ export async function updateTimezone(timezone: string | null) {
     throw new Error("Unrecognized timezone");
   }
 
-  await prisma.user.update({
+  await db.user.update({
     where: { id: session.user.id },
     data: { timezone },
   });
@@ -40,7 +40,7 @@ export async function updateTimezone(timezone: string | null) {
 
 export async function updateEmailNotifications(enabled: boolean) {
   const session = await requireSession();
-  await prisma.user.update({
+  await db.user.update({
     where: { id: session.user.id },
     data: { emailNotificationsEnabled: enabled },
   });
@@ -72,14 +72,14 @@ export async function changePassword(formData: FormData) {
     confirmPassword: formData.get("confirmPassword"),
   });
 
-  const user = await prisma.user.findUniqueOrThrow({ where: { id: session.user.id } });
+  const user = await db.user.findUniqueOrThrow({ where: { id: session.user.id } });
   const currentValid = await bcrypt.compare(parsed.currentPassword, user.passwordHash);
   if (!currentValid) {
     throw new Error("Current password is incorrect");
   }
 
   const passwordHash = await bcrypt.hash(parsed.newPassword, 12);
-  await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
+  await db.user.update({ where: { id: user.id }, data: { passwordHash } });
 
   await recordAudit({
     entityType: "User",
@@ -95,7 +95,7 @@ export async function startMfaEnrollment() {
   const session = await requireSession();
   const secret = generateMfaSecret();
 
-  await prisma.user.update({
+  await db.user.update({
     where: { id: session.user.id },
     data: { mfaSecret: secret, mfaEnabled: false },
   });
@@ -110,7 +110,7 @@ export async function verifyAndEnableMfa(formData: FormData) {
   const session = await requireSession();
   const code = String(formData.get("code") ?? "");
 
-  const user = await prisma.user.findUniqueOrThrow({ where: { id: session.user.id } });
+  const user = await db.user.findUniqueOrThrow({ where: { id: session.user.id } });
   if (!user.mfaSecret) {
     throw new Error("Start MFA enrollment first");
   }
@@ -118,7 +118,7 @@ export async function verifyAndEnableMfa(formData: FormData) {
     throw new Error("Invalid code — check your authenticator app and try again");
   }
 
-  await prisma.user.update({ where: { id: user.id }, data: { mfaEnabled: true } });
+  await db.user.update({ where: { id: user.id }, data: { mfaEnabled: true } });
 
   await recordAudit({
     entityType: "User",
@@ -130,7 +130,7 @@ export async function verifyAndEnableMfa(formData: FormData) {
 
 export async function disableMfa() {
   const session = await requireSession();
-  await prisma.user.update({
+  await db.user.update({
     where: { id: session.user.id },
     data: { mfaEnabled: false, mfaSecret: null },
   });
