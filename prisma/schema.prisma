@@ -32,6 +32,7 @@ model Organization {
   updatedAt DateTime  @updatedAt
 
   orgCounters              OrgCounter[]
+  picklistOptions          PicklistOption[]
   users                    User[]
   wiseRecipients           WiseRecipient[]
   wiseTransactions         WiseTransaction[]
@@ -107,6 +108,27 @@ model OrgCounter {
   @@map("org_counters")
 }
 
+// One choice in an organization's picklist (see PicklistKind). Rows store
+// the `code`, which never changes once created; `label` is what people see
+// and can be renamed freely. Retiring an option sets active=false — it drops
+// out of pickers but existing rows keep displaying its label.
+model PicklistOption {
+  id             String       @id @default(cuid())
+  organizationId String       @default(dbgenerated("current_org_id()"))
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  list           PicklistKind
+  code           String
+  label          String
+  sortOrder      Int          @default(0)
+  active         Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, list, code])
+  @@index([organizationId])
+  @@map("picklist_options")
+}
+
 // DEVELOPER is a break-glass superuser, same reach as OWNER — it exists
 // only to bootstrap the first OWNER (or fix a locked-out account) without
 // touching the database by hand every time. It's deliberately NOT
@@ -158,32 +180,15 @@ enum TaskStatus {
   CLOSED
 }
 
-// Which agency a Home Care case is filed with. Meaningful mainly for the
-// HOME_CARE pipeline (see docs/pipeline-stage-plan.md) — nullable everywhere
-// else.
-enum Agency {
-  IDPH
-  IDOA
-  IDHS
-  OTHER
-}
-
-// Whose court the ball is in right now — a quick glance answer to "who are
-// we waiting on".
-enum BallWith {
-  CTK
-  CLIENT
-  GOVERNMENT
-}
-
-enum McoName {
-  AETNA
-  BCBS_IL
-  COUNTY_CARE
-  HUMANA
-  MERIDIAN
-  MOLINA
-  OTHER
+// Per-organization picklists that used to be Illinois/CTK-specific enums —
+// each tenant edits its own under Admin > Lists (see PicklistOption).
+enum PicklistKind {
+  // Which agency a Home Care case is filed with (Application.agency).
+  AGENCY
+  // MCO / payer a client is credentialing with (McoCredential.mcoName).
+  PAYER
+  // Whose court the ball is in — "who are we waiting on" (ballIsWith).
+  BALL_WITH
 }
 
 enum GrantPermission {
@@ -1015,8 +1020,10 @@ model Application {
 
   // Case-tracking fields from docs/pipeline-stage-plan.md — all optional,
   // meaningful mainly for cases actively moving through a pipeline.
-  agency                          Agency?
-  ballIsWith                      BallWith?
+  // PicklistOption codes (lists AGENCY / BALL_WITH), not ids — the code
+  // is what's stored and audited, the org's option supplies the label.
+  agency                          String?
+  ballIsWith                      String?
   correctionRound                 Int?
   deficiencyReceivedDate          DateTime?
   deficiencyResponseDueDate       DateTime?
@@ -1083,7 +1090,8 @@ model McoCredential {
   organization   Organization @relation(fields: [organizationId], references: [id])
   client         Client       @relation(fields: [clientId], references: [id])
   clientId       String
-  mcoName        McoName
+  // PicklistOption code from the org's PAYER list.
+  mcoName        String
 
   stage   PipelineStage? @relation(fields: [stageId], references: [id])
   stageId String?
@@ -1093,7 +1101,8 @@ model McoCredential {
   effectiveDate          DateTime?
   recredentialingDueDate DateTime?
 
-  ballIsWith                      BallWith?
+  // PicklistOption code (BALL_WITH list).
+  ballIsWith                      String?
   correctionRound                 Int?
   deficiencyReceivedDate          DateTime?
   deficiencyResponseDueDate       DateTime?
