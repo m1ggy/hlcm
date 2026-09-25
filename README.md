@@ -15,6 +15,17 @@ npm run dev
 
 Bootstrap admin: `admin@hclm.local` / `ChangeMe123!` (override via `SEED_ADMIN_EMAIL`/`SEED_ADMIN_PASSWORD`).
 
+Tests: `npm test` runs the suite against a real Postgres database (`hclm_test`, created next to your dev database and rebuilt from `prisma/migrations` on every run; override with `TEST_DATABASE_URL` — its name must end in `_test`).
+
+### Multitenancy
+
+Every row belongs to an organization (tenant), picked by the request's host — see `docs/multitenancy-plan.md`. App code reads and writes through `db` from `src/lib/db.ts`, never the raw Prisma client (ESLint enforces this).
+
+- **Single-tenant mode** (default — `ROOT_DOMAIN` unset): every host maps to the org in `DEFAULT_ORG_SLUG` (default `ctk`), so `http://localhost:3000` works as before.
+- **Multi-tenant mode**: set `ROOT_DOMAIN` (e.g. `ROOT_DOMAIN=localhost` locally) and use `http://<slug>.localhost:3000` — browsers resolve `*.localhost` on their own. The bare root domain and unknown subdomains have no tenant.
+- Don't set `AUTH_URL`/`NEXTAUTH_URL`: it pins every sign-in redirect to one host.
+- Scripts and seeds run as one org: `ORG_SLUG=<slug> npx tsx scripts/…` (default `ctk`).
+
 ## Deploying
 
 Every push to `main` builds a Docker image, pushes it to GHCR, and deploys it to a DigitalOcean droplet over SSH (`.github/workflows/deploy.yml`). The droplet runs the stack from `docker-compose.yml` (app + Postgres + Caddy).

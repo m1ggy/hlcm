@@ -1,6 +1,6 @@
 # Multitenancy plan
 
-Status: **Phase 1 implemented on branch `multitenancy/phase-1`** (not deployed). Plan drafted 2026-09-24.
+Status (2026-09-26): **Phase 0 + 1 on branch `multitenancy/phase-1`, Phase 2 on `multitenancy/phase-2`** (built on phase-1). Nothing merged or deployed. Plan drafted 2026-09-24.
 
 Note: columns are camelCase like the rest of the schema — the DB column is `"organizationId"`, not `organization_id`.
 
@@ -105,6 +105,24 @@ Rollback: `scripts/multitenancy-phase1-down.sql` (drops the 53 columns, `organiz
 ## Phase 2 — Tenant context + `tenantDb()`
 
 **Goal:** every query scoped. Org resolved from subdomain + session. Still one tenant in prod.
+
+**Status — implemented 2026-09-26 on `multitenancy/phase-2`:**
+- `src/lib/db.ts` (`db`, `tenantDb`, `runAsTenant`, `forEachActiveOrg`), `src/lib/tenant.ts` + `src/lib/tenant-host.ts`; all 55 app files moved off the raw client; ESLint `no-restricted-imports` on `@/lib/prisma`.
+- Org default is `current_org_id()` (SQL function) — Prisma can't introspect a bare `NULLIF(current_setting(...))` default and re-generated it on every `migrate dev`.
+- 118 same-org triggers + the `_ClientToProject` join trigger (`ensure_same_org_triggers()`).
+- Auth: session carries `organizationId`/`orgSlug`; checked in the proxy's `authorized()` and `requireSession()`; user lookups scoped to the host org. Unknown host → "workspace doesn't exist" on login, 404 on public forms.
+- Jobs loop orgs; email links use the org's URL; scripts/seeds run as `ORG_SLUG` (default `ctk`).
+- vitest suite (27 tests, real Postgres) + a `test` job gating `build-and-push` in `deploy.yml`.
+- Verified in the running app (Playwright against `next dev`): all main pages in single-tenant mode; in multi-tenant mode (`ROOT_DOMAIN=localhost`) CTK login at `ctk.localhost`, CTK credentials rejected at `other.localhost`, a hand-copied CTK session cookie rejected on `other.localhost`, bare/unknown hosts have no tenant.
+
+**Deviations from the design below:**
+- No `x-org-id` header from the proxy: server code reads the `host` header directly (`getHostOrg()`), and the proxy compares the JWT's `orgSlug` with the host's slug — no DB lookup in the proxy.
+- `NEXTAUTH_URL`/`AUTH_URL` must be unset (they pin every sign-in redirect to one host). Prod never set it; local `.env` files that do must drop it.
+
+**Open from Phase 2:**
+- `orgId` in server error logs (2d bullet) — not done.
+- `pg` warns "client.query() while already executing a query" when Prisma runs an `include`'s relation queries in parallel inside a transaction; the per-statement `set_config` transaction makes that happen for most queries. Harmless on pg 8 (it queues); `pg` is pinned `^8`. Revisit before any pg 9 upgrade (Prisma adapter issue).
+- Server actions that validate an id and then write are covered by the triggers + scoped where; no per-action cross-tenant tests yet (the suite tests the client and the DB layer).
 
 **2a. Spike — done 2026-09-26** (Prisma 7.8 + adapter-pg, Postgres 16, two orgs; scripts kept out of the repo). Findings:
 
@@ -266,7 +284,7 @@ Rough effort (solo dev + Claude):
 |---|---|
 | 0 Backups + rehearsal script | done (tested locally, not yet on server) |
 | 1 Schema + backfill | 1–2 d |
-| 2 Tenant context + call sites + FK triggers + tests | 2–3 w (spike done) |
+| 2 Tenant context + call sites + FK triggers + tests | done (branch), error-log orgId open |
 | 3 Uniques / numbering / storage / lookups / stage roles | 1 w |
 | 4 Integrations + jobs | 1–1.5 w |
 | 5 Platform admin, onboarding, TLS, billing, offboarding | 1.5–2 w |

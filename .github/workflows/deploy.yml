@@ -43,8 +43,38 @@ jobs:
             echo "environment=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
           fi
 
+  # Tenant-isolation tests (tests/) run against a real Postgres — nothing
+  # builds or deploys unless they pass.
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: hclm
+          POSTGRES_PASSWORD: hclm
+          POSTGRES_DB: hclm_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hclm -d hclm_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://hclm:hclm@localhost:5432/hclm_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npm test
+
   build-and-push:
-    needs: resolve-environment
+    needs: [resolve-environment, test]
     runs-on: ubuntu-latest
     outputs:
       image_base: ${{ steps.vars.outputs.image_base }}
