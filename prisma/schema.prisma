@@ -31,6 +31,7 @@ model Organization {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
+  orgCounters              OrgCounter[]
   users                    User[]
   wiseRecipients           WiseRecipient[]
   wiseTransactions         WiseTransaction[]
@@ -86,6 +87,24 @@ model Organization {
   formSubmissionFiles      FormSubmissionFile[]
 
   @@map("organizations")
+}
+
+// Per-organization counters behind human-readable numbers (Invoice.seq,
+// Receipt.seq), so each tenant's numbering starts at 1 and never interleaves
+// with another's. Only touched by the next_invoice_seq()/next_receipt_seq()
+// column defaults (see the per_org_counters migration) — increments happen
+// inside the inserting transaction, so a rolled-back insert doesn't burn a
+// number.
+model OrgCounter {
+  organizationId String       @default(dbgenerated("current_org_id()"))
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  // "invoice" | "receipt"
+  kind           String
+  // The value the next insert gets.
+  next           Int
+
+  @@id([organizationId, kind])
+  @@map("org_counters")
 }
 
 // DEVELOPER is a break-glass superuser, same reach as OWNER — it exists
@@ -1622,7 +1641,7 @@ model ClientCredential {
 }
 
 // One invoice sent to a Client, optionally tied back to the Application it
-// was billed for. `seq` is a plain autoincrement used only to render a
+// was billed for. `seq` is a per-organization counter used only to render a
 // stable display number ("INV-00042") — there's no separate unique string
 // column to keep in sync or race on. `total` is always server-recomputed
 // from lineItems + taxAmount, never trusted from the client.
@@ -1631,8 +1650,9 @@ model Invoice {
   organizationId String        @default(dbgenerated("current_org_id()"))
   organization   Organization  @relation(fields: [organizationId], references: [id])
   // Local draft counter — only used to display a number before Stripe
-  // assigns its own (stripeInvoiceNumber, set at finalize).
-  seq            Int           @default(autoincrement())
+  // assigns its own (stripeInvoiceNumber, set at finalize). Counts per
+  // organization: next_invoice_seq() takes the next value from OrgCounter.
+  seq            Int           @default(dbgenerated("next_invoice_seq()"))
   client         Client        @relation(fields: [clientId], references: [id])
   clientId       String
   application    Application?  @relation(fields: [applicationId], references: [id])
@@ -1739,6 +1759,7 @@ model Invoice {
   billedTaskTimeEntries TaskTimeEntry[]
 
   @@unique([organizationId, invoiceNumber])
+  @@unique([organizationId, seq])
   @@index([clientId])
   @@index([organizationId])
   @@map("invoices")
@@ -1807,8 +1828,8 @@ model Receipt {
   organization   Organization @relation(fields: [organizationId], references: [id])
   // Local counter for a human-readable receipt number ("R-000123", see
   // displayReceiptNumber in src/lib/invoice-format.ts) — same pattern as
-  // Invoice.seq.
-  seq            Int          @default(autoincrement())
+  // Invoice.seq (per-organization, from next_receipt_seq()).
+  seq            Int          @default(dbgenerated("next_receipt_seq()"))
   payment        Payment      @relation(fields: [paymentId], references: [id], onDelete: Cascade)
   paymentId      String       @unique
   invoice        Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
@@ -1818,6 +1839,7 @@ model Receipt {
   sentTo         String?
   createdAt      DateTime     @default(now())
 
+  @@unique([organizationId, seq])
   @@index([invoiceId])
   @@index([organizationId])
   @@map("receipts")
