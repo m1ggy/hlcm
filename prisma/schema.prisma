@@ -213,7 +213,7 @@ enum InvoiceStatus {
 
 model User {
   id                        String       @id @default(cuid())
-  organizationId            String       @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId            String       @default(dbgenerated("current_org_id()"))
   organization              Organization @relation(fields: [organizationId], references: [id])
   name                      String
   email                     String       @unique
@@ -307,7 +307,7 @@ model User {
 // against that id, not the raw fields, so this stays a thin cache.
 model WiseRecipient {
   id                String       @id @default(cuid())
-  organizationId    String       @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId    String       @default(dbgenerated("current_org_id()"))
   organization      Organization @relation(fields: [organizationId], references: [id])
   userId            String       @unique
   user              User         @relation(fields: [userId], references: [id])
@@ -328,7 +328,7 @@ model WiseRecipient {
 // period is a deliberate admin action, not something that silently double-pays.
 model WiseTransaction {
   id             String       @id @default(cuid())
-  organizationId String       @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId String       @default(dbgenerated("current_org_id()"))
   organization   Organization @relation(fields: [organizationId], references: [id])
   userId         String
   user           User         @relation("WiseTransactionPayee", fields: [userId], references: [id])
@@ -358,7 +358,7 @@ model WiseTransaction {
 // how we stop a second clock-in from stacking on top of an open one.
 model TimeEntry {
   id             String       @id @default(cuid())
-  organizationId String       @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId String       @default(dbgenerated("current_org_id()"))
   organization   Organization @relation(fields: [organizationId], references: [id])
   userId         String
   user           User         @relation(fields: [userId], references: [id])
@@ -410,7 +410,7 @@ model TimeEntry {
 // answer "is this user on a break right now".
 model BreakEntry {
   id             String       @id @default(cuid())
-  organizationId String       @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId String       @default(dbgenerated("current_org_id()"))
   organization   Organization @relation(fields: [organizationId], references: [id])
   userId         String
   user           User         @relation(fields: [userId], references: [id])
@@ -434,7 +434,7 @@ model BreakEntry {
 // multiple overlapping rules (e.g. a blanket one plus a specific one) stack.
 model TimesheetBreakDeduction {
   id             String       @id @default(cuid())
-  organizationId String       @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId String       @default(dbgenerated("current_org_id()"))
   organization   Organization @relation(fields: [organizationId], references: [id])
   user           User?        @relation("TimesheetBreakDeductionUser", fields: [userId], references: [id], onDelete: Cascade)
   userId         String?
@@ -456,7 +456,7 @@ model TimesheetBreakDeduction {
 // being worked together), not a customer account.
 model Project {
   id             String       @id @default(cuid())
-  organizationId String       @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId String       @default(dbgenerated("current_org_id()"))
   organization   Organization @relation(fields: [organizationId], references: [id])
   name           String
   description    String?
@@ -484,7 +484,7 @@ model Project {
 // others need white — never assumed from the background alone.
 model ServiceType {
   id             String       @id @default(cuid())
-  organizationId String       @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId String       @default(dbgenerated("current_org_id()"))
   organization   Organization @relation(fields: [organizationId], references: [id])
   name           String       @unique
   hex            String
@@ -514,7 +514,7 @@ enum ClientStatus {
 
 model Client {
   id             String       @id @default(cuid())
-  organizationId String       @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId String       @default(dbgenerated("current_org_id()"))
   organization   Organization @relation(fields: [organizationId], references: [id])
   // A client can be worked under more than one project (e.g. a facility
   // that comes back for a new batch of renewals next year) — many-to-many
@@ -583,7 +583,7 @@ model Client {
 // separate from ClientOwner: a contact doesn't imply any ownership stake.
 model ClientContact {
   id             String       @id @default(cuid())
-  organizationId String       @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId String       @default(dbgenerated("current_org_id()"))
   organization   Organization @relation(fields: [organizationId], references: [id])
   client         Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
   clientId       String
@@ -607,7 +607,7 @@ model ClientContact {
 // to 100 (real-world data is often partial or unknown).
 model ClientOwner {
   id                  String       @id @default(cuid())
-  organizationId      String       @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId      String       @default(dbgenerated("current_org_id()"))
   organization        Organization @relation(fields: [organizationId], references: [id])
   client              Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
   clientId            String
@@ -629,7 +629,7 @@ model ClientOwner {
 // row rather than overwriting the last engagement's record.
 model ClientAgreement {
   id             String       @id @default(cuid())
-  organizationId String       @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId String       @default(dbgenerated("current_org_id()"))
   organization   Organization @relation(fields: [organizationId], references: [id])
   client         Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
   clientId       String
@@ -659,7 +659,7 @@ model ClientAgreement {
 // (see src/lib/aging-alerts.ts, src/lib/due-date-digest.ts).
 model ClientLicense {
   id             String       @id @default(cuid())
-  organizationId String       @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId String       @default(dbgenerated("current_org_id()"))
   organization   Organization @relation(fields: [organizationId], references: [id])
   client         Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
   clientId       String
@@ -686,7 +686,7 @@ model ClientLicense {
 // recipient never requires picking one.
 model CareRecipient {
   id                   String       @id @default(cuid())
-  organizationId       String       @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId       String       @default(dbgenerated("current_org_id()"))
   organization         Organization @relation(fields: [organizationId], references: [id])
   name                 String
   address              String?
@@ -787,7 +787,7 @@ model CareRecipient {
 // clock-in — an admin/staff or the assigned Caregiver toggles it directly.
 model CareInstruction {
   id              String        @id @default(cuid())
-  organizationId  String        @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId  String        @default(dbgenerated("current_org_id()"))
   organization    Organization  @relation(fields: [organizationId], references: [id])
   careRecipient   CareRecipient @relation(fields: [careRecipientId], references: [id], onDelete: Cascade)
   careRecipientId String
@@ -809,7 +809,7 @@ model CareInstruction {
 // TaskAssignee/AccessGrant elsewhere in this schema.
 model CareRecipientAssignment {
   id              String        @id @default(cuid())
-  organizationId  String        @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId  String        @default(dbgenerated("current_org_id()"))
   organization    Organization  @relation(fields: [organizationId], references: [id])
   careRecipient   CareRecipient @relation(fields: [careRecipientId], references: [id], onDelete: Cascade)
   careRecipientId String
@@ -831,7 +831,7 @@ model CareRecipientAssignment {
 // revert to showing individually (onDelete: SetNull on Client.clientGroup).
 model ClientGroup {
   id             String       @id @default(cuid())
-  organizationId String       @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId String       @default(dbgenerated("current_org_id()"))
   organization   Organization @relation(fields: [organizationId], references: [id])
   name           String
   createdBy      User         @relation("ClientGroupCreatedBy", fields: [createdById], references: [id])
@@ -849,7 +849,7 @@ model ClientGroup {
 // tied to a license type at all.
 model LicenseTypeTemplate {
   id             String       @id @default(cuid())
-  organizationId String       @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId String       @default(dbgenerated("current_org_id()"))
   organization   Organization @relation(fields: [organizationId], references: [id])
   name           String
   description    String?
@@ -872,7 +872,7 @@ model LicenseTypeTemplate {
 // template applies.
 model CaseType {
   id             String       @id @default(cuid())
-  organizationId String       @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId String       @default(dbgenerated("current_org_id()"))
   organization   Organization @relation(fields: [organizationId], references: [id])
   name           String
   description    String?
@@ -895,7 +895,7 @@ model CaseType {
 // flat/simple checklists (the common case).
 model ChecklistItemTemplate {
   id                    String               @id @default(cuid())
-  organizationId        String               @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId        String               @default(dbgenerated("current_org_id()"))
   organization          Organization         @relation(fields: [organizationId], references: [id])
   licenseTypeTemplate   LicenseTypeTemplate? @relation(fields: [licenseTypeTemplateId], references: [id])
   licenseTypeTemplateId String?
@@ -928,7 +928,7 @@ model ChecklistItemTemplate {
 // treat edits here as an admin-gated action, not a free-form CRUD form.
 model PipelineStage {
   id                      String       @id @default(cuid())
-  organizationId          String       @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId          String       @default(dbgenerated("current_org_id()"))
   organization            Organization @relation(fields: [organizationId], references: [id])
   pipeline                Pipeline
   abbrev                  String
@@ -961,7 +961,7 @@ model PipelineStage {
 // Applications created before this migration keep working unchanged.
 model Application {
   id             String            @id @default(cuid())
-  organizationId String            @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId String            @default(dbgenerated("current_org_id()"))
   organization   Organization      @relation(fields: [organizationId], references: [id])
   client         Client            @relation(fields: [clientId], references: [id])
   clientId       String
@@ -1030,7 +1030,7 @@ model Application {
 // every stage change" history for its own days-in-stage/aging alerts.
 model StageHistory {
   id              String         @id @default(cuid())
-  organizationId  String         @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId  String         @default(dbgenerated("current_org_id()"))
   organization    Organization   @relation(fields: [organizationId], references: [id])
   application     Application?   @relation(fields: [applicationId], references: [id])
   applicationId   String?
@@ -1058,7 +1058,7 @@ model StageHistory {
 // independently). Client profile renders these side by side.
 model McoCredential {
   id             String       @id @default(cuid())
-  organizationId String       @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId String       @default(dbgenerated("current_org_id()"))
   organization   Organization @relation(fields: [organizationId], references: [id])
   client         Client       @relation(fields: [clientId], references: [id])
   clientId       String
@@ -1100,7 +1100,7 @@ model McoCredential {
 // user. VIEW sees the case; EDIT can also change tasks/properties/files.
 model AccessGrant {
   id             String          @id @default(cuid())
-  organizationId String          @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId String          @default(dbgenerated("current_org_id()"))
   organization   Organization    @relation(fields: [organizationId], references: [id])
   application    Application     @relation(fields: [applicationId], references: [id])
   applicationId  String
@@ -1124,7 +1124,7 @@ model AccessGrant {
 // don't need to join versions just to show current metadata.
 model FileAsset {
   id             String       @id @default(cuid())
-  organizationId String       @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId String       @default(dbgenerated("current_org_id()"))
   organization   Organization @relation(fields: [organizationId], references: [id])
   application    Application? @relation(fields: [applicationId], references: [id])
   applicationId  String?
@@ -1161,7 +1161,7 @@ model FileAsset {
 // (see assertNotSigned in files.ts) — a signed PDF's bytes must stay fixed.
 model FileVersion {
   id             String       @id @default(cuid())
-  organizationId String       @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId String       @default(dbgenerated("current_org_id()"))
   organization   Organization @relation(fields: [organizationId], references: [id])
   fileAsset      FileAsset    @relation(fields: [fileAssetId], references: [id], onDelete: Cascade)
   fileAssetId    String
@@ -1184,7 +1184,7 @@ model FileVersion {
 // shows up as an option for every Application.
 model DocumentTemplate {
   id                    String               @id @default(cuid())
-  organizationId        String               @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId        String               @default(dbgenerated("current_org_id()"))
   organization          Organization         @relation(fields: [organizationId], references: [id])
   name                  String
   description           String?
@@ -1210,7 +1210,7 @@ model DocumentTemplate {
 // the fixed registry); CUSTOM fields prompt the VA for a value per generation.
 model DocumentTemplateField {
   id             String           @id @default(cuid())
-  organizationId String           @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId String           @default(dbgenerated("current_org_id()"))
   organization   Organization     @relation(fields: [organizationId], references: [id])
   template       DocumentTemplate @relation(fields: [templateId], references: [id])
   templateId     String
@@ -1230,7 +1230,7 @@ model DocumentTemplateField {
 // regenerating creates a new row rather than overwriting this one.
 model GeneratedDocument {
   id             String                  @id @default(cuid())
-  organizationId String                  @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId String                  @default(dbgenerated("current_org_id()"))
   organization   Organization            @relation(fields: [organizationId], references: [id])
   template       DocumentTemplate        @relation(fields: [templateId], references: [id])
   templateId     String
@@ -1254,7 +1254,7 @@ model GeneratedDocument {
 // no Phase just render as a flat list.
 model Phase {
   id             String       @id @default(cuid())
-  organizationId String       @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId String       @default(dbgenerated("current_org_id()"))
   organization   Organization @relation(fields: [organizationId], references: [id])
   application    Application  @relation(fields: [applicationId], references: [id])
   applicationId  String
@@ -1271,7 +1271,7 @@ model Phase {
 // ops tasks not tied to any case. `parentTaskId` set = this is a subtask.
 model Task {
   id             String       @id @default(cuid())
-  organizationId String       @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId String       @default(dbgenerated("current_org_id()"))
   organization   Organization @relation(fields: [organizationId], references: [id])
   application    Application? @relation(fields: [applicationId], references: [id])
   applicationId  String?
@@ -1336,7 +1336,7 @@ enum TaskTimeEntrySource {
 // bucket for work that isn't tied to any case.
 model TaskTimeEntry {
   id             String       @id @default(cuid())
-  organizationId String       @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId String       @default(dbgenerated("current_org_id()"))
   organization   Organization @relation(fields: [organizationId], references: [id])
   user           User         @relation(fields: [userId], references: [id])
   userId         String
@@ -1374,7 +1374,7 @@ model TaskTimeEntry {
 
 model TaskAssignee {
   id             String       @id @default(cuid())
-  organizationId String       @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId String       @default(dbgenerated("current_org_id()"))
   organization   Organization @relation(fields: [organizationId], references: [id])
   task           Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
   taskId         String
@@ -1388,7 +1388,7 @@ model TaskAssignee {
 
 model TaskReviewer {
   id             String       @id @default(cuid())
-  organizationId String       @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId String       @default(dbgenerated("current_org_id()"))
   organization   Organization @relation(fields: [organizationId], references: [id])
   task           Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
   taskId         String
@@ -1402,7 +1402,7 @@ model TaskReviewer {
 
 model AuditLog {
   id             String       @id @default(cuid())
-  organizationId String       @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId String       @default(dbgenerated("current_org_id()"))
   organization   Organization @relation(fields: [organizationId], references: [id])
   entityType     String
   entityId       String
@@ -1425,7 +1425,7 @@ model AuditLog {
 // per-signing action (SignatureEvent), so accountability stays per-event.
 model SignatureProfile {
   id                String       @id @default(cuid())
-  organizationId    String       @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId    String       @default(dbgenerated("current_org_id()"))
   organization      Organization @relation(fields: [organizationId], references: [id])
   user              User         @relation(fields: [userId], references: [id])
   userId            String       @unique
@@ -1451,7 +1451,7 @@ model SignatureProfile {
 // new flow at all.
 model SignatureEvent {
   id             String       @id @default(cuid())
-  organizationId String       @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId String       @default(dbgenerated("current_org_id()"))
   organization   Organization @relation(fields: [organizationId], references: [id])
   fileAsset      FileAsset    @relation(fields: [fileAssetId], references: [id])
   fileAssetId    String
@@ -1493,7 +1493,7 @@ enum DocusignEnvelopeStatus {
 // tracked flag that could go stale.
 model DocusignEnvelope {
   id                String           @id @default(cuid())
-  organizationId    String           @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId    String           @default(dbgenerated("current_org_id()"))
   organization      Organization     @relation(fields: [organizationId], references: [id])
   application       Application?     @relation(fields: [applicationId], references: [id])
   applicationId     String?
@@ -1550,7 +1550,7 @@ model DocusignEnvelope {
 // by the action that causes it.
 model Notification {
   id             String           @id @default(cuid())
-  organizationId String           @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId String           @default(dbgenerated("current_org_id()"))
   organization   Organization     @relation(fields: [organizationId], references: [id])
   user           User             @relation(fields: [userId], references: [id])
   userId         String
@@ -1576,7 +1576,7 @@ model Notification {
 // on that client (not tied to any one case).
 model Note {
   id             String       @id @default(cuid())
-  organizationId String       @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId String       @default(dbgenerated("current_org_id()"))
   organization   Organization @relation(fields: [organizationId], references: [id])
   application    Application? @relation(fields: [applicationId], references: [id])
   applicationId  String?
@@ -1601,7 +1601,7 @@ model Note {
 // as the rest of a Client record — not encrypted at rest.
 model ClientCredential {
   id             String       @id @default(cuid())
-  organizationId String       @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId String       @default(dbgenerated("current_org_id()"))
   organization   Organization @relation(fields: [organizationId], references: [id])
   client         Client       @relation(fields: [clientId], references: [id])
   clientId       String
@@ -1626,7 +1626,7 @@ model ClientCredential {
 // from lineItems + taxAmount, never trusted from the client.
 model Invoice {
   id             String        @id @default(cuid())
-  organizationId String        @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId String        @default(dbgenerated("current_org_id()"))
   organization   Organization  @relation(fields: [organizationId], references: [id])
   // Local draft counter — only used to display a number before Stripe
   // assigns its own (stripeInvoiceNumber, set at finalize).
@@ -1749,7 +1749,7 @@ model Invoice {
 // upload time — images, PDF, .xlsx, .docx.
 model InvoiceAttachment {
   id             String       @id @default(cuid())
-  organizationId String       @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId String       @default(dbgenerated("current_org_id()"))
   organization   Organization @relation(fields: [organizationId], references: [id])
   invoice        Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   invoiceId      String
@@ -1774,7 +1774,7 @@ model InvoiceAttachment {
 // src/lib/actions/invoices.ts.
 model Payment {
   id             String       @id @default(cuid())
-  organizationId String       @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId String       @default(dbgenerated("current_org_id()"))
   organization   Organization @relation(fields: [organizationId], references: [id])
   invoice        Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   invoiceId      String
@@ -1799,7 +1799,7 @@ model Payment {
 // client gets a copy; sentAt/sentTo track whether/when that happened.
 model Receipt {
   id             String       @id @default(cuid())
-  organizationId String       @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId String       @default(dbgenerated("current_org_id()"))
   organization   Organization @relation(fields: [organizationId], references: [id])
   // Local counter for a human-readable receipt number ("R-000123", see
   // displayReceiptNumber in src/lib/invoice-format.ts) — same pattern as
@@ -1832,7 +1832,7 @@ enum InvoiceLineItemKind {
 
 model InvoiceLineItem {
   id             String              @id @default(cuid())
-  organizationId String              @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId String              @default(dbgenerated("current_org_id()"))
   organization   Organization        @relation(fields: [organizationId], references: [id])
   invoice        Invoice             @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   invoiceId      String
@@ -1868,7 +1868,7 @@ model InvoiceLineItem {
 // itself and has its own branding settings.
 model InvoiceProfile {
   id             String       @id @default(cuid())
-  organizationId String       @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId String       @default(dbgenerated("current_org_id()"))
   organization   Organization @relation(fields: [organizationId], references: [id])
   // Shown in the picker AND printed on the PDF/emails — one field, not two.
   name           String
@@ -1919,7 +1919,7 @@ enum FormSubmissionStatus {
 
 model FormTemplate {
   id             String       @id @default(cuid())
-  organizationId String       @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId String       @default(dbgenerated("current_org_id()"))
   organization   Organization @relation(fields: [organizationId], references: [id])
   name           String
   // URL-friendly and unique — the public link is /forms/{slug}, so this is
@@ -1956,7 +1956,7 @@ model FormTemplate {
 // but never auto-filled anywhere.
 model FormField {
   id             String        @id @default(cuid())
-  organizationId String        @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId String        @default(dbgenerated("current_org_id()"))
   organization   Organization  @relation(fields: [organizationId], references: [id])
   template       FormTemplate  @relation(fields: [templateId], references: [id])
   templateId     String
@@ -2007,7 +2007,7 @@ enum LeadStage {
 // 3-value `status`.
 model Lead {
   id             String       @id @default(cuid())
-  organizationId String       @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId String       @default(dbgenerated("current_org_id()"))
   organization   Organization @relation(fields: [organizationId], references: [id])
   source         LeadSource   @default(CALENDLY)
   stage          LeadStage    @default(BOOKED)
@@ -2088,7 +2088,7 @@ model Lead {
 // on it (see PENDING in FormSubmissionStatus).
 model FormSubmission {
   id             String               @id @default(cuid())
-  organizationId String               @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId String               @default(dbgenerated("current_org_id()"))
   organization   Organization         @relation(fields: [organizationId], references: [id])
   template       FormTemplate         @relation(fields: [templateId], references: [id])
   templateId     String
@@ -2114,7 +2114,7 @@ model FormSubmission {
 // Task/Application/Invoice.
 model FormSubmissionFile {
   id             String         @id @default(cuid())
-  organizationId String         @default(dbgenerated("nullif(current_setting('app.org_id', true), '')"))
+  organizationId String         @default(dbgenerated("current_org_id()"))
   organization   Organization   @relation(fields: [organizationId], references: [id])
   submission     FormSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
   submissionId   String
