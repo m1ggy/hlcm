@@ -16,6 +16,7 @@
 #
 # KEEP_REHEARSAL_DB=1 skips the final drop so the migrated copy can be
 # inspected by hand (drop it yourself afterwards — it's a full copy of prod).
+# SKIP_PULL=1 uses a locally built image instead of pulling (testing only).
 set -euo pipefail
 
 IMAGE="${1:?usage: $0 <migrator-image-with-new-migrations>}"
@@ -64,8 +65,12 @@ pg sh -c "pg_dump -U '$PGUSER_' --no-owner '$PGDB_' | psql -q -U '$PGUSER_' -d '
 counts > "$WORK/before.txt"
 echo "    $(wc -l < "$WORK/before.txt") tables copied"
 
-echo "==> Pulling $IMAGE"
-MIGRATOR_IMAGE="$IMAGE" compose --profile tools pull migrate
+if [ "${SKIP_PULL:-0}" = "1" ]; then
+  echo "==> Using local image $IMAGE (SKIP_PULL=1)"
+else
+  echo "==> Pulling $IMAGE"
+  MIGRATOR_IMAGE="$IMAGE" compose --profile tools pull migrate
+fi
 
 echo "==> Running migrations against the copy"
 MIGRATOR_IMAGE="$IMAGE" compose --profile tools run --rm -T \

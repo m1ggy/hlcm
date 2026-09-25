@@ -65,7 +65,7 @@ Existing setup: `deploy.yml` already has two environments — push to `dev` → 
   ```
   Flow per risky phase (1, 3, 6): merge phase branch → `dev` (builds `migrate-dev-latest`, deploys to dev) → run the rehearsal on the prod server with that image → merge → `main`.
 - Rehearsal load: one `pg_dump` of prod + a restore into the same Postgres — run off-hours.
-- Not yet run end-to-end (no Docker locally); first real run is the Phase 1 rehearsal.
+- Tested locally (2026-09-26) against a simulated droplet stack (same compose service names, Postgres 16, local dev data rolled back to pre-Phase-1): the deploy backup step (incl. keep-last-7 retention), the documented restore, a clean Phase 1 rehearsal (OK, only `organizations` new), and a deliberately destructive migration (reported `LOST audit_logs` / `DROPPED _ClientToProject`, exit 1). Not yet run on the real server.
 
 ## Phase 1 — Organization model + backfill
 
@@ -95,6 +95,10 @@ Also: update `prisma/seed.ts`, `scripts/seed-*.ts`, `scripts/reset-data.sql` to 
 Verify: run on a restored prod dump; row counts unchanged, no null `organizationId`; smoke-test main pages. Risk: low.
 
 Done locally (2026-09-25): migration applied; `scripts/seed-demo.ts` run afterwards with no code changes (nested creates included) → 148 rows across 53 tables, all in `org_ctk`; `tsc` + eslint clean. The local DB is nearly empty, so the Phase 0 rehearsal against a copy of prod is still required before deploying to `main`.
+
+Rehearsed (2026-09-26) with the real migrator image (`docker build --target migrator`, which also runs `next build` — passes) against the simulated prod copy: applied cleanly, no rows lost.
+
+Rollback: `scripts/multitenancy-phase1-down.sql` (drops the 53 columns, `organizations`, `OrgStatus`, and the `_prisma_migrations` row; refuses to run once a second org exists). Tested against the simulated copy.
 
 **Known gap:** `_ClientToProject` (the implicit Client↔Project many-to-many) can't carry a column — Prisma owns implicit join tables. Both sides are org-scoped, so no data leaks through it, but Phase 6 needs a policy on it. Convert it to an explicit `ClientProject` model with `organizationId` in Phase 2 or 3 (touches the `clients`/`projects` connect/set code).
 
@@ -248,7 +252,7 @@ Rough effort (solo dev + Claude):
 
 | Phase | Estimate |
 |---|---|
-| 0 Backups + rehearsal script | done (untested on server) |
+| 0 Backups + rehearsal script | done (tested locally, not yet on server) |
 | 1 Schema + backfill | 1–2 d |
 | 2 Tenant context + call sites + FK ownership + tests | 2–3 w |
 | 3 Uniques / numbering / storage / lookups / stage roles | 1 w |
