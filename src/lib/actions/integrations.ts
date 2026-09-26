@@ -8,6 +8,7 @@ import { UserFacingError } from "@/lib/user-facing-error";
 import { getAppUrl } from "@/lib/email";
 import { deleteIntegration, getIntegrationStatus, saveIntegration, type IntegrationStatus } from "@/lib/integrations";
 import { INTEGRATION_PROVIDERS, type IntegrationProviderId } from "@/lib/integration-providers";
+import { SecretsConfigError } from "@/lib/secrets";
 import { testStripeConnection } from "@/lib/stripe";
 import { testDocusignConnection } from "@/lib/docusign";
 import { testCalendlyConnection } from "@/lib/calendly";
@@ -51,7 +52,15 @@ export async function saveIntegrationSettings(
   return toActionResult(async () => {
     const session = await requireRole([...OWNER_ONLY]);
     const id = assertProvider(provider);
-    await saveIntegration(id, values, { clearSecrets });
+    try {
+      await saveIntegration(id, values, { clearSecrets });
+    } catch (error) {
+      // The server has no encryption key yet — nothing a form fix can solve.
+      if (error instanceof SecretsConfigError) {
+        throw new UserFacingError("This server isn't set up to store credentials yet (INTEGRATION_ENCRYPTION_KEY is missing) — contact support.");
+      }
+      throw error;
+    }
     await recordAudit({ entityType: "Integration", entityId: id, action: "update_integration", actorId: session.user.id, newValue: id });
     revalidatePath("/admin/integrations");
   });

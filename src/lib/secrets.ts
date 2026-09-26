@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
 
 // Encryption at rest for tenants' third-party credentials
 // (OrganizationIntegration.secrets). AES-256-GCM with a random 12-byte IV
