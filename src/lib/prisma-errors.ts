@@ -55,7 +55,11 @@ function duplicateFields(known: PrismaKnownError): string[] {
     : typeof target === "string" && target
       ? [target]
       : (known.meta?.driverAdapterError?.cause?.constraint?.fields ?? []);
-  return raw.map(unquote);
+  // Every per-tenant unique key leads with organizationId (see
+  // docs/multitenancy-plan.md, 3a) — it's never what the user got wrong, and
+  // callers key their messages by the fields they know (`email`, not
+  // `organizationId,email`).
+  return raw.map(unquote).filter((field) => field !== "organizationId");
 }
 
 export function friendlyPrismaError(

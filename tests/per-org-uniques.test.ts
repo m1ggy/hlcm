@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { tenantDb } from "@/lib/db";
+import { friendlyPrismaError } from "@/lib/prisma-errors";
 
 // Keys that used to be unique across the whole app are unique per org:
 // two tenants can each have admin@…, a "Home Care" service type, an
@@ -45,5 +46,14 @@ describe("per-organization unique keys", () => {
     await make(ORG_A, userA.id);
     await make(ORG_B, userB.id);
     await expect(make(ORG_A, userA.id)).rejects.toThrow();
+  });
+
+  it("duplicate messages are keyed without organizationId", async () => {
+    const error = await tenantDb(ORG_A)
+      .user.create({ data: { name: "dup", email: "same@test.local", passwordHash: "x" } })
+      .catch((e: unknown) => e);
+    expect(() => friendlyPrismaError(error, { duplicateMessages: { email: "A user with that email already exists" } })).toThrow(
+      "A user with that email already exists"
+    );
   });
 });
