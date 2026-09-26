@@ -171,6 +171,17 @@ enum Pipeline {
   MCO
 }
 
+// What a pipeline stage *means* to the aging alerts (src/lib/aging-alerts.ts),
+// independent of its abbrev — each org names its own stages, so rules match
+// on role, never on "SVR"/"WCD". Null for stages no rule cares about.
+enum StageRole {
+  SUPERVISOR_REVIEW
+  WAITING_CLIENT_DOCS
+  CORRECTIONS_RECEIVED
+  ON_HOLD
+  CREDENTIALING_REVIEW
+}
+
 enum TaskStatus {
   NOT_STARTED
   IN_PROGRESS
@@ -965,6 +976,7 @@ model PipelineStage {
   isExitStatus            Boolean      @default(false)
   requiresReason          Boolean      @default(false)
   requiresFollowUpDate    Boolean      @default(false)
+  role                    StageRole?
   allowedBackwardStageIds String[]     @default([])
   active                  Boolean      @default(true)
   createdBy               User         @relation("PipelineStageCreatedBy", fields: [createdById], references: [id])

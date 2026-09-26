@@ -54,7 +54,7 @@ export async function listApplicationAlerts(): Promise<ApplicationAlertGroup[]> 
     const alerts = computeAgingAlerts(
       {
         entityType: "Application",
-        stageAbbrev: app.stage?.abbrev ?? null,
+        stageRole: app.stage?.role ?? null,
         daysInStage: latest ? daysInStage(latest.enteredAt, now) : null,
         followUpDate: latest?.followUpDate ?? null,
         deficiencyResponseDueDate: app.deficiencyResponseDueDate,
@@ -88,7 +88,7 @@ export async function listMcoAlerts(): Promise<McoAlertGroup[]> {
     const alerts = computeAgingAlerts(
       {
         entityType: "McoCredential",
-        stageAbbrev: c.stage?.abbrev ?? null,
+        stageRole: c.stage?.role ?? null,
         daysInStage: latest ? daysInStage(latest.enteredAt, now) : null,
         followUpDate: latest?.followUpDate ?? null,
         deficiencyResponseDueDate: c.deficiencyResponseDueDate,

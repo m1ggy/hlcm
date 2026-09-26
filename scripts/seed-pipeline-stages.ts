@@ -12,6 +12,7 @@
 import "dotenv/config";
 import { Pipeline } from "../src/generated/prisma/client";
 import { currentOrgId, db as prisma, runScriptAsTenant } from "./lib/tenant-script";
+import { stageRoleForAbbrev } from "../src/lib/aging-alerts";
 
 
 type StageSeed = {
@@ -134,6 +135,7 @@ async function main() {
         isExitStatus: stage.isExitStatus ?? false,
         requiresReason: stage.requiresReason ?? false,
         requiresFollowUpDate: stage.requiresFollowUpDate ?? false,
+        role: stageRoleForAbbrev(stage.pipeline, stage.abbrev),
       },
       create: {
         pipeline: stage.pipeline,
@@ -145,6 +147,7 @@ async function main() {
         isExitStatus: stage.isExitStatus ?? false,
         requiresReason: stage.requiresReason ?? false,
         requiresFollowUpDate: stage.requiresFollowUpDate ?? false,
+        role: stageRoleForAbbrev(stage.pipeline, stage.abbrev),
         createdById: admin.id,
       },
     });
