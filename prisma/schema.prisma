@@ -33,6 +33,7 @@ model Organization {
 
   orgCounters              OrgCounter[]
   picklistOptions          PicklistOption[]
+  integrations             OrganizationIntegration[]
   users                    User[]
   wiseRecipients           WiseRecipient[]
   wiseTransactions         WiseTransaction[]
@@ -127,6 +128,37 @@ model PicklistOption {
   @@unique([organizationId, list, code])
   @@index([organizationId])
   @@map("picklist_options")
+}
+
+// Third-party services an organization connects with its own account
+// (docs/multitenancy-plan.md, Phase 4 — each tenant brings its own).
+enum IntegrationProvider {
+  STRIPE
+  DOCUSIGN
+  CALENDLY
+  WISE
+  TWILIO
+  TEAMS
+}
+
+// One organization's connection to one provider. `config` holds settings
+// that are fine to show back in the admin UI (account ids, phone numbers,
+// flags); `secrets` holds API keys / signing secrets as one AES-256-GCM
+// ciphertext (src/lib/secrets.ts) — never returned to the browser. Read via
+// getIntegration() in src/lib/integrations.ts.
+model OrganizationIntegration {
+  id             String              @id @default(cuid())
+  organizationId String              @default(dbgenerated("current_org_id()"))
+  organization   Organization        @relation(fields: [organizationId], references: [id])
+  provider       IntegrationProvider
+  config         Json                @default("{}")
+  secrets        String?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@unique([organizationId, provider])
+  @@index([organizationId])
+  @@map("organization_integrations")
 }
 
 // DEVELOPER is a break-glass superuser, same reach as OWNER — it exists

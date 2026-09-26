@@ -12,7 +12,11 @@ export default defineConfig({
     environment: "node",
     include: ["tests/**/*.test.ts"],
     globalSetup: ["tests/global-setup.ts"],
-    env: { DATABASE_URL: testDatabaseUrl() },
+    env: {
+      DATABASE_URL: testDatabaseUrl(),
+      // Fixed 32-byte key for src/lib/secrets.ts — test-only, never used elsewhere.
+      INTEGRATION_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"),
+    },
     // One shared database: run files one at a time.
     fileParallelism: false,
   },
