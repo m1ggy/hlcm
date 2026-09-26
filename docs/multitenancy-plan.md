@@ -1,19 +1,10 @@
 # Multitenancy plan
 
-Status (2026-09-26): **Phase 0 + 1 on branch `multitenancy/phase-1`, Phase 2 on `multitenancy/phase-2`, Phase 3 in progress on `multitenancy/phase-3`** (each built on the previous). Nothing merged or deployed. Plan drafted 2026-09-24.
+Status (2026-09-26): **Phase 0 + 1 on branch `multitenancy/phase-1`, Phase 2 on `multitenancy/phase-2`, Phase 3 on `multitenancy/phase-3`** (each built on the previous). Nothing merged or deployed. Plan drafted 2026-09-24.
 
-**Resume point (paused 2026-09-26):** Phase 3 — 3a, 3b, 3c done; 3d part 1 done (commit cf2615c: `picklist_options` table + enum columns → text, seeded with the old hardcoded values). Next, 3d part 2:
-1. `src/lib/picklists.ts` — `getPicklists()` (org's options incl. inactive, sorted), label lookup, "active + current value" choices, `DEFAULT_PICKLISTS` for new orgs (generic: AGENCY/PAYER just "Other"; BALL_WITH "<org name>"/Client/Government).
-2. Validation: `applications.ts` `updateApplicationCaseFields` (replace `AGENCY_VALUES`/`BALL_WITH_VALUES` + `parseNullableEnum`) and `mco.ts` `createMcoCredential` (replace `MCO_NAMES`) — validate codes against the org's list.
-3. UI: `application-properties-table.tsx` (drop `AGENCY_LABELS`/`BALL_WITH_LABELS`, take options as props from `applications/[id]/page.tsx`), `mco-credentials-card.tsx` (drop `MCO_LABELS`, props from `clients/[id]/page.tsx`), dashboard `page.tsx` + `actions/alerts.ts` (show payer label, not code).
-4. `audit-format.ts`: drop hardcoded maps; take `agencies`/`ballWith` label maps via `lookups`, passed by the AuditLogPanel callers.
-5. Admin > Lists page (`/admin/lists`, link in `admin/page.tsx` ADMIN_LINKS): per list — add option (code derived from label), rename label, activate/deactivate. Server actions in `src/lib/actions/picklists.ts` (ADMIN, audited).
-6. Tests (per-org lists, validation rejects other org's/unknown codes), then 3d' stage roles and 3e `seedOrganization()`.
-
-Note: columns are camelCase like the rest of the schema — the DB column is `"organizationId"`, not `organization_id`.
-
-Goal: turn HCLM from a single-org internal CRM (CTK) into a SaaS that other
-healthcare licensing consultancies can sign up for, each fully isolated.
+**Resume point (2026-09-26):** Phase 3 complete on `multitenancy/phase-3` (3a–3e, see its status block). Next:
+1. Re-run the migration rehearsal with Docker running: `docker build --target migrator -t hclm-migrate:phase3 .` then `SKIP_PULL=1 bash rehearse-migration.sh hclm-migrate:phase3` against the simulated droplet stack (last rehearsed at Phase 1 only).
+2. Phase 4 — per-org integrations (`OrganizationIntegration`, encrypted secrets, webhook routing by host, Admin > Integrations).
 
 ## Decisions made
 
@@ -183,6 +174,17 @@ Risk: largest phase — mitigated by spike, per-area PRs, lint rule.
 
 ## Phase 3 — Uniques, numbering, storage, Illinois enums
 
+**Status — implemented 2026-09-26 on `multitenancy/phase-3`** :
+- 3a: per-org unique keys (user email, service type name, pipeline stage, form slug, manual invoice number). `friendlyPrismaError` strips `organizationId` from reported fields so `duplicateMessages` keys still match.
+- 3b: `org_counters` + `next_invoice_seq()`/`next_receipt_seq()` column defaults — per-org, gap-free, rollback-safe; existing numbers continue from max.
+- 3c: new GCS keys under `org/<orgId>/`.
+- 3d: `picklist_options` (AGENCY / PAYER / BALL_WITH per org); the enum columns became text with values unchanged (hand-written migration — Prisma's diff would have dropped the columns); pickers, validation, audit labels and dashboard MCO alerts read the org's lists; Admin > Lists (add / rename / retire / restore, audited).
+- 3d': `PipelineStage.role` (5 roles) backfilled from the old abbrev rules; aging alerts match on role.
+- 3e: `seedOrganization()` (`src/lib/org-seed.ts`) — stage catalog (moved to `src/lib/pipeline-stage-catalog.ts`; "CTK" in stage names → org name), generic case types, default picklists, default invoice profile. Deliberately **not** seeded for new orgs: license types, checklists, service types (state/business-specific) — revisit if tenants want CTK's set as a template.
+- Verified: typecheck, lint, 52 tests, `next build`, smoke of 13 pages, Admin > Lists driven in the browser (add, duplicate rejected, rename, retire keeps existing cases' label).
+- Not yet: stage roles/names editable in the UI (stages still come from the catalog); migration rehearsal of Phases 2–3 on a prod-like copy (Docker was down).
+
+
 **3a. Uniques → per-org:**
 
 | Current | New |
@@ -293,7 +295,7 @@ Rough effort (solo dev + Claude):
 | 0 Backups + rehearsal script | done (tested locally, not yet on server) |
 | 1 Schema + backfill | 1–2 d |
 | 2 Tenant context + call sites + FK triggers + tests | done (branch) |
-| 3 Uniques / numbering / storage / lookups / stage roles | 1 w |
+| 3 Uniques / numbering / storage / lookups / stage roles | done (branch) |
 | 4 Integrations + jobs | 1–1.5 w |
 | 5 Platform admin, onboarding, TLS, billing, offboarding | 1.5–2 w |
 | 6 RLS | 3–5 d |
