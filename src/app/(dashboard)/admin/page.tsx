@@ -6,6 +6,7 @@ const ADMIN_LINKS = [
   { href: "/admin/users", label: "Users", description: "Manage staff accounts and roles" },
   { href: "/admin/license-types", label: "License Types", description: "CILA, IDPH, IDOA, etc." },
   { href: "/admin/case-types", label: "Case Types", description: "New, Renewal, Post-License, Change of Ownership" },
+  { href: "/admin/lists", label: "Lists", description: "Agencies, MCOs/payers and \"ball is with\" choices" },
   { href: "/admin/checklist-templates", label: "Checklist Templates", description: "Checklist items cloned onto new Applications" },
   { href: "/admin/document-templates", label: "Document Templates", description: "Merge-tag handbooks and policies generated per client" },
   { href: "/admin/invoice-profiles", label: "Invoice Profiles", description: "Billing identities (logo, CC recipients, footer text) for manual invoices" },
