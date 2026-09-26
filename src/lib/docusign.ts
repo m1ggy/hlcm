@@ -261,3 +261,9 @@ export async function verifyDocusignWebhookSignature(rawBody: string, signatureH
 
   return JSON.parse(rawBody);
 }
+
+/** Token + account lookup — used by Admin > Integrations' "Test connection". */
+export async function testDocusignConnection(): Promise<string> {
+  const { accountId } = await getAccountBaseUri();
+  return `Connected to DocuSign account ${accountId}`;
+}

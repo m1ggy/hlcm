@@ -73,3 +73,16 @@ export async function placeCall(to: string, sayMessage: string): Promise<void> {
   const twiml = `<Response><Say>${escaped}</Say></Response>`;
   await twilioPost(accountSid, authToken, "Calls.json", { To: to, From: fromNumber, Twiml: twiml });
 }
+
+/** Reads the account (no message sent) — used by Admin > Integrations' "Test connection". */
+export async function testTwilioConnection(): Promise<string> {
+  const { accountSid, authToken, fromNumber } = await requireCreds();
+  const auth = Buffer.from(`${accountSid}:${authToken}`).toString("base64");
+  const res = await fetch(`${API_BASE}/Accounts/${accountSid}.json`, { headers: { Authorization: `Basic ${auth}` } });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new TwilioApiError(body?.message ?? `Twilio request failed: ${res.status}`, res.status);
+  }
+  const account = await res.json();
+  return `Connected to Twilio account ${account.friendly_name ?? accountSid}; texts come from ${fromNumber}`;
+}

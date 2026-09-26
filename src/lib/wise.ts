@@ -192,3 +192,10 @@ export async function simulateTransferCompletion(transferId: number) {
     }
   }
 }
+
+/** The configured profile — used by Admin > Integrations' "Test connection". */
+export async function testWiseConnection(): Promise<string> {
+  const profileId = await getWiseProfileId();
+  const profile = await wiseFetch<{ id: number; type?: string }>(`/v2/profiles/${profileId}`);
+  return `Connected to Wise profile ${profile.id}${profile.type ? ` (${profile.type.toLowerCase()})` : ""}`;
+}

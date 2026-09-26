@@ -37,7 +37,7 @@ export const INTEGRATION_PROVIDERS: IntegrationProviderSpec[] = [
     webhookPath: "/api/webhooks/stripe",
     fields: [
       { key: "secretKey", label: "Secret key", secret: true, required: true, placeholder: "sk_live_…", env: "STRIPE_SECRET_KEY" },
-      { key: "webhookSecret", label: "Webhook signing secret", secret: true, required: false, placeholder: "whsec_…", env: "STRIPE_WEBHOOK_SECRET", help: "From the webhook endpoint you add in Stripe for the URL below." },
+      { key: "webhookSecret", label: "Webhook signing secret", secret: true, required: false, placeholder: "whsec_…", env: "STRIPE_WEBHOOK_SECRET", help: "From the webhook endpoint you add in Stripe for the webhook URL above." },
       { key: "taxEnabled", label: "Stripe Tax enabled", secret: false, required: false, kind: "boolean", defaultValue: "false", env: "STRIPE_TAX_ENABLED" },
     ],
   },

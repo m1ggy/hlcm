@@ -293,3 +293,9 @@ export async function verifyWebhookSignature(
 
   return JSON.parse(rawBody);
 }
+
+/** Cheap authenticated read — used by Admin > Integrations' "Test connection". */
+export async function testStripeConnection(): Promise<string> {
+  const account = await stripeFetch<{ id: string; settings?: { dashboard?: { display_name?: string } } }>("account", "GET");
+  return `Connected to Stripe account ${account.settings?.dashboard?.display_name ?? account.id}`;
+}

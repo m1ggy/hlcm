@@ -26,6 +26,7 @@ Every row belongs to an organization (tenant), picked by the request's host — 
 - Don't set `AUTH_URL`/`NEXTAUTH_URL`: it pins every sign-in redirect to one host.
 - Scripts and seeds run as one org: `ORG_SLUG=<slug> npx tsx scripts/…` (default `ctk`).
 - A new organization's starting setup (license types, case types, checklists, service types, lists) is copied from the template org — `TEMPLATE_ORG_SLUG`, default `ctk` (see `seedOrganization` in `src/lib/org-seed.ts`).
+- Third-party integrations (Stripe, DocuSign, Calendly, Wise, Twilio, Teams) are per organization: each workspace connects its own accounts under **Admin → Integrations** (owners only). Secrets are stored encrypted with `INTEGRATION_ENCRYPTION_KEY` (32 random bytes, base64 — `openssl rand -base64 32`; required to save any integration, and losing it means re-entering every org's secrets). Until an org saves an integration there, the legacy org (`LEGACY_INTEGRATIONS_ORG_SLUG`, default `ctk`) keeps using the `STRIPE_*` / `DOCUSIGN_*` / `CALENDLY_*` / `WISE_*` / `TWILIO_*` / `MS_TEAMS_WEBHOOK_URL` env vars documented below; once saved, those env vars can be removed. Each org registers webhooks at its own workspace URL (shown on the Integrations page).
 
 ## Deploying
 

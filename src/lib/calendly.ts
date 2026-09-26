@@ -164,3 +164,10 @@ export async function cancelScheduledEvent(scheduledEventUri: string, reason: st
     body: JSON.stringify({ reason }),
   });
 }
+
+/** Who the API token belongs to — used by Admin > Integrations' "Test connection". */
+export async function testCalendlyConnection(): Promise<string> {
+  const res = await calendlyFetch(`${API_BASE}/users/me`, { method: "GET" });
+  const me = await res.json();
+  return `Connected as ${me.resource?.name ?? me.resource?.email ?? "Calendly user"}`;
+}
