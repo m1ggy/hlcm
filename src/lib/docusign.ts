@@ -4,7 +4,9 @@
 // because DocuSign needs OAuth (JWT Grant, this app's first OAuth-shaped
 // integration — no other precedent in this codebase) and its own
 // account-base-URI discovery (DocuSign accounts aren't on a fixed host).
-// Server-only — never import from a client component.
+// Server-only — never import from a client component. Credentials are the
+// current organization's own DocuSign account (Admin > Integrations, via
+// src/lib/integrations.ts); tokens are cached per organization.
 //
 // Auth: JWT Grant (server-to-server, no per-user consent screen at request
 // time), signed with `jose` — already a dependency, same SignJWT API
@@ -19,6 +21,8 @@
 
 import crypto from "crypto";
 import { SignJWT, importPKCS8 } from "jose";
+import { currentOrgId } from "@/lib/db";
+import { getIntegration } from "@/lib/integrations";
 
 export class DocusignConfigError extends Error {}
 export class DocusignApiError extends Error {
@@ -38,43 +42,48 @@ export class DocusignWebhookError extends Error {
   }
 }
 
-function getConfig() {
-  const integrationKey = process.env.DOCUSIGN_INTEGRATION_KEY;
-  const userId = process.env.DOCUSIGN_USER_ID;
-  const accountId = process.env.DOCUSIGN_ACCOUNT_ID;
-  const privateKeyB64 = process.env.DOCUSIGN_PRIVATE_KEY;
+async function getConfig() {
+  const values = await getIntegration("DOCUSIGN");
+  const integrationKey = values?.integrationKey;
+  const userId = values?.userId;
+  const accountId = values?.accountId;
+  const privateKeyB64 = values?.privateKey;
   if (!integrationKey || !userId || !accountId || !privateKeyB64) return null;
-  const authServer = process.env.DOCUSIGN_AUTH_SERVER || "account-d.docusign.com";
+  const authServer = values?.authServer || "account-d.docusign.com";
   return { integrationKey, userId, accountId, privateKeyB64, authServer };
 }
 
-export function isDocusignConfigured(): boolean {
-  return getConfig() !== null;
+export async function isDocusignConfigured(): Promise<boolean> {
+  return (await getConfig()) !== null;
 }
 
-function requireConfig() {
-  const config = getConfig();
+async function requireConfig() {
+  const config = await getConfig();
   if (!config) {
-    throw new DocusignConfigError(
-      "DOCUSIGN_INTEGRATION_KEY/DOCUSIGN_USER_ID/DOCUSIGN_ACCOUNT_ID/DOCUSIGN_PRIVATE_KEY env vars are required"
-    );
+    throw new DocusignConfigError("DocuSign isn't connected for this workspace — set it up in Admin > Integrations");
   }
   return config;
 }
 
-// In-process cache — same "cache the short-lived token, refresh with a
-// margin before it actually expires" shape this file would use regardless
-// of framework; nothing Next-specific about it.
-let tokenCache: { accessToken: string; expiresAt: number } | null = null;
-let accountCache: { accountId: string; baseUri: string; authServer: string } | null = null;
+// In-process caches, one entry per organization — "cache the short-lived
+// token, refresh with a margin before it actually expires". Keyed by the
+// credentials too, so saving new ones in Admin > Integrations takes effect
+// immediately instead of serving the old account's token.
+const tokenCache = new Map<string, { accessToken: string; expiresAt: number }>();
+const accountCache = new Map<string, { accountId: string; baseUri: string }>();
+
+function cacheKey(orgId: string, config: { integrationKey: string; userId: string; accountId: string; authServer: string }) {
+  return [orgId, config.integrationKey, config.userId, config.accountId, config.authServer].join("|");
+}
 
 export async function getAccessToken(): Promise<string> {
-  const config = requireConfig();
-  if (tokenCache && tokenCache.expiresAt > Date.now()) return tokenCache.accessToken;
+  const config = await requireConfig();
+  const key = cacheKey(await currentOrgId(), config);
+  const cached = tokenCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.accessToken;
 
-  // DOCUSIGN_PRIVATE_KEY is base64-encoded (of the raw PEM text) — survives
-  // .env parsing/newline handling far more reliably than a multi-line PEM
-  // pasted directly into an env var.
+  // The private key is stored base64-encoded (of the raw PEM text) — survives
+  // form/env newline handling far more reliably than a multi-line PEM.
   const pem = Buffer.from(config.privateKeyB64, "base64").toString("utf-8");
   const privateKey = await importPKCS8(pem, "RS256");
 
@@ -101,13 +110,15 @@ export async function getAccessToken(): Promise<string> {
   }
   const data = await res.json();
   // expires_in is seconds (DocuSign: 3600) — cache with a 5-minute margin.
-  tokenCache = { accessToken: data.access_token, expiresAt: Date.now() + (data.expires_in - 300) * 1000 };
-  return tokenCache.accessToken;
+  tokenCache.set(key, { accessToken: data.access_token, expiresAt: Date.now() + (data.expires_in - 300) * 1000 });
+  return data.access_token;
 }
 
 export async function getAccountBaseUri(): Promise<{ accountId: string; baseUri: string }> {
-  const config = requireConfig();
-  if (accountCache && accountCache.authServer === config.authServer) return accountCache;
+  const config = await requireConfig();
+  const key = cacheKey(await currentOrgId(), config);
+  const cached = accountCache.get(key);
+  if (cached) return cached;
 
   const accessToken = await getAccessToken();
   const res = await fetch(`https://${config.authServer}/oauth/userinfo`, {
@@ -120,10 +131,11 @@ export async function getAccountBaseUri(): Promise<{ accountId: string; baseUri:
   const account = (data.accounts as { account_id: string; base_uri: string }[])?.find(
     (a) => a.account_id === config.accountId
   );
-  if (!account) throw new DocusignConfigError(`DOCUSIGN_ACCOUNT_ID ${config.accountId} not found for this user`);
+  if (!account) throw new DocusignConfigError(`DocuSign account ID ${config.accountId} not found for this user`);
 
-  accountCache = { accountId: account.account_id, baseUri: account.base_uri, authServer: config.authServer };
-  return accountCache;
+  const entry = { accountId: account.account_id, baseUri: account.base_uri };
+  accountCache.set(key, entry);
+  return entry;
 }
 
 async function docusignFetch(path: string, init: RequestInit) {
@@ -235,9 +247,9 @@ export type DocusignConnectPayload = {
 // configured — DocuSign's docs are the source of truth, not memory. Unlike
 // Calendly's t=...,v1=... scheme, there's no timestamp component here, so
 // no replay-window check is possible at this layer.
-export function verifyDocusignWebhookSignature(rawBody: string, signatureHeader: string | null): DocusignConnectPayload {
-  const key = process.env.DOCUSIGN_WEBHOOK_HMAC_KEY;
-  if (!key) throw new DocusignConfigError("DOCUSIGN_WEBHOOK_HMAC_KEY env var is required");
+export async function verifyDocusignWebhookSignature(rawBody: string, signatureHeader: string | null): Promise<DocusignConnectPayload> {
+  const key = (await getIntegration("DOCUSIGN"))?.webhookHmacKey;
+  if (!key) throw new DocusignConfigError("DocuSign Connect HMAC key isn't set for this workspace (Admin > Integrations)");
   if (!signatureHeader) throw new DocusignWebhookError("Missing X-DocuSign-Signature-1 header", 400);
 
   const computed = crypto.createHmac("sha256", key).update(rawBody, "utf8").digest("base64");

@@ -15,6 +15,7 @@
 // does too.
 
 import crypto from "crypto";
+import { getIntegration } from "@/lib/integrations";
 
 export class CalendlyConfigError extends Error {}
 export class CalendlyWebhookError extends Error {
@@ -36,9 +37,11 @@ export class CalendlyApiError extends Error {
 
 const MAX_SIGNATURE_AGE_SECONDS = 5 * 60;
 
-function getSigningKey() {
-  const key = process.env.CALENDLY_WEBHOOK_SIGNING_KEY;
-  if (!key) throw new CalendlyConfigError("CALENDLY_WEBHOOK_SIGNING_KEY env var is required");
+// Credentials are the current organization's own Calendly account (Admin >
+// Integrations, via src/lib/integrations.ts).
+async function getSigningKey() {
+  const key = (await getIntegration("CALENDLY"))?.webhookSigningKey;
+  if (!key) throw new CalendlyConfigError("Calendly webhook signing key isn't set for this workspace (Admin > Integrations)");
   return key;
 }
 
@@ -47,7 +50,7 @@ export type CalendlyWebhookEvent = {
   payload: Record<string, unknown>;
 };
 
-export function verifyCalendlyWebhookSignature(rawBody: string, signatureHeader: string | null): CalendlyWebhookEvent {
+export async function verifyCalendlyWebhookSignature(rawBody: string, signatureHeader: string | null): Promise<CalendlyWebhookEvent> {
   if (!signatureHeader) throw new CalendlyWebhookError("Missing Calendly-Webhook-Signature header", 400);
 
   const parts = Object.fromEntries(
@@ -66,7 +69,7 @@ export function verifyCalendlyWebhookSignature(rawBody: string, signatureHeader:
   }
 
   const computed = crypto
-    .createHmac("sha256", getSigningKey())
+    .createHmac("sha256", await getSigningKey())
     .update(`${timestamp}.${rawBody}`)
     .digest("hex");
 
@@ -94,7 +97,7 @@ export function extractPhoneAnswer(
 
 // --- Live API calls (single-use rebooking links, cancellation) ---
 //
-// Separate credential from the signing key above: CALENDLY_API_TOKEN is a
+// Separate credential from the signing key above: the org's API token is a
 // Personal Access Token (dashboard -> Integrations -> API & Webhooks ->
 // Generate New Token), the same kind of token scripts/create-calendly-
 // webhook.ts uses one-off, but stored persistently here so the running app
@@ -106,17 +109,22 @@ export function extractPhoneAnswer(
 
 const API_BASE = "https://api.calendly.com";
 
-function getApiToken(): string | null {
-  return process.env.CALENDLY_API_TOKEN || null;
+async function getApiToken(): Promise<string | null> {
+  return (await getIntegration("CALENDLY"))?.apiToken || null;
 }
 
-export function isCalendlyApiConfigured(): boolean {
-  return getApiToken() !== null;
+export async function isCalendlyApiConfigured(): Promise<boolean> {
+  return (await getApiToken()) !== null;
+}
+
+/** The org's public booking page (the fallback link in follow-up emails), if set. */
+export async function getCalendlyBookingUrl(): Promise<string | null> {
+  return (await getIntegration("CALENDLY"))?.bookingUrl || null;
 }
 
 async function calendlyFetch(url: string, init?: RequestInit): Promise<Response> {
-  const token = getApiToken();
-  if (!token) throw new CalendlyConfigError("CALENDLY_API_TOKEN env var is required");
+  const token = await getApiToken();
+  if (!token) throw new CalendlyConfigError("Calendly API token isn't set for this workspace (Admin > Integrations)");
   const res = await fetch(url, {
     ...init,
     headers: { ...init?.headers, Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -132,7 +140,7 @@ async function calendlyFetch(url: string, init?: RequestInit): Promise<Response>
 // — a rebooking nudge shouldn't silently swap what's being booked. Request/
 // response shape per Calendly's docs (GET /scheduled_events/{uuid} ->
 // resource.event_type; POST /scheduling_links -> resource.booking_url) —
-// not yet confirmed against a live call (needs CALENDLY_API_TOKEN set),
+// not yet confirmed against a live call (needs a Calendly API token set),
 // same caveat as everything else this integration has had to verify live.
 export async function createSingleUseSchedulingLink(scheduledEventUri: string): Promise<string> {
   const eventRes = await calendlyFetch(scheduledEventUri, { method: "GET" });

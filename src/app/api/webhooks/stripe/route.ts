@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { db, TenantNotResolvedError } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
 import { notify } from "@/lib/notifications";
 import { verifyWebhookSignature, StripeApiError } from "@/lib/stripe";
@@ -18,16 +18,19 @@ type StripeInvoiceObject = {
 // Unauthenticated by nature — Stripe calls this directly, there's no
 // session. Security is the signature check, not requireSession/requireRole
 // (contrast with src/app/api/documents/[id]/route.ts, which verifies a
-// session instead of a signature).
+// session instead of a signature). Each organization registers this URL on
+// its own workspace host, so the host picks the org whose signing secret
+// verifies it and whose invoices it updates.
 export async function POST(req: Request) {
   const rawBody = await req.text();
   const sig = req.headers.get("stripe-signature");
 
   let event: { type: string; data: { object: Record<string, unknown> } };
   try {
-    event = verifyWebhookSignature(rawBody, sig);
+    event = await verifyWebhookSignature(rawBody, sig);
   } catch (error) {
     if (error instanceof StripeApiError) return NextResponse.json({ error: error.message }, { status: 400 });
+    if (error instanceof TenantNotResolvedError) return NextResponse.json({ error: "Unknown workspace" }, { status: 404 });
     throw error;
   }
 

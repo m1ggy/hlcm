@@ -6,7 +6,8 @@ import { requireRole, AppRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
 import { sendEmail, renderEmailLayout, getAppUrl } from "@/lib/email";
-import { createSingleUseSchedulingLink, cancelScheduledEvent } from "@/lib/calendly";
+import { createSingleUseSchedulingLink, cancelScheduledEvent, getCalendlyBookingUrl } from "@/lib/calendly";
+import { UserFacingError } from "@/lib/user-facing-error";
 import type { $Enums } from "@/generated/prisma/client";
 
 // Same reviewer tier as Form Submissions (src/lib/actions/form-submissions.ts)
@@ -168,13 +169,6 @@ export async function markLeadLost(id: string, reason?: string) {
   revalidatePath("/leads");
 }
 
-// The org's own Calendly page — the same URL this app's whole Calendly
-// integration is already built around (README's setup runbook, the
-// webhook subscription). Not user-configurable in v1: no admin-settings
-// surface exists anywhere in this app for editable email copy, and
-// building one would be disproportionate to "one canned line with a link."
-const CALENDLY_BOOKING_URL = "https://calendly.com/ctkadvisorsinc";
-
 // One click, no confirmation dialog — unlike markLeadLost, this isn't
 // destructive, and the backlog's own ask ("so follow-up goes out within
 // minutes") is specifically about removing friction. Not restricted to
@@ -188,12 +182,16 @@ export async function sendFollowUpEmail(leadId: string) {
   // A real single-use link (same event type as their original booking)
   // beats the generic org page when we can get one — but a Calendly hiccup
   // (token unset, API error) must never block the follow-up email itself
-  // from going out, so this falls back to the generic URL on any failure.
-  let bookingUrl: string = CALENDLY_BOOKING_URL;
+  // from going out, so this falls back to the org's public booking page
+  // (Admin > Integrations > Calendly) on any failure.
+  let bookingUrl = await getCalendlyBookingUrl();
   try {
     bookingUrl = await createSingleUseSchedulingLink(lead.calendlyEventUri);
   } catch (error) {
     console.error("Falling back to the generic Calendly link:", error);
+  }
+  if (!bookingUrl) {
+    throw new UserFacingError("No booking link to send — add your Calendly booking page in Admin > Integrations.");
   }
 
   const appUrl = await getAppUrl();

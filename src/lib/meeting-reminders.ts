@@ -8,7 +8,7 @@
 //   - an in-app notification + email to the Lead's assignedTo, if anyone's
 //     assigned (NOT via notify() — see notifyAssignee below for why)
 //   - a Teams webhook post naming the assignee (best-effort, skipped
-//     entirely — no log noise — when MS_TEAMS_WEBHOOK_URL isn't set)
+//     entirely — no log noise — when the org hasn't connected Teams)
 //   - SMS (and, for the 30-minute reminder only, a phone call) to every
 //     User with smsRemindersEnabled — the admin-configured "catch-all"
 //     roster from Admin > Users, independent of per-lead assignment
@@ -88,7 +88,7 @@ async function notifyAssignee(lead: LeadWithAssignee, label: string) {
 }
 
 async function tryTeams(lead: LeadWithAssignee, label: string) {
-  if (!isTeamsConfigured()) return;
+  if (!(await isTeamsConfigured())) return;
   const who = lead.assignedTo ? lead.assignedTo.name : "Unassigned";
   const text = `Meeting with ${lead.inviteeName} in ${label} — assigned to ${who}.`;
   try {
@@ -99,7 +99,7 @@ async function tryTeams(lead: LeadWithAssignee, label: string) {
 }
 
 async function tryTexts(lead: LeadWithAssignee, label: string, roster: User[], alsoCall: boolean) {
-  if (!isTwilioConfigured() || roster.length === 0) return;
+  if (roster.length === 0 || !(await isTwilioConfigured())) return;
   const message = `HCLM: meeting with ${lead.inviteeName} in ${label}.`;
   for (const user of roster) {
     if (!user.phone) continue;

@@ -74,6 +74,7 @@ export const INTEGRATION_PROVIDERS: IntegrationProviderSpec[] = [
       { key: "apiToken", label: "API token", secret: true, required: true, env: "WISE_API_TOKEN" },
       { key: "profileId", label: "Profile ID", secret: false, required: true, env: "WISE_PROFILE_ID" },
       { key: "apiBase", label: "API base URL", secret: false, required: false, defaultValue: "https://api.sandbox.transferwise.tech", env: "WISE_API_BASE", help: "Sandbox by default; https://api.transferwise.com for live payouts." },
+      { key: "sourceCurrency", label: "Pay out from (currency)", secret: false, required: false, defaultValue: "USD", placeholder: "USD", env: "WISE_SOURCE_CURRENCY" },
     ],
   },
   {

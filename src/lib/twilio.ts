@@ -6,6 +6,8 @@
 // Docs: https://www.twilio.com/docs/messaging/api/message-resource
 //       https://www.twilio.com/docs/voice/api/call-resource
 
+import { getIntegration } from "@/lib/integrations";
+
 const API_BASE = "https://api.twilio.com/2010-04-01";
 
 export class TwilioConfigError extends Error {}
@@ -18,21 +20,24 @@ export class TwilioApiError extends Error {
   }
 }
 
-function getCreds(): { accountSid: string; authToken: string; fromNumber: string } | null {
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  const fromNumber = process.env.TWILIO_FROM_NUMBER;
+// The current organization's own Twilio account (Admin > Integrations, via
+// src/lib/integrations.ts).
+async function getCreds(): Promise<{ accountSid: string; authToken: string; fromNumber: string } | null> {
+  const values = await getIntegration("TWILIO");
+  const accountSid = values?.accountSid;
+  const authToken = values?.authToken;
+  const fromNumber = values?.fromNumber;
   if (!accountSid || !authToken || !fromNumber) return null;
   return { accountSid, authToken, fromNumber };
 }
 
-export function isTwilioConfigured(): boolean {
-  return getCreds() !== null;
+export async function isTwilioConfigured(): Promise<boolean> {
+  return (await getCreds()) !== null;
 }
 
-function requireCreds() {
-  const creds = getCreds();
-  if (!creds) throw new TwilioConfigError("TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN/TWILIO_FROM_NUMBER env vars are required");
+async function requireCreds() {
+  const creds = await getCreds();
+  if (!creds) throw new TwilioConfigError("Twilio isn't connected for this workspace (Admin > Integrations)");
   return creds;
 }
 
@@ -55,7 +60,7 @@ async function twilioPost(accountSid: string, authToken: string, path: string, p
 }
 
 export async function sendSms(to: string, body: string): Promise<void> {
-  const { accountSid, authToken, fromNumber } = requireCreds();
+  const { accountSid, authToken, fromNumber } = await requireCreds();
   await twilioPost(accountSid, authToken, "Messages.json", { To: to, From: fromNumber, Body: body });
 }
 
@@ -63,7 +68,7 @@ export async function sendSms(to: string, body: string): Promise<void> {
 // directly via the Twiml param on call creation, so this is a single
 // request: Twilio dials `to`, and reads `sayMessage` aloud when answered.
 export async function placeCall(to: string, sayMessage: string): Promise<void> {
-  const { accountSid, authToken, fromNumber } = requireCreds();
+  const { accountSid, authToken, fromNumber } = await requireCreds();
   const escaped = sayMessage.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const twiml = `<Response><Say>${escaped}</Say></Response>`;
   await twilioPost(accountSid, authToken, "Calls.json", { To: to, From: fromNumber, Twiml: twiml });

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { db, TenantNotResolvedError } from "@/lib/db";
 import { notify } from "@/lib/notifications";
 import { verifyCalendlyWebhookSignature, extractPhoneAnswer, CalendlyWebhookError } from "@/lib/calendly";
 import type { Lead } from "@/generated/prisma/client";
@@ -26,16 +26,18 @@ type CalendlyInviteePayload = {
 
 // Unauthenticated by nature — Calendly calls this directly, there's no
 // session. Security is the signature check, not requireSession/requireRole
-// (same split as src/app/api/webhooks/stripe/route.ts).
+// (same split as src/app/api/webhooks/stripe/route.ts); the request host
+// picks the organization whose signing key verifies it and gets the Lead.
 export async function POST(req: Request) {
   const rawBody = await req.text();
   const sig = req.headers.get("calendly-webhook-signature");
 
   let event: Awaited<ReturnType<typeof verifyCalendlyWebhookSignature>>;
   try {
-    event = verifyCalendlyWebhookSignature(rawBody, sig);
+    event = await verifyCalendlyWebhookSignature(rawBody, sig);
   } catch (error) {
     if (error instanceof CalendlyWebhookError) return NextResponse.json({ error: error.message }, { status: error.status });
+    if (error instanceof TenantNotResolvedError) return NextResponse.json({ error: "Unknown workspace" }, { status: 404 });
     throw error;
   }
 

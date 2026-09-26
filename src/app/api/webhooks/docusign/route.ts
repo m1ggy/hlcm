@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { db, TenantNotResolvedError } from "@/lib/db";
 import { notify } from "@/lib/notifications";
 import { verifyDocusignWebhookSignature, downloadCompletedDocument, DocusignWebhookError, DocusignConfigError } from "@/lib/docusign";
 import { saveBuffer } from "@/lib/storage";
@@ -14,15 +14,17 @@ type RawStatus = keyof typeof STATUS_RANK;
 
 // Unauthenticated by nature — DocuSign Connect calls this directly, no
 // session. Security is the signature check, same split as the Stripe and
-// Calendly webhook routes.
+// Calendly webhook routes; the request host picks the organization (and so
+// the HMAC key and the envelopes it can touch).
 export async function POST(req: Request) {
   const rawBody = await req.text();
   const sig = req.headers.get("x-docusign-signature-1");
 
-  let event: ReturnType<typeof verifyDocusignWebhookSignature>;
+  let event: Awaited<ReturnType<typeof verifyDocusignWebhookSignature>>;
   try {
-    event = verifyDocusignWebhookSignature(rawBody, sig);
+    event = await verifyDocusignWebhookSignature(rawBody, sig);
   } catch (error) {
+    if (error instanceof TenantNotResolvedError) return NextResponse.json({ error: "Unknown workspace" }, { status: 404 });
     if (error instanceof DocusignWebhookError) return NextResponse.json({ error: error.message }, { status: error.status });
     if (error instanceof DocusignConfigError) return NextResponse.json({ error: error.message }, { status: 500 });
     throw error;

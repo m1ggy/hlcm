@@ -1,6 +1,8 @@
 // Thin wrapper around Stripe's HTTP API — same shape as src/lib/wise.ts and
 // src/lib/email.ts (no SDK dependency, a lazy secret getter, a
-// *ConfigError/*ApiError pair). Server-only — never import from a client
+// *ConfigError/*ApiError pair). Keys are the current organization's own
+// (Admin > Integrations, via src/lib/integrations.ts) — each tenant bills
+// through its own Stripe account. Server-only — never import from a client
 // component, the secret key would end up in the bundle.
 //
 // We use Stripe's native Invoicing API (not a hand-rolled Checkout Session)
@@ -14,6 +16,7 @@
 //       https://docs.stripe.com/webhooks#verify-manually
 
 import crypto from "crypto";
+import { getIntegration } from "@/lib/integrations";
 
 const API_BASE = "https://api.stripe.com/v1";
 
@@ -28,15 +31,15 @@ export class StripeApiError extends Error {
   }
 }
 
-function getSecretKey() {
-  const key = process.env.STRIPE_SECRET_KEY;
-  if (!key) throw new StripeConfigError("STRIPE_SECRET_KEY env var is required");
+async function getSecretKey() {
+  const key = (await getIntegration("STRIPE"))?.secretKey;
+  if (!key) throw new StripeConfigError("Stripe isn't connected for this workspace — add its secret key in Admin > Integrations");
   return key;
 }
 
-function getWebhookSecret() {
-  const secret = process.env.STRIPE_WEBHOOK_SECRET;
-  if (!secret) throw new StripeConfigError("STRIPE_WEBHOOK_SECRET env var is required");
+async function getWebhookSecret() {
+  const secret = (await getIntegration("STRIPE"))?.webhookSecret;
+  if (!secret) throw new StripeConfigError("Stripe webhook signing secret isn't set for this workspace (Admin > Integrations)");
   return secret;
 }
 
@@ -44,9 +47,11 @@ function getWebhookSecret() {
 // (Tax > Settings) before it'll compute tax on anything — without one,
 // `automatic_tax: { enabled: true }` makes invoice finalization error out.
 // Default off so invoicing can be built/tested before that one-time setup
-// is done; flip STRIPE_TAX_ENABLED=true once the origin address (and any
-// registrations) are in place.
-const taxEnabled = process.env.STRIPE_TAX_ENABLED === "true";
+// is done; turn "Stripe Tax enabled" on (Admin > Integrations) once the
+// origin address (and any registrations) are in place.
+async function isTaxEnabled() {
+  return (await getIntegration("STRIPE"))?.taxEnabled === "true";
+}
 
 async function stripeFetch<T>(path: string, method: "GET" | "POST", params?: Record<string, string>): Promise<T> {
   const isGet = method === "GET";
@@ -54,7 +59,7 @@ async function stripeFetch<T>(path: string, method: "GET" | "POST", params?: Rec
   const res = await fetch(`${API_BASE}/${path}${query}`, {
     method,
     headers: {
-      Authorization: `Bearer ${getSecretKey()}`,
+      Authorization: `Bearer ${await getSecretKey()}`,
       "Content-Type": "application/x-www-form-urlencoded",
     },
     body: !isGet ? new URLSearchParams(params ?? {}) : undefined,
@@ -137,7 +142,7 @@ export async function createDraftInvoice(params: {
       collection_method: "send_invoice",
       days_until_due: params.daysUntilDue,
       auto_advance: false,
-      automatic_tax: { enabled: taxEnabled },
+      automatic_tax: { enabled: await isTaxEnabled() },
       metadata: { invoiceId: params.invoiceId },
     })
   );
@@ -257,10 +262,12 @@ export async function listCustomerInvoices(customerId: string): Promise<StripeIn
 
 // Hand-rolled per Stripe's documented verification scheme — no SDK needed.
 // Header looks like "t=1614556800,v1=<hex hmac>[,v0=...]".
-export function verifyWebhookSignature(
+// Verified with the signing secret of the organization the webhook was sent
+// to (the request host) — each tenant registers its own endpoint.
+export async function verifyWebhookSignature(
   rawBody: string,
   signatureHeader: string | null
-): { type: string; data: { object: Record<string, unknown> } } {
+): Promise<{ type: string; data: { object: Record<string, unknown> } }> {
   if (!signatureHeader) throw new StripeApiError("Missing Stripe-Signature header", 400, null);
 
   const parts = Object.fromEntries(
@@ -274,7 +281,7 @@ export function verifyWebhookSignature(
   if (!timestamp || !expectedSig) throw new StripeApiError("Malformed Stripe-Signature header", 400, null);
 
   const computed = crypto
-    .createHmac("sha256", getWebhookSecret())
+    .createHmac("sha256", await getWebhookSecret())
     .update(`${timestamp}.${rawBody}`)
     .digest("hex");
 

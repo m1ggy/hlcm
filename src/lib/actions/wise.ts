@@ -16,9 +16,9 @@ import {
   simulateTransferCompletion,
   WiseConfigError,
   WiseApiError,
+  getWiseSourceCurrency,
+  isWiseSandbox,
 } from "@/lib/wise";
-
-const SOURCE_CURRENCY = process.env.WISE_SOURCE_CURRENCY ?? "USD";
 
 export async function getMyWiseRecipient() {
   const session = await requireSession();
@@ -34,10 +34,10 @@ export async function getPayoutFields(currency: string) {
   await requireSession();
   let requirements;
   try {
-    requirements = await getAccountRequirements({ source: SOURCE_CURRENCY, target: currency });
+    requirements = await getAccountRequirements({ source: await getWiseSourceCurrency(), target: currency });
   } catch (error) {
     if (error instanceof WiseConfigError) {
-      throw new Error("Wise isn't configured yet — ask an admin to set WISE_API_TOKEN / WISE_PROFILE_ID.");
+      throw new Error("Wise isn't connected yet — ask an admin to set it up in Admin > Integrations.");
     }
     if (error instanceof WiseApiError) throw new Error(error.message);
     throw error;
@@ -72,7 +72,7 @@ export async function saveMyWiseRecipient(input: z.infer<typeof saveRecipientSch
     });
   } catch (error) {
     if (error instanceof WiseConfigError) {
-      throw new Error("Wise isn't configured yet — ask an admin to set WISE_API_TOKEN / WISE_PROFILE_ID.");
+      throw new Error("Wise isn't connected yet — ask an admin to set it up in Admin > Integrations.");
     }
     if (error instanceof WiseApiError) throw new Error(error.message);
     throw error;
@@ -148,11 +148,12 @@ export async function payUserViaWise(input: z.infer<typeof payoutRangeSchema>) {
 
   const sourceAmount = Math.round(hours * user.hourlyRate * 100) / 100;
   const targetCurrency = recipient.currency;
+  const sourceCurrency = await getWiseSourceCurrency();
 
   async function fail(step: string, error: unknown) {
     const message =
       error instanceof WiseConfigError
-        ? "Wise isn't configured — ask an admin to set WISE_API_TOKEN / WISE_PROFILE_ID."
+        ? "Wise isn't connected — ask an admin to set it up in Admin > Integrations."
         : error instanceof WiseApiError
           ? error.message
           : error instanceof Error
@@ -165,7 +166,7 @@ export async function payUserViaWise(input: z.infer<typeof payoutRangeSchema>) {
         periodFrom: from,
         periodTo: to,
         hours,
-        sourceCurrency: SOURCE_CURRENCY,
+        sourceCurrency,
         sourceAmount,
         targetCurrency,
         targetAmount: 0,
@@ -179,7 +180,7 @@ export async function payUserViaWise(input: z.infer<typeof payoutRangeSchema>) {
 
   let quote;
   try {
-    quote = await createQuote({ sourceCurrency: SOURCE_CURRENCY, targetCurrency: recipient.currency, sourceAmount });
+    quote = await createQuote({ sourceCurrency, targetCurrency: recipient.currency, sourceAmount });
   } catch (error) {
     return fail("Getting a quote", error);
   }
@@ -199,7 +200,7 @@ export async function payUserViaWise(input: z.infer<typeof payoutRangeSchema>) {
   try {
     const funded = await fundTransfer(transfer.id);
     status = funded.status;
-    if (process.env.WISE_API_BASE?.includes("sandbox") || !process.env.WISE_API_BASE) {
+    if (await isWiseSandbox()) {
       await simulateTransferCompletion(transfer.id);
       status = "outgoing_payment_sent";
     }
@@ -213,7 +214,7 @@ export async function payUserViaWise(input: z.infer<typeof payoutRangeSchema>) {
         periodFrom: from,
         periodTo: to,
         hours,
-        sourceCurrency: SOURCE_CURRENCY,
+        sourceCurrency,
         sourceAmount: quote.sourceAmount,
         targetCurrency: quote.targetCurrency,
         targetAmount: quote.targetAmount,
@@ -233,7 +234,7 @@ export async function payUserViaWise(input: z.infer<typeof payoutRangeSchema>) {
       periodFrom: from,
       periodTo: to,
       hours,
-      sourceCurrency: SOURCE_CURRENCY,
+      sourceCurrency,
       sourceAmount: quote.sourceAmount,
       targetCurrency: quote.targetCurrency,
       targetAmount: quote.targetAmount,

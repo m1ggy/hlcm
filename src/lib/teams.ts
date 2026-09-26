@@ -1,6 +1,6 @@
 // Thin wrapper around a Microsoft Teams incoming webhook — same shape as
 // src/lib/stripe.ts/src/lib/wise.ts (a lazy env getter, a *ConfigError, no
-// SDK). One shared webhook URL for the whole org (no per-user delivery —
+// SDK). One webhook URL per organization, set in Admin > Integrations (no per-user delivery —
 // Graph API would be needed for that, deliberately not used here; see the
 // Reminders plan). Server-only — never import from a client component.
 //
@@ -12,15 +12,21 @@
 // guarantee; if Teams rejects it, check what shape the actual configured
 // webhook expects and adjust here.
 
+import { getIntegration } from "@/lib/integrations";
+
 export class TeamsConfigError extends Error {}
 
-export function isTeamsConfigured(): boolean {
-  return !!process.env.MS_TEAMS_WEBHOOK_URL;
+async function getWebhookUrl() {
+  return (await getIntegration("TEAMS"))?.webhookUrl || null;
+}
+
+export async function isTeamsConfigured(): Promise<boolean> {
+  return (await getWebhookUrl()) !== null;
 }
 
 export async function postTeamsMessage(text: string): Promise<void> {
-  const url = process.env.MS_TEAMS_WEBHOOK_URL;
-  if (!url) throw new TeamsConfigError("MS_TEAMS_WEBHOOK_URL env var is required");
+  const url = await getWebhookUrl();
+  if (!url) throw new TeamsConfigError("Teams isn't connected for this workspace (Admin > Integrations)");
 
   const res = await fetch(url, {
     method: "POST",

@@ -4,8 +4,31 @@
 // Docs: https://docs.wise.com/api-docs/api-reference
 // Sandbox: https://sandbox.transferwise.tech (separate account from wise.com,
 // no KYC needed — see the "Wise sandbox setup" note in the payout UI).
+//
+// Credentials are the current organization's own Wise account (Admin >
+// Integrations, via src/lib/integrations.ts).
 
-const API_BASE = process.env.WISE_API_BASE ?? "https://api.sandbox.transferwise.tech";
+import { getIntegration } from "@/lib/integrations";
+
+async function getWiseConfig() {
+  const values = await getIntegration("WISE");
+  return {
+    token: values?.apiToken,
+    profileId: values?.profileId,
+    apiBase: values?.apiBase || "https://api.sandbox.transferwise.tech",
+    sourceCurrency: values?.sourceCurrency || "USD",
+  };
+}
+
+/** Whether the org's Wise connection points at the sandbox (transfers are then auto-completed). */
+export async function isWiseSandbox(): Promise<boolean> {
+  return (await getWiseConfig()).apiBase.includes("sandbox");
+}
+
+/** The currency payouts are sent from (the org's Wise balance currency). */
+export async function getWiseSourceCurrency(): Promise<string> {
+  return (await getWiseConfig()).sourceCurrency;
+}
 
 export class WiseConfigError extends Error {}
 export class WiseApiError extends Error {
@@ -18,23 +41,19 @@ export class WiseApiError extends Error {
   }
 }
 
-function getToken() {
-  const token = process.env.WISE_API_TOKEN;
-  if (!token) throw new WiseConfigError("WISE_API_TOKEN env var is required");
-  return token;
-}
-
-export function getWiseProfileId() {
-  const profileId = process.env.WISE_PROFILE_ID;
-  if (!profileId) throw new WiseConfigError("WISE_PROFILE_ID env var is required");
+export async function getWiseProfileId() {
+  const { profileId } = await getWiseConfig();
+  if (!profileId) throw new WiseConfigError("Wise isn't connected for this workspace — add its profile ID in Admin > Integrations");
   return profileId;
 }
 
 async function wiseFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const { token, apiBase } = await getWiseConfig();
+  if (!token) throw new WiseConfigError("Wise isn't connected for this workspace — add its API token in Admin > Integrations");
+  const res = await fetch(`${apiBase}${path}`, {
     ...init,
     headers: {
-      Authorization: `Bearer ${getToken()}`,
+      Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
       ...init?.headers,
     },
@@ -102,7 +121,7 @@ export async function createRecipientAccount(params: {
     body: JSON.stringify({
       currency: params.currency,
       type: params.type,
-      profile: getWiseProfileId(),
+      profile: await getWiseProfileId(),
       accountHolderName: params.accountHolderName,
       legalType: params.legalType,
       details: params.details,
@@ -122,7 +141,7 @@ export async function createQuote(params: {
     sourceAmount: number;
     targetAmount: number;
     targetCurrency: string;
-  }>(`/v3/profiles/${getWiseProfileId()}/quotes`, {
+  }>(`/v3/profiles/${await getWiseProfileId()}/quotes`, {
     method: "POST",
     body: JSON.stringify({
       sourceCurrency: params.sourceCurrency,
@@ -152,7 +171,7 @@ export async function createTransfer(params: {
 /** Pays a transfer out of the Wise account balance. Requires the profile to actually hold that currency — fails with a clear error otherwise. */
 export async function fundTransfer(transferId: number) {
   return wiseFetch<{ status: string; errorCode: string | null }>(
-    `/v3/profiles/${getWiseProfileId()}/transfers/${transferId}/payments`,
+    `/v3/profiles/${await getWiseProfileId()}/transfers/${transferId}/payments`,
     { method: "POST", body: JSON.stringify({ type: "BALANCE" }) }
   );
 }
