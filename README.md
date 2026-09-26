@@ -25,6 +25,7 @@ Every row belongs to an organization (tenant), picked by the request's host — 
 - **Multi-tenant mode**: set `ROOT_DOMAIN` (e.g. `ROOT_DOMAIN=localhost` locally) and use `http://<slug>.localhost:3000` — browsers resolve `*.localhost` on their own. The bare root domain and unknown subdomains have no tenant.
 - Don't set `AUTH_URL`/`NEXTAUTH_URL`: it pins every sign-in redirect to one host.
 - Scripts and seeds run as one org: `ORG_SLUG=<slug> npx tsx scripts/…` (default `ctk`).
+- A new organization's starting setup (license types, case types, checklists, service types, lists) is copied from the template org — `TEMPLATE_ORG_SLUG`, default `ctk` (see `seedOrganization` in `src/lib/org-seed.ts`).
 
 ## Deploying
 
