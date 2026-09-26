@@ -17,6 +17,7 @@ import { TASK_CLOSED_STATUSES } from "@/lib/task-status";
 import { STALE_THRESHOLD_DAYS, computeReadyToSubmit, computeStaleDays } from "@/lib/application-flags";
 import { pipelineForLicenseType, getInitialStage } from "@/lib/pipeline";
 import { daysInStage } from "@/lib/stage-transitions";
+import { isPicklistCode, type PicklistKind } from "@/lib/picklists";
 
 const APPLICATION_STATUSES = [
   "DRAFT",
@@ -349,18 +350,16 @@ export async function updateApplicationLicenseType(id: string, licenseTypeTempla
   return { application, pipelineChanged };
 }
 
-const AGENCY_VALUES = ["IDPH", "IDOA", "IDHS", "OTHER"] as const;
-const BALL_WITH_VALUES = ["CTK", "CLIENT", "GOVERNMENT"] as const;
-
 // Empty string means "clear the field" (the properties table always sends
 // the full row on every save, not a partial patch) — distinct from an
-// absent key, which would mean "leave untouched". Unrecognized enum values
-// are treated the same as absent rather than silently coerced.
-function parseNullableEnum<T extends string>(raw: FormDataEntryValue | null, allowed: readonly T[]): T | null | undefined {
+// absent key, which would mean "leave untouched". A code that isn't in this
+// org's list (see src/lib/picklists.ts) is treated the same as absent
+// rather than silently stored.
+async function parseNullablePicklist(raw: FormDataEntryValue | null, list: PicklistKind): Promise<string | null | undefined> {
   if (raw === null) return undefined;
   const value = raw.toString();
   if (value === "") return null;
-  return (allowed as readonly string[]).includes(value) ? (value as T) : undefined;
+  return (await isPicklistCode(list, value)) ? value : undefined;
 }
 
 function parseNullableDate(raw: FormDataEntryValue | null): Date | null | undefined {
@@ -391,8 +390,8 @@ export async function updateApplicationCaseFields(id: string, formData: FormData
   const application = await db.application.update({
     where: { id },
     data: {
-      agency: parseNullableEnum(formData.get("agency"), AGENCY_VALUES),
-      ballIsWith: parseNullableEnum(formData.get("ballIsWith"), BALL_WITH_VALUES),
+      agency: await parseNullablePicklist(formData.get("agency"), "AGENCY"),
+      ballIsWith: await parseNullablePicklist(formData.get("ballIsWith"), "BALL_WITH"),
       correctionRound: parseNullableInt(formData.get("correctionRound")),
       deficiencyReceivedDate: parseNullableDate(formData.get("deficiencyReceivedDate")),
       deficiencyResponseDueDate: parseNullableDate(formData.get("deficiencyResponseDueDate")),

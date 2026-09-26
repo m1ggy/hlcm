@@ -18,6 +18,7 @@ import { listAccessGrants, listGrantableUsers } from "@/lib/actions/access-grant
 import { listApplicableTemplates, listGeneratedDocuments } from "@/lib/actions/generated-documents";
 import { listNotes } from "@/lib/actions/notes";
 import { listReachableStages, listPipelineStages, listAllStageNames } from "@/lib/actions/stage";
+import { getPicklists, picklistLabels, pickerChoices } from "@/lib/picklists";
 import { ApplicationPropertiesTable } from "@/components/applications/application-properties-table";
 import { ClientSummaryCard } from "@/components/applications/client-summary-card";
 import { NotesPanel } from "@/components/applications/notes-panel";
@@ -87,6 +88,7 @@ export default async function ApplicationDetailPage({
     licenseTypes,
     caseTypes,
     stageLookup,
+    picklists,
   ] = await Promise.all([
     listClients({ filter: "all" }),
     listAssignableUsers(),
@@ -104,6 +106,7 @@ export default async function ApplicationDetailPage({
     listLicenseTypes(),
     listCaseTypes(),
     listAllStageNames(),
+    getPicklists(),
   ]);
 
   const stepIndex = application.stage ? forwardStages.findIndex((s) => s.id === application.stage!.id) : -1;
@@ -116,6 +119,8 @@ export default async function ApplicationDetailPage({
   const userLookup = Object.fromEntries([...assignableUsers, ...taskAssignableUsers].map((u) => [u.id, u.name]));
   const licenseTypeLookup = Object.fromEntries(licenseTypes.map((l) => [l.id, l.name]));
   const caseTypeLookup = Object.fromEntries(caseTypes.map((c) => [c.id, c.name]));
+  const agencyLookup = picklistLabels(picklists.AGENCY);
+  const ballWithLookup = picklistLabels(picklists.BALL_WITH);
 
   const allTaskStatuses = taskData.tasks.flatMap((t) => [t.status, ...t.subtasks.map((s) => s.status)]);
   const taskProgress = {
@@ -207,6 +212,8 @@ export default async function ApplicationDetailPage({
                       reachableStages={reachableStages}
                       daysInStage={application.daysInStage}
                       stepInfo={stepInfo}
+                      agencyOptions={pickerChoices(picklists.AGENCY, application.agency)}
+                      ballWithOptions={pickerChoices(picklists.BALL_WITH, application.ballIsWith)}
                       defaultValues={{
                         clientId: application.clientId,
                         name: application.name,
@@ -250,6 +257,8 @@ export default async function ApplicationDetailPage({
                         licenseTypes={licenseTypeLookup}
                         caseTypes={caseTypeLookup}
                         stages={stageLookup}
+                        agencies={agencyLookup}
+                        ballWith={ballWithLookup}
                       />
                     </div>
                   </TabsContent>

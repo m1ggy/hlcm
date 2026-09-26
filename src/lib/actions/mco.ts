@@ -7,8 +7,7 @@ import { recordAudit, recordFieldChanges } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
 import { getInitialStage } from "@/lib/pipeline";
 import { resolveStageChange, isStructurallyReachable, daysInStage } from "@/lib/stage-transitions";
-
-const MCO_NAMES = ["AETNA", "BCBS_IL", "COUNTY_CARE", "HUMANA", "MERIDIAN", "MOLINA", "OTHER"] as const;
+import { isPicklistCode } from "@/lib/picklists";
 
 export async function listMcoCredentialsForClient(clientId: string) {
   await requireRole(["ADMIN", "MANAGER", "STAFF"]);
@@ -33,9 +32,10 @@ export async function listMcoCredentialsForClient(clientId: string) {
 // filters out MCOs the client is already credentialing with, but the
 // constraint is what actually prevents the duplicate if two people submit
 // at once.
-export async function createMcoCredential(clientId: string, mcoName: (typeof MCO_NAMES)[number]) {
+// `mcoName` is a code from the org's PAYER list (src/lib/picklists.ts).
+export async function createMcoCredential(clientId: string, mcoName: string) {
   const session = await requireRole(["ADMIN", "MANAGER", "STAFF"]);
-  if (!MCO_NAMES.includes(mcoName)) {
+  if (!(await isPicklistCode("PAYER", mcoName))) {
     throw new Error(`Unknown MCO "${mcoName}".`);
   }
 

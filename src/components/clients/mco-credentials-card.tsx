@@ -24,15 +24,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-const MCO_LABELS: Record<string, string> = {
-  AETNA: "Aetna",
-  BCBS_IL: "BCBS IL",
-  COUNTY_CARE: "CountyCare",
-  HUMANA: "Humana",
-  MERIDIAN: "Meridian",
-  MOLINA: "Molina",
-  OTHER: "Other",
-};
+// The org's PAYER picklist (src/lib/picklists.ts), retired options included
+// so existing credentials still show their label.
+type PayerOption = { code: string; label: string; active: boolean };
 
 type Stage = { id: string; abbrev: string; name: string; hex: string };
 type Credential = {
@@ -47,18 +41,26 @@ type Credential = {
   daysInStage: number | null;
 };
 
-function NewMcoCredentialDialog({ clientId, existing }: { clientId: string; existing: string[] }) {
+function NewMcoCredentialDialog({
+  clientId,
+  existing,
+  payerOptions,
+}: {
+  clientId: string;
+  existing: string[];
+  payerOptions: PayerOption[];
+}) {
   const [open, setOpen] = useState(false);
   const [mcoName, setMcoName] = useState<string>("");
   const [isPending, startTransition] = useTransition();
 
-  const available = Object.entries(MCO_LABELS).filter(([value]) => !existing.includes(value));
+  const available = payerOptions.filter((o) => o.active && !existing.includes(o.code)).map((o) => [o.code, o.label] as const);
 
   function handleCreate() {
     if (!mcoName) return;
     startTransition(async () => {
       try {
-        await createMcoCredential(clientId, mcoName as Parameters<typeof createMcoCredential>[1]);
+        await createMcoCredential(clientId, mcoName);
         toast.success("MCO credentialing record added");
         setOpen(false);
         setMcoName("");
@@ -109,11 +111,14 @@ export function McoCredentialsCard({
   clientId,
   credentials,
   mcoStages,
+  payerOptions,
 }: {
   clientId: string;
   credentials: Credential[];
   mcoStages: DiagramStage[];
+  payerOptions: PayerOption[];
 }) {
+  const payerLabels: Record<string, string> = Object.fromEntries(payerOptions.map((o) => [o.code, o.label]));
   const forwardStages = mcoStages.filter((s) => !s.isExitStatus).sort((a, b) => a.sortOrder - b.sortOrder);
 
   return (
@@ -128,7 +133,11 @@ export function McoCredentialsCard({
               stages={mcoStages}
               autoOpenKey="MCO"
             />
-            <NewMcoCredentialDialog clientId={clientId} existing={credentials.map((c) => c.mcoName)} />
+            <NewMcoCredentialDialog
+              clientId={clientId}
+              existing={credentials.map((c) => c.mcoName)}
+              payerOptions={payerOptions}
+            />
           </div>
         </div>
         {credentials.length === 0 ? (
@@ -141,7 +150,7 @@ export function McoCredentialsCard({
                 return (
                   <div key={c.id} className="rounded-lg border p-3">
                     <div className="flex items-center justify-between">
-                      <span className="font-medium">{MCO_LABELS[c.mcoName] ?? c.mcoName}</span>
+                      <span className="font-medium">{payerLabels[c.mcoName] ?? c.mcoName}</span>
                       <McoStagePicker mcoCredentialId={c.id} currentStage={c.stage} stages={c.reachableStages} />
                     </div>
                     {stepIndex !== -1 && (

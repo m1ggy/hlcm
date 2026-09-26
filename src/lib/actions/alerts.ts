@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { requireRole } from "@/lib/rbac";
 import { computeAgingAlerts, computeLicenseAlerts, AgingAlert } from "@/lib/aging-alerts";
 import { daysInStage } from "@/lib/stage-transitions";
+import { getPicklists, picklistLabels } from "@/lib/picklists";
 
 export type ApplicationAlertGroup = {
   applicationId: string;
@@ -16,6 +17,7 @@ export type McoAlertGroup = {
   mcoCredentialId: string;
   clientId: string;
   clientName: string;
+  // The payer's display label from the org's PAYER list, not its code.
   mcoName: string;
   alerts: AgingAlert[];
 };
@@ -77,6 +79,7 @@ export async function listMcoAlerts(): Promise<McoAlertGroup[]> {
       stageHistory: { orderBy: { enteredAt: "desc" }, take: 1 },
     },
   });
+  const payerLabels = picklistLabels((await getPicklists()).PAYER);
 
   const now = new Date();
   const results: McoAlertGroup[] = [];
@@ -95,7 +98,7 @@ export async function listMcoAlerts(): Promise<McoAlertGroup[]> {
       now
     );
     if (alerts.length > 0) {
-      results.push({ mcoCredentialId: c.id, clientId: c.client.id, clientName: c.client.name, mcoName: c.mcoName, alerts });
+      results.push({ mcoCredentialId: c.id, clientId: c.client.id, clientName: c.client.name, mcoName: payerLabels[c.mcoName] ?? c.mcoName, alerts });
     }
   }
   return results;

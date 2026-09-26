@@ -25,9 +25,14 @@ import {
 import { APPLICATION_STATUSES, STATUS_LABELS, ApplicationStatus } from "@/lib/status";
 
 type Option = { id: string; name: string; role?: string };
+// An option from one of the org's picklists (src/lib/picklists.ts) — the
+// page passes only what the picker should offer.
+type PicklistOption = { code: string; label: string };
 
-const AGENCY_LABELS: Record<string, string> = { IDPH: "IDPH", IDOA: "IDoA", IDHS: "IDHS", OTHER: "Other" };
-const BALL_WITH_LABELS: Record<string, string> = { CTK: "CTK", CLIENT: "Client", GOVERNMENT: "Government" };
+function labelMap(options: PicklistOption[]) {
+  return Object.fromEntries(options.map((o) => [o.code, o.label]));
+}
+
 const NONE = "__none__";
 
 function toDateInputValue(date: Date | null) {
@@ -47,6 +52,8 @@ export function ApplicationPropertiesTable({
   reachableStages,
   daysInStage,
   stepInfo,
+  agencyOptions,
+  ballWithOptions,
 }: {
   applicationId: string;
   defaultValues: {
@@ -82,6 +89,8 @@ export function ApplicationPropertiesTable({
   // Position within the pipeline's forward-flow stage order — null for exit
   // statuses (On Hold/Withdrawn/Hearing Lost), where it doesn't apply.
   stepInfo: { index: number; total: number } | null;
+  agencyOptions: PicklistOption[];
+  ballWithOptions: PicklistOption[];
 }) {
   const router = useRouter();
   const [isSaving, startTransition] = useTransition();
@@ -354,7 +363,7 @@ export function ApplicationPropertiesTable({
           <TableCell className="text-muted-foreground">Agency</TableCell>
           <TableCell>
             <Select
-              items={{ [NONE]: "None", ...AGENCY_LABELS }}
+              items={{ [NONE]: "None", ...labelMap(agencyOptions) }}
               value={agency}
               onValueChange={(v) => {
                 const next = v ?? agency;
@@ -367,9 +376,9 @@ export function ApplicationPropertiesTable({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={NONE}>None</SelectItem>
-                {Object.entries(AGENCY_LABELS).map(([value, label]) => (
-                  <SelectItem key={value} value={value}>
-                    {label}
+                {agencyOptions.map((o) => (
+                  <SelectItem key={o.code} value={o.code}>
+                    {o.label}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -380,7 +389,7 @@ export function ApplicationPropertiesTable({
           <TableCell className="text-muted-foreground">Ball is with</TableCell>
           <TableCell>
             <Select
-              items={{ [NONE]: "None", ...BALL_WITH_LABELS }}
+              items={{ [NONE]: "None", ...labelMap(ballWithOptions) }}
               value={ballIsWith}
               onValueChange={(v) => {
                 const next = v ?? ballIsWith;
@@ -393,9 +402,9 @@ export function ApplicationPropertiesTable({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={NONE}>None</SelectItem>
-                {Object.entries(BALL_WITH_LABELS).map(([value, label]) => (
-                  <SelectItem key={value} value={value}>
-                    {label}
+                {ballWithOptions.map((o) => (
+                  <SelectItem key={o.code} value={o.code}>
+                    {o.label}
                   </SelectItem>
                 ))}
               </SelectContent>

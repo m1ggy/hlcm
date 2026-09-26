@@ -35,11 +35,14 @@ type Lookups = {
   caseTypes?: Record<string, string>;
   stages?: Record<string, string>;
   clientGroups?: Record<string, string>;
+  agencies?: Record<string, string>;
+  ballWith?: Record<string, string>;
+  payers?: Record<string, string>;
 };
 
 function describe(entry: AuditEntry, lookups: Lookups) {
   if (isEventAction(entry.action)) {
-    return formatEventDescription(entry.action, entry.oldValue, entry.newValue, lookups.users ?? {});
+    return formatEventDescription(entry.action, entry.oldValue, entry.newValue, lookups.users ?? {}, lookups.payers ?? {});
   }
   if (entry.field) {
     const label = formatFieldLabel(entry.field);
@@ -58,6 +61,9 @@ export function AuditLogPanel({
   caseTypes = {},
   stages = {},
   clientGroups = {},
+  agencies = {},
+  ballWith = {},
+  payers = {},
 }: {
   auditLog: AuditEntry[];
 } & Lookups) {
@@ -77,7 +83,7 @@ export function AuditLogPanel({
             <p className="text-sm">
               <span className="font-medium">{entry.actor.name}</span>{" "}
               <span className="text-muted-foreground">
-                {describe(entry, { clients, users, licenseTypes, caseTypes, stages, clientGroups })}
+                {describe(entry, { clients, users, licenseTypes, caseTypes, stages, clientGroups, agencies, ballWith, payers })}
               </span>
             </p>
             <p className="text-xs text-muted-foreground" title={new Date(entry.createdAt).toLocaleString()}>

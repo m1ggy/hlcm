@@ -22,6 +22,7 @@ import { InvoiceStatusBadge, isInvoiceOverdue } from "@/components/invoices/invo
 import { ClientDetailsForm } from "@/components/clients/client-details-form";
 import { ClientNotesPanel } from "@/components/clients/client-notes-panel";
 import { McoCredentialsCard } from "@/components/clients/mco-credentials-card";
+import { getPicklists, picklistLabels } from "@/lib/picklists";
 import { ClientCredentialsCard } from "@/components/clients/client-credentials-card";
 import { ClientContactsCard } from "@/components/clients/client-contacts-card";
 import { ClientOwnersCard } from "@/components/clients/client-owners-card";
@@ -104,6 +105,7 @@ export default async function ClientDetailPage({
     clientGroups,
     careRecipients,
     caregivers,
+    picklists,
   ] = await Promise.all([
     listAssignableUsers(),
     listClientNotes(id),
@@ -121,6 +123,7 @@ export default async function ClientDetailPage({
     listClientGroups(),
     listCareRecipients({ clientId: id }),
     listCaregivers(),
+    getPicklists(),
   ]);
   const mcoCredentialsWithStages = await Promise.all(
     mcoCredentials.map(async (c) => ({ ...c, reachableStages: await listReachableMcoStages(c.id) }))
@@ -289,7 +292,12 @@ export default async function ClientDetailPage({
         </Card>
       )}
 
-      <McoCredentialsCard clientId={id} credentials={mcoCredentialsWithStages} mcoStages={mcoStages} />
+      <McoCredentialsCard
+        clientId={id}
+        credentials={mcoCredentialsWithStages}
+        mcoStages={mcoStages}
+        payerOptions={picklists.PAYER}
+      />
 
       <ClientCredentialsCard clientId={id} credentials={credentials} />
 
@@ -318,6 +326,7 @@ export default async function ClientDetailPage({
                   auditLog={auditLog}
                   users={Object.fromEntries(assignableUsers.map((u) => [u.id, u.name]))}
                   clientGroups={Object.fromEntries(clientGroups.map((g) => [g.id, g.name]))}
+                  payers={picklistLabels(picklists.PAYER)}
                 />
               </div>
             </TabsContent>

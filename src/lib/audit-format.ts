@@ -152,18 +152,6 @@ const DOCUMENT_STATUS_LABELS: Record<string, string> = {
   SENT: "Sent",
 };
 
-const AGENCY_LABELS: Record<string, string> = { IDPH: "IDPH", IDOA: "IDoA", IDHS: "IDHS", OTHER: "Other" };
-const BALL_WITH_LABELS: Record<string, string> = { CTK: "CTK", CLIENT: "Client", GOVERNMENT: "Government" };
-const MCO_LABELS: Record<string, string> = {
-  AETNA: "Aetna",
-  BCBS_IL: "BCBS IL",
-  COUNTY_CARE: "CountyCare",
-  HUMANA: "Humana",
-  MERIDIAN: "Meridian",
-  MOLINA: "Molina",
-  OTHER: "Other",
-};
-
 // Actions whose old/new value is a one-off event payload (a filename, a
 // "userId:permission" pair) rather than a before/after property change —
 // these get a custom sentence instead of the generic "X changed from A to B".
@@ -228,7 +216,9 @@ export function formatEventDescription(
   action: string,
   oldValue: string | null,
   newValue: string | null,
-  users: Record<string, string> = {}
+  users: Record<string, string> = {},
+  // Payer code → label from the org's PAYER picklist (src/lib/picklists.ts).
+  payers: Record<string, string> = {}
 ) {
   const permissionLabel = (p: string) => (p === "EDIT" ? "can edit" : "can view");
 
@@ -258,12 +248,12 @@ export function formatEventDescription(
     return oldValue ? `Moved from "${oldValue}" to "${newValue}"` : `Set to "${newValue}"`;
   }
   if (action === "add_mco" && newValue) {
-    return `Started credentialing with ${MCO_LABELS[newValue] ?? newValue}`;
+    return `Started credentialing with ${payers[newValue] ?? newValue}`;
   }
   if (action === "change_mco_stage" && newValue) {
     const [mco, newStage] = newValue.split(":");
     const oldStage = oldValue?.split(":")[1];
-    const mcoLabel = MCO_LABELS[mco] ?? mco;
+    const mcoLabel = payers[mco] ?? mco;
     return oldStage
       ? `${mcoLabel}: moved from "${oldStage}" to "${newStage}"`
       : `${mcoLabel}: set to "${newStage}"`;
@@ -339,6 +329,10 @@ export function formatAuditValue(
     caseTypes?: Record<string, string>;
     stages?: Record<string, string>;
     clientGroups?: Record<string, string>;
+    // Picklist code → label (the org's AGENCY / BALL_WITH lists, see
+    // src/lib/picklists.ts) — a code with no label shows as itself.
+    agencies?: Record<string, string>;
+    ballWith?: Record<string, string>;
   } = {}
 ) {
   if (value === null || value === undefined || value === "") return "—";
@@ -383,8 +377,8 @@ export function formatAuditValue(
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString();
   }
-  if (field === "agency") return AGENCY_LABELS[value] ?? value;
-  if (field === "ballIsWith") return BALL_WITH_LABELS[value] ?? value;
+  if (field === "agency") return lookups.agencies?.[value] ?? value;
+  if (field === "ballIsWith") return lookups.ballWith?.[value] ?? value;
   if (field === "hourlyRate") {
     const rate = Number(value);
     return Number.isNaN(rate) ? value : `$${rate.toFixed(2)}/hr`;
