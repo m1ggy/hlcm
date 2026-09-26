@@ -2,9 +2,10 @@
 
 Status (2026-09-26): **Phase 0 + 1 on branch `multitenancy/phase-1`, Phase 2 on `multitenancy/phase-2`, Phase 3 on `multitenancy/phase-3`** (each built on the previous). Nothing merged or deployed. Plan drafted 2026-09-24.
 
-**Resume point (2026-09-26):** Phase 3 complete on `multitenancy/phase-3` (3a–3e, see its status block). Next:
-1. Re-run the migration rehearsal with Docker running: `docker build --target migrator -t hclm-migrate:phase3 .` then `SKIP_PULL=1 bash rehearse-migration.sh hclm-migrate:phase3` against the simulated droplet stack (last rehearsed at Phase 1 only).
-2. Phase 4 — per-org integrations (`OrganizationIntegration`, encrypted secrets, webhook routing by host, Admin > Integrations).
+**Resume point (2026-09-26):** Phases 0–4 implemented on branches `multitenancy/phase-1` … `multitenancy/phase-4` (each built on the previous); nothing merged or deployed. Next:
+1. Re-run the migration rehearsal (Phases 1–4) against a prod-like copy — blocked locally: Docker Desktop's disk is failing with I/O errors (needs a restart / "Clean / Purge data").
+2. Phase 5 — platform admin, org creation (+ `seedOrganization`), invites/password reset, branding, subdomain TLS, tenant billing, offboarding.
+3. Before any prod deploy of Phase 4: set `INTEGRATION_ENCRYPTION_KEY` on the server (see README).
 
 ## Decisions made
 
@@ -218,6 +219,15 @@ Risk: medium — rehearse the enum migration on a prod copy.
 
 ## Phase 4 — Per-org integrations + jobs
 
+**Status — implemented 2026-09-26 on `multitenancy/phase-4`:**
+- `organization_integrations` (config JSON + AES-256-GCM `secrets`, `INTEGRATION_ENCRYPTION_KEY`), `src/lib/secrets.ts`, `src/lib/integrations.ts` (`getIntegration`, save/delete/status, 30s per-process cache), provider field specs in `src/lib/integration-providers.ts`.
+- Stripe, DocuSign (per-org token/account caches), Calendly (booking page is now an org setting — the hardcoded CTK link is gone), Wise (sandbox check + source currency per org), Twilio, Teams read the current org's settings. Webhooks verify with the host org's secret; unknown host → 404.
+- Legacy fallback: the `ctk` org (`LEGACY_INTEGRATIONS_ORG_SLUG`) keeps reading the old env vars until an integration is saved; the first save carries env secrets over. Deploying Phase 4 changes nothing for CTK until then.
+- Admin > Integrations (owners only): per-provider form, write-only secrets, webhook URL for the org's host, "Test connection" (read-only call; Teams posts a test message), Disconnect; audited without values.
+- Verified: 67 tests (incl. per-org webhook verification — A's secret never validates at B), `next build`, browser run (owner vs admin access, env → saved Stripe with a live read-only test against the CTK Stripe test account, validation, Teams save/test/disconnect).
+- Deferred: "Register webhook" buttons replacing `scripts/create-calendly-webhook.ts` / `create-docusign-connect.ts` (the scripts still work with env credentials); per-org digest hour (`Organization.timezone`) → Phase 5 org settings. Resend stays platform-owned.
+
+
 ```prisma
 model OrganizationIntegration {
   id               String @id @default(cuid())
@@ -296,7 +306,7 @@ Rough effort (solo dev + Claude):
 | 1 Schema + backfill | 1–2 d |
 | 2 Tenant context + call sites + FK triggers + tests | done (branch) |
 | 3 Uniques / numbering / storage / lookups / stage roles | done (branch) |
-| 4 Integrations + jobs | 1–1.5 w |
+| 4 Integrations + jobs | done (branch) |
 | 5 Platform admin, onboarding, TLS, billing, offboarding | 1.5–2 w |
 | 6 RLS | 3–5 d |
 | **Total** | **~7–9 w** |
