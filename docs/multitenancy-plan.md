@@ -1,12 +1,11 @@
 # Multitenancy plan
 
-Status (2026-09-26): **Phase 0 + 1 on branch `multitenancy/phase-1`, Phase 2 on `multitenancy/phase-2`, Phase 3 on `multitenancy/phase-3`** (each built on the previous). Nothing merged or deployed. Plan drafted 2026-09-24.
+Status (2026-09-28): **all phases through 6 implemented** (billing deferred); see the resume point. Earlier: **Phase 0 + 1 on branch `multitenancy/phase-1`, Phase 2 on `multitenancy/phase-2`, Phase 3 on `multitenancy/phase-3`** (each built on the previous). Nothing merged or deployed. Plan drafted 2026-09-24.
 
-**Resume point (2026-09-28):** Phases 0–5 (except tenant billing) implemented on branches `multitenancy/phase-1` … `multitenancy/phase-5` (each built on the previous); nothing merged or deployed. Next:
-1. **Decision needed — tenant billing:** pricing model (flat / per-seat / per-client) before building Phase 5g.
-2. Phase 6 — RLS (policies, app/system DB roles, CI policy check).
-3. Deploy prerequisites: `INTEGRATION_ENCRYPTION_KEY` on the server; for the subdomain switch follow README "Switching production to multi-tenant".
-4. Deferred: time-entry default timezone still `America/Chicago` for every org (should fall back to `Organization.timezone`); "Register webhook" buttons for Calendly/DocuSign.
+**Resume point (2026-09-28):** Phases 0–6 implemented (tenant billing deferred by the user) on branches `multitenancy/phase-1` … `multitenancy/phase-6`, each built on the previous — `multitenancy/phase-6` contains everything. Nothing merged or deployed. Next:
+1. **Rollout** (each step deployable on its own, none changes behavior until switched on): merge `multitenancy/phase-6` → `dev` (deploys to dev; CI runs the suite incl. RLS) → rehearse on the prod server with `rehearse-migration.sh` → `main`. Then, when ready: set `INTEGRATION_ENCRYPTION_KEY`; run `setup-app-db-role.sh` + split `DATABASE_URL`/`SYSTEM_DATABASE_URL` (RLS on); DNS + `ROOT_DOMAIN` (subdomains on) — see README.
+2. **Decisions pending:** tenant billing pricing (5g); whether the time-entry default timezone should follow `Organization.timezone` (still `America/Chicago` for every org); product name + domain.
+3. Deferred: "Register webhook" buttons for Calendly/DocuSign.
 
 ## Decisions made
 
@@ -287,6 +286,12 @@ Risk: medium — test webhook cutover in Stripe/DocuSign sandbox first.
 
 ## Phase 6 — RLS
 
+**Status — implemented 2026-09-28 on `multitenancy/phase-6`** (101 tests, all passing as the restricted role):
+- `ensure_tenant_policies()` + `tenant_isolation` policy on every `organizationId` table, join-table policy (both ends in org), `own_organization` on `organizations`.
+- **Deviation:** RLS is ENABLEd, not FORCEd — the owner is exempt and serves as the "system" role (`SYSTEM_DATABASE_URL`: migrations, `tenant.ts`, `platform.ts`, job org loop, scripts); only one new role is needed (`hclm_app`, `scripts/setup-app-db-role.sh` / `app-db-role.sql`). No BYPASSRLS anywhere. Until the env split, both URLs are the owner — no behavior change on deploy.
+- CI runs with `TEST_RLS=1`; coverage test fails if a tenant table lacks the policy. Verified end to end on the simulated prod stack with the app running as `hclm_app`.
+- Found: under RLS Postgres hides a unique violation's key → `friendlyPrismaError` matches the constraint name; `rehearse-migration.sh` now overrides `SYSTEM_DATABASE_URL` too (it would otherwise have migrated the live DB after the split).
+
 **Why:** the app-layer filter only protects queries that go through it. RLS makes Postgres itself refuse cross-tenant rows — catches raw-client mistakes, future `$queryRaw`, bad `updateMany`/`deleteMany` where clauses, extension bugs. Does **not** catch cross-tenant `connect: { id }` (FK checks bypass RLS) or intra-tenant RBAC bugs.
 
 **Cost:** each query becomes BEGIN/set_config/query/COMMIT (~3–4 round trips; Postgres is on the same docker network, ~0.2–0.5ms each — a few ms per page). Needs separate DB roles; every new table needs a policy.
@@ -318,7 +323,7 @@ Rough effort (solo dev + Claude):
 | 3 Uniques / numbering / storage / lookups / stage roles | done (branch) |
 | 4 Integrations + jobs | done (branch) |
 | 5 Platform admin, onboarding, TLS, billing, offboarding | done except billing (branch) |
-| 6 RLS | 3–5 d |
+| 6 RLS | done (branch) |
 | **Total** | **~7–9 w** |
 
 ---
