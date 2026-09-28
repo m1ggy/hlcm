@@ -51,7 +51,7 @@ export default async function TimeTrackingPage() {
         <AddTaskTimeDialog
           tasks={taskOptions}
           users={canSeeAllUsers ? users.map((u) => ({ id: u.id, name: u.name })) : undefined}
-          accountTimezone={account.timezone}
+          accountTimezone={account.workingTimezone}
         />
       </div>
 
@@ -95,7 +95,7 @@ export default async function TimeTrackingPage() {
             </TabsList>
             <TabsContent value="week">
               <TaskTimeWeekGrid
-                accountTimezone={account.timezone}
+                accountTimezone={account.workingTimezone}
                 tasks={taskOptions}
                 canSeeAllUsers={canSeeAllUsers}
                 users={users.map((u) => ({ id: u.id, name: u.name }))}
@@ -103,7 +103,7 @@ export default async function TimeTrackingPage() {
             </TabsContent>
             <TabsContent value="report">
               <TaskTimeReport
-                accountTimezone={account.timezone}
+                accountTimezone={account.workingTimezone}
                 canSeeAllUsers={canSeeAllUsers}
                 users={users.map((u) => ({ id: u.id, name: u.name }))}
                 tasks={taskOptions}

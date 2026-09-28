@@ -2,11 +2,11 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { db } from "@/lib/db";
+import { db, currentWorkspaceTimezone } from "@/lib/db";
 import { requireSession, requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
-import { TimeClockError, summarizeByUser, DEFAULT_TIMEZONE, type TimeEntryRangeInput, type BreakDeductionRule } from "@/lib/time-entries";
+import { TimeClockError, summarizeByUser, type TimeEntryRangeInput, type BreakDeductionRule } from "@/lib/time-entries";
 
 export async function getMyActiveEntry() {
   const session = await requireSession();
@@ -311,7 +311,7 @@ export async function getTimesheetTotals(input: TimeEntryRangeInput & { timeZone
     toDate: d.toDate,
     minutesPerDay: d.minutesPerDay,
   }));
-  return summarizeByUser(entries, rules, input.timeZone || DEFAULT_TIMEZONE);
+  return summarizeByUser(entries, rules, input.timeZone || (await currentWorkspaceTimezone()));
 }
 
 const breakDeductionSchema = z

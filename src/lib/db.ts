@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { prisma, systemPrisma } from "@/lib/prisma";
 import { getHostOrg, getOrgBySlug, type HostOrg } from "@/lib/tenant";
 import { PLATFORM_SLUG } from "@/lib/tenant-host";
+import { DEFAULT_TIMEZONE } from "@/lib/time-entries";
 
 // Tenant-scoped Prisma access (see docs/multitenancy-plan.md, Phase 2).
 //
@@ -168,6 +169,11 @@ export async function currentOrganization(): Promise<HostOrg> {
   const org = await getOrgBySlug((await currentOrg()).slug);
   if (!org) throw new TenantNotResolvedError();
   return org;
+}
+
+/** The organization's timezone (Organization settings), else DEFAULT_TIMEZONE — the time clock's default. */
+export async function currentWorkspaceTimezone(): Promise<string> {
+  return (await currentOrganization()).timezone || DEFAULT_TIMEZONE;
 }
 
 export async function currentOrgId(): Promise<string> {

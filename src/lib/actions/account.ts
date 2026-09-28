@@ -3,21 +3,32 @@
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import QRCode from "qrcode";
-import { db, currentOrganization } from "@/lib/db";
+import { db, currentOrganization, currentWorkspaceTimezone } from "@/lib/db";
 import { requireSession } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { generateMfaSecret, getOtpAuthUrl, verifyTotpToken } from "@/lib/totp";
 
 export async function getAccount() {
   const session = await requireSession();
-  return db.user.findUniqueOrThrow({
-    where: { id: session.user.id },
-    select: { id: true, name: true, email: true, mfaEnabled: true, emailNotificationsEnabled: true, timezone: true },
-  });
+  const [user, workspaceTimezone] = await Promise.all([
+    db.user.findUniqueOrThrow({
+      where: { id: session.user.id },
+      select: { id: true, name: true, email: true, mfaEnabled: true, emailNotificationsEnabled: true, timezone: true },
+    }),
+    currentWorkspaceTimezone(),
+  ]);
+  // workspaceTimezone: what "not set" falls back to (Organization settings,
+  // else DEFAULT_TIMEZONE). workingTimezone: the zone the time clock uses for
+  // this user — what the time pages pass down as `accountTimezone`.
+  return { ...user, workspaceTimezone, workingTimezone: user.timezone || workspaceTimezone };
 }
 
-// null clears back to "use the browser's own timezone" (the pre-existing
-// behavior) — validated against the runtime's own IANA database rather than
+/** Just getAccount's workingTimezone — for client components that open outside a time page. */
+export async function getMyWorkingTimezone() {
+  return (await getAccount()).workingTimezone;
+}
+
+// null clears back to the workspace default (see getAccount) — validated against the runtime's own IANA database rather than
 // a hardcoded list, so it can never drift out of sync with it.
 export async function updateTimezone(timezone: string | null) {
   const session = await requireSession();

@@ -22,6 +22,7 @@ import { updateTask, setTaskReviewers, getTaskAuditLog } from "@/lib/actions/tas
 import { listTaskNotes, addTaskNote } from "@/lib/actions/notes";
 import { listTaskFiles } from "@/lib/actions/files";
 import { getTaskTimeSummary } from "@/lib/actions/task-time-entries";
+import { getMyWorkingTimezone } from "@/lib/actions/account";
 import { budgetSeverity } from "@/lib/task-time-entries";
 import { formatDuration } from "@/lib/time-entries";
 import { TaskStatusValue } from "@/lib/task-status";
@@ -95,6 +96,12 @@ export function TaskDetailDialog({
   const [filesLoaded, setFilesLoaded] = useState(false);
   const [timeSummary, setTimeSummary] = useState<{ hours: number; estimatedHours: number | null } | null>(null);
   const [timeLoaded, setTimeLoaded] = useState(false);
+  const [workingTimezone, setWorkingTimezone] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open || workingTimezone) return;
+    getMyWorkingTimezone().then(setWorkingTimezone, () => {});
+  }, [open, workingTimezone]);
 
   useEffect(() => {
     if (!open || notesLoaded) return;
@@ -312,7 +319,7 @@ export function TaskDetailDialog({
               <AddTaskTimeDialog
                 tasks={[]}
                 fixedTaskId={taskId}
-                accountTimezone={null}
+                accountTimezone={workingTimezone}
                 triggerLabel="Log time"
                 onAdded={refreshTimeSummary}
               />

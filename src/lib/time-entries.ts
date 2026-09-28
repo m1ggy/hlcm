@@ -30,8 +30,10 @@ function pad(n: number) {
   return String(n).padStart(2, "0");
 }
 
-/** Company home base — the fallback for anyone who hasn't set their own
- * zone in Account settings. Everyone defaults to the same zone (rather
+/** Last-resort fallback for anyone who hasn't set their own zone in Account
+ * settings, in a workspace with no timezone in Organization settings (the
+ * server resolves that before passing `accountTimezone` down — see
+ * getAccount). Everyone defaults to the same zone (rather
  * than each browser's own auto-detected one) so a self clock-in and a
  * manually-added entry land on the same wall-clock hours by default. */
 export const DEFAULT_TIMEZONE = "America/Chicago";

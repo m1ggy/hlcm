@@ -50,7 +50,7 @@ export default async function AccountPage() {
           <CardTitle>Timezone</CardTitle>
         </CardHeader>
         <CardContent>
-          <TimezoneSection initialTimezone={account.timezone} />
+          <TimezoneSection initialTimezone={account.timezone} defaultTimezone={account.workspaceTimezone} />
         </CardContent>
       </Card>
       </div>

@@ -69,7 +69,7 @@ export function OrganizationSettingsForm({
           placeholder="Server default"
           searchPlaceholder="Search timezones..."
         />
-        <p className="text-xs text-muted-foreground">When org-wide schedules run — e.g. the daily due-date digest goes out at 8am here.</p>
+        <p className="text-xs text-muted-foreground">When org-wide schedules run (the daily due-date digest goes out at 8am here), and the time clock&apos;s default for anyone who hasn&apos;t picked their own timezone.</p>
       </div>
       <div className="space-y-1">
         <Label htmlFor="org-reply-to">Reply-to email</Label>

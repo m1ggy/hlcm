@@ -43,7 +43,7 @@ export default async function TimePage() {
           <CardTitle>My Time</CardTitle>
         </CardHeader>
         <CardContent>
-          <MyTimeLog accountTimezone={account.timezone} />
+          <MyTimeLog accountTimezone={account.workingTimezone} />
         </CardContent>
       </Card>
 
@@ -55,7 +55,7 @@ export default async function TimePage() {
           <CardContent>
             <TimesheetReport
               users={users.map((u) => ({ id: u.id, name: u.name }))}
-              accountTimezone={account.timezone}
+              accountTimezone={account.workingTimezone}
               isAdmin={canPay}
             />
           </CardContent>

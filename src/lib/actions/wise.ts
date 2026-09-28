@@ -2,11 +2,11 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { db } from "@/lib/db";
+import { db, currentWorkspaceTimezone } from "@/lib/db";
 import { requireSession, requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { listTimeEntries, listBreakDeductions } from "@/lib/actions/time-entries";
-import { summarizeByUser, DEFAULT_TIMEZONE, type BreakDeductionRule } from "@/lib/time-entries";
+import { summarizeByUser, type BreakDeductionRule } from "@/lib/time-entries";
 import {
   getAccountRequirements,
   createRecipientAccount,
@@ -142,7 +142,7 @@ export async function payUserViaWise(input: z.infer<typeof payoutRangeSchema>) {
     toDate: d.toDate,
     minutesPerDay: d.minutesPerDay,
   }));
-  const [totals] = summarizeByUser(entries, rules, timeZone || DEFAULT_TIMEZONE);
+  const [totals] = summarizeByUser(entries, rules, timeZone || (await currentWorkspaceTimezone()));
   const hours = totals?.hours ?? 0;
   if (hours <= 0) throw new Error("No completed sessions in this date range");
 
