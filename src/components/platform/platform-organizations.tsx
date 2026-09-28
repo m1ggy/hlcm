@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   createOrganizationFromPlatform,
+  inviteOwnerFromPlatform,
   resendOwnerInvitesFromPlatform,
   setOrganizationStatusFromPlatform,
 } from "@/lib/actions/platform";
@@ -122,6 +123,59 @@ function NewOrganizationDialog() {
   );
 }
 
+// Adds (or promotes) an owner and emails them a set-password link — for a
+// mistyped owner email, or a workspace whose only owner is locked out.
+function InviteOwnerDialog({ org }: { org: Org }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const { isPending, run } = useAction();
+
+  function handleInvite() {
+    run(() => inviteOwnerFromPlatform(org.id, { name, email }), ({ inviteSent }) => {
+      if (inviteSent) toast.success(`Invited ${email} as an owner of ${org.name}`);
+      else toast.warning(`${email} is now an owner, but the invite email couldn't be sent — try "Resend owner invite".`);
+      setOpen(false);
+      setName("");
+      setEmail("");
+    });
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger render={<Button variant="ghost" size="sm" disabled={org.status === "SUSPENDED"}>Invite owner</Button>} />
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Invite an owner to {org.name}</DialogTitle>
+        </DialogHeader>
+        <form
+          className="space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleInvite();
+          }}
+        >
+          <p className="text-sm text-muted-foreground">
+            If this email already has an account in the workspace it becomes an owner (and is reactivated); otherwise a new
+            owner account is created. Either way they get a link to set their password.
+          </p>
+          <div className="space-y-1">
+            <Label htmlFor={`invite-name-${org.id}`}>Name</Label>
+            <Input id={`invite-name-${org.id}`} value={name} onChange={(e) => setName(e.target.value)} required />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor={`invite-email-${org.id}`}>Email</Label>
+            <Input id={`invite-email-${org.id}`} type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          </div>
+          <Button type="submit" className="w-full" loading={isPending}>
+            Invite owner
+          </Button>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function OrganizationRow({ org }: { org: Org }) {
   const { isPending, run } = useAction();
   const suspended = org.status === "SUSPENDED";
@@ -154,6 +208,7 @@ function OrganizationRow({ org }: { org: Org }) {
       <TableCell className="text-muted-foreground">{org.userCount}</TableCell>
       <TableCell className="text-muted-foreground">{new Date(org.createdAt).toLocaleDateString()}</TableCell>
       <TableCell className="space-x-1 text-right">
+        <InviteOwnerDialog org={org} />
         <Button variant="ghost" size="sm" disabled={isPending || suspended} onClick={resendInvite}>
           Resend owner invite
         </Button>

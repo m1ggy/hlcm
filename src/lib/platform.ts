@@ -72,6 +72,38 @@ export async function createOrganization(input: CreateOrganizationInput, invited
   return { org, inviteSent };
 }
 
+/**
+ * Makes `email` an OWNER of an existing workspace and emails them an invite
+ * (a set-password link) — the way back in when an owner's email was mistyped
+ * at creation or the only owner deactivated themselves. An existing account
+ * with that email is promoted and reactivated; otherwise one is created.
+ */
+export async function inviteOwner(orgId: string, input: { name: string; email: string }, invitedBy?: string) {
+  const name = input.name.trim();
+  const email = input.email.trim().toLowerCase();
+  if (!name) throw new UserFacingError("Name is required");
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new UserFacingError("Enter a valid email");
+  const org = await prisma.organization.findUniqueOrThrow({ where: { id: orgId }, select: { id: true, slug: true } });
+  if (org.slug === PLATFORM_SLUG) throw new UserFacingError("Add platform admins with scripts/create-platform-admin.ts");
+
+  const t = tenantDb(org.id);
+  const existing = await t.user.findFirst({ where: { email: { equals: email, mode: "insensitive" } }, select: { id: true } });
+  const owner = existing
+    ? await t.user.update({ where: { id: existing.id }, data: { role: "OWNER", active: true }, select: { id: true, name: true, email: true } })
+    : await t.user.create({
+        data: { name, email, role: "OWNER", passwordHash: await bcrypt.hash(randomBytes(32).toString("hex"), 12) },
+        select: { id: true, name: true, email: true },
+      });
+  let inviteSent = true;
+  try {
+    await runAsTenant(org, () => sendInviteEmail(owner, invitedBy));
+  } catch (error) {
+    console.error(`Failed to send owner invite for ${org.slug}:`, error);
+    inviteSent = false;
+  }
+  return { userId: owner.id, created: !existing, inviteSent };
+}
+
 /** Re-sends the invite to every owner of `orgId` who hasn't accepted theirs yet. */
 export async function resendOwnerInvites(orgId: string, invitedBy?: string) {
   const org = await prisma.organization.findUniqueOrThrow({ where: { id: orgId }, select: { id: true, slug: true } });

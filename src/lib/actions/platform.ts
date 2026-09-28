@@ -8,6 +8,7 @@ import { toActionResult, type ActionResult } from "@/lib/action-result";
 import { PLATFORM_SLUG, orgAppUrl } from "@/lib/tenant-host";
 import {
   createOrganization,
+  inviteOwner,
   listOrganizations,
   resendOwnerInvites,
   setOrganizationStatus,
@@ -65,5 +66,15 @@ export async function resendOwnerInvitesFromPlatform(orgId: string): Promise<Act
     const count = await resendOwnerInvites(orgId, session.user.name ?? undefined);
     await recordAudit({ entityType: "Organization", entityId: orgId, action: "resend_owner_invites", actorId: session.user.id, newValue: String(count) });
     return count;
+  });
+}
+
+export async function inviteOwnerFromPlatform(orgId: string, input: { name: string; email: string }): Promise<ActionResult<{ inviteSent: boolean }>> {
+  return toActionResult(async () => {
+    const session = await requirePlatformAdmin();
+    const result = await inviteOwner(orgId, input, session.user.name ?? undefined);
+    await recordAudit({ entityType: "Organization", entityId: orgId, action: "invite_owner", actorId: session.user.id, newValue: input.email.trim().toLowerCase() });
+    revalidatePath("/platform");
+    return { inviteSent: result.inviteSent };
   });
 }

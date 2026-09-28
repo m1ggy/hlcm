@@ -73,3 +73,27 @@ describe("setOrganizationStatus", () => {
     expect((await getOrgBySlug("sunrise"))?.status).toBe("ACTIVE");
   });
 });
+
+describe("inviteOwner", () => {
+  it("creates a new owner, or promotes and reactivates an existing account", async () => {
+    const { inviteOwner } = await import("@/lib/platform");
+    const org = await prisma.organization.findUniqueOrThrow({ where: { slug: "sunrise" } });
+    const t = tenantDb(org.id);
+
+    const fresh = await inviteOwner(org.id, { name: "Second Owner", email: "Second@Sunrise.test" });
+    expect(fresh.created).toBe(true);
+    expect((await t.user.findUnique({ where: { id: fresh.userId } }))).toMatchObject({ role: "OWNER", email: "second@sunrise.test" });
+
+    const staff = await t.user.create({ data: { name: "Stu", email: "stu@sunrise.test", passwordHash: "x", role: "STAFF", active: false } });
+    const promoted = await inviteOwner(org.id, { name: "ignored", email: "stu@sunrise.test" });
+    expect(promoted).toMatchObject({ created: false, userId: staff.id });
+    expect(await t.user.findUnique({ where: { id: staff.id } })).toMatchObject({ role: "OWNER", active: true, name: "Stu" });
+  });
+
+  it("refuses the platform org and bad emails", async () => {
+    const { inviteOwner } = await import("@/lib/platform");
+    await expect(inviteOwner("org_platform", { name: "X", email: "x@y.test" })).rejects.toThrow(/create-platform-admin/);
+    const org = await prisma.organization.findUniqueOrThrow({ where: { slug: "sunrise" } });
+    await expect(inviteOwner(org.id, { name: "X", email: "nope" })).rejects.toThrow(/valid email/);
+  });
+});
