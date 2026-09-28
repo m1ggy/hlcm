@@ -171,3 +171,9 @@ export async function deleteIntegration(provider: IntegrationProviderId) {
 export function clearIntegrationCache() {
   cache.clear();
 }
+
+/** Merges `patch` into the current org's settings for `provider` (e.g. a signing key a webhook registration just generated). */
+export async function patchIntegration(provider: IntegrationProviderId, patch: IntegrationValues) {
+  const current = (await getIntegration(provider)) ?? {};
+  await saveIntegration(provider, { ...current, ...patch });
+}

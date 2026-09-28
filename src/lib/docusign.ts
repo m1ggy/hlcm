@@ -19,10 +19,11 @@
 //       https://developers.docusign.com/docs/esign-rest-api/reference/envelopes/envelopes/create/
 //       https://developers.docusign.com/platform/webhooks/connect/
 
-import crypto from "crypto";
+import crypto, { randomBytes } from "crypto";
 import { SignJWT, importPKCS8 } from "jose";
 import { currentOrgId } from "@/lib/db";
 import { getIntegration } from "@/lib/integrations";
+import { PRODUCT_NAME } from "@/lib/branding";
 
 export class DocusignConfigError extends Error {}
 export class DocusignApiError extends Error {
@@ -266,4 +267,39 @@ export async function verifyDocusignWebhookSignature(rawBody: string, signatureH
 export async function testDocusignConnection(): Promise<string> {
   const { accountId } = await getAccountBaseUri();
   return `Connected to DocuSign account ${accountId}`;
+}
+
+/**
+ * Creates this workspace's DocuSign Connect configuration (the webhook) with
+ * a freshly generated HMAC key and returns the key. Replaces only earlier
+ * configurations publishing to the same URL.
+ */
+export async function registerDocusignConnect(publishUrl: string): Promise<string> {
+  const listRes = await docusignFetch("/connect", { method: "GET" });
+  const configs = ((await listRes.json()).configurations ?? []) as { connectId: string; urlToPublishTo?: string }[];
+  for (const config of configs.filter((c) => c.urlToPublishTo === publishUrl)) {
+    await docusignFetch(`/connect/${config.connectId}`, { method: "DELETE" });
+  }
+
+  const hmacKey = randomBytes(32).toString("base64");
+  await docusignFetch("/connect", {
+    method: "POST",
+    body: JSON.stringify({
+      configurationType: "custom",
+      name: `${PRODUCT_NAME} workspace webhook`,
+      urlToPublishTo: publishUrl,
+      allUsers: "true",
+      enableLog: "true",
+      includeHMAC: "true",
+      hmacKeys: [hmacKey],
+      envelopeEvents: [
+        { envelopeEventStatusCode: "sent" },
+        { envelopeEventStatusCode: "delivered" },
+        { envelopeEventStatusCode: "completed" },
+        { envelopeEventStatusCode: "declined" },
+        { envelopeEventStatusCode: "voided" },
+      ],
+    }),
+  });
+  return hmacKey;
 }

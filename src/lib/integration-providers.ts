@@ -27,6 +27,10 @@ export type IntegrationProviderSpec = {
   fields: IntegrationField[];
   /** Webhook path to register with the provider, under the org's own workspace URL. */
   webhookPath?: string;
+  /** Extra setup guidance shown on the card. */
+  help?: string;
+  /** The app can create the webhook subscription itself once these fields are saved. */
+  registerWebhook?: { requires: string[] };
 };
 
 export const INTEGRATION_PROVIDERS: IntegrationProviderSpec[] = [
@@ -35,6 +39,7 @@ export const INTEGRATION_PROVIDERS: IntegrationProviderSpec[] = [
     label: "Stripe",
     description: "Invoices sent and paid through Stripe.",
     webhookPath: "/api/webhooks/stripe",
+    help: "In Stripe → Developers → Webhooks, add an endpoint for the webhook URL below with the events invoice.paid, invoice.voided, invoice.payment_failed and invoice.finalization_failed, then paste its signing secret here.",
     fields: [
       { key: "secretKey", label: "Secret key", secret: true, required: true, placeholder: "sk_live_…", env: "STRIPE_SECRET_KEY" },
       { key: "webhookSecret", label: "Webhook signing secret", secret: true, required: false, placeholder: "whsec_…", env: "STRIPE_WEBHOOK_SECRET", help: "From the webhook endpoint you add in Stripe for the webhook URL above." },
@@ -46,6 +51,8 @@ export const INTEGRATION_PROVIDERS: IntegrationProviderSpec[] = [
     label: "DocuSign",
     description: "Sending documents for signature.",
     webhookPath: "/api/webhooks/docusign",
+    help: "Create an integration key with an RSA keypair in DocuSign Admin → Apps and Keys, save the fields below, grant consent once with the link that appears, then register the webhook.",
+    registerWebhook: { requires: ["integrationKey", "userId", "accountId", "privateKey"] },
     fields: [
       { key: "integrationKey", label: "Integration key", secret: false, required: true, env: "DOCUSIGN_INTEGRATION_KEY" },
       { key: "userId", label: "API username (user GUID)", secret: false, required: true, env: "DOCUSIGN_USER_ID" },
@@ -60,6 +67,8 @@ export const INTEGRATION_PROVIDERS: IntegrationProviderSpec[] = [
     label: "Calendly",
     description: "Bookings arrive as Leads; rebooking links and cancellations.",
     webhookPath: "/api/webhooks/calendly",
+    help: "Generate a personal access token in Calendly → Integrations → API & Webhooks, save it, then register the webhook — the signing key is created and stored for you.",
+    registerWebhook: { requires: ["apiToken"] },
     fields: [
       { key: "bookingUrl", label: "Public booking page", secret: false, required: false, placeholder: "https://calendly.com/your-team", env: "CALENDLY_BOOKING_URL", help: "Fallback link in follow-up emails when a single-use link can't be made." },
       { key: "apiToken", label: "Personal access token", secret: true, required: false, env: "CALENDLY_API_TOKEN" },

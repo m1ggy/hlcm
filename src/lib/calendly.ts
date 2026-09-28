@@ -9,12 +9,12 @@
 // a signing_key WE generate and supply when creating the subscription —
 // confirmed against a real API call (2026-09-14) that Calendly does NOT
 // generate and hand one back the way Stripe/DocuSign do; see
-// scripts/create-calendly-webhook.ts's header comment for the full story.
+// registerCalendlyWebhook below (Admin > Integrations > Register webhook).
 // One addition Stripe's route doesn't bother with: Calendly's docs
 // explicitly recommend rejecting an old timestamp to block replay, so this
 // does too.
 
-import crypto from "crypto";
+import crypto, { randomBytes } from "crypto";
 import { getIntegration } from "@/lib/integrations";
 
 export class CalendlyConfigError extends Error {}
@@ -170,4 +170,40 @@ export async function testCalendlyConnection(): Promise<string> {
   const res = await calendlyFetch(`${API_BASE}/users/me`, { method: "GET" });
   const me = await res.json();
   return `Connected as ${me.resource?.name ?? me.resource?.email ?? "Calendly user"}`;
+}
+
+/**
+ * Creates this workspace's Calendly webhook subscription with a freshly
+ * generated signing key and returns the key (Calendly signs deliveries with
+ * whatever key we supply and never echoes it back). Replaces only earlier
+ * subscriptions pointing at the same callback URL — never the account's
+ * other webhooks — since Calendly can't rotate a key in place.
+ */
+export async function registerCalendlyWebhook(callbackUrl: string): Promise<string> {
+  const meRes = await calendlyFetch(`${API_BASE}/users/me`, { method: "GET" });
+  const organization = (await meRes.json()).resource.current_organization as string;
+
+  const listRes = await calendlyFetch(
+    `${API_BASE}/webhook_subscriptions?organization=${encodeURIComponent(organization)}&scope=organization`,
+    { method: "GET" }
+  );
+  const existing = ((await listRes.json()).collection ?? []) as { uri: string; callback_url: string }[];
+  for (const sub of existing.filter((s) => s.callback_url === callbackUrl)) {
+    await calendlyFetch(sub.uri, { method: "DELETE" }).catch((error) => {
+      if (!(error instanceof CalendlyApiError && error.status === 404)) throw error;
+    });
+  }
+
+  const signingKey = randomBytes(32).toString("base64");
+  await calendlyFetch(`${API_BASE}/webhook_subscriptions`, {
+    method: "POST",
+    body: JSON.stringify({
+      url: callbackUrl,
+      events: ["invitee.created", "invitee.canceled"],
+      organization,
+      scope: "organization",
+      signing_key: signingKey,
+    }),
+  });
+  return signingKey;
 }

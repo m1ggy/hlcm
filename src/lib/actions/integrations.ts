@@ -7,12 +7,12 @@ import { toActionResult, type ActionResult } from "@/lib/action-result";
 import { UserFacingError } from "@/lib/user-facing-error";
 import { getAppUrl } from "@/lib/email";
 import { PRODUCT_NAME } from "@/lib/branding";
-import { deleteIntegration, getIntegrationStatus, saveIntegration, type IntegrationStatus } from "@/lib/integrations";
-import { INTEGRATION_PROVIDERS, type IntegrationProviderId } from "@/lib/integration-providers";
+import { deleteIntegration, getIntegrationStatus, patchIntegration, saveIntegration, type IntegrationStatus } from "@/lib/integrations";
+import { INTEGRATION_PROVIDERS, providerSpec, type IntegrationProviderId } from "@/lib/integration-providers";
 import { SecretsConfigError } from "@/lib/secrets";
 import { testStripeConnection } from "@/lib/stripe";
-import { testDocusignConnection } from "@/lib/docusign";
-import { testCalendlyConnection } from "@/lib/calendly";
+import { registerDocusignConnect, testDocusignConnection } from "@/lib/docusign";
+import { registerCalendlyWebhook, testCalendlyConnection } from "@/lib/calendly";
 import { testWiseConnection } from "@/lib/wise";
 import { testTwilioConnection } from "@/lib/twilio";
 import { postTeamsMessage } from "@/lib/teams";
@@ -108,5 +108,30 @@ export async function testIntegration(provider: string): Promise<ActionResult<st
       }
       throw new UserFacingError(error instanceof Error ? error.message : "Connection test failed");
     }
+  });
+}
+
+/**
+ * Creates the webhook subscription at the provider for this workspace's
+ * own URL (Calendly, DocuSign) and stores the signing key it generated —
+ * the step tenants otherwise couldn't do without a command-line script.
+ */
+export async function registerIntegrationWebhook(provider: string): Promise<ActionResult<string>> {
+  return toActionResult(async () => {
+    const session = await requireRole([...OWNER_ONLY]);
+    const id = assertProvider(provider);
+    const spec = providerSpec(id);
+    if (!spec.registerWebhook || !spec.webhookPath) throw new UserFacingError(`${spec.label} webhooks are registered in ${spec.label} itself`);
+    const url = `${await getAppUrl()}${spec.webhookPath}`;
+    try {
+      if (id === "CALENDLY") await patchIntegration(id, { webhookSigningKey: await registerCalendlyWebhook(url) });
+      else if (id === "DOCUSIGN") await patchIntegration(id, { webhookHmacKey: await registerDocusignConnect(url) });
+    } catch (error) {
+      if (error instanceof UserFacingError) throw error;
+      throw new UserFacingError(`${spec.label} refused the webhook registration: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    await recordAudit({ entityType: "Integration", entityId: id, action: "register_webhook", actorId: session.user.id, newValue: url });
+    revalidatePath("/admin/integrations");
+    return `Registered ${url} with ${spec.label}`;
   });
 }

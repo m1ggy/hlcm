@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { disconnectIntegration, saveIntegrationSettings, testIntegration, type AdminIntegration } from "@/lib/actions/integrations";
+import { disconnectIntegration, registerIntegrationWebhook, saveIntegrationSettings, testIntegration, type AdminIntegration } from "@/lib/actions/integrations";
 import { INTEGRATION_PROVIDERS, type IntegrationField, type IntegrationProviderSpec } from "@/lib/integration-providers";
 import { unexpectedErrorMessage } from "@/lib/action-result";
 import { Badge } from "@/components/ui/badge";
@@ -59,6 +59,20 @@ function ProviderCard({ spec, status }: { spec: IntegrationProviderSpec; status:
   const [isSaving, startSaving] = useTransition();
   const [isTesting, startTesting] = useTransition();
   const [isDisconnecting, startDisconnecting] = useTransition();
+  const [isRegistering, startRegistering] = useTransition();
+
+  // A field counts as saved if it's a shown config value or a stored secret.
+  const saved = (key: string) => Boolean(status.config[key]) || status.secretsSet.includes(key);
+  const canRegister = spec.registerWebhook?.requires.every(saved) ?? false;
+  const workspaceOrigin = status.webhookUrl ? new URL(status.webhookUrl).origin : null;
+  // DocuSign's one-time consent grant, for the saved integration key.
+  const docusignRedirect = workspaceOrigin ? `${workspaceOrigin}/admin/integrations` : null;
+  const docusignConsentUrl =
+    spec.id === "DOCUSIGN" && status.config.integrationKey && docusignRedirect
+      ? `https://${status.config.authServer || "account-d.docusign.com"}/oauth/auth?response_type=code&scope=${encodeURIComponent(
+          "signature impersonation"
+        )}&client_id=${encodeURIComponent(status.config.integrationKey)}&redirect_uri=${encodeURIComponent(docusignRedirect)}`
+      : null;
 
   const set = (key: string, value: string) => setValues((v) => ({ ...v, [key]: value }));
 
@@ -94,6 +108,13 @@ function ProviderCard({ spec, status }: { spec: IntegrationProviderSpec; status:
     run(startTesting, () => testIntegration(spec.id), (message) => toast.success(message));
   }
 
+  function handleRegister() {
+    run(startRegistering, () => registerIntegrationWebhook(spec.id), (message) => {
+      toast.success(message);
+      router.refresh();
+    });
+  }
+
   function handleDisconnect() {
     if (!confirm(`Disconnect ${spec.label}? Its saved credentials are deleted.`)) return;
     run(startDisconnecting, () => disconnectIntegration(spec.id), () => {
@@ -111,6 +132,7 @@ function ProviderCard({ spec, status }: { spec: IntegrationProviderSpec; status:
           <StatusBadge status={status} />
         </div>
         <p className="text-sm text-muted-foreground">{spec.description}</p>
+        {spec.help && <p className="text-xs text-muted-foreground">{spec.help}</p>}
         {status.source === "env" && (
           <p className="text-xs text-muted-foreground">
             This workspace is still using the credentials set on the server. Saving here moves them into this workspace
@@ -170,6 +192,18 @@ function ProviderCard({ spec, status }: { spec: IntegrationProviderSpec; status:
               {field.help && <p className="text-xs text-muted-foreground">{field.help}</p>}
             </div>
           ))}
+          {docusignConsentUrl && (
+            <div className="space-y-1 rounded-md border p-3 text-xs">
+              <p>
+                One-time consent: add <span className="font-mono">{docusignRedirect}</span> as a redirect URI on your
+                integration key, then{" "}
+                <a href={docusignConsentUrl} target="_blank" rel="noreferrer" className="font-medium underline">
+                  grant consent in DocuSign
+                </a>{" "}
+                while signed in as the API user.
+              </p>
+            </div>
+          )}
           <div className="flex flex-wrap gap-2">
             <Button type="submit" size="sm" loading={isSaving}>
               Save
@@ -177,6 +211,11 @@ function ProviderCard({ spec, status }: { spec: IntegrationProviderSpec; status:
             <Button type="button" size="sm" variant="outline" loading={isTesting} disabled={!status.configured} onClick={handleTest}>
               Test connection
             </Button>
+            {spec.registerWebhook && (
+              <Button type="button" size="sm" variant="outline" loading={isRegistering} disabled={!canRegister} onClick={handleRegister}>
+                Register webhook
+              </Button>
+            )}
             {status.source === "db" && (
               <Button type="button" size="sm" variant="ghost" loading={isDisconnecting} onClick={handleDisconnect}>
                 Disconnect
