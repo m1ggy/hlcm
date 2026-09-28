@@ -1,6 +1,6 @@
 "use server";
 
-import { headers } from "next/headers";
+import { createRateLimiter, getClientIp } from "@/lib/rate-limit";
 import { db } from "@/lib/db";
 import { getHostOrg } from "@/lib/tenant";
 import { sendEmail, renderEmailLayout, getEmailBranding } from "@/lib/email";
@@ -27,30 +27,8 @@ const ALLOWED_FILE_MIME_TYPES = new Set([
 ]);
 const ALLOWED_FILE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".heic", ".heif", ".pdf"]);
 
-// Module-level, in-memory, per-IP — resets on deploy/restart and doesn't
-// share across instances if this app is ever scaled horizontally. That's
-// fine for this app's current single-instance deploy; it's flagged here as
-// the first thing to swap for a real store (Redis/Upstash) if abuse of
-// this, the app's only public write surface, turns out to be a real problem.
-const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
-const RATE_LIMIT_MAX = 5;
-const submissionsByIp = new Map<string, number[]>();
-
-function isRateLimited(ip: string): boolean {
-  const now = Date.now();
-  const recent = (submissionsByIp.get(ip) ?? []).filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
-  if (recent.length >= RATE_LIMIT_MAX) {
-    submissionsByIp.set(ip, recent);
-    return true;
-  }
-  recent.push(now);
-  submissionsByIp.set(ip, recent);
-  return false;
-}
-
-async function getClientIp() {
-  return (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim() || null;
-}
+// See src/lib/rate-limit.ts — this is the app's main public write surface.
+const isRateLimited = createRateLimiter({ windowMs: 60 * 60 * 1000, max: 5 });
 
 // Who gets emailed when this form gets a new submission — see the
 // "notifyUserIds"/"notifyEmails" fields on FormTemplate. Both empty falls

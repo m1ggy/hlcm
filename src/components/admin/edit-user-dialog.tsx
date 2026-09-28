@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Pencil } from "lucide-react";
-import { updateUser } from "@/lib/actions/users";
+import { sendSetPasswordLink, updateUser } from "@/lib/actions/users";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -66,6 +66,19 @@ export function EditUserDialog({
   const [phone, setPhone] = useState(user.phone ?? "");
   const [smsRemindersEnabled, setSmsRemindersEnabled] = useState(user.smsRemindersEnabled);
   const [isPending, startTransition] = useTransition();
+  const [isSendingLink, startSendingLink] = useTransition();
+
+  function handleSendLink() {
+    startSendingLink(async () => {
+      try {
+        const { sent } = await sendSetPasswordLink(user.id);
+        if (sent) toast.success(`Emailed ${user.email} a link to set their password`);
+        else toast.error("Couldn't send the email — check the email settings and try again.");
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Failed to send the link");
+      }
+    });
+  }
 
   // A DEVELOPER row is always protected, for every actor — see users.ts.
   const isProtected =
@@ -207,6 +220,11 @@ export function EditUserDialog({
           <Button className="w-full" onClick={handleSave} loading={isPending}>
             {isPending ? "Saving..." : "Save changes"}
           </Button>
+          {user.active && (
+            <Button variant="outline" className="w-full" onClick={handleSendLink} loading={isSendingLink}>
+              Email a set-password link
+            </Button>
+          )}
         </div>
       </DialogContent>
     </Dialog>

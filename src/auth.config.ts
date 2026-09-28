@@ -21,6 +21,10 @@ export const authConfig = {
       const { pathname } = request.nextUrl;
       const isPublicPath =
         pathname.startsWith("/login") ||
+        // Password reset + invite acceptance (src/lib/actions/password.ts) —
+        // the whole point is that there's no session yet.
+        pathname.startsWith("/forgot-password") ||
+        pathname.startsWith("/set-password") ||
         pathname.startsWith("/api/auth") ||
         pathname.startsWith("/handbook") ||
         // Stripe calls this directly with no session — it's authenticated

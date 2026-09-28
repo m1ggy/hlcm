@@ -6,6 +6,7 @@ import { createUser } from "@/lib/actions/users";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -27,15 +28,19 @@ const ADMIN_TIER_ROLES = new Set<(typeof ROLES)[number]>(["OWNER", "ADMIN", "ACC
 export function NewUserDialog({ canAssignAdmin = false }: { canAssignAdmin?: boolean }) {
   const [open, setOpen] = useState(false);
   const [role, setRole] = useState<(typeof ROLES)[number]>("STAFF");
+  // Default: email an invite so the admin never handles someone's password.
+  const [invite, setInvite] = useState(true);
   const [isPending, startTransition] = useTransition();
   const availableRoles = canAssignAdmin ? ROLES : ROLES.filter((r) => !ADMIN_TIER_ROLES.has(r));
 
   function handleSubmit(formData: FormData) {
     formData.set("role", role);
+    formData.set("invite", String(invite));
     startTransition(async () => {
       try {
-        await createUser(formData);
-        toast.success("User created");
+        const { inviteSent } = await createUser(formData);
+        if (inviteSent === false) toast.warning("User created, but the invite email couldn't be sent — use \"Email a set-password link\" from their row to retry.");
+        else toast.success(inviteSent ? "User created and invite sent" : "User created");
         setOpen(false);
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to create user");
@@ -59,10 +64,16 @@ export function NewUserDialog({ canAssignAdmin = false }: { canAssignAdmin?: boo
             <Label htmlFor="email">Email</Label>
             <Input id="email" name="email" type="email" required />
           </div>
-          <div className="space-y-1">
-            <Label htmlFor="password">Temporary password</Label>
-            <Input id="password" name="password" type="password" required minLength={8} />
-          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox checked={invite} onCheckedChange={(c) => setInvite(c === true)} />
+            Email an invite — they choose their own password
+          </label>
+          {!invite && (
+            <div className="space-y-1">
+              <Label htmlFor="password">Temporary password</Label>
+              <Input id="password" name="password" type="password" required minLength={8} />
+            </div>
+          )}
           <div className="space-y-1">
             <Label>Role</Label>
             <Select value={role} onValueChange={(v) => setRole(v as (typeof ROLES)[number])}>

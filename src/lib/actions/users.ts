@@ -1,5 +1,7 @@
 "use server";
 
+import { randomBytes } from "crypto";
+import { sendInviteEmail, sendPasswordResetEmail } from "@/lib/auth-emails";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
@@ -13,7 +15,9 @@ const ROLE_VALUES = ["OWNER", "ADMIN", "ACCOUNTANT", "MANAGER", "STAFF", "CLIENT
 const userSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
-  password: z.string().min(8, "Password must be at least 8 characters"),
+  // Absent when inviting: the person picks their own via the emailed link.
+  password: z.string().min(8, "Password must be at least 8 characters").optional(),
+  invite: z.boolean(),
   role: z.enum(ROLE_VALUES),
 });
 
@@ -67,20 +71,31 @@ export async function setHourlyRate(input: { userId: string; hourlyRate: number 
   return user;
 }
 
-export async function createUser(formData: FormData) {
+/**
+ * Creates a user either with a temporary password the admin passes on, or
+ * (`invite`) with no usable password and an emailed invite link to choose
+ * one (src/lib/auth-emails.ts). Returns whether the invite actually went
+ * out, so a mail problem doesn't masquerade as a failed create.
+ */
+export async function createUser(formData: FormData): Promise<{ inviteSent: boolean | null }> {
   const session = await requireRole(["ADMIN"]);
+  const invite = formData.get("invite") === "true";
   const parsed = userSchema.parse({
     name: formData.get("name"),
     email: formData.get("email"),
-    password: formData.get("password"),
+    password: invite ? undefined : formData.get("password"),
+    invite,
     role: formData.get("role"),
   });
+  if (!parsed.invite && !parsed.password) throw new Error("Set a temporary password or send an invite");
 
   if (isAdmin(parsed.role) && !isSuperuser(session.user.role)) {
     throw new ForbiddenError("Only an Owner can create an Admin, Accountant, or Owner account");
   }
 
-  const passwordHash = await bcrypt.hash(parsed.password, 12);
+  // An invited user's stored hash is of random bytes nobody knows — the
+  // account can't be signed in to until they use the invite link.
+  const passwordHash = await bcrypt.hash(parsed.password ?? randomBytes(32).toString("hex"), 12);
   const user = await db.user
     .create({
       data: {
@@ -99,8 +114,43 @@ export async function createUser(formData: FormData) {
     actorId: session.user.id,
   });
 
+  let inviteSent: boolean | null = null;
+  if (parsed.invite) {
+    try {
+      await sendInviteEmail(user, session.user.name ?? undefined);
+      inviteSent = true;
+    } catch (error) {
+      console.error(`Failed to send invite to user ${user.id}:`, error);
+      inviteSent = false;
+    }
+  }
+
   revalidatePath("/admin/users");
-  return user;
+  return { inviteSent };
+}
+
+/**
+ * Emails a user a fresh set-password link: the invite again if theirs is
+ * still outstanding (never accepted), otherwise a password reset — which
+ * also covers everyone created with a temporary password before invites.
+ */
+export async function sendSetPasswordLink(userId: string): Promise<{ sent: boolean }> {
+  const session = await requireRole(["ADMIN"]);
+  const user = await db.user.findUniqueOrThrow({ where: { id: userId }, select: { id: true, name: true, email: true, role: true, active: true } });
+  if (!user.active) throw new Error("This user is deactivated");
+  if (isAdmin(user.role) && !isSuperuser(session.user.role)) {
+    throw new ForbiddenError("Only an Owner can reset an Admin, Accountant, or Owner account");
+  }
+  const pendingInvite = (await db.authToken.count({ where: { userId, kind: "INVITE", usedAt: null } })) > 0;
+  try {
+    if (pendingInvite) await sendInviteEmail(user, session.user.name ?? undefined);
+    else await sendPasswordResetEmail(user);
+  } catch (error) {
+    console.error(`Failed to send set-password link to user ${user.id}:`, error);
+    return { sent: false };
+  }
+  await recordAudit({ entityType: "User", entityId: userId, action: "send_password_link", actorId: session.user.id });
+  return { sent: true };
 }
 
 const updateSchema = z.object({

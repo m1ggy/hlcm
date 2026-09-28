@@ -37,6 +37,7 @@ model Organization {
   orgCounters              OrgCounter[]
   picklistOptions          PicklistOption[]
   integrations             OrganizationIntegration[]
+  authTokens               AuthToken[]
   users                    User[]
   wiseRecipients           WiseRecipient[]
   wiseTransactions         WiseTransaction[]
@@ -162,6 +163,32 @@ model OrganizationIntegration {
   @@unique([organizationId, provider])
   @@index([organizationId])
   @@map("organization_integrations")
+}
+
+enum AuthTokenKind {
+  INVITE
+  PASSWORD_RESET
+}
+
+// A single-use link that lets someone set their password without knowing
+// the current one — an emailed invite or a "forgot password" reset (see
+// src/lib/auth-tokens.ts). Only a SHA-256 hash of the token is stored, so a
+// database dump can't be turned into working links.
+model AuthToken {
+  id             String        @id @default(cuid())
+  organizationId String        @default(dbgenerated("current_org_id()"))
+  organization   Organization  @relation(fields: [organizationId], references: [id])
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         String
+  kind           AuthTokenKind
+  tokenHash      String        @unique
+  expiresAt      DateTime
+  usedAt         DateTime?
+  createdAt      DateTime      @default(now())
+
+  @@index([userId])
+  @@index([organizationId])
+  @@map("auth_tokens")
 }
 
 // DEVELOPER is a break-glass superuser, same reach as OWNER — it exists
@@ -363,6 +390,7 @@ model User {
   clientOwnersCreated           ClientOwner[]             @relation("ClientOwnerCreatedBy")
   clientAgreementsCreated       ClientAgreement[]         @relation("ClientAgreementCreatedBy")
   clientLicensesCreated         ClientLicense[]           @relation("ClientLicenseCreatedBy")
+  authTokens                    AuthToken[]
 
   @@unique([organizationId, email])
   @@index([organizationId])
