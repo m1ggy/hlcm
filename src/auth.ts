@@ -6,6 +6,8 @@ import { getHostOrg, getOrgBySlug } from "@/lib/tenant";
 import { verifyTotpToken } from "@/lib/totp";
 import { verifyMfaChallenge } from "@/lib/mfa-challenge";
 import { authConfig, isPublicPath } from "@/auth.config";
+import { getClientIp } from "@/lib/rate-limit";
+import { clearLoginFailures, isLoginThrottled, recordLoginFailure } from "@/lib/login-throttle";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
@@ -28,6 +30,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const org = await getHostOrg();
         if (!org || org.status !== "ACTIVE") return null;
         const db = await getDb();
+        // Throttled per IP and per account on failures (src/lib/login-throttle.ts)
+        // — this is also what guards a direct POST to the credentials endpoint.
+        const ip = await getClientIp().catch(() => null);
 
         const challenge = credentials?.challenge as string | undefined;
         const otp = credentials?.otp as string | undefined;
@@ -40,25 +45,33 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
           const user = await db.user.findUnique({ where: { id: userId } });
           if (!user || !user.active || !user.mfaEnabled || !user.mfaSecret) return null;
-          if (!otp || !verifyTotpToken(otp, user.mfaSecret)) return null;
+          if (isLoginThrottled(ip, org.id, user.email)) return null;
+          if (!otp || !verifyTotpToken(otp, user.mfaSecret)) {
+            recordLoginFailure(ip, org.id, user.email);
+            return null;
+          }
 
+          clearLoginFailures(org.id, user.email);
           return { id: user.id, name: user.name, email: user.email, role: user.role, organizationId: org.id, orgSlug: org.slug };
         }
 
         const email = credentials?.email as string | undefined;
         const password = credentials?.password as string | undefined;
         if (!email || !password) return null;
+        if (isLoginThrottled(ip, org.id, email)) return null;
 
         const user = await db.user.findFirst({ where: { email } });
-        if (!user || !user.active) return null;
-
-        const passwordValid = await bcrypt.compare(password, user.passwordHash);
-        if (!passwordValid) return null;
+        const passwordValid = user?.active ? await bcrypt.compare(password, user.passwordHash) : false;
+        if (!user || !passwordValid) {
+          recordLoginFailure(ip, org.id, email);
+          return null;
+        }
 
         // MFA-enabled users must complete the challenge step above — password
         // alone is never enough for them.
         if (user.mfaEnabled) return null;
 
+        clearLoginFailures(org.id, email);
         return {
           id: user.id,
           name: user.name,

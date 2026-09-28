@@ -9,6 +9,8 @@ import { db } from "@/lib/db";
 import { getHostOrg } from "@/lib/tenant";
 import { PLATFORM_SLUG } from "@/lib/tenant-host";
 import { createMfaChallenge } from "@/lib/mfa-challenge";
+import { getClientIp } from "@/lib/rate-limit";
+import { isLoginThrottled, recordLoginFailure, THROTTLED_MESSAGE } from "@/lib/login-throttle";
 
 const CHALLENGE_COOKIE = "mfa_challenge";
 
@@ -25,12 +27,17 @@ export async function loginAction(
   const org = await getHostOrg();
   if (!org || org.status !== "ACTIVE") return { error: "This workspace doesn't exist. Check the address you're signing in at." };
 
+  // Failed attempts are throttled per IP and per account (src/lib/login-throttle.ts).
+  const ip = await getClientIp();
+  if (isLoginThrottled(ip, org.id, email)) return { error: THROTTLED_MESSAGE };
+
   // Scoped to the request host's org — see authorize() in src/auth.ts.
   const user = await db.user.findFirst({ where: { email } });
-  if (!user || !user.active) return { error: "Invalid email or password." };
-
-  const passwordValid = await bcrypt.compare(password, user.passwordHash);
-  if (!passwordValid) return { error: "Invalid email or password." };
+  const passwordValid = user?.active ? await bcrypt.compare(password, user.passwordHash) : false;
+  if (!user || !passwordValid) {
+    recordLoginFailure(ip, org.id, email);
+    return { error: "Invalid email or password." };
+  }
 
   if (user.mfaEnabled) {
     const token = await createMfaChallenge(user.id);
