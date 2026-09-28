@@ -24,7 +24,11 @@ function legacyOrgSlug() {
 // call and change rarely. Saves clear the entry immediately; another app
 // process (there's one today) would see a change within the TTL.
 const CACHE_TTL_MS = 30_000;
-const cache = new Map<string, { value: IntegrationValues | null; source: "db" | "env" | null; expiresAt: number }>();
+// On globalThis for the same reason as the org cache in src/lib/tenant.ts: a
+// save in a Server Action must invalidate what the next page render reads.
+type CacheEntry = { value: IntegrationValues | null; source: "db" | "env" | null; expiresAt: number };
+const globalForIntegrations = globalThis as unknown as { __hclmIntegrationCache?: Map<string, CacheEntry> };
+const cache = (globalForIntegrations.__hclmIntegrationCache ??= new Map<string, CacheEntry>());
 
 function withDefaults(provider: IntegrationProviderId, values: IntegrationValues): IntegrationValues {
   const out = { ...values };
@@ -58,7 +62,7 @@ async function load(provider: IntegrationProviderId) {
   if (hit && hit.expiresAt > Date.now()) return hit;
 
   const row = await db.organizationIntegration.findUnique({ where: { organizationId_provider: { organizationId: org.id, provider } } });
-  let entry: { value: IntegrationValues | null; source: "db" | "env" | null; expiresAt: number };
+  let entry: CacheEntry;
   if (row) {
     const config = (row.config ?? {}) as IntegrationValues;
     entry = { value: withDefaults(provider, { ...config, ...decryptSecretMap(row.secrets) }), source: "db", expiresAt: Date.now() + CACHE_TTL_MS };

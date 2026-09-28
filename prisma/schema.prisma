@@ -28,6 +28,9 @@ model Organization {
   slug      String    @unique
   name      String
   status    OrgStatus @default(ACTIVE)
+  // IANA zone (e.g. "America/Chicago") for org-wide schedules like the 8am
+  // due-date digest. Null = the server's own timezone (the old behavior).
+  timezone  String?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 

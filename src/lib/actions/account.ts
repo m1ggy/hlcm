@@ -3,7 +3,7 @@
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import QRCode from "qrcode";
-import { db } from "@/lib/db";
+import { db, currentOrganization } from "@/lib/db";
 import { requireSession } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { generateMfaSecret, getOtpAuthUrl, verifyTotpToken } from "@/lib/totp";
@@ -100,7 +100,7 @@ export async function startMfaEnrollment() {
     data: { mfaSecret: secret, mfaEnabled: false },
   });
 
-  const otpauthUrl = getOtpAuthUrl(session.user.email!, secret);
+  const otpauthUrl = getOtpAuthUrl(session.user.email!, secret, (await currentOrganization()).name);
   const qrDataUrl = await QRCode.toDataURL(otpauthUrl);
 
   return { secret, qrDataUrl };

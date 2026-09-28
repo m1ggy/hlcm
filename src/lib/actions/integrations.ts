@@ -6,6 +6,7 @@ import { recordAudit } from "@/lib/audit";
 import { toActionResult, type ActionResult } from "@/lib/action-result";
 import { UserFacingError } from "@/lib/user-facing-error";
 import { getAppUrl } from "@/lib/email";
+import { PRODUCT_NAME } from "@/lib/branding";
 import { deleteIntegration, getIntegrationStatus, saveIntegration, type IntegrationStatus } from "@/lib/integrations";
 import { INTEGRATION_PROVIDERS, type IntegrationProviderId } from "@/lib/integration-providers";
 import { SecretsConfigError } from "@/lib/secrets";
@@ -83,7 +84,7 @@ const TESTS: Record<IntegrationProviderId, () => Promise<string>> = {
   WISE: testWiseConnection,
   TWILIO: testTwilioConnection,
   TEAMS: async () => {
-    await postTeamsMessage("Test message from HCLM — your Teams connection works.");
+    await postTeamsMessage(`Test message from ${PRODUCT_NAME} — your Teams connection works.`);
     return "Posted a test message to the Teams channel";
   },
 };

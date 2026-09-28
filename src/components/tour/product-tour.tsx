@@ -536,7 +536,7 @@ export function ProductTour({ role }: { role?: string }) {
   }
 
   return (
-    <Button variant="ghost" size="sm" onClick={handleClick} title="Take a guided tour of HCLM">
+    <Button variant="ghost" size="sm" onClick={handleClick} title="Take a guided tour">
       <Compass className="size-3.5" /> Take a tour
     </Button>
   );

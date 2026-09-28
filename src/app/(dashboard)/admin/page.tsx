@@ -3,6 +3,7 @@ import { blockCaregiverRoute } from "@/lib/rbac";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const ADMIN_LINKS = [
+  { href: "/admin/organization", label: "Organization", description: "This workspace's name and timezone (owners only)" },
   { href: "/admin/users", label: "Users", description: "Manage staff accounts and roles" },
   { href: "/admin/license-types", label: "License Types", description: "CILA, IDPH, IDOA, etc." },
   { href: "/admin/case-types", label: "Case Types", description: "New, Renewal, Post-License, Change of Ownership" },

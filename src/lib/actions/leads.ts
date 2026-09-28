@@ -1,11 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { db } from "@/lib/db";
+import { db, currentOrganization } from "@/lib/db";
 import { requireRole, AppRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
-import { sendEmail, renderEmailLayout, getAppUrl } from "@/lib/email";
+import { sendEmail, renderEmailLayout, getEmailBranding } from "@/lib/email";
 import { createSingleUseSchedulingLink, cancelScheduledEvent, getCalendlyBookingUrl } from "@/lib/calendly";
 import { UserFacingError } from "@/lib/user-facing-error";
 import type { $Enums } from "@/generated/prisma/client";
@@ -194,7 +194,7 @@ export async function sendFollowUpEmail(leadId: string) {
     throw new UserFacingError("No booking link to send — add your Calendly booking page in Admin > Integrations.");
   }
 
-  const appUrl = await getAppUrl();
+  const { appUrl, brand } = await getEmailBranding();
   await sendEmail({
     to: lead.inviteeEmail,
     subject: "Let's find a new time",
@@ -205,6 +205,7 @@ export async function sendFollowUpEmail(leadId: string) {
       ctaUrl: bookingUrl,
       preheader: "Pick a new time that works for you",
       appUrl,
+      brand,
     }),
   });
 
@@ -233,7 +234,8 @@ export async function cancelLeadBooking(leadId: string, reason?: string) {
   const lead = await db.lead.findUniqueOrThrow({ where: { id: leadId } });
   if (lead.canceledAt) throw new Error("This booking is already canceled");
 
-  await cancelScheduledEvent(lead.calendlyEventUri, reason || "Canceled by CTK staff");
+  const cancelReason = reason || `Canceled by ${(await currentOrganization()).name} staff`;
+  await cancelScheduledEvent(lead.calendlyEventUri, cancelReason);
 
   // Set canceledAt here rather than waiting on Calendly's own
   // invitee.canceled webhook round-trip, so the UI reflects it immediately.
@@ -242,7 +244,7 @@ export async function cancelLeadBooking(leadId: string, reason?: string) {
   // sees it's already set and no-ops — no duplicate notify, no feedback loop.
   await db.lead.update({
     where: { id: leadId },
-    data: { canceledAt: new Date(), cancelReason: reason || "Canceled by CTK staff" },
+    data: { canceledAt: new Date(), cancelReason },
   });
 
   await recordAudit({

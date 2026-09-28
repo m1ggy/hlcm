@@ -10,16 +10,19 @@ import {
 import { AppSidebarNav } from "@/components/app-sidebar-nav";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { getHostOrg } from "@/lib/tenant";
+import { PRODUCT_NAME } from "@/lib/branding";
 
 export async function AppSidebar() {
   const session = await auth();
   if (!session?.user) return null;
+  const org = await getHostOrg();
 
   return (
     <Sidebar>
       <SidebarHeader className="px-3 py-3">
-        <Link href="/" className="text-lg font-semibold tracking-tight">
-          HCLM
+        <Link href="/" className="truncate text-lg font-semibold tracking-tight">
+          {org?.name ?? PRODUCT_NAME}
         </Link>
       </SidebarHeader>
       <SidebarContent className="px-2">

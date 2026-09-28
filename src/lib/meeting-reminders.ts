@@ -14,8 +14,8 @@
 //     roster from Admin > Users, independent of per-lead assignment
 //
 // Meant to be invoked every few minutes — see src/instrumentation.ts.
-import { db } from "@/lib/db";
-import { sendEmail, renderEmailLayout, getAppUrl } from "@/lib/email";
+import { db, currentOrganization } from "@/lib/db";
+import { sendEmail, renderEmailLayout, getEmailBranding } from "@/lib/email";
 import { isTeamsConfigured, postTeamsMessage } from "@/lib/teams";
 import { isTwilioConfigured, sendSms, placeCall } from "@/lib/twilio";
 import type { $Enums, Lead, User } from "@/generated/prisma/client";
@@ -69,17 +69,18 @@ async function notifyAssignee(lead: LeadWithAssignee, label: string) {
 
   if (!lead.assignedTo.emailNotificationsEnabled) return;
   try {
-    const appUrl = await getAppUrl();
+    const { appUrl, brand } = await getEmailBranding();
     await sendEmail({
       to: lead.assignedTo.email,
       subject: message,
       html: renderEmailLayout({
         heading: "Meeting reminder",
         bodyHtml: `<p style="margin:0">${message}</p>`,
-        ctaLabel: "View in HCLM",
+        ctaLabel: `View in ${brand}`,
         ctaUrl: `${appUrl}/leads`,
         preheader: message,
         appUrl,
+        brand,
       }),
     });
   } catch (error) {
@@ -100,7 +101,7 @@ async function tryTeams(lead: LeadWithAssignee, label: string) {
 
 async function tryTexts(lead: LeadWithAssignee, label: string, roster: User[], alsoCall: boolean) {
   if (roster.length === 0 || !(await isTwilioConfigured())) return;
-  const message = `HCLM: meeting with ${lead.inviteeName} in ${label}.`;
+  const message = `${(await currentOrganization()).name}: meeting with ${lead.inviteeName} in ${label}.`;
   for (const user of roster) {
     if (!user.phone) continue;
     try {

@@ -4,6 +4,8 @@ import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SessionProvider } from "@/components/auth/session-provider";
+import { getHostOrg } from "@/lib/tenant";
+import { PRODUCT_NAME } from "@/lib/branding";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -16,10 +18,14 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  title: "HCLM",
-  description: "Healthcare licensing client management",
-};
+// The workspace's name in the browser tab, the product name outside one.
+export async function generateMetadata(): Promise<Metadata> {
+  const org = await getHostOrg();
+  return {
+    title: org?.status === "ACTIVE" ? `${org.name} · ${PRODUCT_NAME}` : PRODUCT_NAME,
+    description: "Healthcare licensing client management",
+  };
+}
 
 export default function RootLayout({
   children,

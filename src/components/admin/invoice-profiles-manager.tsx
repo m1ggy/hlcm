@@ -56,7 +56,7 @@ export function InvoiceProfilesManager({ profiles }: { profiles: InvoiceProfileS
                 id="new-profile-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. CTK, Sunrise Home Care"
+                placeholder="e.g. Sunrise Home Care"
               />
             </div>
             <Button onClick={handleCreate} className="w-full" loading={isPending}>

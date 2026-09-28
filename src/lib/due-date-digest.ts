@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { sendEmail, renderEmailLayout, getAppUrl } from "@/lib/email";
+import { sendEmail, renderEmailLayout, getEmailBranding } from "@/lib/email";
 import { TASK_CLOSED_STATUSES } from "@/lib/task-status";
 import { computeLicenseAlerts, computeEnvelopeAlerts } from "@/lib/aging-alerts";
 
@@ -85,7 +85,7 @@ async function buildEnvelopeSectionHtml(now: Date): Promise<string> {
 // a day — see src/instrumentation.ts for the scheduler.
 export async function sendDueDateDigests() {
   const now = new Date();
-  const appUrl = await getAppUrl();
+  const { appUrl, brand } = await getEmailBranding();
   const windowEnd = new Date(now.getTime() + DUE_SOON_WINDOW_DAYS * 24 * 60 * 60 * 1000);
 
   const [tasks, licenseSectionHtml, envelopeSectionHtml, managers] = await Promise.all([
@@ -153,6 +153,7 @@ export async function sendDueDateDigests() {
           ctaUrl: `${appUrl}/tasks`,
           preheader: `${total} task${total === 1 ? "" : "s"} due or overdue`,
           appUrl,
+          brand,
         }),
       });
     } catch (error) {
@@ -179,6 +180,7 @@ export async function sendDueDateDigests() {
             ctaUrl: `${appUrl}/clients`,
             preheader: "Licenses or DocuSign envelopes expiring soon",
             appUrl,
+            brand,
           }),
         });
       } catch (error) {

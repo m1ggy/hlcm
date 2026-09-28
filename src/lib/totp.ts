@@ -1,13 +1,14 @@
 import { generateSecret, generateURI, verifySync } from "otplib";
 
-const ISSUER = "HCLM";
 
 export function generateMfaSecret() {
   return generateSecret();
 }
 
-export function getOtpAuthUrl(email: string, secret: string) {
-  return generateURI({ issuer: ISSUER, label: email, secret });
+// `issuer` is the name the authenticator app files the code under — the
+// workspace's name, so someone in two workspaces can tell the codes apart.
+export function getOtpAuthUrl(email: string, secret: string, issuer: string) {
+  return generateURI({ issuer, label: email, secret });
 }
 
 export function verifyTotpToken(token: string, secret: string) {

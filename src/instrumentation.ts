@@ -7,24 +7,38 @@
 import type { Instrumentation } from "next";
 import { orgSlugFromHost } from "@/lib/tenant-host";
 
-const DIGEST_HOUR = 8; // local server time
+const DIGEST_HOUR = 8; // in each organization's own timezone (server's if unset)
 
-let lastSentDate: string | null = null;
+// Per organization: the local date its digest last went out, so each org
+// gets one digest a day at 8am *its* time, checked hourly.
+const lastSentDate = new Map<string, string>();
+
+function localHourAndDate(timezone: string | null, now: Date) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone ?? undefined,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  return { hour: Number(get("hour")), date: `${get("year")}-${get("month")}-${get("day")}` };
+}
 
 async function maybeSendDigest() {
-  const now = new Date();
-  if (now.getHours() < DIGEST_HOUR) return;
-
-  const today = now.toDateString();
-  if (lastSentDate === today) return;
-  lastSentDate = today;
-
   const { sendDueDateDigests } = await import("@/lib/due-date-digest");
   const { forEachActiveOrg } = await import("@/lib/db");
+  const now = new Date();
   try {
     // Each org's data lives behind its own tenant scope (src/lib/db.ts) —
     // there's no request host here, so run the job once per org.
-    await forEachActiveOrg("Due-date digest", () => sendDueDateDigests());
+    await forEachActiveOrg("Due-date digest", async (org) => {
+      const { hour, date } = localHourAndDate(org.timezone, now);
+      if (hour < DIGEST_HOUR || lastSentDate.get(org.id) === date) return;
+      lastSentDate.set(org.id, date);
+      await sendDueDateDigests();
+    });
   } catch (error) {
     console.error("Due-date digest run failed:", error);
   }

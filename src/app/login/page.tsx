@@ -1,40 +1,10 @@
-"use client";
+import { getHostOrg } from "@/lib/tenant";
+import { PRODUCT_NAME } from "@/lib/branding";
+import { LoginForm } from "./login-form";
 
-import { useActionState } from "react";
-import { loginAction } from "@/lib/actions/auth";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-
-export default function LoginPage() {
-  const [state, formAction, pending] = useActionState(loginAction, undefined);
-
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-muted p-4">
-      <Card className="w-full max-w-sm">
-        <CardHeader>
-          <CardTitle>HCLM Sign In</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form action={formAction} className="space-y-4">
-            <div className="space-y-1">
-              <Label htmlFor="email">Email</Label>
-              <Input id="email" name="email" type="email" required autoComplete="email" />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="password">Password</Label>
-              <Input id="password" name="password" type="password" required autoComplete="current-password" />
-            </div>
-            {state?.error && (
-              <p className="text-sm text-destructive">{state.error}</p>
-            )}
-            <Button type="submit" className="w-full" disabled={pending}>
-              {pending ? "Signing in..." : "Sign in"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
-  );
+// Titled with the workspace being signed in to (the request host's
+// organization), so people can tell which one they're on.
+export default async function LoginPage() {
+  const org = await getHostOrg();
+  return <LoginForm title={`${org?.status === "ACTIVE" ? org.name : PRODUCT_NAME} — Sign in`} />;
 }

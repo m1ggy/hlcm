@@ -8,6 +8,8 @@ import { NotificationBell } from "@/components/notifications/notification-bell";
 import { EmailNotificationsToggle } from "@/components/account/email-notifications-toggle";
 import { ProductTour } from "@/components/tour/product-tour";
 import { SessionExpiredDialog } from "@/components/auth/session-expired-dialog";
+import { getHostOrg } from "@/lib/tenant";
+import { PRODUCT_NAME } from "@/lib/branding";
 
 export default async function PortalLayout({
   children,
@@ -19,13 +21,14 @@ export default async function PortalLayout({
   if (session.user.role !== "CLIENT") redirect("/");
 
   const account = await getAccount();
+  const brand = (await getHostOrg())?.name ?? PRODUCT_NAME;
 
   return (
     <div className="flex min-h-screen flex-col">
       <header className="flex flex-wrap items-center justify-between gap-y-2 border-b px-4 py-3 md:px-6">
         <Link href="/portal" className="shrink-0 text-lg font-semibold tracking-tight">
-          <span className="sm:hidden">HCLM</span>
-          <span className="hidden sm:inline">HCLM Client Portal</span>
+          <span className="sm:hidden">{brand}</span>
+          <span className="hidden sm:inline">{brand} Client Portal</span>
         </Link>
         <div className="flex flex-wrap items-center justify-end gap-3">
           <EmailNotificationsToggle initialEnabled={account.emailNotificationsEnabled} />

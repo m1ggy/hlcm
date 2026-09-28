@@ -5,6 +5,7 @@
 // (src/app/api/invoices/[id]/pdf/route.ts) and the "Send invoice PDF"
 // email action (sendManualInvoicePdf in src/lib/actions/invoices.ts), so
 // the emailed copy and the downloaded copy are always identical.
+import { currentOrganization } from "@/lib/db";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { displayInvoiceNumber, formatCalendarDate } from "@/lib/invoice-format";
 
@@ -96,7 +97,7 @@ export type InvoicePdfInput = {
   /** Which InvoiceProfile this invoice was billed under — see src/lib/invoice-profiles.ts. */
   logo?: { bytes: Uint8Array; mimeType: string } | null;
   footerText?: string | null;
-  /** Printed where the logo would go when there isn't one. Falls back to "CTK". */
+  /** Printed where the logo would go when there isn't one. Falls back to the organization's name. */
   profileName?: string | null;
 };
 
@@ -135,7 +136,7 @@ export async function drawLogoOrName(
     const width = (image.width / image.height) * height;
     page.drawImage(image, { x: opts.x, y: opts.y - height + 14, width, height });
   } else {
-    page.drawText(opts.profileName ?? "CTK", { x: opts.x, y: opts.y, size: 20, font: opts.boldFont });
+    page.drawText(opts.profileName ?? (await currentOrganization()).name, { x: opts.x, y: opts.y, size: 20, font: opts.boldFont });
   }
 }
 

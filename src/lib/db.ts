@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { prisma } from "@/lib/prisma";
-import { getHostOrg } from "@/lib/tenant";
+import { getHostOrg, getOrgBySlug, type HostOrg } from "@/lib/tenant";
 
 // Tenant-scoped Prisma access (see docs/multitenancy-plan.md, Phase 2).
 //
@@ -162,6 +162,13 @@ export async function currentOrg(): Promise<TenantRef> {
   return { id: org.id, slug: org.slug };
 }
 
+/** The current organization's full record (name, timezone, …) — cached, see getOrgBySlug. */
+export async function currentOrganization(): Promise<HostOrg> {
+  const org = await getOrgBySlug((await currentOrg()).slug);
+  if (!org) throw new TenantNotResolvedError();
+  return org;
+}
+
 export async function currentOrgId(): Promise<string> {
   return (await currentOrg()).id;
 }
@@ -170,11 +177,11 @@ export async function currentOrgId(): Promise<string> {
  * Runs `fn` once per active organization, each inside its own runAsTenant()
  * scope — for scheduled jobs. One org failing doesn't stop the rest.
  */
-export async function forEachActiveOrg(label: string, fn: (org: TenantRef) => Promise<void>) {
-  const orgs = await prisma.organization.findMany({ where: { status: "ACTIVE" }, select: { id: true, slug: true } });
+export async function forEachActiveOrg(label: string, fn: (org: TenantRef & { timezone: string | null }) => Promise<void>) {
+  const orgs = await prisma.organization.findMany({ where: { status: "ACTIVE" }, select: { id: true, slug: true, timezone: true } });
   for (const org of orgs) {
     try {
-      await runAsTenant(org, () => fn(org));
+      await runAsTenant({ id: org.id, slug: org.slug }, () => fn(org));
     } catch (error) {
       console.error(`${label} failed for org ${org.slug} (${org.id}):`, error);
     }

@@ -3,7 +3,7 @@
 //
 // Docs: https://resend.com/docs/api-reference/emails/send-email
 
-import { currentOrg } from "@/lib/db";
+import { currentOrg, currentOrganization } from "@/lib/db";
 import { orgAppUrl } from "@/lib/tenant-host";
 
 const API_BASE = "https://api.resend.com";
@@ -37,11 +37,16 @@ export async function getAppUrl() {
   return orgAppUrl((await currentOrg()).slug);
 }
 
+/** What every email from the current organization needs: its workspace URL and its name (the brand shown in the header/footer). */
+export async function getEmailBranding(): Promise<{ appUrl: string; brand: string }> {
+  const org = await currentOrganization();
+  return { appUrl: orgAppUrl(org.slug), brand: org.name };
+}
+
 // Shared visual wrapper for every transactional email this app sends
 // (notify()'s per-event emails, the due-date digest). Plain inline styles
 // and a single-column table — email clients strip <style> blocks and don't
 // reliably support flexbox/grid, so nothing here relies on either.
-const BRAND = "CTK";
 const ACCENT = "#1d4ed8";
 
 export function renderEmailLayout(opts: {
@@ -53,10 +58,12 @@ export function renderEmailLayout(opts: {
   ctaUrl?: string;
   /** Hidden preview text shown next to the subject in most inboxes. */
   preheader?: string;
-  /** From getAppUrl() — the footer links to this workspace's account settings. */
+  /** From getEmailBranding() — the footer links to this workspace's account settings. */
   appUrl: string;
+  /** From getEmailBranding() — the organization's name, shown in the header and footer. */
+  brand: string;
 }): string {
-  const { heading, bodyHtml, ctaLabel, ctaUrl, preheader, appUrl } = opts;
+  const { heading, bodyHtml, ctaLabel, ctaUrl, preheader, appUrl, brand } = opts;
   const button =
     ctaLabel && ctaUrl
       ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:24px 0 4px">
@@ -76,7 +83,7 @@ export function renderEmailLayout(opts: {
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#ffffff;border-radius:8px;overflow:hidden">
             <tr>
               <td style="padding:20px 28px;border-bottom:1px solid #e5e7eb">
-                <span style="font-size:15px;font-weight:700;letter-spacing:0.02em;color:#111827">${BRAND}</span>
+                <span style="font-size:15px;font-weight:700;letter-spacing:0.02em;color:#111827">${brand}</span>
               </td>
             </tr>
             <tr>
@@ -89,7 +96,7 @@ export function renderEmailLayout(opts: {
             <tr>
               <td style="padding:16px 28px;border-top:1px solid #e5e7eb">
                 <p style="margin:0;font-size:12px;color:#9ca3af">
-                  You're getting this because you have email notifications on for ${BRAND}'s case management system.
+                  You're getting this because you have email notifications on for ${brand}'s case management system.
                   <a href="${appUrl}/account" style="color:#9ca3af">Manage notification settings</a>.
                 </p>
               </td>

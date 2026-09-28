@@ -1,6 +1,6 @@
 import { after } from "next/server";
 import { currentOrg, db, runAsTenant } from "@/lib/db";
-import { sendEmail, renderEmailLayout, getAppUrl } from "@/lib/email";
+import { sendEmail, renderEmailLayout, getEmailBranding } from "@/lib/email";
 import { ENTITY_LINKS } from "@/lib/entity-links";
 import type { $Enums } from "@/generated/prisma/client";
 
@@ -54,7 +54,7 @@ export async function notify(entry: NotifyEntry, actorId: string) {
       });
       if (!user || !user.emailNotificationsEnabled) return;
 
-      const appUrl = await getAppUrl();
+      const { appUrl, brand } = await getEmailBranding();
       const link = `${appUrl}${entityPath(user.role, entry.entityType, entry.entityId)}`;
       await sendEmail({
         to: user.email,
@@ -62,10 +62,11 @@ export async function notify(entry: NotifyEntry, actorId: string) {
         html: renderEmailLayout({
           heading: NOTIFICATION_HEADINGS[entry.type],
           bodyHtml: `<p style="margin:0">${entry.message}</p>`,
-          ctaLabel: "View in HCLM",
+          ctaLabel: `View in ${brand}`,
           ctaUrl: link,
           preheader: entry.message,
           appUrl,
+          brand,
         }),
       });
     } catch (error) {

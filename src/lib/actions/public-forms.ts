@@ -3,7 +3,7 @@
 import { headers } from "next/headers";
 import { db } from "@/lib/db";
 import { getHostOrg } from "@/lib/tenant";
-import { sendEmail, renderEmailLayout, getAppUrl } from "@/lib/email";
+import { sendEmail, renderEmailLayout, getEmailBranding } from "@/lib/email";
 import { saveUploadedFile } from "@/lib/storage";
 
 // The one file in the app allowed to skip requireSession/requireRole — see
@@ -169,7 +169,7 @@ export async function submitForm(templateId: string, formData: FormData) {
   // itself look like it failed to whoever just filled the form out.
   try {
     const recipients = await resolveNotifyRecipients(template);
-    const appUrl = await getAppUrl();
+    const { appUrl, brand } = await getEmailBranding();
     for (const email of recipients) {
       await sendEmail({
         to: email,
@@ -181,6 +181,7 @@ export async function submitForm(templateId: string, formData: FormData) {
           ctaLabel: "Review it",
           ctaUrl: `${appUrl}/form-submissions`,
           appUrl,
+          brand,
         }),
       });
     }

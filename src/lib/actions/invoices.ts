@@ -6,7 +6,7 @@ import { db, type TenantTx } from "@/lib/db";
 import { requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
-import { sendEmail, renderEmailLayout, getAppUrl } from "@/lib/email";
+import { sendEmail, renderEmailLayout, getEmailBranding } from "@/lib/email";
 import { generateInvoicePdf } from "@/lib/invoice-pdf";
 import { generateCareRecipientInvoicePdf } from "@/lib/care-recipient-invoice-pdf";
 import { generateReceiptPdf } from "@/lib/receipt-pdf";
@@ -728,7 +728,7 @@ export async function sendReceiptEmail(receiptId: string, recipientEmailOverride
   const invoiceAttachments = await loadInvoiceAttachments(invoice.id);
   const attachments = [{ filename: `receipt-${receiptNumber}.pdf`, content: pdfBytes }, ...invoiceAttachments];
   assertAttachmentsFitInEmail(attachments);
-  const appUrl = await getAppUrl();
+  const { appUrl, brand } = await getEmailBranding();
 
   await sendEmail({
     to: recipientEmail,
@@ -739,6 +739,7 @@ export async function sendReceiptEmail(receiptId: string, recipientEmailOverride
       bodyHtml: `<p style="margin:0 0 8px">Thank you for your payment of $${payment.amount.toFixed(2)} on invoice ${number}.</p><p style="margin:0">A copy of your receipt is attached for your records.</p>`,
       preheader: `Receipt for your payment on invoice ${number}`,
       appUrl,
+      brand,
     }),
     attachments,
   });
@@ -826,17 +827,18 @@ export async function sendManualInvoicePdf(id: string, formData?: FormData) {
   const amountDue = (invoice.total ?? 0) - (invoice.amountPaid ?? 0);
   const attachments = [{ filename: `invoice-${number}.pdf`, content: pdfBytes }, ...invoiceAttachments, ...extraAttachments];
   assertAttachmentsFitInEmail(attachments);
-  const appUrl = await getAppUrl();
+  const { appUrl, brand } = await getEmailBranding();
 
   await sendEmail({
     to: recipientEmail,
     cc: parseCcEmails(profile?.ccEmails ?? null),
-    subject: `Invoice ${number} from ${profile?.name ?? "CTK"}`,
+    subject: `Invoice ${number} from ${profile?.name ?? brand}`,
     html: renderEmailLayout({
       heading: "Invoice",
       bodyHtml: `<p style="margin:0 0 8px">Please find invoice ${number} attached${invoice.dueDate ? ` — due ${formatCalendarDate(invoice.dueDate)}` : ""}.</p><p style="margin:0">Amount due: $${amountDue.toFixed(2)}</p>`,
       preheader: `Invoice ${number} — $${amountDue.toFixed(2)} due`,
       appUrl,
+      brand,
     }),
     attachments,
   });

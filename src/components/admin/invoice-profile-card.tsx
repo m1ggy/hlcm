@@ -202,7 +202,7 @@ export function InvoiceProfileCard({
             id={`cc-${profile.id}`}
             value={ccValue}
             onChange={(e) => setCcValue(e.target.value)}
-            placeholder="bookkeeper@ctk.com, owner@ctk.com"
+            placeholder="bookkeeper@example.com, owner@example.com"
           />
           <p className="text-xs text-muted-foreground">Comma-separated. Leave blank for none.</p>
         </div>
