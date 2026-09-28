@@ -94,3 +94,22 @@ export async function setOrganizationStatus(orgId: string, status: "ACTIVE" | "S
   await prisma.organization.update({ where: { id: orgId }, data: { status } });
   forgetOrg(org.slug);
 }
+
+/**
+ * The active workspaces where `email` has an active account — for the
+ * "find your workspace" email on the bare root domain. Cross-org by nature
+ * (that's the question being asked), so it lives here; the caller emails the
+ * result rather than showing it, so it can't be used to probe accounts.
+ */
+export async function findWorkspacesForEmail(email: string): Promise<{ name: string; slug: string }[]> {
+  const users = await prisma.user.findMany({
+    where: {
+      email: { equals: email.trim(), mode: "insensitive" },
+      active: true,
+      organization: { status: "ACTIVE", slug: { not: PLATFORM_SLUG } },
+    },
+    select: { organization: { select: { name: true, slug: true } } },
+    orderBy: { organization: { name: "asc" } },
+  });
+  return users.map((u) => u.organization);
+}

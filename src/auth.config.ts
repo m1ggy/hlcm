@@ -24,6 +24,8 @@ export const authConfig = {
         // Password reset + invite acceptance (src/lib/actions/password.ts) —
         // the whole point is that there's no session yet.
         pathname.startsWith("/forgot-password") ||
+        // "Find your workspace" on the bare root domain (no org, no session).
+        pathname.startsWith("/find-workspace") ||
         pathname.startsWith("/set-password") ||
         pathname.startsWith("/api/auth") ||
         pathname.startsWith("/handbook") ||
