@@ -1,3 +1,26 @@
+{
+	# Multi-tenant workspaces (<slug>.<ROOT_DOMAIN>) get their certificate on
+	# first visit instead of being listed here. Caddy only requests one if the
+	# app approves the hostname (src/app/api/tls-check) — without that gate,
+	# anyone pointing a name at this server could make it request certificates.
+	on_demand_tls {
+		ask http://app:3000/api/tls-check
+	}
+}
+
+# The original single domain. Keeps serving the org that used it (see
+# HCLM_DOMAIN in src/lib/tenant-host.ts), so old links and webhooks work.
 {$HCLM_DOMAIN:localhost} {
+	reverse_proxy app:3000
+}
+
+# Every other HTTPS hostname: workspace subdomains, admin.<ROOT_DOMAIN>, the
+# bare root domain. Needs wildcard DNS (*.<ROOT_DOMAIN> and <ROOT_DOMAIN> ->
+# this server). With ROOT_DOMAIN unset the app approves nothing, so this
+# block is inert until multi-tenant mode is switched on.
+https:// {
+	tls {
+		on_demand
+	}
 	reverse_proxy app:3000
 }

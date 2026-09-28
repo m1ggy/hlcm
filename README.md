@@ -83,6 +83,16 @@ Every push to `main` builds a Docker image, pushes it to GHCR, and deploys it to
 
 Uploaded files (the per-application file pool) persist in the `hclm_uploads` named volume across deploys.
 
+## Switching production to multi-tenant (subdomains)
+
+Everything below is off until `ROOT_DOMAIN` is set — until then the app runs single-tenant on `HCLM_DOMAIN` exactly as before.
+
+1. **DNS:** point `<ROOT_DOMAIN>` and `*.<ROOT_DOMAIN>` (A/AAAA) at the droplet. Keep the existing `HCLM_DOMAIN` record.
+2. **`.env.production`:** add `ROOT_DOMAIN=<root domain>` (and `INTEGRATION_ENCRYPTION_KEY` if not already set). Keep `HCLM_DOMAIN` — it keeps serving CTK (`LEGACY_DOMAIN_ORG_SLUG`, default `ctk`), so old bookmarks and already-registered webhook URLs keep working. Restart the stack.
+3. **Certificates:** nothing to do — Caddy issues one per workspace on its first visit, after `/api/tls-check` confirms the name is a real workspace, `admin.<ROOT_DOMAIN>`, or the root domain (see `Caddyfile`).
+4. **Platform admin:** `docker compose --profile tools run --rm migrate sh -c 'ORG_SLUG=platform npx tsx scripts/create-platform-admin.ts "Your Name" you@example.com'`, open the printed link, then manage workspaces at `https://admin.<ROOT_DOMAIN>/platform`.
+5. **CTK moves to `https://ctk.<ROOT_DOMAIN>`** whenever convenient; its users sign in again there (sessions are per host). Re-register CTK's webhooks under the new host at leisure — the old host keeps working meanwhile.
+
 ## Calendly integration setup
 
 New bookings on `calendly.com/ctkadvisorsinc` land in the CRM as Leads (`/leads`) via a webhook — this only needs setting up once per environment, after the app is deployed and reachable at its real domain:

@@ -68,3 +68,21 @@ export async function updateOrganizationSettings(orgId: string, data: { name?: s
   forgetOrg(org.slug);
   return org;
 }
+
+/**
+ * Caddy's on-demand TLS gate (/api/tls-check): may a certificate be issued
+ * for `domain`? Only in multi-tenant mode, and only for names that serve
+ * something — an existing workspace's subdomain (suspended ones too, so their
+ * notice page still loads over HTTPS), the platform console, and the bare
+ * root domain. Anything else would let strangers make Caddy request
+ * certificates for arbitrary names pointed at the server.
+ */
+export async function isAllowedTlsHost(domain: string | null): Promise<boolean> {
+  const root = process.env.ROOT_DOMAIN?.trim().toLowerCase();
+  const hostname = domain?.trim().toLowerCase();
+  if (!root || !hostname) return false;
+  if (hostname === root) return true;
+  if (!hostname.endsWith(`.${root}`)) return false;
+  const slug = orgSlugFromHost(hostname);
+  return slug !== null && (await getOrgBySlug(slug)) !== null;
+}

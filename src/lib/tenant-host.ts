@@ -42,6 +42,11 @@ export function orgSlugFromHost(host: string | null | undefined): string | null 
   const root = process.env.ROOT_DOMAIN?.trim().toLowerCase();
   if (!root) return process.env.DEFAULT_ORG_SLUG || "ctk";
 
+  // The pre-multitenancy domain (HCLM_DOMAIN) keeps serving the org that
+  // used it — old bookmarks and registered webhook URLs keep working.
+  const legacy = process.env.HCLM_DOMAIN?.trim().toLowerCase();
+  if (legacy && hostname === legacy && legacy !== root) return process.env.LEGACY_DOMAIN_ORG_SLUG || "ctk";
+
   if (hostname.endsWith(`.${root}`)) {
     const sub = hostname.slice(0, -(root.length + 1));
     if (sub === PLATFORM_SUBDOMAIN) return PLATFORM_SLUG;
