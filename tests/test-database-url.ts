@@ -18,3 +18,15 @@ export function testDatabaseUrl(): string {
   }
   return url.toString();
 }
+
+/** Row-level-security test mode (TEST_RLS=1): the app runs as this restricted role. */
+export const TEST_APP_ROLE = "hclm_test_app";
+export const TEST_APP_PASSWORD = "hclm_test_app";
+
+/** The test database, connecting as the restricted app role instead of the owner. */
+export function testAppDatabaseUrl(): string {
+  const url = new URL(testDatabaseUrl());
+  url.username = TEST_APP_ROLE;
+  url.password = TEST_APP_PASSWORD;
+  return url.toString();
+}

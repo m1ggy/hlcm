@@ -1,6 +1,6 @@
 import { randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
-import { prisma } from "@/lib/prisma";
+import { systemPrisma as prisma } from "@/lib/prisma";
 import { runAsTenant, tenantDb } from "@/lib/db";
 import { forgetOrg } from "@/lib/tenant";
 import { isValidOrgSlug, PLATFORM_SLUG } from "@/lib/tenant-host";

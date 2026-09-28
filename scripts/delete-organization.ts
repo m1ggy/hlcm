@@ -7,7 +7,7 @@
 // The platform org and the template org (TEMPLATE_ORG_SLUG, default ctk)
 // are refused.
 import "dotenv/config";
-import { prisma } from "../src/lib/prisma";
+import { systemPrisma as prisma } from "../src/lib/prisma";
 import { deleteOrganization, exportOrganizationData } from "../src/lib/platform";
 import { deleteStoredFile, deleteStoredPrefix } from "../src/lib/storage";
 

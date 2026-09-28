@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { prisma } from "@/lib/prisma";
+import { systemPrisma as prisma } from "@/lib/prisma";
 import { runAsTenant } from "@/lib/db";
 import { decryptSecret, encryptSecret } from "@/lib/secrets";
 import {

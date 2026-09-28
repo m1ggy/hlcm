@@ -9,7 +9,7 @@
 import "dotenv/config";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
-import { prisma } from "../src/lib/prisma";
+import { systemPrisma as prisma } from "../src/lib/prisma";
 import { exportOrganizationData } from "../src/lib/platform";
 import { readStoredFile } from "../src/lib/storage";
 

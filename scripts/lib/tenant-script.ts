@@ -3,7 +3,7 @@
 // picked by ORG_SLUG (default "ctk").
 //   ORG_SLUG=acme npx tsx scripts/seed-demo.ts
 import "dotenv/config";
-import { prisma } from "../../src/lib/prisma";
+import { systemPrisma as prisma } from "../../src/lib/prisma";
 import { db, runAsTenant } from "../../src/lib/db";
 
 export { db };

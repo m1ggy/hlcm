@@ -9,6 +9,8 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    url: process.env["DATABASE_URL"],
+    // Migrations run as the table owner (see src/lib/prisma.ts) — once the
+    // app connects as a restricted role, DATABASE_URL can't alter tables.
+    url: process.env["SYSTEM_DATABASE_URL"] || process.env["DATABASE_URL"],
   },
 });

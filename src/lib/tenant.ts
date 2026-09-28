@@ -1,5 +1,5 @@
 import { headers } from "next/headers";
-import { prisma } from "@/lib/prisma";
+import { systemPrisma as prisma } from "@/lib/prisma";
 import { orgSlugFromHost, requestHost } from "@/lib/tenant-host";
 
 // Request → organization. The host → slug rule itself is in

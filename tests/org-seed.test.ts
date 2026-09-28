@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { prisma } from "@/lib/prisma";
+import { systemPrisma as prisma } from "@/lib/prisma";
 import { runAsTenant, tenantDb } from "@/lib/db";
 import { seedOrganization } from "@/lib/org-seed";
 import { ALL_STAGES } from "@/lib/pipeline-stage-catalog";

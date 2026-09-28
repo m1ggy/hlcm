@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { prisma } from "@/lib/prisma";
+import { systemPrisma as prisma } from "@/lib/prisma";
 import { tenantDb } from "@/lib/db";
 
 // Invoice.seq / Receipt.seq count per organization (org_counters +

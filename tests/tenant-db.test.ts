@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { prisma } from "@/lib/prisma";
+import { systemPrisma as prisma } from "@/lib/prisma";
 import { db, runAsTenant, tenantDb, TenantNotResolvedError } from "@/lib/db";
 
 // Two tenants side by side; every assertion is "A can't see or touch B".

@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { prisma } from "@/lib/prisma";
+import { prisma, systemPrisma } from "@/lib/prisma";
 import { getHostOrg, getOrgBySlug, type HostOrg } from "@/lib/tenant";
 import { PLATFORM_SLUG } from "@/lib/tenant-host";
 
@@ -180,7 +180,7 @@ export async function currentOrgId(): Promise<string> {
  */
 export async function forEachActiveOrg(label: string, fn: (org: TenantRef & { timezone: string | null }) => Promise<void>) {
   // The platform org (src/lib/tenant-host.ts) has no tenant data to run jobs over.
-  const orgs = await prisma.organization.findMany({
+  const orgs = await systemPrisma.organization.findMany({
     where: { status: "ACTIVE", slug: { not: PLATFORM_SLUG } },
     select: { id: true, slug: true, timezone: true },
   });

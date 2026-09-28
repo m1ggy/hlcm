@@ -30,9 +30,13 @@ pg() { compose exec -T postgres "$@"; }
 PGUSER_="$(pg printenv POSTGRES_USER | tr -d '\r')"
 PGDB_="$(pg printenv POSTGRES_DB | tr -d '\r')"
 
-DATABASE_URL_LIVE="$(grep '^DATABASE_URL=' .env.production | head -n1 | cut -d= -f2- | tr -d '"'"'"'\r')"
+env_value() { grep "^$1=" .env.production | head -n1 | cut -d= -f2- | tr -d '"'"'"'\r'; }
+# Migrations run as the table owner: SYSTEM_DATABASE_URL once the app has its
+# own restricted role (scripts/setup-app-db-role.sh), else DATABASE_URL.
+DATABASE_URL_LIVE="$(env_value SYSTEM_DATABASE_URL)"
+[ -n "$DATABASE_URL_LIVE" ] || DATABASE_URL_LIVE="$(env_value DATABASE_URL)"
 if [ -z "$DATABASE_URL_LIVE" ]; then
-  echo "DATABASE_URL not found in .env.production" >&2
+  echo "Neither SYSTEM_DATABASE_URL nor DATABASE_URL found in .env.production" >&2
   exit 1
 fi
 # Same connection, different database name (last path segment, query kept).
@@ -78,7 +82,7 @@ fi
 
 echo "==> Running migrations against the copy"
 MIGRATOR_IMAGE="$IMAGE" compose --profile tools run --rm -T \
-  -e DATABASE_URL="$DATABASE_URL_REHEARSAL" migrate < /dev/null
+  -e DATABASE_URL="$DATABASE_URL_REHEARSAL" -e SYSTEM_DATABASE_URL="$DATABASE_URL_REHEARSAL" migrate < /dev/null
 
 # Don't trust the migrator's exit code alone: a broken Prisma CLI in the
 # image once exited 0 having applied nothing. Every migration shipped in the

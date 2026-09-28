@@ -63,6 +63,9 @@ jobs:
           --health-retries 10
     env:
       TEST_DATABASE_URL: postgresql://hclm:hclm@localhost:5432/hclm_test
+      # The service's user can create roles, so the whole suite also runs as
+      # the restricted app role with row-level security enforced.
+      TEST_RLS: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -146,7 +149,7 @@ jobs:
         run: |
           ssh -p "${{ secrets.DROPLET_SSH_PORT || 22 }}" "${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}" \
             "mkdir -p '${{ env.DEPLOY_PATH }}'"
-          scp -P "${{ secrets.DROPLET_SSH_PORT || 22 }}" docker-compose.yml Caddyfile scripts/rehearse-migration.sh \
+          scp -P "${{ secrets.DROPLET_SSH_PORT || 22 }}" docker-compose.yml Caddyfile scripts/rehearse-migration.sh scripts/setup-app-db-role.sh scripts/app-db-role.sql \
             "${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}:${{ env.DEPLOY_PATH }}/"
 
       - name: Deploy on droplet

@@ -93,6 +93,16 @@ Everything below is off until `ROOT_DOMAIN` is set — until then the app runs s
 4. **Platform admin:** `docker compose --profile tools run --rm migrate sh -c 'ORG_SLUG=platform npx tsx scripts/create-platform-admin.ts "Your Name" you@example.com'`, open the printed link, then manage workspaces at `https://admin.<ROOT_DOMAIN>/platform`.
 5. **CTK moves to `https://ctk.<ROOT_DOMAIN>`** whenever convenient; its users sign in again there (sessions are per host). Re-register CTK's webhooks under the new host at leisure — the old host keeps working meanwhile.
 
+## Turning on database row-level security
+
+The database refuses to show or accept another organization's rows even if app code forgets a filter — but only once the app connects as a restricted role (the table owner is exempt, by design). Until then the policies exist but bind nothing. To switch it on:
+
+1. On the droplet: `cd /opt/hclm-app && bash setup-app-db-role.sh` (synced there by every deploy). It creates the `hclm_app` role and prints two lines.
+2. In `.env.production`: set `SYSTEM_DATABASE_URL` to the **current** `DATABASE_URL` (the owner — migrations and the few cross-org modules use it), and `DATABASE_URL` to the printed app-role URL. Then `docker compose up -d app`.
+3. Roll back any time by pointing `DATABASE_URL` back at the owner URL and restarting.
+
+New tables need a policy: end their migration with `SELECT ensure_tenant_policies();` (and `SELECT ensure_same_org_triggers();` if they reference other tenant tables) — the test suite fails until they do. CI runs the whole suite as a restricted role (`TEST_RLS=1`); to do the same locally you need a Postgres user that can create roles, e.g. `TEST_DATABASE_URL=postgresql://hclm:simpass@localhost:55432/hclm_test TEST_RLS=1 npm test` against a docker Postgres.
+
 ## Calendly integration setup
 
 New bookings on `calendly.com/ctkadvisorsinc` land in the CRM as Leads (`/leads`) via a webhook — this only needs setting up once per environment, after the app is deployed and reachable at its real domain:

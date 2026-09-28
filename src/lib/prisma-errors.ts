@@ -29,7 +29,7 @@ type PrismaKnownError = {
   code: string;
   meta?: {
     target?: string[] | string;
-    driverAdapterError?: { cause?: { constraint?: { fields?: string[] } } };
+    driverAdapterError?: { cause?: { constraint?: { fields?: string[] }; originalMessage?: string } };
   };
 };
 
@@ -62,6 +62,21 @@ function duplicateFields(known: PrismaKnownError): string[] {
   return raw.map(unquote).filter((field) => field !== "organizationId");
 }
 
+// Under row-level security Postgres omits the conflicting key from a unique
+// violation's detail (it could reveal another tenant's row), so the adapter
+// reports no fields — only the message, which still names the constraint:
+// Prisma's `<table>_<field>[_<field>…]_key`, e.g. users_organizationId_email_key.
+// Match the caller's duplicateMessages keys against that name instead.
+function messageForConstraintName(known: PrismaKnownError, messages?: Record<string, string>) {
+  const constraint = known.meta?.driverAdapterError?.cause?.originalMessage?.match(/unique constraint "([^"]+)"/)?.[1];
+  if (!constraint || !messages) return undefined;
+  for (const [key, message] of Object.entries(messages)) {
+    const fields = key.split(",").map((f) => f.trim());
+    if (constraint.endsWith(`_${fields.join("_")}_key`)) return message;
+  }
+  return undefined;
+}
+
 export function friendlyPrismaError(
   error: unknown,
   options?: {
@@ -82,7 +97,10 @@ export function friendlyPrismaError(
     if (known.code === "P2002") {
       const fields = duplicateFields(known);
       const fallback = fields.length > 0 ? `That ${fields.join(" + ")} is already in use.` : "That value is already in use.";
-      throw new UserFacingError(options?.duplicateMessages?.[fields.join(",")] ?? fallback);
+      const message =
+        options?.duplicateMessages?.[fields.join(",")] ??
+        (fields.length === 0 ? messageForConstraintName(known, options?.duplicateMessages) : undefined);
+      throw new UserFacingError(message ?? fallback);
     }
     if (known.code === "P2025") {
       throw new UserFacingError(

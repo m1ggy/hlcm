@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { prisma } from "@/lib/prisma";
+import { systemPrisma as prisma } from "@/lib/prisma";
 import { runAsTenant } from "@/lib/db";
 import { clearIntegrationCache, saveIntegration } from "@/lib/integrations";
 import { verifyWebhookSignature } from "@/lib/stripe";
