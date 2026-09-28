@@ -95,3 +95,13 @@ export async function revertToGeneration(storageKey: string, generation: bigint)
 export async function deleteStoredFile(storageKey: string): Promise<void> {
   await getBucket().file(storageKey).delete().catch(() => {});
 }
+
+/**
+ * Deletes every object under `prefix` (all generations) — offboarding an
+ * organization removes its org/<organizationId>/ folder. Refuses an empty or
+ * suspiciously short prefix rather than risk wiping the bucket.
+ */
+export async function deleteStoredPrefix(prefix: string): Promise<void> {
+  if (!/^org\/[^/]+\/$/.test(prefix)) throw new Error(`Refusing to delete files under "${prefix}"`);
+  await getBucket().deleteFiles({ prefix, versions: true, force: true });
+}

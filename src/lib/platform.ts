@@ -113,3 +113,107 @@ export async function findWorkspacesForEmail(email: string): Promise<{ name: str
   });
   return users.map((u) => u.organization);
 }
+
+// --- Offboarding -----------------------------------------------------------
+// Export and hard-delete one organization. Tables are discovered from the
+// catalog (every table with an "organizationId" column, plus Prisma's
+// implicit join tables), so new models are covered without touching this.
+
+type TenantTables = { tables: string[]; joinTables: { table: string; aTable: string; bTable: string }[] };
+
+async function tenantTables(): Promise<TenantTables> {
+  const tables = await prisma.$queryRaw<{ table_name: string }[]>`
+    SELECT c.table_name FROM information_schema.columns c
+    JOIN information_schema.tables t ON t.table_name = c.table_name AND t.table_schema = c.table_schema
+    WHERE c.table_schema = 'public' AND c.column_name = 'organizationId' AND t.table_type = 'BASE TABLE'
+    ORDER BY c.table_name`;
+  const joinTables = await prisma.$queryRaw<{ table: string; aTable: string; bTable: string }[]>`
+    SELECT c.relname AS "table",
+      (SELECT p.relname FROM pg_constraint k JOIN pg_class p ON p.oid = k.confrelid
+         JOIN pg_attribute a ON a.attrelid = k.conrelid AND a.attnum = k.conkey[1]
+       WHERE k.conrelid = c.oid AND k.contype = 'f' AND a.attname = 'A') AS "aTable",
+      (SELECT p.relname FROM pg_constraint k JOIN pg_class p ON p.oid = k.confrelid
+         JOIN pg_attribute a ON a.attrelid = k.conrelid AND a.attnum = k.conkey[1]
+       WHERE k.conrelid = c.oid AND k.contype = 'f' AND a.attname = 'B') AS "bTable"
+    FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public' AND c.relkind = 'r' AND left(c.relname, 1) = '_' AND c.relname <> '_prisma_migrations'`;
+  return { tables: tables.map((t) => t.table_name), joinTables: joinTables.filter((j) => j.aTable && j.bTable) };
+}
+
+// Identifiers come only from the catalog queries above, never from input.
+const ident = (name: string) => `"${name.replace(/"/g, '""')}"`;
+
+/**
+ * Everything the organization owns, as plain rows per table, plus every
+ * storage key those rows reference (for fetching the files from GCS).
+ */
+export async function exportOrganizationData(orgId: string) {
+  const org = await prisma.organization.findUniqueOrThrow({ where: { id: orgId } });
+  const { tables, joinTables } = await tenantTables();
+  const data: Record<string, unknown[]> = {};
+  for (const table of tables) {
+    data[table] = await prisma.$queryRawUnsafe(`SELECT * FROM ${ident(table)} WHERE "organizationId" = $1 ORDER BY 1`, orgId);
+  }
+  for (const j of joinTables) {
+    data[j.table] = await prisma.$queryRawUnsafe(
+      `SELECT * FROM ${ident(j.table)} WHERE "A" IN (SELECT id FROM ${ident(j.aTable)} WHERE "organizationId" = $1)`,
+      orgId
+    );
+  }
+  const storageKeys = new Set<string>();
+  for (const rows of Object.values(data)) {
+    for (const row of rows as Record<string, unknown>[]) {
+      for (const [column, value] of Object.entries(row)) {
+        if (/storagekey$/i.test(column) && typeof value === "string" && value) storageKeys.add(value);
+      }
+    }
+  }
+  return { organization: org, exportedAt: new Date().toISOString(), data, storageKeys: [...storageKeys].sort() };
+}
+
+/**
+ * Permanently deletes an organization and every row it owns, in one
+ * transaction (all or nothing). Children go before parents: each pass
+ * deletes what it can and retries tables still blocked by a foreign key.
+ * Doesn't touch stored files — the caller deletes those (exportOrganizationData
+ * lists their keys) after this succeeds.
+ */
+export async function deleteOrganization(orgId: string) {
+  const org = await prisma.organization.findUniqueOrThrow({ where: { id: orgId }, select: { slug: true } });
+  const template = process.env.TEMPLATE_ORG_SLUG ?? "ctk";
+  if (org.slug === PLATFORM_SLUG) throw new UserFacingError("The platform organization can't be deleted");
+  if (org.slug === template) throw new UserFacingError(`"${org.slug}" is the template organization new workspaces are copied from — change TEMPLATE_ORG_SLUG first`);
+
+  const { tables, joinTables } = await tenantTables();
+  const deleted: Record<string, number> = {};
+  await prisma.$transaction(
+    async (tx) => {
+      for (const j of joinTables) {
+        deleted[j.table] = await tx.$executeRawUnsafe(
+          `DELETE FROM ${ident(j.table)} WHERE "A" IN (SELECT id FROM ${ident(j.aTable)} WHERE "organizationId" = $1)`,
+          orgId
+        );
+      }
+      let remaining = [...tables];
+      for (let pass = 0; pass < tables.length && remaining.length > 0; pass++) {
+        const blocked: string[] = [];
+        for (const table of remaining) {
+          await tx.$executeRawUnsafe("SAVEPOINT delete_table");
+          try {
+            deleted[table] = (deleted[table] ?? 0) + (await tx.$executeRawUnsafe(`DELETE FROM ${ident(table)} WHERE "organizationId" = $1`, orgId));
+            await tx.$executeRawUnsafe("RELEASE SAVEPOINT delete_table");
+          } catch {
+            await tx.$executeRawUnsafe("ROLLBACK TO SAVEPOINT delete_table");
+            blocked.push(table);
+          }
+        }
+        remaining = blocked;
+      }
+      if (remaining.length > 0) throw new Error(`Couldn't delete rows from: ${remaining.join(", ")}`);
+      await tx.organization.delete({ where: { id: orgId } });
+    },
+    { timeout: 120_000 }
+  );
+  forgetOrg(org.slug);
+  return deleted;
+}

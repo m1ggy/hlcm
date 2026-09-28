@@ -47,3 +47,6 @@ next-env.d.ts
 
 # reference screenshots for invoice format work — contain real PII (SSN, DOB)
 /docs/care recipient invoice format/
+
+# Organization exports (scripts/export-organization.ts) — contain customer data
+/exports/
