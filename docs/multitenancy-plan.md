@@ -4,8 +4,8 @@ Status (2026-09-28): **all phases through 6 implemented** (billing deferred); se
 
 **Resume point (2026-09-28):** Phases 0–6 implemented (tenant billing deferred by the user) on branches `multitenancy/phase-1` … `multitenancy/phase-6`, each built on the previous — `multitenancy/phase-6` contains everything. Nothing merged or deployed. Next:
 1. **Rollout** (each step deployable on its own, none changes behavior until switched on): merge `multitenancy/phase-6` → `dev` (deploys to dev; CI runs the suite incl. RLS) → rehearse on the prod server with `rehearse-migration.sh` → `main`. Then, when ready: set `INTEGRATION_ENCRYPTION_KEY`; run `setup-app-db-role.sh` + split `DATABASE_URL`/`SYSTEM_DATABASE_URL` (RLS on); DNS + `ROOT_DOMAIN` (subdomains on) — see README.
-2. **Decisions pending:** tenant billing pricing (5g); whether the time-entry default timezone should follow `Organization.timezone` (still `America/Chicago` for every org); product name + domain.
-3. Deferred: "Register webhook" buttons for Calendly/DocuSign.
+2. **Decisions pending:** tenant billing pricing (5g); product name + domain; legal (BAA/ToS).
+3. **Onboarding audit (2026-09-28), all fixed on `multitenancy/phase-6`, not pushed (user: don't push yet):** suspended-workspace sessions get the suspended notice instead of crashing; platform admins have an Account page and need MFA for the console; tenant email is sent as the org's name with the org's reply-to (Admin > Organization); Admin > Integrations explains each provider and registers the Calendly/DocuSign webhooks itself (old scripts removed); platform console "Invite owner" (typo'd or locked-out owner); failed sign-ins throttled per IP (30) and per account (8) per 15 min; dashboard "Set up your workspace" checklist for new owners (existing orgs pre-dismissed by migration); time clock default = `Organization.timezone`, fallback America/Chicago; handbook served with `PRODUCT_NAME`, Illinois mention removed. Suite: 112 tests pass normal and `TEST_RLS=1` (sim Postgres at localhost:55432 — the local dev Postgres user can't create roles).
 
 ## Decisions made
 
