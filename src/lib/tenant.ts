@@ -69,6 +69,16 @@ export async function updateOrganizationSettings(orgId: string, data: { name?: s
   return org;
 }
 
+/** Whether the org's owner has dismissed the dashboard setup checklist (src/lib/setup-checklist.ts). */
+export async function isSetupChecklistDismissed(orgId: string) {
+  const row = await prisma.organization.findUnique({ where: { id: orgId }, select: { setupChecklistDismissedAt: true } });
+  return !row || row.setupChecklistDismissedAt !== null;
+}
+
+export async function dismissSetupChecklist(orgId: string) {
+  await prisma.organization.update({ where: { id: orgId }, data: { setupChecklistDismissedAt: new Date() } });
+}
+
 /**
  * Caddy's on-demand TLS gate (/api/tls-check): may a certificate be issued
  * for `domain`? Only in multi-tenant mode, and only for names that serve

@@ -10,6 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { STATUS_BADGE_VARIANT, STATUS_LABELS, ApplicationStatus } from "@/lib/status";
 import { TASK_STATUS_LABELS, TaskStatusValue } from "@/lib/task-status";
 import { OverdueTaskActions } from "@/components/tasks/overdue-task-actions";
+import { SetupChecklist } from "@/components/dashboard/setup-checklist";
+import { getSetupChecklist } from "@/lib/setup-checklist";
 
 function StatCard({ href, label, count }: { href: string; label: string; count: number }) {
   return (
@@ -39,7 +41,7 @@ export default async function HomePage() {
   const session = await auth();
   if (!session?.user) return null;
 
-  const [projectCount, clientCount, applicationCount, stats, applicationAlerts, mcoAlerts, licenseAlerts] = await Promise.all([
+  const [projectCount, clientCount, applicationCount, stats, applicationAlerts, mcoAlerts, licenseAlerts, setupSteps] = await Promise.all([
     db.project.count({ where: { active: true } }),
     db.client.count({ where: { active: true } }),
     db.application.count({ where: { ...applicationVisibilityFilter(session), active: true } }),
@@ -47,6 +49,8 @@ export default async function HomePage() {
     listApplicationAlerts(),
     listMcoAlerts(),
     listLicenseAlerts(),
+    // Only the owner sets the workspace up (Organization/Integrations are owner-only).
+    session.user.role === "OWNER" ? getSetupChecklist() : null,
   ]);
 
   return (
@@ -55,6 +59,7 @@ export default async function HomePage() {
         <h1 className="text-2xl font-semibold">Welcome, {session.user.name}</h1>
         <p className="text-muted-foreground">Role: {session.user.role}</p>
       </div>
+      {setupSteps && <SetupChecklist steps={setupSteps} />}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard href="/projects" label="Projects" count={projectCount} />
         <StatCard href="/clients" label="Clients" count={clientCount} />

@@ -23,20 +23,23 @@ enum OrgStatus {
 }
 
 model Organization {
-  id           String    @id @default(cuid())
+  id                        String    @id @default(cuid())
   // The tenant's subdomain (<slug>.<root domain>).
-  slug         String    @unique
-  name         String
-  status       OrgStatus @default(ACTIVE)
+  slug                      String    @unique
+  name                      String
+  status                    OrgStatus @default(ACTIVE)
   // IANA zone (e.g. "America/Chicago") for org-wide schedules like the 8am
   // due-date digest. Null = the server's own timezone (the old behavior).
-  timezone     String?
+  timezone                  String?
   // Where replies to this workspace's emails go (invoices, receipts,
   // invites…). Mail is sent from the platform's own address — only a
   // verified domain can send — with the org's name as the sender name.
-  replyToEmail String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  replyToEmail              String?
+  // When an owner dismissed the dashboard's "Set up your workspace"
+  // checklist (src/lib/actions/setup-checklist.ts). Null = still shown.
+  setupChecklistDismissedAt DateTime?
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
 
   orgCounters              OrgCounter[]
   picklistOptions          PicklistOption[]
