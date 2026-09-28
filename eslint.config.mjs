@@ -11,7 +11,7 @@ const eslintConfig = defineConfig([
   // docs/multitenancy-plan.md, Phase 2).
   {
     files: ["src/**/*.{ts,tsx}"],
-    ignores: ["src/lib/db.ts", "src/lib/tenant.ts", "src/lib/prisma.ts"],
+    ignores: ["src/lib/db.ts", "src/lib/tenant.ts", "src/lib/prisma.ts", "src/lib/platform.ts"],
     rules: {
       "no-restricted-imports": [
         "error",

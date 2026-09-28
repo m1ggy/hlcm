@@ -16,6 +16,10 @@ export default defineConfig({
       DATABASE_URL: testDatabaseUrl(),
       // Fixed 32-byte key for src/lib/secrets.ts — test-only, never used elsewhere.
       INTEGRATION_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"),
+      // Tests must never send real email (the dev .env may hold a Resend key):
+      // with these blank, sendEmail fails fast with EmailConfigError.
+      RESEND_API_KEY: "",
+      EMAIL_FROM: "",
     },
     // One shared database: run files one at a time.
     fileParallelism: false,

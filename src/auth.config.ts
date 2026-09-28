@@ -1,5 +1,5 @@
 import type { NextAuthConfig } from "next-auth";
-import { orgSlugFromHost } from "@/lib/tenant-host";
+import { orgSlugFromHost, requestHost } from "@/lib/tenant-host";
 
 // Edge-safe base config shared by middleware and the full server config.
 // No providers here — Credentials + Prisma/bcrypt live only in auth.ts,
@@ -16,7 +16,7 @@ export const authConfig = {
       // org (or a pre-multitenancy token with no org at all) is treated as
       // logged out. Session cookies are host-only, so a browser never sends
       // one across subdomains anyway — this covers a hand-copied cookie.
-      const hostSlug = orgSlugFromHost(request.headers.get("host"));
+      const hostSlug = orgSlugFromHost(requestHost(request.headers));
       const isLoggedIn = !!auth?.user && !!hostSlug && auth.user.orgSlug === hostSlug;
       const { pathname } = request.nextUrl;
       const isPublicPath =

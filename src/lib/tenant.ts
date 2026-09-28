@@ -1,6 +1,6 @@
 import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
-import { orgSlugFromHost } from "@/lib/tenant-host";
+import { orgSlugFromHost, requestHost } from "@/lib/tenant-host";
 
 // Request → organization. The host → slug rule itself is in
 // src/lib/tenant-host.ts (kept Prisma-free for the proxy).
@@ -40,7 +40,7 @@ export async function getOrgBySlug(slug: string): Promise<HostOrg | null> {
 export async function getHostOrgSlug(): Promise<string | null> {
   let host: string | null;
   try {
-    host = (await headers()).get("host");
+    host = requestHost(await headers());
   } catch {
     // Called outside a request (instrumentation jobs, scripts) — there's no host.
     return null;

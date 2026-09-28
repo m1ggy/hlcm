@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { prisma } from "@/lib/prisma";
 import { getHostOrg, getOrgBySlug, type HostOrg } from "@/lib/tenant";
+import { PLATFORM_SLUG } from "@/lib/tenant-host";
 
 // Tenant-scoped Prisma access (see docs/multitenancy-plan.md, Phase 2).
 //
@@ -178,7 +179,11 @@ export async function currentOrgId(): Promise<string> {
  * scope — for scheduled jobs. One org failing doesn't stop the rest.
  */
 export async function forEachActiveOrg(label: string, fn: (org: TenantRef & { timezone: string | null }) => Promise<void>) {
-  const orgs = await prisma.organization.findMany({ where: { status: "ACTIVE" }, select: { id: true, slug: true, timezone: true } });
+  // The platform org (src/lib/tenant-host.ts) has no tenant data to run jobs over.
+  const orgs = await prisma.organization.findMany({
+    where: { status: "ACTIVE", slug: { not: PLATFORM_SLUG } },
+    select: { id: true, slug: true, timezone: true },
+  });
   for (const org of orgs) {
     try {
       await runAsTenant({ id: org.id, slug: org.slug }, () => fn(org));

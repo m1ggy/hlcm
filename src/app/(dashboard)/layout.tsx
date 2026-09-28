@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { PLATFORM_SLUG } from "@/lib/tenant-host";
 import { auth } from "@/auth";
 import { isAdmin } from "@/lib/rbac";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -25,6 +26,8 @@ export default async function DashboardLayout({
 }) {
   const session = await auth();
   if (session?.user?.role === "CLIENT") redirect("/portal");
+  // The platform org has no CRM of its own — its admins use the console.
+  if (session?.user?.orgSlug === PLATFORM_SLUG) redirect("/platform");
   const isCaregiver = session?.user?.role === "CAREGIVER";
   const [activeEntry, activeBreak, careRecipients, openTimer, myTasks, recentTimerTasks] = await Promise.all([
     getMyActiveEntry(),

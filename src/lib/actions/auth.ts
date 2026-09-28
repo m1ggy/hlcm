@@ -7,6 +7,7 @@ import { AuthError } from "next-auth";
 import { signIn } from "@/auth";
 import { db } from "@/lib/db";
 import { getHostOrg } from "@/lib/tenant";
+import { PLATFORM_SLUG } from "@/lib/tenant-host";
 import { createMfaChallenge } from "@/lib/mfa-challenge";
 
 const CHALLENGE_COOKIE = "mfa_challenge";
@@ -45,7 +46,7 @@ export async function loginAction(
   }
 
   try {
-    await signIn("credentials", { email, password, redirectTo: "/" });
+    await signIn("credentials", { email, password, redirectTo: org.slug === PLATFORM_SLUG ? "/platform" : "/" });
   } catch (error) {
     if (error instanceof AuthError) return { error: "Invalid email or password." };
     throw error;
@@ -63,7 +64,9 @@ export async function verifyMfaAction(
   if (!challenge) return { error: "Your sign-in session expired. Please start over." };
 
   try {
-    await signIn("credentials", { challenge, otp, redirectTo: "/" });
+    // Platform admins land on the console, everyone else on their dashboard.
+    const org = await getHostOrg();
+    await signIn("credentials", { challenge, otp, redirectTo: org?.slug === PLATFORM_SLUG ? "/platform" : "/" });
   } catch (error) {
     if (error instanceof AuthError) return { error: "Invalid MFA code." };
     throw error;
