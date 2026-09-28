@@ -31,6 +31,24 @@ function getFrom() {
   return from;
 }
 
+// Mail always leaves from the platform's own verified address (EMAIL_FROM —
+// only a verified domain can send), but under the current organization's
+// name, with replies going to the address it set in Admin > Organization.
+// Outside any workspace (e.g. find-your-workspace on the root domain) it's
+// EMAIL_FROM as configured.
+async function senderFor(): Promise<{ from: string; replyTo?: string }> {
+  const from = getFrom();
+  let org: Awaited<ReturnType<typeof currentOrganization>> | null = null;
+  try {
+    org = await currentOrganization();
+  } catch {
+    return { from };
+  }
+  const address = from.match(/<([^>]+)>/)?.[1] ?? from.trim();
+  const name = org.name.replace(/["<>\r\n]/g, "").trim();
+  return { from: name ? `"${name}" <${address}>` : from, replyTo: org.replyToEmail ?? undefined };
+}
+
 /** Base URL for building absolute links in email bodies — the current
  * organization's workspace (see orgAppUrl in src/lib/tenant-host.ts). */
 export async function getAppUrl() {
@@ -117,6 +135,7 @@ export async function sendEmail(params: {
   /** e.g. an invoice PDF — `content` is raw bytes, base64-encoded here, not by the caller. */
   attachments?: { filename: string; content: Uint8Array }[];
 }) {
+  const sender = await senderFor();
   const res = await fetch(`${API_BASE}/emails`, {
     method: "POST",
     headers: {
@@ -124,7 +143,8 @@ export async function sendEmail(params: {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      from: getFrom(),
+      from: sender.from,
+      reply_to: sender.replyTo,
       to: params.to,
       cc: params.cc?.length ? params.cc : undefined,
       subject: params.subject,

@@ -15,12 +15,13 @@ export function OrganizationSettingsForm({
   initial,
   workspaceUrl,
 }: {
-  initial: { name: string; timezone: string | null };
+  initial: { name: string; timezone: string | null; replyToEmail: string | null };
   workspaceUrl: string;
 }) {
   const router = useRouter();
   const [name, setName] = useState(initial.name);
   const [timezone, setTimezone] = useState(initial.timezone);
+  const [replyToEmail, setReplyToEmail] = useState(initial.replyToEmail ?? "");
   const [isPending, startTransition] = useTransition();
 
   const zones = useMemo(
@@ -31,7 +32,7 @@ export function OrganizationSettingsForm({
   function handleSave() {
     startTransition(async () => {
       try {
-        const result = await saveOrganizationSettings({ name, timezone });
+        const result = await saveOrganizationSettings({ name, timezone, replyToEmail });
         if (!result.ok) {
           toast.error(result.error);
           return;
@@ -69,6 +70,13 @@ export function OrganizationSettingsForm({
           searchPlaceholder="Search timezones..."
         />
         <p className="text-xs text-muted-foreground">When org-wide schedules run — e.g. the daily due-date digest goes out at 8am here.</p>
+      </div>
+      <div className="space-y-1">
+        <Label htmlFor="org-reply-to">Reply-to email</Label>
+        <Input id="org-reply-to" type="email" value={replyToEmail} onChange={(e) => setReplyToEmail(e.target.value)} placeholder="billing@yourcompany.com" />
+        <p className="text-xs text-muted-foreground">
+          Emails from this workspace — invoices, receipts, invites — are sent under its name; replies go here.
+        </p>
       </div>
       <div className="space-y-1">
         <Label>Workspace address</Label>

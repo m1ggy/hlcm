@@ -7,7 +7,7 @@ import { orgSlugFromHost, requestHost } from "@/lib/tenant-host";
 
 export { orgSlugFromHost, RESERVED_SLUGS } from "@/lib/tenant-host";
 
-export type HostOrg = { id: string; slug: string; name: string; status: "ACTIVE" | "SUSPENDED"; timezone: string | null };
+export type HostOrg = { id: string; slug: string; name: string; status: "ACTIVE" | "SUSPENDED"; timezone: string | null; replyToEmail: string | null };
 
 // slug → org, cached briefly: this runs on every tenant-scoped query's first
 // use in a request, and organizations almost never change. A suspended or
@@ -30,7 +30,7 @@ export async function getOrgBySlug(slug: string): Promise<HostOrg | null> {
   if (hit && hit.expiresAt > Date.now()) return hit.org;
   const org = await prisma.organization.findUnique({
     where: { slug },
-    select: { id: true, slug: true, name: true, status: true, timezone: true },
+    select: { id: true, slug: true, name: true, status: true, timezone: true, replyToEmail: true },
   });
   orgCache.set(slug, { org, expiresAt: Date.now() + CACHE_TTL_MS });
   return org;
@@ -59,11 +59,11 @@ export async function getHostOrg(): Promise<HostOrg | null> {
  * tenant-scoped (it *is* the tenant list), so this goes through the raw
  * client here rather than `db`; callers check who may do it.
  */
-export async function updateOrganizationSettings(orgId: string, data: { name?: string; timezone?: string | null }) {
+export async function updateOrganizationSettings(orgId: string, data: { name?: string; timezone?: string | null; replyToEmail?: string | null }) {
   const org = await prisma.organization.update({
     where: { id: orgId },
     data,
-    select: { id: true, slug: true, name: true, status: true, timezone: true },
+    select: { id: true, slug: true, name: true, status: true, timezone: true, replyToEmail: true },
   });
   forgetOrg(org.slug);
   return org;

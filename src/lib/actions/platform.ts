@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { ForbiddenError, isSuperuser, requireSession } from "@/lib/rbac";
+import { db } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
 import { toActionResult, type ActionResult } from "@/lib/action-result";
 import { PLATFORM_SLUG, orgAppUrl } from "@/lib/tenant-host";
@@ -17,10 +18,21 @@ import {
 // The platform console (admin.<ROOT_DOMAIN>): only OWNER/DEVELOPER users of
 // the platform organization. Audit rows land in the platform org's own log.
 
+// Platform admins can create and suspend every workspace, so two-factor
+// authentication is required, not optional (set up at /platform/account).
 async function requirePlatformAdmin() {
   const session = await requireSession();
   if (session.user.orgSlug !== PLATFORM_SLUG || !isSuperuser(session.user.role)) throw new ForbiddenError();
+  const me = await db.user.findUnique({ where: { id: session.user.id }, select: { mfaEnabled: true } });
+  if (!me?.mfaEnabled) throw new ForbiddenError("Turn on two-factor authentication (Account) before using the platform console");
   return session;
+}
+
+/** Whether the signed-in platform admin has two-factor authentication on. */
+export async function platformAdminHasMfa(): Promise<boolean> {
+  const session = await requireSession();
+  const me = await db.user.findUnique({ where: { id: session.user.id }, select: { mfaEnabled: true } });
+  return Boolean(me?.mfaEnabled);
 }
 
 export async function listOrganizationsForPlatform(): Promise<(PlatformOrganization & { url: string })[]> {

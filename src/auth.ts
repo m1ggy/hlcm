@@ -2,10 +2,10 @@ import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { getDb } from "@/lib/db";
-import { getHostOrg } from "@/lib/tenant";
+import { getHostOrg, getOrgBySlug } from "@/lib/tenant";
 import { verifyTotpToken } from "@/lib/totp";
 import { verifyMfaChallenge } from "@/lib/mfa-challenge";
-import { authConfig } from "@/auth.config";
+import { authConfig, isPublicPath } from "@/auth.config";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
@@ -72,6 +72,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
   callbacks: {
     ...authConfig.callbacks,
+    // The proxy's check (Node runtime here, so it can look the org up): on top
+    // of the host rule in auth.config.ts, a session only counts while its
+    // organization is ACTIVE — suspending a workspace signs everyone out of
+    // it at once instead of leaving open sessions on pages that can't load.
+    async authorized(params) {
+      const allowed = authConfig.callbacks.authorized(params);
+      if (!allowed || !params.auth?.user || isPublicPath(params.request.nextUrl.pathname)) return allowed;
+      const org = await getOrgBySlug(params.auth.user.orgSlug);
+      return org?.status === "ACTIVE";
+    },
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;

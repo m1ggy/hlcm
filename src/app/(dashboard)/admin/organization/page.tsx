@@ -12,7 +12,7 @@ export default async function OrganizationPage() {
       <h1 className="text-2xl font-semibold">Organization</h1>
       {isSuperuser(session.user.role) ? (
         <OrganizationSettingsForm
-          initial={await getOrganizationSettings().then(({ name, timezone }) => ({ name, timezone }))}
+          initial={await getOrganizationSettings().then(({ name, timezone, replyToEmail }) => ({ name, timezone, replyToEmail }))}
           workspaceUrl={await getAppUrl()}
         />
       ) : (
