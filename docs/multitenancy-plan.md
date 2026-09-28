@@ -2,10 +2,11 @@
 
 Status (2026-09-26): **Phase 0 + 1 on branch `multitenancy/phase-1`, Phase 2 on `multitenancy/phase-2`, Phase 3 on `multitenancy/phase-3`** (each built on the previous). Nothing merged or deployed. Plan drafted 2026-09-24.
 
-**Resume point (2026-09-26):** Phases 0–4 implemented on branches `multitenancy/phase-1` … `multitenancy/phase-4` (each built on the previous); nothing merged or deployed. Next:
-1. ~~Rehearse Phases 1–4~~ — done 2026-09-28: baseline built from `dev` (prod's code), seeded with the old scripts plus real agency/ball-with/MCO values and invoices/receipts; the Phase 4 migrator applied all 9 multitenancy migrations, no rows lost, values preserved, counters continue (invoice 6, receipt 4), 118 triggers. Found and fixed on the way: a corrupted Docker build cache produced a migrator whose Prisma CLI silently exited 0 — `rehearse-migration.sh` and the deploy step now verify every migration in the image is recorded as applied.
-2. Phase 5 — platform admin, org creation (+ `seedOrganization`), invites/password reset, branding, subdomain TLS, tenant billing, offboarding.
-3. Before any prod deploy of Phase 4: set `INTEGRATION_ENCRYPTION_KEY` on the server (see README).
+**Resume point (2026-09-28):** Phases 0–5 (except tenant billing) implemented on branches `multitenancy/phase-1` … `multitenancy/phase-5` (each built on the previous); nothing merged or deployed. Next:
+1. **Decision needed — tenant billing:** pricing model (flat / per-seat / per-client) before building Phase 5g.
+2. Phase 6 — RLS (policies, app/system DB roles, CI policy check).
+3. Deploy prerequisites: `INTEGRATION_ENCRYPTION_KEY` on the server; for the subdomain switch follow README "Switching production to multi-tenant".
+4. Deferred: time-entry default timezone still `America/Chicago` for every org (should fall back to `Organization.timezone`); "Register webhook" buttons for Calendly/DocuSign.
 
 ## Decisions made
 
@@ -253,6 +254,15 @@ Risk: medium — test webhook cutover in Stripe/DocuSign sandbox first.
 
 ## Phase 5 — Platform admin, onboarding, subdomains live
 
+**Status — implemented 2026-09-28 on `multitenancy/phase-5`** (91 tests):
+- 5a Branding + org settings: the org's name replaces hardcoded CTK/HCLM in the sidebar, sign-in, portal, tab title, emails, SMS, invoice subject/PDF fallback, Calendly cancel reason, TOTP issuer; `PRODUCT_NAME` (default HCLM) for platform text. Admin > Organization (owners): name + `Organization.timezone`; the digest runs at 8am per org timezone. Org/integration caches moved to `globalThis` (a Server Action and the next render can load separate module copies).
+- 5b `AuthToken` (hashed, single-use; invite 7d / reset 1h): forgot-password (uniform answer, rate-limited), `/set-password`, invites by default in Admin > Users, "Email a set-password link".
+- 5c Platform org (`platform`, served at `admin.<ROOT_DOMAIN>`), console `/platform`: create workspace (org + OWNER + template copy + invite), suspend/reactivate, resend owner invite; `scripts/create-platform-admin.ts`. **Tenant is now resolved from X-Forwarded-Host, then Host** — Next renders Server Action redirects via an internal request to localhost carrying the real host only there; safe behind Caddy.
+- 5d Caddy on-demand TLS gated by `/api/tls-check` (workspaces, admin., root only; inert without `ROOT_DOMAIN`); legacy `HCLM_DOMAIN` keeps serving CTK (`LEGACY_DOMAIN_ORG_SLUG`). README cutover runbook.
+- 5e `/find-workspace` on hosts with no workspace: emails the address its workspace links (uniform answer, rate-limited).
+- 5f `exportOrganizationData` / `deleteOrganization` + `scripts/export-organization.ts` / `delete-organization.ts` (`--confirm=<slug>`; refuses platform + template org).
+- Not done: tenant billing (5g — pricing decision), impersonation (deliberately out of v1).
+
 - Organization gains `displayName`, `shortName`, `logoStorageKey`, `supportEmail`, `timezone`, optional brand color.
 - `User.isPlatformAdmin` replaces the `DEVELOPER` role; platform admins live in a reserved `platform` org and log in at `admin.<domain>`. Console: list/create/suspend orgs, integration status. No impersonation in v1 (HIPAA); maybe audited "view as" later.
 - Create-org flow: slug (regex + reserved words: `www`, `admin`, `api`, `app`, `platform`, `mail`, `status`, `docs`, `help`) → create org → `seedOrganization()` → first OWNER + invite email.
@@ -307,7 +317,7 @@ Rough effort (solo dev + Claude):
 | 2 Tenant context + call sites + FK triggers + tests | done (branch) |
 | 3 Uniques / numbering / storage / lookups / stage roles | done (branch) |
 | 4 Integrations + jobs | done (branch) |
-| 5 Platform admin, onboarding, TLS, billing, offboarding | 1.5–2 w |
+| 5 Platform admin, onboarding, TLS, billing, offboarding | done except billing (branch) |
 | 6 RLS | 3–5 d |
 | **Total** | **~7–9 w** |
 
