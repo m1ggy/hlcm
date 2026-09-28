@@ -3,7 +3,7 @@
 Status (2026-09-26): **Phase 0 + 1 on branch `multitenancy/phase-1`, Phase 2 on `multitenancy/phase-2`, Phase 3 on `multitenancy/phase-3`** (each built on the previous). Nothing merged or deployed. Plan drafted 2026-09-24.
 
 **Resume point (2026-09-26):** Phases 0–4 implemented on branches `multitenancy/phase-1` … `multitenancy/phase-4` (each built on the previous); nothing merged or deployed. Next:
-1. Re-run the migration rehearsal (Phases 1–4) against a prod-like copy — blocked locally: Docker Desktop's disk is failing with I/O errors (needs a restart / "Clean / Purge data").
+1. ~~Rehearse Phases 1–4~~ — done 2026-09-28: baseline built from `dev` (prod's code), seeded with the old scripts plus real agency/ball-with/MCO values and invoices/receipts; the Phase 4 migrator applied all 9 multitenancy migrations, no rows lost, values preserved, counters continue (invoice 6, receipt 4), 118 triggers. Found and fixed on the way: a corrupted Docker build cache produced a migrator whose Prisma CLI silently exited 0 — `rehearse-migration.sh` and the deploy step now verify every migration in the image is recorded as applied.
 2. Phase 5 — platform admin, org creation (+ `seedOrganization`), invites/password reset, branding, subdomain TLS, tenant billing, offboarding.
 3. Before any prod deploy of Phase 4: set `INTEGRATION_ENCRYPTION_KEY` on the server (see README).
 

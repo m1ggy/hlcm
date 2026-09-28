@@ -193,6 +193,18 @@ jobs:
           ls -1t backups/pre-migrate-*.dump | tail -n +8 | xargs -r rm --
 
           docker compose --profile tools run --rm -T migrate < /dev/null
+
+          # Don't trust the migrator's exit code alone (a broken Prisma CLI can
+          # exit 0 having applied nothing): every migration shipped in the image
+          # must now be recorded as applied, or the old app keeps running.
+          expected="$(docker compose --profile tools run --rm -T --entrypoint sh migrate -c 'ls prisma/migrations' < /dev/null | tr -d '\r' | grep -v '^migration_lock.toml$' | sort)"
+          applied="$(docker compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At -c "select migration_name from _prisma_migrations where finished_at is not null and rolled_back_at is null"' | tr -d '\r' | sort)"
+          missing="$(comm -23 <(printf '%s\n' "$expected") <(printf '%s\n' "$applied"))"
+          if [ -z "$expected" ] || [ -n "$missing" ]; then
+            echo "Migrations not applied: ${missing:-could not list the migrations in the image}" >&2
+            exit 1
+          fi
+
           docker compose up -d app caddy postgres
           # -a also clears out the previous deploy's now-unused tagged
           # images (each deploy tags a fresh -latest and a per-commit sha

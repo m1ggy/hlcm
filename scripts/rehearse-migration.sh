@@ -65,6 +65,10 @@ pg sh -c "pg_dump -U '$PGUSER_' --no-owner '$PGDB_' | psql -q -U '$PGUSER_' -d '
 counts > "$WORK/before.txt"
 echo "    $(wc -l < "$WORK/before.txt") tables copied"
 
+APPLIED_SQL="select migration_name from _prisma_migrations where finished_at is not null and rolled_back_at is null order by 1;"
+applied() { pg psql -U "$PGUSER_" -d "$REHEARSAL_DB" -At -v ON_ERROR_STOP=1 -c "$APPLIED_SQL" | tr -d '\r' | sort; }
+applied > "$WORK/applied-before.txt"
+
 if [ "${SKIP_PULL:-0}" = "1" ]; then
   echo "==> Using local image $IMAGE (SKIP_PULL=1)"
 else
@@ -75,6 +79,26 @@ fi
 echo "==> Running migrations against the copy"
 MIGRATOR_IMAGE="$IMAGE" compose --profile tools run --rm -T \
   -e DATABASE_URL="$DATABASE_URL_REHEARSAL" migrate < /dev/null
+
+# Don't trust the migrator's exit code alone: a broken Prisma CLI in the
+# image once exited 0 having applied nothing. Every migration shipped in the
+# image must now be recorded as applied in the copy.
+echo "==> Verifying every migration in the image was applied"
+docker run --rm --entrypoint sh "$IMAGE" -c 'ls prisma/migrations' | tr -d '\r' | grep -v '^migration_lock.toml$' | sort > "$WORK/expected.txt"
+applied > "$WORK/applied-after.txt"
+if [ ! -s "$WORK/expected.txt" ]; then
+  echo "==> FAILED: couldn't list prisma/migrations in $IMAGE" >&2
+  exit 1
+fi
+missing="$(comm -23 "$WORK/expected.txt" "$WORK/applied-after.txt")"
+if [ -n "$missing" ]; then
+  echo "==> FAILED: these migrations are in the image but not applied:" >&2
+  printf '    %s\n' $missing >&2
+  exit 1
+fi
+newly="$(comm -13 "$WORK/applied-before.txt" "$WORK/applied-after.txt")"
+echo "    $(wc -l < "$WORK/expected.txt") migrations present; applied by this run: $(printf '%s\n' $newly | grep -c . || true)"
+printf '      %s\n' $newly
 
 counts > "$WORK/after.txt"
 
