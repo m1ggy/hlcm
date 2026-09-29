@@ -20,7 +20,7 @@ export const invoiceInclude = {
       name: true,
       businessName: true,
       businessEmail: true,
-      owners: { select: { email: true }, orderBy: { createdAt: "asc" }, take: 1 },
+      owners: { select: { email: true, name: true }, orderBy: { createdAt: "asc" }, take: 1 },
       stripeCustomerId: true,
       billingAddressLine1: true,
       billingCity: true,
@@ -33,7 +33,7 @@ export const invoiceInclude = {
     },
   },
   application: { select: { id: true, name: true } },
-  invoiceProfile: { select: { id: true, name: true } },
+  invoiceProfile: { select: { id: true, name: true, invoiceTemplate: true } },
   // Which Care Recipient this bills for, if any — set only by
   // createCareRecipientInvoice. The extra fields (address/email/
   // billingContact*/dateOfBirth/socialSecurityNumber) are what

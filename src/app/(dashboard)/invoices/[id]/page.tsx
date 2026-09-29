@@ -12,6 +12,9 @@ import { ManualInvoiceEditor } from "@/components/invoices/manual-invoice-editor
 import { SendReceiptDialog } from "@/components/invoices/send-receipt-dialog";
 import { PaymentRowActions } from "@/components/invoices/payment-row-actions";
 import { InvoiceAttachments } from "@/components/invoices/invoice-attachments";
+import { InvoiceTemplateSelect } from "@/components/invoices/invoice-template-select";
+import { PdfPreviewDialog } from "@/components/invoices/pdf-preview-dialog";
+import { DEFAULT_PDF_TEMPLATE } from "@/lib/pdf-templates/options";
 import { AuditLogPanel } from "@/components/applications/audit-log-panel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -220,6 +223,12 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                           ) : payment.receipt ? (
                             <div className="flex flex-col items-end gap-1">
                               <div className="flex items-center gap-1.5">
+                                <PdfPreviewDialog
+                                  href={`/api/receipts/${payment.receipt.id}/pdf`}
+                                  title={`Receipt ${displayReceiptNumber(payment.receipt)}`}
+                                  size="xs"
+                                  label="Preview"
+                                />
                                 <Button
                                   size="xs"
                                   variant="ghost"
@@ -371,6 +380,16 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                     ${(invoice.amountPaid ?? 0).toFixed(2)}
                     {invoice.status !== "PAID" && ` of $${(invoice.total ?? 0).toFixed(2)}`}
                   </span>
+                </div>
+              )}
+              {isManualInvoice(invoice) && !invoice.careRecipient && (
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">PDF layout</span>
+                  <InvoiceTemplateSelect
+                    invoiceId={invoice.id}
+                    value={invoice.pdfTemplate}
+                    profileTemplate={invoice.invoiceProfile?.invoiceTemplate ?? DEFAULT_PDF_TEMPLATE}
+                  />
                 </div>
               )}
               <div className="flex justify-between">

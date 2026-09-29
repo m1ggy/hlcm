@@ -18,7 +18,8 @@ export default async function InvoiceProfilesPage() {
       <div>
         <h1 className="text-2xl font-semibold">Invoice Profiles</h1>
         <p className="text-sm text-muted-foreground">
-          Billing identities for manually-recorded invoices — logo, CC recipients, and footer text. Picked per
+          Billing identities for manually-recorded invoices — logo, contact details, CC recipients, footer text,
+          and which PDF layout their invoices and receipts use. Picked per
           invoice in the New Manual Invoice dialog. Stripe-bound invoices are emailed by Stripe itself, with their
           own branding settings.
         </p>
@@ -31,6 +32,13 @@ export default async function InvoiceProfilesPage() {
           hasLogo: Boolean(p.logoStorageKey),
           ccEmails: p.ccEmails ?? "",
           footerText: p.footerText ?? "",
+          address: p.address ?? "",
+          phone: p.phone ?? "",
+          email: p.email ?? "",
+          paymentInstructions: p.paymentInstructions ?? "",
+          invoiceTemplate: p.invoiceTemplate,
+          receiptTemplate: p.receiptTemplate,
+          quantityLabel: p.quantityLabel,
         }))}
       />
     </div>
