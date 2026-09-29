@@ -29,3 +29,10 @@ export const QUANTITY_LABELS: Record<QuantityLabelId, string> = {
 export function resolvePdfTemplate(override: PdfTemplateId | null | undefined, profileChoice: PdfTemplateId | null | undefined) {
   return override ?? profileChoice ?? DEFAULT_PDF_TEMPLATE;
 }
+
+/** Content-Disposition type for the invoice/receipt PDF routes — `inline`
+ * when the URL asks for it (?inline=1, see PdfPreviewDialog), so the
+ * browser shows the PDF instead of downloading it. */
+export function pdfDisposition(request: Request) {
+  return new URL(request.url).searchParams.get("inline") === "1" ? "inline" : "attachment";
+}

@@ -11,6 +11,7 @@ import { AddManualPaymentDialog } from "./add-manual-payment-dialog";
 import { SendInvoicePdfDialog } from "./send-invoice-pdf-dialog";
 import { SendInvoiceDialog } from "./send-invoice-dialog";
 import { isManualInvoice } from "./invoice-status-badge";
+import { PdfPreviewDialog } from "./pdf-preview-dialog";
 
 type LineItem = { id: string; description: string; quantity: number; unitPrice: number };
 
@@ -168,6 +169,7 @@ export function InvoiceActions({
           )}
         </div>
       )}
+      {isManual && <PdfPreviewDialog href={`/api/invoices/${invoice.id}/pdf`} title="Invoice preview" />}
       {isManual && (
         <Button
           variant="outline"

@@ -13,6 +13,7 @@ import { SendReceiptDialog } from "@/components/invoices/send-receipt-dialog";
 import { PaymentRowActions } from "@/components/invoices/payment-row-actions";
 import { InvoiceAttachments } from "@/components/invoices/invoice-attachments";
 import { InvoiceTemplateSelect } from "@/components/invoices/invoice-template-select";
+import { PdfPreviewDialog } from "@/components/invoices/pdf-preview-dialog";
 import { DEFAULT_PDF_TEMPLATE } from "@/lib/pdf-templates/options";
 import { AuditLogPanel } from "@/components/applications/audit-log-panel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -222,6 +223,12 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                           ) : payment.receipt ? (
                             <div className="flex flex-col items-end gap-1">
                               <div className="flex items-center gap-1.5">
+                                <PdfPreviewDialog
+                                  href={`/api/receipts/${payment.receipt.id}/pdf`}
+                                  title={`Receipt ${displayReceiptNumber(payment.receipt)}`}
+                                  size="xs"
+                                  label="Preview"
+                                />
                                 <Button
                                   size="xs"
                                   variant="ghost"

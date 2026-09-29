@@ -3,11 +3,12 @@ import { getReceipt } from "@/lib/actions/invoices";
 import { readStoredFile } from "@/lib/storage";
 import { displayReceiptNumber } from "@/lib/invoice-format";
 import { UnauthorizedError, ForbiddenError } from "@/lib/rbac";
+import { pdfDisposition } from "@/lib/pdf-templates/options";
 
 // Unlike the invoice PDF route, this doesn't regenerate anything — a
 // receipt's bytes are fixed at payment time (see addManualPayment in
 // src/lib/actions/invoices.ts), so this just streams the stored file back.
-export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
     const receipt = await getReceipt(id);
@@ -19,7 +20,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     return new NextResponse(new Uint8Array(bytes), {
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="receipt-${displayReceiptNumber(receipt)}.pdf"`,
+        // ?inline=1 shows it in the browser (PdfPreviewDialog) instead of downloading.
+        "Content-Disposition": `${pdfDisposition(request)}; filename="receipt-${displayReceiptNumber(receipt)}.pdf"`,
       },
     });
   } catch (error) {

@@ -2,13 +2,13 @@ import { NextResponse } from "next/server";
 import { getInvoice } from "@/lib/actions/invoices";
 import { computeOutstandingAccountBalance } from "@/lib/actions/care-recipient-invoices";
 import { renderInvoicePdf, profilePdfFields } from "@/lib/pdf-templates";
-import { resolvePdfTemplate } from "@/lib/pdf-templates/options";
+import { pdfDisposition, resolvePdfTemplate } from "@/lib/pdf-templates/options";
 import { generateCareRecipientInvoicePdf } from "@/lib/care-recipient-invoice-pdf";
 import { displayInvoiceNumber } from "@/lib/invoice-format";
 import { getInvoiceProfile, getInvoiceLogo } from "@/lib/invoice-profiles";
 import { UnauthorizedError, ForbiddenError } from "@/lib/rbac";
 
-export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
     const invoice = await getInvoice(id);
@@ -31,7 +31,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     return new NextResponse(Buffer.from(bytes), {
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="invoice-${displayInvoiceNumber(invoice)}.pdf"`,
+        // ?inline=1 shows it in the browser (PdfPreviewDialog) instead of downloading.
+        "Content-Disposition": `${pdfDisposition(request)}; filename="invoice-${displayInvoiceNumber(invoice)}.pdf"`,
       },
     });
   } catch (error) {
