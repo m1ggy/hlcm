@@ -12,7 +12,7 @@ import { SendInvoicePdfDialog } from "./send-invoice-pdf-dialog";
 import { SendInvoiceDialog } from "./send-invoice-dialog";
 import { isManualInvoice } from "./invoice-status-badge";
 
-type LineItem = { description: string; quantity: number; unitPrice: number };
+type LineItem = { id: string; description: string; quantity: number; unitPrice: number };
 
 export function InvoiceActions({
   invoice,
@@ -148,7 +148,13 @@ export function InvoiceActions({
           ownerEmail={invoice.ownerEmail}
         />
       )}
-      {canAddManualPayment && <AddManualPaymentDialog invoiceId={invoice.id} remaining={remaining} />}
+      {canAddManualPayment && (
+        <AddManualPaymentDialog
+          invoiceId={invoice.id}
+          remaining={remaining}
+          lineItems={invoice.lineItems.map((li) => ({ id: li.id, description: li.description }))}
+        />
+      )}
       {canSendPdf && (
         <div className="flex items-center gap-1.5">
           <SendInvoicePdfDialog

@@ -5,7 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-export type LineItem = { description: string; quantity: number; unitPrice: number };
+// `id` is set on an existing invoice's lines (ManualInvoiceEditor) so a save
+// updates them in place — see updateManualInvoiceDraft.
+export type LineItem = { id?: string; description: string; quantity: number; unitPrice: number };
 
 export function emptyLineItem(): LineItem {
   return { description: "", quantity: 1, unitPrice: 0 };
@@ -16,19 +18,19 @@ export function emptyLineItem(): LineItem {
 // RecordPaymentDialog (an already-paid, never-sent-to-Stripe record) — same
 // shape, same math, only what happens to it afterward differs.
 //
-// `rateLabel` renames the price column for context — a Care Recipient
-// invoice's extra line items are priced per hour, so its callers
-// (CreateRecipientInvoiceDialog, and ManualInvoiceEditor when the invoice
-// being edited is a Care Recipient one) pass "Hourly rate"; every other
-// caller keeps the default "Unit Price", since its lines aren't always
-// hourly.
+// `quantityLabel`/`rateLabel` rename the columns for context — manual
+// invoices (RecordPaymentDialog, ManualInvoiceEditor, CareRecipientInvoiceForm)
+// bill time, so they pass "Hours"/"Rate"; the Stripe-bound InvoiceFormDialog
+// keeps the defaults, since its lines aren't always hourly.
 export function InvoiceLineItemsEditor({
   lineItems,
   onChange,
+  quantityLabel = "Quantity",
   rateLabel = "Unit Price",
 }: {
   lineItems: LineItem[];
   onChange: (next: LineItem[]) => void;
+  quantityLabel?: string;
   rateLabel?: string;
 }) {
   function updateLineItem(index: number, patch: Partial<LineItem>) {
@@ -49,7 +51,7 @@ export function InvoiceLineItemsEditor({
       <div className="space-y-2">
         <div className="flex items-center gap-2 px-0.5 text-xs text-muted-foreground">
           <span className="min-w-0 flex-1">Description</span>
-          <span className="w-16">Quantity</span>
+          <span className="w-16">{quantityLabel}</span>
           <span className="w-24">{rateLabel}</span>
           <span className="w-7" />
         </div>
@@ -68,8 +70,8 @@ export function InvoiceLineItemsEditor({
               value={item.quantity}
               onChange={(e) => updateLineItem(index, { quantity: Number(e.target.value) || 1 })}
               className="w-16"
-              title="Quantity"
-              aria-label="Quantity"
+              title={quantityLabel}
+              aria-label={quantityLabel}
             />
             <Input
               type="number"

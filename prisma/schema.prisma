@@ -1508,19 +1508,27 @@ model InvoiceAttachment {
 // generated the moment it's recorded — see addManualPayment in
 // src/lib/actions/invoices.ts.
 model Payment {
-  id            String   @id @default(cuid())
-  invoice       Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  id            String           @id @default(cuid())
+  invoice       Invoice          @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   invoiceId     String
   amount        Float
   paidAt        DateTime
   paymentMethod String
-  recordedBy    User     @relation("PaymentRecordedBy", fields: [recordedById], references: [id])
+  // Optional — which line item on this same invoice the payment is for
+  // (e.g. a deposit against one charge). A label only: the invoice's own
+  // PAID/PARTIALLY_PAID status still comes from the total alone (see
+  // recomputeInvoiceFromPayments). SetNull on delete, though
+  // updateManualInvoiceDraft refuses to remove a line with payments on it.
+  lineItem      InvoiceLineItem? @relation(fields: [lineItemId], references: [id], onDelete: SetNull)
+  lineItemId    String?
+  recordedBy    User             @relation("PaymentRecordedBy", fields: [recordedById], references: [id])
   recordedById  String
-  createdAt     DateTime @default(now())
+  createdAt     DateTime         @default(now())
 
   receipt Receipt?
 
   @@index([invoiceId])
+  @@index([lineItemId])
   @@map("payments")
 }
 
@@ -1578,6 +1586,8 @@ model InvoiceLineItem {
   visitStart DateTime?
   visitEnd   DateTime?
   workerName String?
+
+  payments Payment[]
 
   @@map("invoice_line_items")
 }

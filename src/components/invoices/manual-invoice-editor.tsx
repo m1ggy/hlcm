@@ -39,9 +39,8 @@ export function ManualInvoiceEditor({
   periodStart: Date | null;
   periodEnd: Date | null;
   lineItems: LineItem[];
-  /** Renames the price column to "Hourly rate" and shows the Service
-   * period fields — see InvoiceLineItemsEditor's rateLabel and
-   * Invoice.periodStart in prisma/schema.prisma. */
+  /** Shows the Service period fields — see Invoice.periodStart in
+   * prisma/schema.prisma. */
   isCareRecipientInvoice?: boolean;
 }) {
   const router = useRouter();
@@ -83,7 +82,7 @@ export function ManualInvoiceEditor({
 
   return (
     <div className="space-y-4">
-      <InvoiceLineItemsEditor lineItems={items} onChange={setItems} rateLabel={isCareRecipientInvoice ? "Hourly rate" : undefined} />
+      <InvoiceLineItemsEditor lineItems={items} onChange={setItems} quantityLabel="Hours" rateLabel="Rate" />
 
       <div className="grid sm:grid-cols-2 gap-4">
         <div className="space-y-1">

@@ -143,8 +143,8 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                     <thead>
                       <tr className="border-b text-left text-muted-foreground">
                         <th className="pb-2 font-normal">Description</th>
-                        <th className="pb-2 font-normal">Quantity</th>
-                        <th className="pb-2 text-right font-normal">{invoice.careRecipient ? "Hourly Rate" : "Unit Price"}</th>
+                        <th className="pb-2 font-normal">{isManualInvoice(invoice) ? "Hours" : "Quantity"}</th>
+                        <th className="pb-2 text-right font-normal">{isManualInvoice(invoice) ? "Rate" : "Unit Price"}</th>
                         <th className="pb-2 text-right font-normal">Amount</th>
                       </tr>
                     </thead>
@@ -199,6 +199,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                     <tr className="border-b text-left text-muted-foreground">
                       <th className="pb-2 font-normal">Date</th>
                       <th className="pb-2 font-normal">Method</th>
+                      <th className="pb-2 font-normal">Applies to</th>
                       <th className="pb-2 text-right font-normal">Amount</th>
                       <th className="pb-2 text-right font-normal">Receipt</th>
                       {canEditPayments && <th className="pb-2" />}
@@ -209,6 +210,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                       <tr key={payment.id} className="border-b last:border-0">
                         <td className="py-2">{formatCalendarDate(payment.paidAt)}</td>
                         <td className="py-2 text-muted-foreground">{payment.paymentMethod}</td>
+                        <td className="py-2 text-muted-foreground">{payment.lineItem?.description ?? "Whole invoice"}</td>
                         <td className="py-2 text-right tabular-nums">${payment.amount.toFixed(2)}</td>
                         <td className="py-2">
                           {payment.receipt && !payment.receipt.storageKey ? (
@@ -250,6 +252,8 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                               amount={payment.amount}
                               paidAt={payment.paidAt}
                               paymentMethod={payment.paymentMethod}
+                              lineItemId={payment.lineItemId}
+                              lineItems={invoice.lineItems.map((li) => ({ id: li.id, description: li.description }))}
                             />
                           </td>
                         )}

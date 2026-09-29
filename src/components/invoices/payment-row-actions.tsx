@@ -7,6 +7,7 @@ import { Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { deletePayment } from "@/lib/actions/invoices";
 import { EditPaymentDialog } from "./edit-payment-dialog";
+import type { PaymentLineItemOption } from "./payment-line-item-select";
 
 // Edit/delete for one row of the invoice detail page's Payments card —
 // split into its own small client component so that page itself stays a
@@ -16,11 +17,15 @@ export function PaymentRowActions({
   amount,
   paidAt,
   paymentMethod,
+  lineItemId,
+  lineItems,
 }: {
   paymentId: string;
   amount: number;
   paidAt: Date;
   paymentMethod: string;
+  lineItemId: string | null;
+  lineItems: PaymentLineItemOption[];
 }) {
   const router = useRouter();
   const [isDeleting, startDeleting] = useTransition();
@@ -43,7 +48,14 @@ export function PaymentRowActions({
 
   return (
     <div className="flex items-center gap-0.5">
-      <EditPaymentDialog paymentId={paymentId} amount={amount} paidAt={paidAt} paymentMethod={paymentMethod} />
+      <EditPaymentDialog
+        paymentId={paymentId}
+        amount={amount}
+        paidAt={paidAt}
+        paymentMethod={paymentMethod}
+        lineItemId={lineItemId}
+        lineItems={lineItems}
+      />
       <Button size="xs" variant="ghost" onClick={handleDelete} loading={isDeleting}>
         <Trash2 className="size-3 text-destructive" />
       </Button>
