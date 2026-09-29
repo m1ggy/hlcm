@@ -166,7 +166,7 @@ export function RecordPaymentDialog({
             For billing without an online payment link — no draft, no Send step. Created as awaiting payment;
             record what the client actually pays from the invoice&apos;s own page, whenever it comes in. Billing a
             Care Recipient? Pick &quot;Care Recipient&quot; from the New invoice menu instead — it prices by logged
-            visits or a day-rate range rather than a plain description/quantity line.
+            visits or a day-rate range rather than a plain description/hours line.
           </p>
 
           <div className="space-y-1">
@@ -219,7 +219,7 @@ export function RecordPaymentDialog({
             </div>
           </div>
 
-          <InvoiceLineItemsEditor lineItems={lineItems} onChange={setLineItems} />
+          <InvoiceLineItemsEditor lineItems={lineItems} onChange={setLineItems} quantityLabel="Hours" rateLabel="Rate" />
 
           <div className="space-y-1">
             <Label htmlFor="notes">Notes</Label>

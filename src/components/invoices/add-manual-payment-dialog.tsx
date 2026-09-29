@@ -16,6 +16,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { PaymentMethodSelect } from "./payment-method-select";
+import { PaymentLineItemSelect, type PaymentLineItemOption } from "./payment-line-item-select";
 
 function todayInputValue() {
   const d = new Date();
@@ -29,13 +30,22 @@ function todayInputValue() {
 // every payment, partial or not — see addManualPayment in
 // src/lib/actions/invoices.ts — but never emailed on its own; that's the
 // separate "Send receipt" action on the invoice's own page.
-export function AddManualPaymentDialog({ invoiceId, remaining }: { invoiceId: string; remaining: number }) {
+export function AddManualPaymentDialog({
+  invoiceId,
+  remaining,
+  lineItems,
+}: {
+  invoiceId: string;
+  remaining: number;
+  lineItems: PaymentLineItemOption[];
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [amount, setAmount] = useState(remaining.toFixed(2));
   const [paidAt, setPaidAt] = useState(todayInputValue());
   const [paymentMethod, setPaymentMethod] = useState("");
+  const [lineItemId, setLineItemId] = useState("");
 
   function handleSubmit() {
     const value = Number(amount);
@@ -49,7 +59,7 @@ export function AddManualPaymentDialog({ invoiceId, remaining }: { invoiceId: st
     }
     startTransition(async () => {
       try {
-        await addManualPayment(invoiceId, { amount: value, paidAt, paymentMethod: paymentMethod.trim() });
+        await addManualPayment(invoiceId, { amount: value, paidAt, paymentMethod: paymentMethod.trim(), lineItemId });
         toast.success("Payment recorded");
         setOpen(false);
         router.refresh();
@@ -77,6 +87,7 @@ export function AddManualPaymentDialog({ invoiceId, remaining }: { invoiceId: st
             <Input id="add-paidAt" type="date" value={paidAt} onChange={(e) => setPaidAt(e.target.value)} />
           </div>
           <PaymentMethodSelect value={paymentMethod} onChange={setPaymentMethod} />
+          {lineItems.length > 0 && <PaymentLineItemSelect lineItems={lineItems} value={lineItemId} onChange={setLineItemId} />}
           <Button onClick={handleSubmit} className="w-full" loading={isPending}>
             {isPending ? "Recording..." : "Record payment"}
           </Button>

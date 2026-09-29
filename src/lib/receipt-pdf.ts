@@ -18,6 +18,9 @@ export type ReceiptPdfInput = {
     paidAt: Date;
     paymentMethod: string;
   };
+  /** The line item this payment was recorded against, if any — see
+   * Payment.lineItemId in prisma/schema.prisma. */
+  lineItemDescription?: string | null;
   invoice: {
     seq: number;
     stripeInvoiceNumber: string | null;
@@ -101,6 +104,20 @@ export async function generateReceiptPdf(receipt: ReceiptPdfInput): Promise<Uint
   page.drawText(`Payment for Invoice ${number}`, { x: MARGIN, y, size: 11, font });
   y -= 16;
   page.drawText(`Payment method: ${receipt.payment.paymentMethod}`, { x: MARGIN, y, size: 10, font, color: rgb(0.4, 0.4, 0.4) });
+  if (receipt.lineItemDescription) {
+    y -= 16;
+    // Returns the height used; step down past every line but the last,
+    // which the `y -= 30` below already clears.
+    y -= drawWrappedText(page, `Applied to: ${receipt.lineItemDescription}`, {
+      x: MARGIN,
+      y,
+      font,
+      size: 10,
+      maxWidth: PAGE_SIZE[0] - MARGIN * 2,
+      lineHeight: 14,
+      color: rgb(0.4, 0.4, 0.4),
+    }) - 14;
+  }
   y -= 30;
 
   page.drawText("Amount received", { x: MARGIN, y, size: 10, font, color: rgb(0.4, 0.4, 0.4) });

@@ -8,6 +8,7 @@
 import { currentOrganization } from "@/lib/db";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { displayInvoiceNumber, formatCalendarDate } from "@/lib/invoice-format";
+import { isManual } from "@/lib/invoice-shared";
 
 // Exported for receipt-pdf.ts to share — a receipt uses the same page
 // geometry and hand-wrapping helpers, just a much shorter layout.
@@ -65,6 +66,7 @@ export type InvoicePdfInput = {
   stripeInvoiceNumber: string | null;
   invoiceNumber: string | null;
   status: string;
+  stripeInvoiceId: string | null;
   issueDate: Date;
   dueDate: Date | null;
   /** The service period this invoice covers — Care Recipient invoices only
@@ -202,14 +204,15 @@ export async function generateInvoicePdf(invoice: InvoicePdfInput): Promise<Uint
 
   y -= 30;
 
-  // Line items table — Description / Quantity / Amount. Unit price isn't a
+  // Line items table — Description / Quantity (Hours on a manual invoice)
+  // / Amount. Unit price isn't a
   // separate column here (kept simple); it's still stored and used to
   // compute Amount, same convention already used when a line item is sent
   // to Stripe (see createInvoiceItem in src/lib/stripe.ts, which folds it
   // into the description text there too).
   const cols = [
     { label: "Description", x: MARGIN, width: 340 },
-    { label: "Quantity", x: MARGIN + 340, width: 80 },
+    { label: isManual(invoice) ? "Hours" : "Quantity", x: MARGIN + 340, width: 80 },
     { label: "Amount", x: MARGIN + 420, width: 90 },
   ];
   for (const col of cols) {

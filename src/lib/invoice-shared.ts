@@ -56,7 +56,11 @@ export const invoiceInclude = {
   createdBy: { select: { id: true, name: true } },
   lineItems: { orderBy: { sortOrder: "asc" as const } },
   payments: {
-    include: { receipt: true, recordedBy: { select: { id: true, name: true } } },
+    include: {
+      receipt: true,
+      recordedBy: { select: { id: true, name: true } },
+      lineItem: { select: { id: true, description: true } },
+    },
     orderBy: { paidAt: "asc" as const },
   },
 } as const;
@@ -84,6 +88,10 @@ export const lineItemSchema = z.object({
 // invoice's structured hourly/day-rate lines to plain MANUAL ones the
 // first time anyone edited it after creation.
 export const structuredLineItemSchema = lineItemSchema.extend({
+  // An existing line's id, round-tripped by ManualInvoiceEditor so
+  // updateManualInvoiceDraft can update it in place — keeping any
+  // Payment.lineItemId pointing at it — instead of recreating it.
+  id: z.string().optional(),
   // Defaults to MANUAL so a plain typed extra charge (e.g. a supply fee)
   // needs nothing beyond description/quantity/unitPrice, same as today.
   kind: z.enum(["MANUAL", "VISIT_HOURLY", "VISIT_DAILY"]).default("MANUAL"),

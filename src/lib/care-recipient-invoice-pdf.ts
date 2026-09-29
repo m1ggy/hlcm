@@ -136,14 +136,14 @@ function drawVisitTable(page: PDFPage, font: PDFFont, boldFont: PDFFont, yStart:
   return y - totalsRowHeight;
 }
 
-// MANUAL line items keep today's plain Description/Qty/Amount shape —
+// MANUAL line items keep today's plain Description/Hours/Amount shape —
 // same as generateInvoicePdf's own table, just under an "Other Charges"
 // heading so it's visually distinct from the Home Services table above it.
 function drawManualTable(page: PDFPage, font: PDFFont, boldFont: PDFFont, yStart: number, items: CareRecipientLineItem[]): number {
   let y = yStart;
   const cols = [
     { label: "Description", x: MARGIN, width: 340 },
-    { label: "Quantity", x: MARGIN + 340, width: 80 },
+    { label: "Hours", x: MARGIN + 340, width: 80 },
     { label: "Amount", x: MARGIN + 420, width: 90 },
   ];
   for (const col of cols) page.drawText(col.label, { x: col.x, y, size: 10, font: boldFont });

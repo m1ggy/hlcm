@@ -224,7 +224,7 @@ export function CareRecipientInvoiceForm({
 
       <div className="space-y-1">
         <Label>Other line items</Label>
-        <InvoiceLineItemsEditor lineItems={lineItems} onChange={setLineItems} rateLabel="Hourly rate" />
+        <InvoiceLineItemsEditor lineItems={lineItems} onChange={setLineItems} quantityLabel="Hours" rateLabel="Rate" />
       </div>
 
       <div className="space-y-1">
