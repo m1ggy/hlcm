@@ -51,8 +51,8 @@ export function InvoiceLineItemsEditor({
       <div className="space-y-2">
         <div className="flex items-center gap-2 px-0.5 text-xs text-muted-foreground">
           <span className="min-w-0 flex-1">Description</span>
-          <span className="w-16">{quantityLabel}</span>
-          <span className="w-24">{rateLabel}</span>
+          <span className="w-16 sm:w-20">{quantityLabel}</span>
+          <span className="w-24 sm:w-28">{rateLabel}</span>
           <span className="w-7" />
         </div>
         {lineItems.map((item, index) => (
@@ -69,7 +69,7 @@ export function InvoiceLineItemsEditor({
               step="0.01"
               value={item.quantity}
               onChange={(e) => updateLineItem(index, { quantity: Number(e.target.value) || 1 })}
-              className="w-16"
+              className="w-16 sm:w-20"
               title={quantityLabel}
               aria-label={quantityLabel}
             />
@@ -79,7 +79,7 @@ export function InvoiceLineItemsEditor({
               step="0.01"
               value={item.unitPrice}
               onChange={(e) => updateLineItem(index, { unitPrice: Number(e.target.value) || 0 })}
-              className="w-24"
+              className="w-24 sm:w-28"
               title={rateLabel}
               aria-label={rateLabel}
             />

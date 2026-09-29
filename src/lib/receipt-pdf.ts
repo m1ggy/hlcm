@@ -8,7 +8,16 @@
 // records the payment — never regenerated afterward, so a receipt's bytes
 // stay fixed even if the invoice is edited later.
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import { PAGE_SIZE, MARGIN, drawWrappedText, drawLogoOrName, money, projectLabel } from "@/lib/invoice-pdf";
+import {
+  PAGE_SIZE,
+  MARGIN,
+  PageCursor,
+  drawFitted,
+  drawLogoOrName,
+  drawWrappedTextPaged,
+  money,
+  projectLabel,
+} from "@/lib/invoice-pdf";
 import { displayInvoiceNumber, displayReceiptNumber, formatCalendarDate } from "@/lib/invoice-format";
 import type { SenderDetails } from "@/lib/pdf-templates/options";
 
@@ -52,33 +61,53 @@ export async function generateReceiptPdf(receipt: ReceiptPdfInput): Promise<Uint
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-  const page = pdfDoc.addPage(PAGE_SIZE);
-  let y = PAGE_SIZE[1] - MARGIN;
+  const cursor = new PageCursor(pdfDoc);
+  const page = cursor.page;
+  const right = PAGE_SIZE[0] - MARGIN;
+  const fullWidth = right - MARGIN;
+  // The left column stops short of the date on the right.
+  const rightX = right - 160;
+  const leftWidth = rightX - MARGIN - 12;
+  const gray = rgb(0.4, 0.4, 0.4);
 
-  await drawLogoOrName(pdfDoc, page, { x: MARGIN, y, boldFont, logo: receipt.logo, profileName: receipt.profileName });
-  page.drawText("RECEIPT", { x: PAGE_SIZE[0] - MARGIN - 100, y, size: 20, font: boldFont });
-  y -= 20;
-  page.drawText(displayReceiptNumber(receipt), {
-    x: PAGE_SIZE[0] - MARGIN - 100,
-    y,
-    size: 11,
-    font,
-    color: rgb(0.4, 0.4, 0.4),
+  await drawLogoOrName(pdfDoc, page, {
+    x: MARGIN,
+    y: cursor.y,
+    boldFont,
+    logo: receipt.logo,
+    profileName: receipt.profileName,
+    maxWidth: right - 120 - MARGIN,
   });
-  y -= 40;
+  page.drawText("RECEIPT", { x: right - boldFont.widthOfTextAtSize("RECEIPT", 20), y: cursor.y, size: 20, font: boldFont });
+  drawFitted(page, displayReceiptNumber(receipt), { right, y: cursor.y - 20, size: 11, minSize: 7, maxWidth: 220, font, color: gray });
 
+  // Date, right column
+  page.drawText(`Date: ${formatCalendarDate(receipt.payment.paidAt)}`, { x: rightX, y: PAGE_SIZE[1] - MARGIN - 60, size: 10, font });
+
+  cursor.y -= 60;
   const project = projectLabel(receipt.client);
   if (project) {
-    page.drawText(`Project: ${project}`, { x: MARGIN, y, size: 9, font, color: rgb(0.5, 0.5, 0.5) });
-    y -= 16;
+    drawWrappedTextPaged(cursor, `Project: ${project}`, {
+      x: MARGIN,
+      font,
+      size: 9,
+      maxWidth: leftWidth,
+      lineHeight: 12,
+      color: rgb(0.5, 0.5, 0.5),
+    });
+    cursor.y -= 4;
   }
 
   // Paid by
-  const billTo = receipt.client.businessName ?? receipt.client.name;
-  page.drawText("Received from", { x: MARGIN, y, size: 9, font, color: rgb(0.5, 0.5, 0.5) });
-  y -= 14;
-  page.drawText(billTo, { x: MARGIN, y, size: 12, font: boldFont });
-  y -= 15;
+  page.drawText("Received from", { x: MARGIN, y: cursor.y, size: 9, font, color: rgb(0.5, 0.5, 0.5) });
+  cursor.y -= 14;
+  drawWrappedTextPaged(cursor, receipt.client.businessName ?? receipt.client.name, {
+    x: MARGIN,
+    font: boldFont,
+    size: 12,
+    maxWidth: leftWidth,
+    lineHeight: 15,
+  });
   const addressLine = [
     receipt.client.billingAddressLine1,
     receipt.client.billingCity,
@@ -88,70 +117,84 @@ export async function generateReceiptPdf(receipt: ReceiptPdfInput): Promise<Uint
     .filter(Boolean)
     .join(", ");
   if (addressLine) {
-    page.drawText(addressLine, { x: MARGIN, y, size: 10, font, color: rgb(0.3, 0.3, 0.3) });
-    y -= 15;
+    drawWrappedTextPaged(cursor, addressLine, { x: MARGIN, font, size: 10, maxWidth: leftWidth, lineHeight: 14, color: rgb(0.3, 0.3, 0.3) });
   }
 
-  // Date, right column
-  const rightX = PAGE_SIZE[0] - MARGIN - 160;
-  page.drawText(`Date: ${formatCalendarDate(receipt.payment.paidAt)}`, {
-    x: rightX,
-    y: PAGE_SIZE[1] - MARGIN - 60,
-    size: 10,
+  cursor.y -= 16;
+  cursor.page.drawLine({ start: { x: MARGIN, y: cursor.y + 10 }, end: { x: right, y: cursor.y + 10 }, thickness: 0.75, color: rgb(0.7, 0.7, 0.7) });
+  cursor.y -= 20;
+
+  drawWrappedTextPaged(cursor, `Payment for Invoice ${displayInvoiceNumber(receipt.invoice)}`, {
+    x: MARGIN,
     font,
+    size: 11,
+    maxWidth: fullWidth,
+    lineHeight: 15,
   });
-
-  y -= 30;
-  page.drawLine({ start: { x: MARGIN, y: y + 10 }, end: { x: PAGE_SIZE[0] - MARGIN, y: y + 10 }, thickness: 0.75, color: rgb(0.7, 0.7, 0.7) });
-  y -= 20;
-
-  const number = displayInvoiceNumber(receipt.invoice);
-  page.drawText(`Payment for Invoice ${number}`, { x: MARGIN, y, size: 11, font });
-  y -= 16;
-  page.drawText(`Payment method: ${receipt.payment.paymentMethod}`, { x: MARGIN, y, size: 10, font, color: rgb(0.4, 0.4, 0.4) });
+  drawWrappedTextPaged(cursor, `Payment method: ${receipt.payment.paymentMethod}`, {
+    x: MARGIN,
+    font,
+    size: 10,
+    maxWidth: fullWidth,
+    lineHeight: 14,
+    color: gray,
+  });
   if (receipt.lineItemDescription) {
-    y -= 16;
-    // Returns the height used; step down past every line but the last,
-    // which the `y -= 30` below already clears.
-    y -= drawWrappedText(page, `Applied to: ${receipt.lineItemDescription}`, {
+    drawWrappedTextPaged(cursor, `Applied to: ${receipt.lineItemDescription}`, {
       x: MARGIN,
-      y,
       font,
       size: 10,
-      maxWidth: PAGE_SIZE[0] - MARGIN * 2,
+      maxWidth: fullWidth,
       lineHeight: 14,
-      color: rgb(0.4, 0.4, 0.4),
-    }) - 14;
+      color: gray,
+    });
   }
-  y -= 30;
+  cursor.y -= 16;
 
-  page.drawText("Amount received", { x: MARGIN, y, size: 10, font, color: rgb(0.4, 0.4, 0.4) });
-  page.drawText(money(receipt.payment.amount), { x: PAGE_SIZE[0] - MARGIN - 90, y, size: 16, font: boldFont, color: rgb(0.1, 0.4, 0.2) });
-  y -= 30;
+  cursor.ensure(100);
+  cursor.page.drawText("Amount received", { x: MARGIN, y: cursor.y, size: 10, font, color: gray });
+  drawFitted(cursor.page, money(receipt.payment.amount), {
+    right,
+    y: cursor.y,
+    size: 16,
+    minSize: 9,
+    maxWidth: fullWidth - 120,
+    font: boldFont,
+    color: rgb(0.1, 0.4, 0.2),
+  });
+  cursor.y -= 30;
 
   const total = receipt.invoice.total ?? 0;
   const paidToDate = receipt.invoice.amountPaid ?? 0;
   const remaining = total - paidToDate;
-  page.drawText(`Invoice total: ${money(total)}`, { x: MARGIN, y, size: 10, font, color: rgb(0.4, 0.4, 0.4) });
-  y -= 16;
-  page.drawText(`Paid to date: ${money(paidToDate)}`, { x: MARGIN, y, size: 10, font, color: rgb(0.4, 0.4, 0.4) });
-  y -= 16;
-  page.drawText(
-    remaining > 0 ? `Balance remaining: ${money(remaining)}` : "Paid in full",
-    { x: MARGIN, y, size: 10, font: boldFont, color: rgb(0.1, 0.4, 0.2) }
-  );
-  y -= 40;
+  for (const line of [`Invoice total: ${money(total)}`, `Paid to date: ${money(paidToDate)}`]) {
+    drawWrappedTextPaged(cursor, line, { x: MARGIN, font, size: 10, maxWidth: fullWidth, lineHeight: 16, color: gray });
+  }
+  drawWrappedTextPaged(cursor, remaining > 0 ? `Balance remaining: ${money(remaining)}` : "Paid in full", {
+    x: MARGIN,
+    font: boldFont,
+    size: 10,
+    maxWidth: fullWidth,
+    lineHeight: 16,
+    color: rgb(0.1, 0.4, 0.2),
+  });
+  cursor.y -= 24;
 
   // Org-wide boilerplate (see InvoiceProfile) — same footer the invoice PDF prints.
   if (receipt.footerText) {
-    page.drawLine({ start: { x: MARGIN, y: y + 14 }, end: { x: PAGE_SIZE[0] - MARGIN, y: y + 14 }, thickness: 0.5, color: rgb(0.85, 0.85, 0.85) });
-    drawWrappedText(page, receipt.footerText, {
+    cursor.ensure(24);
+    cursor.page.drawLine({
+      start: { x: MARGIN, y: cursor.y + 14 },
+      end: { x: right, y: cursor.y + 14 },
+      thickness: 0.5,
+      color: rgb(0.85, 0.85, 0.85),
+    });
+    drawWrappedTextPaged(cursor, receipt.footerText, {
       x: MARGIN,
-      y,
       font,
       size: 8,
       color: rgb(0.55, 0.55, 0.55),
-      maxWidth: PAGE_SIZE[0] - MARGIN * 2,
+      maxWidth: fullWidth,
       lineHeight: 11,
     });
   }

@@ -2,7 +2,7 @@
 // from. Same input as the Classic generateInvoicePdf (src/lib/invoice-pdf.ts),
 // plus the profile's sender details and quantity-column heading.
 import { PDFDocument, StandardFonts, type PDFPage } from "pdf-lib";
-import { PAGE_SIZE, money, wrapText, type InvoicePdfInput } from "@/lib/invoice-pdf";
+import { PAGE_SIZE, drawFitted, fitText, money, wrapText, type InvoicePdfInput } from "@/lib/invoice-pdf";
 import { displayInvoiceNumber } from "@/lib/invoice-format";
 import { QUANTITY_LABELS } from "./options";
 import {
@@ -29,6 +29,7 @@ import {
   text,
   textCenter,
   textRight,
+  yFromTop,
   type Fonts,
 } from "./modern-shared";
 
@@ -141,7 +142,14 @@ export async function generateModernInvoicePdf(invoice: InvoicePdfInput): Promis
 
   box(page, { x: LEFT, top: y, width: COLS[4].x - LEFT, height: TOTAL_ROW_HEIGHT, fill: NAVY });
   textRight(page, "TOTAL", COLS[3].x - 2, y + 16, { size: 8.5, font: fonts.bold, color: WHITE });
-  textRight(page, money(total), COLS[3].x + COLS[3].width - 4, y + 16, { size: 10, font: fonts.bold, color: WHITE });
+  drawFitted(page, money(total), {
+    right: COLS[3].x + COLS[3].width - 4,
+    y: yFromTop(y + 16),
+    size: 10,
+    font: fonts.bold,
+    maxWidth: COLS[3].width - 8,
+    color: WHITE,
+  });
   box(page, { x: COLS[4].x, top: y, width: COLS[4].width, height: TOTAL_ROW_HEIGHT, border: GRID });
   textCenter(page, "Due Date:", COLS[4].x, COLS[4].width, y + 15, { size: 8, font: fonts.font });
   y += TOTAL_ROW_HEIGHT;
@@ -181,17 +189,27 @@ function drawRow(page: PDFPage, fonts: Fonts, top: number, row: Row) {
   row.description.forEach((line, i) =>
     text(page, line, COLS[0].x + 5, firstBaseline + i * DESCRIPTION_LINE, { size: DESCRIPTION_SIZE, font: fonts.font })
   );
+  // Numbers shrink to fit their cell rather than spill into the next.
   const baseline = top + row.height / 2 + 3;
-  if (row.hours) textCenter(page, row.hours, COLS[1].x, COLS[1].width, baseline, { size: DESCRIPTION_SIZE, font: fonts.font });
-  if (row.rate) textRight(page, row.rate, COLS[2].x + COLS[2].width - 4, baseline, { size: DESCRIPTION_SIZE, font: fonts.font });
-  if (row.amount) textRight(page, row.amount, COLS[3].x + COLS[3].width - 4, baseline, { size: DESCRIPTION_SIZE, font: fonts.font });
+  if (row.hours) {
+    const hours = fitText(row.hours, fonts.font, DESCRIPTION_SIZE, COLS[1].width - 8);
+    textCenter(page, hours.text, COLS[1].x, COLS[1].width, baseline, { size: hours.size, font: fonts.font });
+  }
+  for (const [value, col] of [
+    [row.rate, COLS[2]],
+    [row.amount, COLS[3]],
+  ] as const) {
+    if (!value) continue;
+    drawFitted(page, value, { right: col.x + col.width - 4, y: yFromTop(baseline), size: DESCRIPTION_SIZE, font: fonts.font, maxWidth: col.width - 8 });
+  }
 }
 
 function drawAmountDueCell(page: PDFPage, fonts: Fonts, top: number, bottom: number, amountDue: string) {
   box(page, { x: COLS[4].x, top, width: COLS[4].width, height: bottom - top, fill: LIGHT_BLUE, border: GRID });
   const isVoid = amountDue === "VOID";
-  textCenter(page, amountDue, COLS[4].x, COLS[4].width, (top + bottom) / 2 + 6, {
-    size: 17,
+  const fitted = fitText(amountDue, fonts.bold, 17, COLS[4].width - 10, 8);
+  textCenter(page, fitted.text, COLS[4].x, COLS[4].width, (top + bottom) / 2 + 6, {
+    size: fitted.size,
     font: fonts.bold,
     color: isVoid ? GRAY : GOLD,
   });
