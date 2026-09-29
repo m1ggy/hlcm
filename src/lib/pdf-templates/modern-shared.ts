@@ -5,7 +5,7 @@
 // from the TOP of the page (pdf-lib's own origin is bottom-left) so they
 // read the same way as the sample; `yFromTop` converts.
 import { rgb, type PDFDocument, type PDFFont, type PDFPage } from "pdf-lib";
-import { PAGE_SIZE, wrapText } from "@/lib/invoice-pdf";
+import { PAGE_SIZE, fitText, wrapText } from "@/lib/invoice-pdf";
 import type { SenderDetails } from "./options";
 
 export const NAVY = rgb(0.106, 0.216, 0.365);
@@ -69,12 +69,6 @@ export function textCenter(page: PDFPage, value: string, left: number, width: nu
   text(page, value, left + (width - opts.font.widthOfTextAtSize(value, opts.size)) / 2, baseline, opts);
 }
 
-/** "Label: " in regular weight followed by the value in bold, on one line. */
-export function labeledValue(page: PDFPage, label: string, value: string, x: number, baseline: number, fonts: Fonts, size = 9) {
-  text(page, label, x, baseline, { size, font: fonts.font });
-  if (value) text(page, value, x + fonts.font.widthOfTextAtSize(label, size), baseline, { size, font: fonts.bold });
-}
-
 /** MM/DD/YY, from the UTC calendar fields — same reasoning as
  * formatCalendarDate in src/lib/invoice-format.ts. */
 export function shortDate(date: Date) {
@@ -101,6 +95,8 @@ export async function drawModernHeader(
     sender: SenderDetails | null;
   }
 ): Promise<number> {
+  const titleSize = 24;
+  const titleLeft = RIGHT - fonts.bold.widthOfTextAtSize(opts.title, titleSize);
   if (opts.logo) {
     const image = opts.logo.mimeType === "image/png" ? await pdfDoc.embedPng(opts.logo.bytes) : await pdfDoc.embedJpg(opts.logo.bytes);
     const scale = Math.min(150 / image.width, 70 / image.height);
@@ -108,39 +104,58 @@ export async function drawModernHeader(
     const height = image.height * scale;
     page.drawImage(image, { x: LEFT, y: yFromTop(30 + height), width, height });
   } else {
-    text(page, opts.profileName, LEFT, 62, { size: 16, font: fonts.bold, color: NAVY });
+    // Shrinks (then truncates) rather than running into the title.
+    const name = fitText(opts.profileName, fonts.bold, 16, titleLeft - LEFT - 16, 10);
+    text(page, name.text, LEFT, 62, { size: name.size, font: fonts.bold, color: NAVY });
   }
 
-  textRight(page, opts.title, RIGHT, 58, { size: 24, font: fonts.bold, color: STEEL });
+  textRight(page, opts.title, RIGHT, 58, { size: titleSize, font: fonts.bold, color: STEEL });
 
   const metaLeft = 473;
   const rowHeight = 24;
   const metaTop = 74;
+  const valueWidth = RIGHT - metaLeft - 8;
   box(page, { x: metaLeft, top: 62, width: RIGHT - metaLeft, height: 12 + rowHeight * opts.meta.length, fill: CREAM });
   opts.meta.forEach((row, i) => {
     const rowTop = metaTop + i * rowHeight;
     text(page, row.label, 376, rowTop + 16, { size: 7.5, font: fonts.bold, color: GRAY });
-    textRight(page, row.value, RIGHT - 4, rowTop + 16, { size: 10, font: fonts.font });
+    // A long value (an invoice number) shrinks to fit its cell, then
+    // takes two smaller lines, then truncates.
+    const fitted = fitText(row.value, fonts.font, 10, valueWidth, 7.5);
+    if (fitted.text === row.value) {
+      textRight(page, row.value, RIGHT - 4, rowTop + 16, { size: fitted.size, font: fonts.font });
+    } else {
+      const lines = wrapText(row.value, fonts.font, 7, valueWidth);
+      const shown = lines.length > 2 ? [lines[0], fitText(lines.slice(1).join(""), fonts.font, 7, valueWidth, 7).text] : lines;
+      shown.forEach((line, n) => textRight(page, line, RIGHT - 4, rowTop + 11 + n * 8, { size: 7, font: fonts.font }));
+    }
     hline(page, { x1: metaLeft, x2: RIGHT, top: rowTop + rowHeight, color: GRID, thickness: 0.5 });
   });
   const metaBottom = metaTop + rowHeight * opts.meta.length;
 
   // Without a logo the name is already the wordmark above — don't repeat it.
+  // Beside the meta rows the name has to stop short of their labels.
   let y = 131;
   if (opts.logo) {
-    text(page, opts.profileName, LEFT + 3, y, { size: 11, font: fonts.bold, color: STEEL });
+    for (const line of wrapText(opts.profileName, fonts.bold, 11, 376 - LEFT - 12)) {
+      text(page, line, LEFT + 3, y, { size: 11, font: fonts.bold, color: STEEL });
+      y += 14;
+    }
+    y -= 14;
   }
   y += 21;
   const sender = opts.sender;
-  for (const line of (sender?.address ?? "").split("\n").map((l) => l.trim()).filter(Boolean)) {
-    text(page, line, LEFT + 3, y, { size: 7.5, font: fonts.font, color: GRAY });
-    y += 17;
-  }
+  const detailWidth = RIGHT - LEFT - 6;
+  const detail = (value: string) => {
+    for (const line of wrapText(value, fonts.font, 7.5, detailWidth)) {
+      text(page, line, LEFT + 3, y, { size: 7.5, font: fonts.font, color: GRAY });
+      y += 11;
+    }
+    y += 6;
+  };
+  for (const line of (sender?.address ?? "").split("\n").map((l) => l.trim()).filter(Boolean)) detail(line);
   const contact = [sender?.phone, sender?.email].filter(Boolean).join("  |  ");
-  if (contact) {
-    text(page, contact, LEFT + 3, y, { size: 7.5, font: fonts.font, color: GRAY });
-    y += 17;
-  }
+  if (contact) detail(contact);
 
   const ruleTop = Math.max(189, y + 4, metaBottom + 20);
   hline(page, { x1: LEFT, x2: RIGHT, top: ruleTop, color: STEEL, thickness: 1.5 });
@@ -158,9 +173,26 @@ export function drawPartyBox(
 ): number {
   text(page, opts.label, LEFT + 3, opts.top, { size: 7, font: fonts.bold, color: STEEL });
   const boxTop = opts.top + 5;
-  const height = Math.max(82, 70 + (opts.lines.length - 1) * 6);
-  box(page, { x: LEFT, top: boxTop, width: opts.width ?? 330, height, fill: CREAM, border: GRID });
-  opts.lines.forEach((line, i) => labeledValue(page, line.label, line.value, LEFT + 4, boxTop + 42 - (opts.lines.length - 1) * 6 + i * 12, fonts));
+  const width = opts.width ?? 330;
+  const size = 9;
+  // Each value wraps under itself (a hanging indent past its label), and
+  // the box grows to fit.
+  const rows = opts.lines.map((line) => {
+    const labelWidth = fonts.font.widthOfTextAtSize(line.label, size);
+    return { label: line.label, labelWidth, values: line.value ? wrapText(line.value, fonts.bold, size, width - 8 - labelWidth) : [""] };
+  });
+  const lineCount = rows.reduce((n, row) => n + row.values.length, 0);
+  const first = boxTop + Math.max(18, 42 - (lineCount - 1) * 6);
+  const height = Math.max(82, first - boxTop + (lineCount - 1) * 12 + 22);
+  box(page, { x: LEFT, top: boxTop, width, height, fill: CREAM, border: GRID });
+  let baseline = first;
+  for (const row of rows) {
+    text(page, row.label, LEFT + 4, baseline, { size, font: fonts.font });
+    for (const value of row.values) {
+      if (value) text(page, value, LEFT + 4 + row.labelWidth, baseline, { size, font: fonts.bold });
+      baseline += 12;
+    }
+  }
   return boxTop + height;
 }
 
@@ -226,9 +258,9 @@ export function closingHeight(fonts: Fonts, notes: string | null, footerText: st
 export function drawPageFooters(pdfDoc: PDFDocument, fonts: Fonts, profileName: string, docType: string) {
   const pages = pdfDoc.getPages();
   pages.forEach((page, i) => {
-    textCenter(page, `${profileName} | ${docType} | Page ${i + 1} of ${pages.length}`, 0, PAGE_SIZE[0], PAGE_SIZE[1] - 26, {
-      size: 9,
-      font: fonts.font,
-    });
+    // The page number always shows; a long profile name is what gets cut.
+    const suffix = ` | ${docType} | Page ${i + 1} of ${pages.length}`;
+    const name = fitText(profileName, fonts.font, 9, RIGHT - LEFT - fonts.font.widthOfTextAtSize(suffix, 9), 9);
+    textCenter(page, name.text + suffix, 0, PAGE_SIZE[0], PAGE_SIZE[1] - 26, { size: 9, font: fonts.font });
   });
 }
