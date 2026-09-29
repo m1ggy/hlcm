@@ -8,6 +8,7 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { displayInvoiceNumber, formatCalendarDate } from "@/lib/invoice-format";
 import { isManual } from "@/lib/invoice-shared";
+import { QUANTITY_LABELS, type QuantityLabelId, type SenderDetails } from "@/lib/pdf-templates/options";
 
 // Exported for receipt-pdf.ts to share — a receipt uses the same page
 // geometry and hand-wrapping helpers, just a much shorter layout.
@@ -85,6 +86,8 @@ export type InvoicePdfInput = {
     billingState: string | null;
     billingPostalCode: string | null;
     projects: { name: string }[];
+    /** First owner — printed as "Attn:" by the Modern layout. */
+    owners?: { name: string }[];
   };
   /** Manual invoices only — who this bills for, if a Care Recipient (see
    * Invoice.careRecipientId). When set, the Bill To block addresses the
@@ -100,6 +103,11 @@ export type InvoicePdfInput = {
   footerText?: string | null;
   /** Printed where the logo would go when there isn't one. Falls back to "CTK". */
   profileName?: string | null;
+  /** The profile's address/phone/email/payment instructions (Modern layout only). */
+  sender?: SenderDetails | null;
+  /** The profile's heading for the quantity column; unset keeps the old
+   * Hours (manual) / Quantity (Stripe-bound) default. */
+  quantityLabel?: QuantityLabelId | null;
 };
 
 export function money(n: number) {
@@ -211,7 +219,11 @@ export async function generateInvoicePdf(invoice: InvoicePdfInput): Promise<Uint
   // into the description text there too).
   const cols = [
     { label: "Description", x: MARGIN, width: 340 },
-    { label: isManual(invoice) ? "Hours" : "Quantity", x: MARGIN + 340, width: 80 },
+    {
+      label: invoice.quantityLabel ? QUANTITY_LABELS[invoice.quantityLabel] : isManual(invoice) ? "Hours" : "Quantity",
+      x: MARGIN + 340,
+      width: 80,
+    },
     { label: "Amount", x: MARGIN + 420, width: 90 },
   ];
   for (const col of cols) {

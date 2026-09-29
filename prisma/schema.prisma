@@ -1457,6 +1457,9 @@ model Invoice {
   // historical invoice's own record of who it billed under.
   invoiceProfile   InvoiceProfile? @relation(fields: [invoiceProfileId], references: [id], onDelete: SetNull)
   invoiceProfileId String?
+  // Overrides the profile's invoiceTemplate for this one invoice's PDF;
+  // null = use the profile's.
+  pdfTemplate      PdfTemplate?
 
   // Manual invoices only, same as invoiceProfile above — which Care
   // Recipient this invoice bills for, if any (still billed to `client`
@@ -1618,12 +1621,40 @@ model InvoiceProfile {
   // info, etc.
   footerText     String?
 
+  // Sender details printed under the logo by the Modern template (see
+  // src/lib/pdf-templates) — the Classic one prints only the logo/name.
+  address             String?
+  phone               String?
+  email               String?
+  // Printed in the Modern invoice's PAYMENT box — e.g. Zelle details.
+  paymentInstructions String?
+
+  // Which layout this profile's invoice/receipt PDFs use, and how the
+  // quantity column is headed. Quick to switch here; an invoice can still
+  // override its own template (Invoice.pdfTemplate).
+  invoiceTemplate PdfTemplate   @default(MODERN)
+  receiptTemplate PdfTemplate   @default(MODERN)
+  quantityLabel   QuantityLabel @default(HOURS)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   invoices Invoice[]
 
   @@map("invoice_profiles")
+}
+
+// Layouts for our own generated invoice/receipt PDFs — see
+// src/lib/pdf-templates/index.ts for what each one renders.
+enum PdfTemplate {
+  CLASSIC
+  MODERN
+}
+
+// The heading on a PDF's quantity column.
+enum QuantityLabel {
+  HOURS
+  QTY
 }
 
 // --- Form builder / public intake forms ------------------------------------

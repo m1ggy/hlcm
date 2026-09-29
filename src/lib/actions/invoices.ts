@@ -7,9 +7,9 @@ import { requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
 import { sendEmail, renderEmailLayout } from "@/lib/email";
-import { generateInvoicePdf } from "@/lib/invoice-pdf";
 import { generateCareRecipientInvoicePdf } from "@/lib/care-recipient-invoice-pdf";
-import { generateReceiptPdf } from "@/lib/receipt-pdf";
+import { renderInvoicePdf, renderReceiptPdf, profilePdfFields } from "@/lib/pdf-templates";
+import { resolvePdfTemplate } from "@/lib/pdf-templates/options";
 import { saveBuffer, readStoredFile, deleteStoredFile } from "@/lib/storage";
 import { getInvoiceProfile, getDefaultInvoiceProfile, getInvoiceLogo, parseCcEmails } from "@/lib/invoice-profiles";
 import { displayInvoiceNumber, displayReceiptNumber, formatCalendarDate } from "@/lib/invoice-format";
@@ -507,16 +507,18 @@ export async function addManualPayment(id: string, input: z.infer<typeof additio
   try {
     const profile = await getInvoiceProfile(invoice.invoiceProfileId);
     const logo = await getInvoiceLogo(profile);
-    const pdfBytes = await generateReceiptPdf({
-      seq: receipt.seq,
-      payment,
-      lineItemDescription: lineItem?.description ?? null,
-      invoice,
-      client: invoice.client,
-      logo,
-      footerText: profile?.footerText ?? null,
-      profileName: profile?.name ?? null,
-    });
+    const pdfBytes = await renderReceiptPdf(
+      {
+        seq: receipt.seq,
+        payment,
+        lineItemDescription: lineItem?.description ?? null,
+        invoice,
+        client: invoice.client,
+        logo,
+        ...profilePdfFields(profile),
+      },
+      resolvePdfTemplate(null, profile?.receiptTemplate)
+    );
     const { storageKey } = await saveBuffer(Buffer.from(pdfBytes), ".pdf");
     await prisma.receipt.update({ where: { id: receipt.id }, data: { storageKey } });
   } catch (error) {
@@ -599,16 +601,18 @@ export async function updatePayment(paymentId: string, input: z.infer<typeof add
     try {
       const profile = await getInvoiceProfile(invoice.invoiceProfileId);
       const logo = await getInvoiceLogo(profile);
-      const pdfBytes = await generateReceiptPdf({
-        seq: before.receipt.seq,
-        payment: { amount: parsed.amount, paidAt, paymentMethod: parsed.paymentMethod },
-        lineItemDescription: lineItem?.description ?? null,
-        invoice,
-        client: invoice.client,
-        logo,
-        footerText: profile?.footerText ?? null,
-        profileName: profile?.name ?? null,
-      });
+      const pdfBytes = await renderReceiptPdf(
+        {
+          seq: before.receipt.seq,
+          payment: { amount: parsed.amount, paidAt, paymentMethod: parsed.paymentMethod },
+          lineItemDescription: lineItem?.description ?? null,
+          invoice,
+          client: invoice.client,
+          logo,
+          ...profilePdfFields(profile),
+        },
+        resolvePdfTemplate(null, profile?.receiptTemplate)
+      );
       const { storageKey } = await saveBuffer(Buffer.from(pdfBytes), ".pdf");
       if (before.receipt.storageKey) await deleteStoredFile(before.receipt.storageKey);
       await prisma.receipt.update({ where: { id: before.receipt.id }, data: { storageKey } });
@@ -839,7 +843,10 @@ export async function sendManualInvoicePdf(id: string, formData?: FormData) {
         profileName: profile?.name ?? null,
         outstandingAccountBalance: await computeOutstandingAccountBalance(invoice.careRecipient.id),
       })
-    : await generateInvoicePdf({ ...invoice, logo, footerText: profile?.footerText ?? null, profileName: profile?.name ?? null });
+    : await renderInvoicePdf(
+        { ...invoice, logo, ...profilePdfFields(profile) },
+        resolvePdfTemplate(invoice.pdfTemplate, profile?.invoiceTemplate)
+      );
   const amountDue = (invoice.total ?? 0) - (invoice.amountPaid ?? 0);
   const attachments = [{ filename: `invoice-${number}.pdf`, content: pdfBytes }, ...invoiceAttachments, ...extraAttachments];
   assertAttachmentsFitInEmail(attachments);
@@ -1177,4 +1184,27 @@ export async function importStripeInvoice(input: z.infer<typeof importStripeInvo
 
   revalidatePath("/invoices");
   return created;
+}
+
+// One invoice's own PDF layout, overriding its profile's invoiceTemplate —
+// null goes back to the profile's. Manual invoices only: a Stripe-bound
+// one's PDF is Stripe's own.
+export async function setInvoicePdfTemplate(id: string, template: "CLASSIC" | "MODERN" | null) {
+  const session = await requireRole(MANAGE_ROLES);
+  const parsed = z.enum(["CLASSIC", "MODERN"]).nullable().parse(template);
+
+  const before = await prisma.invoice.findUniqueOrThrow({ where: { id } });
+  if (!isManual(before)) throw new Error("This invoice isn't a manually-recorded one");
+
+  await prisma.invoice.update({ where: { id }, data: { pdfTemplate: parsed } });
+  await recordAudit({
+    entityType: "Invoice",
+    entityId: id,
+    action: "set_pdf_template",
+    actorId: session.user.id,
+    oldValue: before.pdfTemplate ?? "profile default",
+    newValue: parsed ?? "profile default",
+  });
+
+  revalidatePath(`/invoices/${id}`);
 }

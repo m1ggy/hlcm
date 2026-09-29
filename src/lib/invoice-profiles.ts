@@ -6,6 +6,7 @@
 // src/lib/actions/invoice-profiles.ts.
 import { prisma } from "@/lib/prisma";
 import { readStoredFile } from "@/lib/storage";
+import type { PdfTemplateId, QuantityLabelId } from "@/lib/pdf-templates/options";
 
 export type InvoiceProfileData = {
   id: string;
@@ -15,6 +16,13 @@ export type InvoiceProfileData = {
   logoMimeType: string | null;
   ccEmails: string | null;
   footerText: string | null;
+  address: string | null;
+  phone: string | null;
+  email: string | null;
+  paymentInstructions: string | null;
+  invoiceTemplate: PdfTemplateId;
+  receiptTemplate: PdfTemplateId;
+  quantityLabel: QuantityLabelId;
 };
 
 export async function listInvoiceProfiles(): Promise<InvoiceProfileData[]> {

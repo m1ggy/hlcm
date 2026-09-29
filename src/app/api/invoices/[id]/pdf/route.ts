@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { getInvoice } from "@/lib/actions/invoices";
 import { computeOutstandingAccountBalance } from "@/lib/actions/care-recipient-invoices";
-import { generateInvoicePdf } from "@/lib/invoice-pdf";
+import { renderInvoicePdf, profilePdfFields } from "@/lib/pdf-templates";
+import { resolvePdfTemplate } from "@/lib/pdf-templates/options";
 import { generateCareRecipientInvoicePdf } from "@/lib/care-recipient-invoice-pdf";
 import { displayInvoiceNumber } from "@/lib/invoice-format";
 import { getInvoiceProfile, getInvoiceLogo } from "@/lib/invoice-profiles";
@@ -22,12 +23,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
           profileName: profile?.name ?? null,
           outstandingAccountBalance: await computeOutstandingAccountBalance(invoice.careRecipient.id),
         })
-      : await generateInvoicePdf({
-          ...invoice,
-          logo,
-          footerText: profile?.footerText ?? null,
-          profileName: profile?.name ?? null,
-        });
+      : await renderInvoicePdf(
+          { ...invoice, logo, ...profilePdfFields(profile) },
+          resolvePdfTemplate(invoice.pdfTemplate, profile?.invoiceTemplate)
+        );
 
     return new NextResponse(Buffer.from(bytes), {
       headers: {

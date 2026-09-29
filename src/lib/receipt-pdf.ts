@@ -10,6 +10,7 @@
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { PAGE_SIZE, MARGIN, drawWrappedText, drawLogoOrName, money, projectLabel } from "@/lib/invoice-pdf";
 import { displayInvoiceNumber, displayReceiptNumber, formatCalendarDate } from "@/lib/invoice-format";
+import type { SenderDetails } from "@/lib/pdf-templates/options";
 
 export type ReceiptPdfInput = {
   seq: number;
@@ -36,10 +37,14 @@ export type ReceiptPdfInput = {
     billingState: string | null;
     billingPostalCode: string | null;
     projects: { name: string }[];
+    /** First owner — printed as "Attn:" by the Modern layout. */
+    owners?: { name: string }[];
   };
   logo?: { bytes: Uint8Array; mimeType: string } | null;
   footerText?: string | null;
   profileName?: string | null;
+  /** The profile's address/phone/email (Modern layout only). */
+  sender?: SenderDetails | null;
 };
 
 export async function generateReceiptPdf(receipt: ReceiptPdfInput): Promise<Uint8Array> {

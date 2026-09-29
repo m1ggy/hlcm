@@ -24,7 +24,32 @@ const textSchema = z.object({
   name: z.string().min(1, "Name is required"),
   ccEmails: z.string().optional(),
   footerText: z.string().optional(),
+  // Sender details and PDF layout choices — see InvoiceProfile in
+  // prisma/schema.prisma and src/lib/pdf-templates. Optional so the
+  // create dialog (name only) leaves them at their defaults.
+  address: z.string().optional(),
+  phone: z.string().optional(),
+  email: z.string().optional(),
+  paymentInstructions: z.string().optional(),
+  invoiceTemplate: z.enum(["CLASSIC", "MODERN"]).optional(),
+  receiptTemplate: z.enum(["CLASSIC", "MODERN"]).optional(),
+  quantityLabel: z.enum(["HOURS", "QTY"]).optional(),
 });
+
+// Blank strings clear the field; an email must look like one.
+function profileDetails(parsed: z.infer<typeof textSchema>) {
+  const email = parsed.email?.trim() || null;
+  if (email && !EMAIL_RE.test(email)) throw new Error(`"${email}" doesn't look like a valid email`);
+  return {
+    address: parsed.address?.trim() || null,
+    phone: parsed.phone?.trim() || null,
+    email,
+    paymentInstructions: parsed.paymentInstructions?.trim() || null,
+    invoiceTemplate: parsed.invoiceTemplate,
+    receiptTemplate: parsed.receiptTemplate,
+    quantityLabel: parsed.quantityLabel,
+  };
+}
 
 function validateCcEmails(raw: string | undefined): string | null {
   if (!raw?.trim()) return null;
@@ -74,7 +99,7 @@ export async function updateInvoiceProfileText(id: string, input: z.infer<typeof
 
   const updated = await prisma.invoiceProfile.update({
     where: { id },
-    data: { name: parsed.name.trim(), ccEmails, footerText },
+    data: { name: parsed.name.trim(), ccEmails, footerText, ...profileDetails(parsed) },
   });
 
   await recordAudit({
