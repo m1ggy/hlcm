@@ -7,6 +7,17 @@ Status (2026-09-28): **all phases through 6 implemented** (billing deferred); se
 2. **Decisions pending:** tenant billing pricing (5g); product name + domain; legal (BAA/ToS).
 3. **Onboarding audit (2026-09-28), all fixed on `multitenancy/phase-6`, not pushed (user: don't push yet):** suspended-workspace sessions get the suspended notice instead of crashing; platform admins have an Account page and need MFA for the console; tenant email is sent as the org's name with the org's reply-to (Admin > Organization); Admin > Integrations explains each provider and registers the Calendly/DocuSign webhooks itself (old scripts removed); platform console "Invite owner" (typo'd or locked-out owner); failed sign-ins throttled per IP (30) and per account (8) per 15 min; dashboard "Set up your workspace" checklist for new owners (existing orgs pre-dismissed by migration); time clock default = `Organization.timezone`, fallback America/Chicago; handbook served with `PRODUCT_NAME`, Illinois mention removed. Suite: 112 tests pass normal and `TEST_RLS=1` (sim Postgres at localhost:55432 — the local dev Postgres user can't create roles).
 
+## Backlog (2026-10-01)
+
+Found in the second gap review; parked by the user:
+- **Search engines:** no `robots.txt` / `X-Robots-Tag: noindex` — workspace sign-in pages (and so customer names) can be indexed.
+- **Push local `multitenancy/phase-6`** (it holds commits not yet on the remote).
+- **Owner-enforced two-factor** for everyone in a workspace (today it's opt-in per person).
+- **Rename** once the product name is final: `PRODUCT_NAME`, sending domain (`EMAIL_FROM`), DNS/`ROOT_DOMAIN`; the handbook's screenshots have "HCLM" baked in.
+- **Scheduled database backups:** the only automatic dumps are the pre-migrate ones taken at deploys (last 7), so a restore (docs/restore-single-workspace.md) can only go back to the last deploy. Add a daily `pg_dump` with off-server copies.
+
+Done the same day: platform support access (owner-granted, time-limited, audited; `src/lib/support-access.ts`), per-workspace usage in the console (users, clients, cases, file storage, last activity, terms, support), the single-workspace restore runbook, and terms-of-service acceptance by the owner (`src/lib/terms.ts`, off until `TERMS_VERSION`/`TERMS_URL`/`PRIVACY_URL` are set).
+
 ## Decisions made
 
 | Question | Decision |

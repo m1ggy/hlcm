@@ -103,6 +103,12 @@ The database refuses to show or accept another organization's rows even if app c
 
 New tables need a policy: end their migration with `SELECT ensure_tenant_policies();` (and `SELECT ensure_same_org_triggers();` if they reference other tenant tables) — the test suite fails until they do. CI runs the whole suite as a restricted role (`TEST_RLS=1`); to do the same locally you need a Postgres user that can create roles, e.g. `TEST_DATABASE_URL=postgresql://hclm:simpass@localhost:55432/hclm_test TEST_RLS=1 npm test` against a docker Postgres.
 
+## Support access, terms and restoring one workspace
+
+- **Support access:** a workspace owner turns it on for 24 hours, 3 days or 7 days in Admin > Organization. While it's on, the platform console's **Open as support** signs you in to that workspace as its hidden "<product> Support" admin through a one-time link. Everything support does is in the workspace's audit log, a banner shows while you're in, and the session ends when the owner's grant does.
+- **Terms of service:** set `TERMS_VERSION`, `TERMS_URL` and `PRIVACY_URL` in `.env.production` to require each workspace owner to accept them before the workspace can be used (nothing is asked until all three are set). Changing `TERMS_VERSION` asks every owner again. The console's Terms column shows who has accepted which version.
+- **Restoring one workspace** without rolling back everyone else: see [docs/restore-single-workspace.md](docs/restore-single-workspace.md).
+
 ## Connecting Calendly, DocuSign, Stripe, Wise, Twilio and Teams
 
 Each workspace connects its own accounts under **Admin → Integrations** (owners only); every card explains its setup, shows the webhook URL for that workspace, and has **Test connection**.
