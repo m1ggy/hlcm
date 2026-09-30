@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import {
   createOrganizationFromPlatform,
   inviteOwnerFromPlatform,
+  openSupportSessionFromPlatform,
   resendOwnerInvitesFromPlatform,
   setOrganizationStatusFromPlatform,
 } from "@/lib/actions/platform";
@@ -50,6 +51,16 @@ function slugify(name: string) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 63);
+}
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+  return `${(bytes / 1024 ** 3).toFixed(2)} GB`;
+}
+
+function formatDate(date: Date | string | null) {
+  return date ? new Date(date).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "—";
 }
 
 const EMPTY_FORM = { name: "", slug: "", ownerName: "", ownerEmail: "" };
@@ -179,6 +190,7 @@ function InviteOwnerDialog({ org }: { org: Org }) {
 function OrganizationRow({ org }: { org: Org }) {
   const { isPending, run } = useAction();
   const suspended = org.status === "SUSPENDED";
+  const supportOpen = !suspended && org.supportAccessUntil !== null && new Date(org.supportAccessUntil) > new Date();
 
   function toggleStatus() {
     const next = suspended ? "ACTIVE" : "SUSPENDED";
@@ -196,18 +208,45 @@ function OrganizationRow({ org }: { org: Org }) {
     );
   }
 
+  function openSupport() {
+    // Opened now, inside the click, so the browser doesn't block it as a
+    // pop-up; it's pointed at the one-time link once that's issued.
+    const tab = window.open("about:blank", "_blank");
+    run(
+      () => openSupportSessionFromPlatform(org.id),
+      (url) => {
+        if (tab) tab.location.href = url;
+        else window.location.href = url;
+      }
+    );
+  }
+
   return (
     <TableRow>
-      <TableCell className="font-medium">{org.name}</TableCell>
       <TableCell>
-        <a href={org.url} className="font-mono text-xs underline" target="_blank" rel="noreferrer">
+        <div className="font-medium">{org.name}</div>
+        <a href={org.url} className="font-mono text-xs text-muted-foreground underline" target="_blank" rel="noreferrer">
           {org.slug}
         </a>
       </TableCell>
       <TableCell>{suspended ? <Badge variant="outline">Suspended</Badge> : <Badge variant="secondary">Active</Badge>}</TableCell>
-      <TableCell className="text-muted-foreground">{org.userCount}</TableCell>
-      <TableCell className="text-muted-foreground">{new Date(org.createdAt).toLocaleDateString()}</TableCell>
-      <TableCell className="space-x-1 text-right">
+      <TableCell className="text-right tabular-nums">{org.userCount}</TableCell>
+      <TableCell className="text-right tabular-nums">{org.clientCount}</TableCell>
+      <TableCell className="text-right tabular-nums">{org.applicationCount}</TableCell>
+      <TableCell className="text-right tabular-nums text-muted-foreground">{formatBytes(org.storageBytes)}</TableCell>
+      <TableCell className="text-muted-foreground">{formatDate(org.lastActivityAt)}</TableCell>
+      <TableCell className="text-muted-foreground">
+        {org.termsVersion ? (
+          <span title={`Accepted ${formatDate(org.termsAcceptedAt)}`}>{org.termsVersion}</span>
+        ) : (
+          "Not yet"
+        )}
+      </TableCell>
+      <TableCell className="text-muted-foreground">{supportOpen ? `Until ${formatDate(org.supportAccessUntil)}` : "Off"}</TableCell>
+      <TableCell className="space-x-1 whitespace-nowrap text-right">
+        <Button variant="ghost" size="sm" disabled={isPending || !supportOpen} onClick={openSupport} title={supportOpen ? undefined : "The owner hasn't turned on support access"}>
+          Open as support
+        </Button>
         <InviteOwnerDialog org={org} />
         <Button variant="ghost" size="sm" disabled={isPending || suspended} onClick={resendInvite}>
           Resend owner invite
@@ -229,11 +268,15 @@ export function PlatformOrganizations({ organizations }: { organizations: Org[] 
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Name</TableHead>
-            <TableHead>Address</TableHead>
+            <TableHead>Workspace</TableHead>
             <TableHead>Status</TableHead>
-            <TableHead>Users</TableHead>
-            <TableHead>Created</TableHead>
+            <TableHead className="text-right">Users</TableHead>
+            <TableHead className="text-right">Clients</TableHead>
+            <TableHead className="text-right">Cases</TableHead>
+            <TableHead className="text-right">Files</TableHead>
+            <TableHead>Last active</TableHead>
+            <TableHead>Terms</TableHead>
+            <TableHead>Support</TableHead>
             <TableHead />
           </TableRow>
         </TableHeader>
@@ -243,7 +286,7 @@ export function PlatformOrganizations({ organizations }: { organizations: Org[] 
           ))}
           {organizations.length === 0 && (
             <TableRow>
-              <TableCell colSpan={6} className="text-center text-muted-foreground">
+              <TableCell colSpan={10} className="text-center text-muted-foreground">
                 No workspaces yet.
               </TableCell>
             </TableRow>

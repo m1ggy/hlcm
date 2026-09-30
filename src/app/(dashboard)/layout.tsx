@@ -1,5 +1,8 @@
 import { redirect } from "next/navigation";
 import { PLATFORM_SLUG } from "@/lib/tenant-host";
+import { currentOrganization } from "@/lib/db";
+import { PRODUCT_NAME } from "@/lib/branding";
+import { needsTermsAcceptance } from "@/lib/terms";
 import { auth } from "@/auth";
 import { isAdmin } from "@/lib/rbac";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -28,6 +31,10 @@ export default async function DashboardLayout({
   if (session?.user?.role === "CLIENT") redirect("/portal");
   // The platform org has no CRM of its own — its admins use the console.
   if (session?.user?.orgSlug === PLATFORM_SLUG) redirect("/platform");
+  const org = await currentOrganization();
+  // Until the owner accepts the platform's terms (src/lib/terms.ts), the
+  // workspace can't be used — except by support, who may be there to help.
+  if (!session?.user?.isSupport && needsTermsAcceptance(org)) redirect("/accept-terms");
   const isCaregiver = session?.user?.role === "CAREGIVER";
   const [activeEntry, activeBreak, careRecipients, openTimer, myTasks, recentTimerTasks] = await Promise.all([
     getMyActiveEntry(),
@@ -42,6 +49,12 @@ export default async function DashboardLayout({
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset>
+        {session?.user?.isSupport && (
+          <div role="status" className="border-b border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+            You&apos;re in {org.name} as {PRODUCT_NAME} Support. Everything you do is recorded in its audit log
+            {org.supportAccessUntil ? `, and access ends ${org.supportAccessUntil.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: org.timezone ?? undefined })}` : ""}.
+          </div>
+        )}
         <header className="flex flex-wrap items-center justify-between gap-x-2 gap-y-2 border-b px-4 py-3">
           <div className="flex min-w-0 flex-1 items-center gap-3">
             <SidebarTrigger />

@@ -35,6 +35,8 @@ export function isPublicPath(pathname: string) {
     // "Find your workspace" on the bare root domain (no org, no session).
     pathname.startsWith("/find-workspace") ||
     pathname.startsWith("/set-password") ||
+    // Platform support's one-time sign-in link (src/lib/support-access.ts).
+    pathname.startsWith("/support/enter") ||
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/handbook") ||
     // Stripe calls this directly with no session — it's authenticated

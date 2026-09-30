@@ -33,7 +33,7 @@ export async function loginAction(
 
   // Scoped to the request host's org — see authorize() in src/auth.ts.
   const user = await db.user.findFirst({ where: { email } });
-  const passwordValid = user?.active ? await bcrypt.compare(password, user.passwordHash) : false;
+  const passwordValid = user?.active && !user.isSupport ? await bcrypt.compare(password, user.passwordHash) : false;
   if (!user || !passwordValid) {
     recordLoginFailure(ip, org.id, email);
     return { error: "Invalid email or password." };

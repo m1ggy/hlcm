@@ -41,9 +41,21 @@ const UNIQUE_OPS = new Set(["findUnique", "findUniqueOrThrow", "update", "delete
 
 type Args = Record<string, unknown> | undefined;
 
-function scopeArgs(orgId: string, operation: string, args: Args): Args {
+// A workspace's platform-support user (User.isSupport, see
+// src/lib/support-access.ts) is left out of every list and count of users —
+// assignee pickers, notification rosters, seat counts — unless the query
+// asks about isSupport itself.
+const USER_LIST_OPS = new Set(["findMany", "count", "aggregate", "groupBy"]);
+
+function hideSupportUser(model: string | undefined, operation: string, where: unknown) {
+  if (model !== "User" || !USER_LIST_OPS.has(operation)) return where;
+  if (where && JSON.stringify(where).includes('"isSupport"')) return where;
+  return where ? { AND: [where, { isSupport: false }] } : { isSupport: false };
+}
+
+function scopeArgs(orgId: string, model: string | undefined, operation: string, args: Args): Args {
   if (FILTER_OPS.has(operation)) {
-    const where = args?.where;
+    const where = hideSupportUser(model, operation, args?.where);
     return { ...args, where: where ? { AND: [where, { organizationId: orgId }] } : { organizationId: orgId } };
   }
   if (UNIQUE_OPS.has(operation)) {
@@ -64,8 +76,8 @@ function filteredClient(orgId: string) {
     name: "tenant-filter",
     query: {
       $allModels: {
-        $allOperations({ operation, args, query }) {
-          return query(scopeArgs(orgId, operation, args as Args) as typeof args);
+        $allOperations({ model, operation, args, query }) {
+          return query(scopeArgs(orgId, model, operation, args as Args) as typeof args);
         },
       },
     },
@@ -78,8 +90,8 @@ function standaloneClient(orgId: string) {
     name: "tenant",
     query: {
       $allModels: {
-        async $allOperations({ operation, args, query }) {
-          const [, result] = await prisma.$transaction([setOrgSql(orgId), query(scopeArgs(orgId, operation, args as Args) as typeof args)]);
+        async $allOperations({ model, operation, args, query }) {
+          const [, result] = await prisma.$transaction([setOrgSql(orgId), query(scopeArgs(orgId, model, operation, args as Args) as typeof args)]);
           return result;
         },
       },

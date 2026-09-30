@@ -38,6 +38,15 @@ model Organization {
   // When an owner dismissed the dashboard's "Set up your workspace"
   // checklist (src/lib/actions/setup-checklist.ts). Null = still shown.
   setupChecklistDismissedAt DateTime?
+  // Support access: until when the owner lets platform staff open this
+  // workspace as its hidden support user (src/lib/support-access.ts).
+  // Null or past = no access.
+  supportAccessUntil        DateTime?
+  // Which version of the platform's terms/privacy policy this workspace's
+  // owner accepted, when, and who (src/lib/terms.ts). Null = not yet.
+  termsVersion              String?
+  termsAcceptedAt           DateTime?
+  termsAcceptedBy           String?
   createdAt                 DateTime  @default(now())
   updatedAt                 DateTime  @updatedAt
 
@@ -175,6 +184,9 @@ model OrganizationIntegration {
 enum AuthTokenKind {
   INVITE
   PASSWORD_RESET
+  // One-time link a platform admin uses to open a workspace as its support
+  // user (src/lib/support-access.ts). Minutes-long, single use.
+  SUPPORT_LOGIN
 }
 
 // A single-use link that lets someone set their password without knowing
@@ -328,6 +340,10 @@ model User {
   active                    Boolean      @default(true)
   hourlyRate                Float?
   emailNotificationsEnabled Boolean      @default(true)
+  // The workspace's hidden platform-support account (src/lib/support-access.ts):
+  // left out of user lists and counts, can't sign in with a password, only
+  // via a one-time link while the owner has support access switched on.
+  isSupport                 Boolean      @default(false)
   // IANA zone id (e.g. "America/Chicago") — null means "use the browser's
   // own timezone" (the pre-existing behavior). Set from Account settings;
   // controls both how this user's own times are displayed and how a typed

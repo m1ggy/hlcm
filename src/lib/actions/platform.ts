@@ -8,6 +8,7 @@ import { toActionResult, type ActionResult } from "@/lib/action-result";
 import { PLATFORM_SLUG, orgAppUrl } from "@/lib/tenant-host";
 import {
   createOrganization,
+  getTenantOrganization,
   inviteOwner,
   listOrganizations,
   resendOwnerInvites,
@@ -15,6 +16,7 @@ import {
   type CreateOrganizationInput,
   type PlatformOrganization,
 } from "@/lib/platform";
+import { startSupportSession } from "@/lib/support-access";
 
 // The platform console (admin.<ROOT_DOMAIN>): only OWNER/DEVELOPER users of
 // the platform organization. Audit rows land in the platform org's own log.
@@ -76,5 +78,19 @@ export async function inviteOwnerFromPlatform(orgId: string, input: { name: stri
     await recordAudit({ entityType: "Organization", entityId: orgId, action: "invite_owner", actorId: session.user.id, newValue: input.email.trim().toLowerCase() });
     revalidatePath("/platform");
     return { inviteSent: result.inviteSent };
+  });
+}
+
+/**
+ * A one-time link that opens the workspace as its support user — only while
+ * the workspace's owner has support access on (src/lib/support-access.ts).
+ */
+export async function openSupportSessionFromPlatform(orgId: string): Promise<ActionResult<string>> {
+  return toActionResult(async () => {
+    const session = await requirePlatformAdmin();
+    const org = await getTenantOrganization(orgId);
+    const url = await startSupportSession(org, session.user.email ?? session.user.id);
+    await recordAudit({ entityType: "Organization", entityId: orgId, action: "support_session_started", actorId: session.user.id, newValue: org.slug });
+    return url;
   });
 }

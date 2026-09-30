@@ -22,15 +22,68 @@ export type PlatformOrganization = {
   status: "ACTIVE" | "SUSPENDED";
   createdAt: Date;
   userCount: number;
+  clientCount: number;
+  applicationCount: number;
+  /** Bytes of uploaded files (every stored file version, invoice attachments, form uploads). */
+  storageBytes: number;
+  /** The newest audit-log entry — someone changed something. */
+  lastActivityAt: Date | null;
+  supportAccessUntil: Date | null;
+  termsVersion: string | null;
+  termsAcceptedAt: Date | null;
 };
+
+type OrgGroup<T> = { organizationId: string } & T;
+
+// Per-org totals for the console. Counts and sums only — never the rows.
+function byOrg<T>(rows: OrgGroup<T>[], pick: (row: OrgGroup<T>) => number) {
+  return new Map(rows.map((row) => [row.organizationId, pick(row)]));
+}
 
 export async function listOrganizations(): Promise<PlatformOrganization[]> {
   const orgs = await prisma.organization.findMany({
     where: { slug: { not: PLATFORM_SLUG } },
     orderBy: { createdAt: "asc" },
-    select: { id: true, slug: true, name: true, status: true, createdAt: true, _count: { select: { users: true } } },
+    select: {
+      id: true,
+      slug: true,
+      name: true,
+      status: true,
+      createdAt: true,
+      supportAccessUntil: true,
+      termsVersion: true,
+      termsAcceptedAt: true,
+      _count: { select: { users: { where: { isSupport: false, active: true } } } },
+    },
   });
-  return orgs.map(({ _count, ...org }) => ({ ...org, userCount: _count.users }));
+  const [clients, applications, versions, attachments, formFiles, activity] = await Promise.all([
+    prisma.client.groupBy({ by: ["organizationId"], where: { active: true }, _count: { _all: true } }),
+    prisma.application.groupBy({ by: ["organizationId"], where: { active: true }, _count: { _all: true } }),
+    prisma.fileVersion.groupBy({ by: ["organizationId"], _sum: { sizeBytes: true } }),
+    prisma.invoiceAttachment.groupBy({ by: ["organizationId"], _sum: { sizeBytes: true } }),
+    prisma.formSubmissionFile.groupBy({ by: ["organizationId"], _sum: { sizeBytes: true } }),
+    prisma.auditLog.groupBy({ by: ["organizationId"], _max: { createdAt: true } }),
+  ]);
+  const clientCounts = byOrg(clients, (r) => r._count._all);
+  const applicationCounts = byOrg(applications, (r) => r._count._all);
+  const storage = [versions, attachments, formFiles].map((rows) => byOrg(rows, (r) => r._sum.sizeBytes ?? 0));
+  const lastActivity = new Map(activity.map((r) => [r.organizationId, r._max.createdAt]));
+
+  return orgs.map(({ _count, ...org }) => ({
+    ...org,
+    userCount: _count.users,
+    clientCount: clientCounts.get(org.id) ?? 0,
+    applicationCount: applicationCounts.get(org.id) ?? 0,
+    storageBytes: storage.reduce((sum, m) => sum + (m.get(org.id) ?? 0), 0),
+    lastActivityAt: lastActivity.get(org.id) ?? null,
+  }));
+}
+
+/** A tenant workspace by id (never the platform org), for acting on it from the console. */
+export async function getTenantOrganization(orgId: string) {
+  const org = await prisma.organization.findUnique({ where: { id: orgId }, select: { id: true, slug: true, name: true } });
+  if (!org || org.slug === PLATFORM_SLUG) throw new UserFacingError("Workspace not found");
+  return org;
 }
 
 export type CreateOrganizationInput = { name: string; slug: string; ownerName: string; ownerEmail: string };
@@ -138,6 +191,7 @@ export async function findWorkspacesForEmail(email: string): Promise<{ name: str
     where: {
       email: { equals: email.trim(), mode: "insensitive" },
       active: true,
+      isSupport: false,
       organization: { status: "ACTIVE", slug: { not: PLATFORM_SLUG } },
     },
     select: { organization: { select: { name: true, slug: true } } },

@@ -2,7 +2,9 @@ import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { getDb } from "@/lib/db";
-import { getHostOrg, getOrgBySlug } from "@/lib/tenant";
+import { getHostOrg, getOrgBySlug, readSupportAccessUntil } from "@/lib/tenant";
+import { consumeAuthToken } from "@/lib/auth-tokens";
+import { isSupportAccessActive } from "@/lib/support-access";
 import { verifyTotpToken } from "@/lib/totp";
 import { verifyMfaChallenge } from "@/lib/mfa-challenge";
 import { authConfig, isPublicPath } from "@/auth.config";
@@ -21,6 +23,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         password: { label: "Password", type: "password" },
         otp: { label: "MFA code", type: "text" },
         challenge: { label: "Challenge", type: "text" },
+        supportToken: { label: "Support token", type: "text" },
       },
       // Users are looked up in the request host's organization only (the
       // tenant client adds organizationId to every lookup) — the same email
@@ -34,6 +37,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // — this is also what guards a direct POST to the credentials endpoint.
         const ip = await getClientIp().catch(() => null);
 
+        // Platform support (src/lib/support-access.ts): a one-time link from
+        // the console, only while the owner's support access is on.
+        const supportToken = credentials?.supportToken as string | undefined;
+        if (supportToken) {
+          if (!isSupportAccessActive(await readSupportAccessUntil(org.id))) return null;
+          const used = await consumeAuthToken(supportToken, ["SUPPORT_LOGIN"]);
+          if (!used) return null;
+          const user = await db.user.findUnique({ where: { id: used.userId } });
+          if (!user || !user.active || !user.isSupport) return null;
+          return { id: user.id, name: user.name, email: user.email, role: user.role, organizationId: org.id, orgSlug: org.slug, isSupport: true };
+        }
+
         const challenge = credentials?.challenge as string | undefined;
         const otp = credentials?.otp as string | undefined;
 
@@ -44,7 +59,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           if (!userId) return null;
 
           const user = await db.user.findUnique({ where: { id: userId } });
-          if (!user || !user.active || !user.mfaEnabled || !user.mfaSecret) return null;
+          if (!user || !user.active || user.isSupport || !user.mfaEnabled || !user.mfaSecret) return null;
           if (isLoginThrottled(ip, org.id, user.email)) return null;
           if (!otp || !verifyTotpToken(otp, user.mfaSecret)) {
             recordLoginFailure(ip, org.id, user.email);
@@ -61,7 +76,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (isLoginThrottled(ip, org.id, email)) return null;
 
         const user = await db.user.findFirst({ where: { email } });
-        const passwordValid = user?.active ? await bcrypt.compare(password, user.passwordHash) : false;
+        const passwordValid = user?.active && !user.isSupport ? await bcrypt.compare(password, user.passwordHash) : false;
         if (!user || !passwordValid) {
           recordLoginFailure(ip, org.id, email);
           return null;
@@ -93,7 +108,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       const allowed = authConfig.callbacks.authorized(params);
       if (!allowed || !params.auth?.user || isPublicPath(params.request.nextUrl.pathname)) return allowed;
       const org = await getOrgBySlug(params.auth.user.orgSlug);
-      return org?.status === "ACTIVE";
+      if (org?.status !== "ACTIVE") return false;
+      // A support session ends the moment the owner's grant runs out or is revoked.
+      if (params.auth.user.isSupport) return isSupportAccessActive(org.supportAccessUntil);
+      return true;
     },
     async jwt({ token, user }) {
       if (user) {
@@ -101,6 +119,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.role = user.role;
         token.organizationId = user.organizationId;
         token.orgSlug = user.orgSlug;
+        token.isSupport = user.isSupport ?? false;
       }
       return token;
     },
@@ -110,6 +129,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.role = token.role as string;
         session.user.organizationId = token.organizationId as string;
         session.user.orgSlug = token.orgSlug as string;
+        session.user.isSupport = Boolean(token.isSupport);
       }
       return session;
     },

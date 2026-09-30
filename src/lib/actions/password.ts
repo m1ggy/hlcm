@@ -37,7 +37,7 @@ export async function requestPasswordReset(
   }
 
   const user = await db.user.findFirst({
-    where: { email: { equals: email, mode: "insensitive" }, active: true },
+    where: { email: { equals: email, mode: "insensitive" }, active: true, isSupport: false },
     select: { id: true, name: true, email: true },
   });
   if (user) {
