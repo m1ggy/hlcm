@@ -40,8 +40,16 @@ import {
   listCustomerInvoices,
 } from "@/lib/stripe";
 import type { $Enums, Prisma } from "@/generated/prisma/client";
+import { summarizeByService, type ServiceMoney } from "@/lib/service-financials";
+import { resolveClientServiceId } from "@/lib/client-services";
+import { toActionResult } from "@/lib/action-result";
 
-export async function listInvoices(filters?: { status?: $Enums.InvoiceStatus; clientId?: string; careRecipientId?: string }) {
+export async function listInvoices(filters?: {
+  status?: $Enums.InvoiceStatus;
+  clientId?: string;
+  careRecipientId?: string;
+  clientServiceId?: string;
+}) {
   await requireRole(MANAGE_ROLES);
 
   return prisma.invoice.findMany({
@@ -49,9 +57,65 @@ export async function listInvoices(filters?: { status?: $Enums.InvoiceStatus; cl
       status: filters?.status,
       clientId: filters?.clientId || undefined,
       careRecipientId: filters?.careRecipientId || undefined,
+      clientServiceId: filters?.clientServiceId || undefined,
     },
     include: invoiceInclude,
     orderBy: { createdAt: "desc" },
+  });
+}
+
+// Invoiced / received / outstanding per client id for the Clients list —
+// the same math as the client page's totals (summarizeByService in
+// src/lib/service-financials.ts), including service adjustments.
+export async function listMoneyByClient(): Promise<Record<string, ServiceMoney>> {
+  await requireRole(MANAGE_ROLES);
+  const [invoices, adjustments] = await Promise.all([
+    prisma.invoice.findMany({
+      where: { status: { in: ["SENT", "PARTIALLY_PAID", "PAID", "OVERDUE"] } },
+      select: { clientId: true, clientServiceId: true, status: true, total: true, amountPaid: true },
+    }),
+    prisma.serviceAdjustment.findMany({
+      select: { amount: true, clientServiceId: true, clientService: { select: { clientId: true } } },
+    }),
+  ]);
+  const clientIds = new Set([...invoices.map((i) => i.clientId), ...adjustments.map((a) => a.clientService.clientId)]);
+  const byClient: Record<string, ServiceMoney> = {};
+  for (const clientId of clientIds) {
+    const own = adjustments.filter((a) => a.clientService.clientId === clientId);
+    byClient[clientId] = summarizeByService(
+      invoices.filter((i) => i.clientId === clientId),
+      [...new Set(own.map((a) => a.clientServiceId))],
+      own
+    ).total;
+  }
+  return byClient;
+}
+
+// Files an invoice under one of its client's services (or back to General
+// with ""). Allowed at any status, Stripe-bound or manual: it's an internal
+// label for the client's per-service totals — never printed on the PDF,
+// emailed, or sent to Stripe.
+export async function setInvoiceService(id: string, clientServiceId: string) {
+  return toActionResult(async () => {
+    const session = await requireRole(MANAGE_ROLES);
+    const before = await prisma.invoice.findUniqueOrThrow({ where: { id } });
+    const next = await resolveClientServiceId(clientServiceId, before.clientId);
+    if (next === before.clientServiceId) return;
+
+    const invoice = await prisma.invoice.update({ where: { id }, data: { clientServiceId: next } });
+    await recordAudit({
+      entityType: "Invoice",
+      entityId: id,
+      action: "update",
+      actorId: session.user.id,
+      field: "clientServiceId",
+      oldValue: before.clientServiceId,
+      newValue: next,
+    });
+
+    revalidatePath("/invoices");
+    revalidatePath(`/invoices/${id}`);
+    revalidatePath(`/clients/${invoice.clientId}`);
   });
 }
 
@@ -84,6 +148,9 @@ export async function getInvoiceAuditLog(invoiceId: string) {
 const invoiceInputSchema = z.object({
   clientId: z.string().min(1),
   applicationId: z.string().optional(),
+  // Omitted = General on create, "leave as is" on update (the invoice page's
+  // own Service picker is how it's changed later — see setInvoiceService).
+  clientServiceId: z.string().optional(),
   dueDate: z.string().optional(),
   notes: z.string().optional(),
   internalTag: z.string().optional(),
@@ -93,11 +160,13 @@ const invoiceInputSchema = z.object({
 export async function createInvoice(input: z.infer<typeof invoiceInputSchema>) {
   const session = await requireRole(MANAGE_ROLES);
   const parsed = invoiceInputSchema.parse(input);
+  const clientServiceId = await resolveClientServiceId(parsed.clientServiceId, parsed.clientId);
 
   const invoice = await prisma.invoice.create({
     data: {
       clientId: parsed.clientId,
       applicationId: parsed.applicationId || undefined,
+      clientServiceId,
       dueDate: parsed.dueDate ? new Date(parsed.dueDate) : undefined,
       notes: parsed.notes,
       internalTag: parsed.internalTag,
@@ -122,6 +191,14 @@ export async function updateInvoice(id: string, input: z.infer<typeof invoiceInp
 
   const before = await prisma.invoice.findUniqueOrThrow({ where: { id } });
   if (before.status !== "DRAFT") throw new Error("Only draft invoices can be edited");
+  // A service belongs to one client — moving the invoice to another client
+  // drops a service link that no longer applies.
+  const clientServiceId =
+    parsed.clientServiceId !== undefined
+      ? await resolveClientServiceId(parsed.clientServiceId, parsed.clientId)
+      : before.clientId === parsed.clientId
+        ? undefined
+        : null;
 
   const invoice = await prisma.$transaction(async (tx) => {
     await tx.invoiceLineItem.deleteMany({ where: { invoiceId: id } });
@@ -130,6 +207,7 @@ export async function updateInvoice(id: string, input: z.infer<typeof invoiceInp
       data: {
         clientId: parsed.clientId,
         applicationId: parsed.applicationId || null,
+        clientServiceId,
         dueDate: parsed.dueDate ? new Date(parsed.dueDate) : null,
         notes: parsed.notes,
         internalTag: parsed.internalTag,
@@ -256,6 +334,7 @@ export async function markInvoicePaid(id: string) {
 const createManualInvoiceSchema = z.object({
   clientId: z.string().min(1),
   applicationId: z.string().optional(),
+  clientServiceId: z.string().optional(),
   invoiceProfileId: z.string().optional(),
   invoiceNumber: z.string().optional(),
   issueDate: z.string().optional(),
@@ -282,12 +361,14 @@ export async function createManualInvoice(input: z.infer<typeof createManualInvo
   // should have a definite billing identity, even if the dialog somehow
   // submitted without picking one.
   const profileId = parsed.invoiceProfileId || (await getDefaultInvoiceProfile())?.id;
+  const clientServiceId = await resolveClientServiceId(parsed.clientServiceId, parsed.clientId);
 
   const invoice = await prisma.invoice
     .create({
       data: {
         clientId: parsed.clientId,
         applicationId: parsed.applicationId || undefined,
+        clientServiceId,
         invoiceProfileId: profileId,
         invoiceNumber: parsed.invoiceNumber || undefined,
         issueDate: parsed.issueDate ? new Date(parsed.issueDate) : undefined,

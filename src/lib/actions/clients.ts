@@ -6,8 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/rbac";
 import { recordAudit, recordFieldChanges } from "@/lib/audit";
 import { caregiverClientScope } from "@/lib/caregiver-scope";
-
-const CLIENT_STATUSES = ["PROSPECT", "ACTIVE", "ON_HOLD", "COMPLETED"] as const;
+import { CLIENT_STATUSES } from "@/lib/client-status";
 
 const clientDetailFields = {
   name: z.string().min(1, "Name is required"),
@@ -66,7 +65,11 @@ export async function listClients(opts: { filter?: "active" | "archived" | "all"
   return prisma.client.findMany({
     where: filter === "all" ? {} : { active: filter === "active" },
     orderBy: { name: "asc" },
-    include: { projects: { include: { serviceType: true } }, clientGroup: { select: { id: true, name: true } } },
+    include: {
+      projects: { include: { serviceType: true } },
+      clientGroup: { select: { id: true, name: true } },
+      _count: { select: { services: { where: { active: true } } } },
+    },
   });
 }
 
@@ -137,15 +140,6 @@ export async function getCaregiverClient(clientId: string) {
     },
   });
   return client;
-}
-
-export async function getClientAuditLog(clientId: string) {
-  await requireRole(["ADMIN", "MANAGER", "STAFF"]);
-  return prisma.auditLog.findMany({
-    where: { entityType: "Client", entityId: clientId },
-    include: { actor: { select: { name: true, email: true } } },
-    orderBy: { createdAt: "desc" },
-  });
 }
 
 // Common legal-entity suffixes/punctuation stripped before comparing, so

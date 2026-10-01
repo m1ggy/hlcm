@@ -9,6 +9,7 @@ import { saveUploadedFile, deleteStoredFile, saveFileVersion, revertToGeneration
 import { UserFacingError } from "@/lib/user-facing-error";
 import { toActionResult } from "@/lib/action-result";
 import { MAX_FILE_BYTES, fileTooLargeMessage } from "@/lib/file-limits";
+import { resolveClientServiceId } from "@/lib/client-services";
 
 // The upload/delete/version actions below are exported as thin
 // toActionResult wrappers around a private *Impl: production Next.js redacts
@@ -333,12 +334,15 @@ async function deleteTaskFileImpl(fileId: string, taskId: string) {
 // concept the way Applications do.
 const MANAGE_ROLES: AppRole[] = ["ADMIN", "MANAGER", "STAFF"];
 
-export async function listClientFiles(clientId: string) {
+// `clientServiceId` narrows to one service's documents (the service page);
+// omitted = every file on the client, whichever service it's under.
+export async function listClientFiles(clientId: string, opts: { clientServiceId?: string } = {}) {
   await requireRole(MANAGE_ROLES);
   const assets = await prisma.fileAsset.findMany({
-    where: { clientId },
+    where: { clientId, ...(opts.clientServiceId && { clientServiceId: opts.clientServiceId }) },
     include: {
       uploadedBy: { select: { id: true, name: true } },
+      clientService: { select: { id: true, name: true } },
       _count: { select: { versions: true, signatureEvents: true } },
     },
     orderBy: { createdAt: "desc" },
@@ -365,6 +369,9 @@ async function uploadClientFileImpl(clientId: string, formData: FormData) {
     throw new UserFacingError(fileTooLargeMessage());
   }
 
+  // Checked before the upload so a bad service id never leaves an orphaned
+  // object in storage.
+  const clientServiceId = await resolveClientServiceId(formData.get("clientServiceId"), clientId);
   const { storageKey, sizeBytes, generation } = await saveUploadedFile(file);
   const mimeType = file.type || "application/octet-stream";
 
@@ -372,6 +379,7 @@ async function uploadClientFileImpl(clientId: string, formData: FormData) {
     .create({
       data: {
         clientId,
+        clientServiceId,
         fileName: file.name,
         storageKey,
         mimeType,
@@ -381,7 +389,10 @@ async function uploadClientFileImpl(clientId: string, formData: FormData) {
           create: { version: 1, generation, fileName: file.name, mimeType, sizeBytes, uploadedById: session.user.id },
         },
       },
-      include: { uploadedBy: { select: { id: true, name: true } } },
+      include: {
+        uploadedBy: { select: { id: true, name: true } },
+        clientService: { select: { id: true, name: true } },
+      },
     })
     .catch((e) => friendlyPrismaError(e, { notFoundMessage: "That client no longer exists" }));
 
@@ -395,6 +406,7 @@ async function uploadClientFileImpl(clientId: string, formData: FormData) {
   });
 
   revalidatePath(`/clients/${clientId}`);
+  if (clientServiceId) revalidatePath(`/clients/${clientId}/services/${clientServiceId}`);
   return { ...asset, versionCount: 1, isSigned: false };
 }
 

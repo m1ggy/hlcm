@@ -33,6 +33,9 @@ export const invoiceInclude = {
     },
   },
   application: { select: { id: true, name: true } },
+  // Which of the client's services this is filed under, if any (see
+  // ClientService) — null shows as "General".
+  clientService: { select: { id: true, name: true } },
   invoiceProfile: { select: { id: true, name: true } },
   // Which Care Recipient this bills for, if any — set only by
   // createCareRecipientInvoice. The extra fields (address/email/

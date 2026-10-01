@@ -13,6 +13,7 @@ import { InvoiceFormDialog } from "@/components/invoices/invoice-form-dialog";
 import { RecordPaymentDialog } from "@/components/invoices/record-payment-dialog";
 import { NewCareRecipientInvoiceDialog } from "@/components/invoices/new-care-recipient-invoice-dialog";
 import { BatchCareRecipientInvoiceDialog } from "@/components/invoices/batch-care-recipient-invoice-dialog";
+import type { ServiceOption } from "@/components/clients/service-select";
 
 type ClientOption = { id: string; name: string };
 type ApplicationOption = { id: string; name: string; clientId: string };
@@ -39,6 +40,7 @@ type InvoiceType = "online" | "manual" | "recipient" | "batch" | null;
 export function NewInvoiceMenu({
   clients,
   applications,
+  services,
   profiles,
   recipients,
   caregivers,
@@ -46,6 +48,7 @@ export function NewInvoiceMenu({
 }: {
   clients: ClientOption[];
   applications: ApplicationOption[];
+  services: ServiceOption[];
   profiles: ProfileOption[];
   recipients: RecipientOption[];
   caregivers: CaregiverOption[];
@@ -82,6 +85,7 @@ export function NewInvoiceMenu({
       <InvoiceFormDialog
         clients={clients}
         applications={applications}
+        services={services}
         open={activeType === "online"}
         onOpenChange={(next) => setActiveType(next ? "online" : null)}
       />
@@ -89,6 +93,7 @@ export function NewInvoiceMenu({
         clients={clients}
         applications={applications}
         profiles={profiles}
+        services={services}
         open={activeType === "manual"}
         onOpenChange={(next) => setActiveType(next ? "manual" : null)}
       />

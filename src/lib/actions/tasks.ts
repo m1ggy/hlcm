@@ -7,7 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { requireRole, requireSession, assertApplicationAccess, ForbiddenError, AppRole, isManagement } from "@/lib/rbac";
 import { recordFieldChanges, recordAudit } from "@/lib/audit";
 import { notify } from "@/lib/notifications";
-import { TASK_CLOSED_STATUSES } from "@/lib/task-status";
+import { TASK_CLOSED_STATUSES, TASK_PRIORITIES } from "@/lib/task-status";
 
 const TASK_STATUSES = ["NOT_STARTED", "IN_PROGRESS", "BLOCKED", "COMPLETED", "NA", "CLOSED"] as const;
 
@@ -221,6 +221,8 @@ const updateTaskSchema = z.object({
   status: z.enum(TASK_STATUSES).optional(),
   blockedReason: z.string().optional(),
   dueDate: z.string().optional(),
+  // "" clears it back to no priority.
+  priority: z.union([z.enum(TASK_PRIORITIES), z.literal("")]).optional(),
 });
 
 export async function updateTask(taskId: string, formData: FormData) {
@@ -246,6 +248,7 @@ export async function updateTask(taskId: string, formData: FormData) {
     status: formData.get("status") || undefined,
     blockedReason: formData.get("blockedReason") ?? undefined,
     dueDate: isCaregiver ? undefined : formData.get("dueDate") ?? undefined,
+    priority: isCaregiver ? undefined : formData.get("priority") ?? undefined,
   });
 
   await prisma.$transaction(async (tx) => {
@@ -262,6 +265,7 @@ export async function updateTask(taskId: string, formData: FormData) {
         // A resolved/changed status clears any stale "waiting on X" note.
         blockedReason: parsed.status && parsed.status !== "BLOCKED" ? null : parsed.blockedReason,
         dueDate: parsed.dueDate !== undefined ? (parsed.dueDate ? new Date(parsed.dueDate) : null) : undefined,
+        priority: parsed.priority !== undefined ? parsed.priority || null : undefined,
       },
     });
   });
@@ -289,6 +293,7 @@ export async function updateTask(taskId: string, formData: FormData) {
       status: before.status,
       blockedReason: before.blockedReason,
       dueDate: before.dueDate,
+      priority: before.priority,
       assignedUserIds: beforeAssigneeIds,
     },
     after: {
@@ -297,6 +302,7 @@ export async function updateTask(taskId: string, formData: FormData) {
       status: task.status,
       blockedReason: task.blockedReason,
       dueDate: task.dueDate,
+      priority: task.priority,
       assignedUserIds: afterAssigneeIds,
     },
   });
@@ -331,7 +337,32 @@ export async function updateTask(taskId: string, formData: FormData) {
 
   if (task.applicationId) revalidatePath(`/applications/${task.applicationId}`);
   else revalidatePath("/tasks");
+  if (task.clientServiceId) revalidatePath("/clients/[id]/services/[serviceId]", "page");
   return task;
+}
+
+// Every live top-level task filed under one ClientService — the service
+// page's Tasks tab. Same role gate as the rest of the client record.
+export async function listServiceTasks(clientServiceId: string) {
+  await requireRole(["ADMIN", "MANAGER", "STAFF"]);
+  const tasks = await prisma.task.findMany({
+    where: { clientServiceId, parentTaskId: null, archived: false },
+    include: taskInclude,
+    orderBy: [{ dueDate: { sort: "asc", nulls: "last" } }, { createdAt: "desc" }],
+  });
+  return tasks.map(toTaskItem);
+}
+
+// Every live top-level task under any of one client's services — the
+// client page's Tasks tab (each row says which service it's for).
+export async function listClientServiceTasks(clientId: string) {
+  await requireRole(["ADMIN", "MANAGER", "STAFF"]);
+  const tasks = await prisma.task.findMany({
+    where: { clientService: { clientId }, parentTaskId: null, archived: false },
+    include: { ...taskInclude, clientService: { select: { id: true, name: true } } },
+    orderBy: [{ dueDate: { sort: "asc", nulls: "last" } }, { createdAt: "desc" }],
+  });
+  return tasks.map(toTaskItem);
 }
 
 // Drag-drop reordering within one phase (or the unphased group) of an
@@ -448,6 +479,7 @@ export async function listMyTasks() {
     include: {
       ...taskInclude,
       application: { select: { id: true, name: true, client: { select: { name: true } } } },
+      clientService: { select: { id: true, name: true, client: { select: { id: true, name: true } } } },
     },
     orderBy: { createdAt: "desc" },
   });
@@ -464,6 +496,9 @@ export async function listMyTasks() {
 
 const standaloneTaskSchema = z.object({
   label: z.string().min(1, "Label is required"),
+  // Files the task under a client's service (the service page's Add task).
+  clientServiceId: z.string().optional(),
+  priority: z.enum(TASK_PRIORITIES).optional(),
   description: z.string().optional(),
   assignedUserIds: z.array(z.string().min(1)).min(1, "At least one assignee is required"),
   dueDate: z.string().optional(),
@@ -476,6 +511,8 @@ export async function createStandaloneTask(formData: FormData) {
   const rawAssignedUserIds = uniqueIds(formData.getAll("assignedUserId").map(String).filter(Boolean));
   const parsed = standaloneTaskSchema.parse({
     label: formData.get("label"),
+    clientServiceId: formData.get("clientServiceId") || undefined,
+    priority: formData.get("priority") || undefined,
     description: formData.get("description") || undefined,
     assignedUserIds: rawAssignedUserIds.length ? rawAssignedUserIds : [session.user.id],
     dueDate: formData.get("dueDate") || undefined,
@@ -494,10 +531,16 @@ export async function createStandaloneTask(formData: FormData) {
     });
   }
 
+  const service = parsed.clientServiceId
+    ? await prisma.clientService.findUniqueOrThrow({ where: { id: parsed.clientServiceId }, select: { id: true, clientId: true } })
+    : null;
+
   const task = await prisma.task.create({
     data: {
       label: parsed.label,
       description: parsed.description,
+      clientServiceId: service?.id,
+      priority: parsed.priority,
       assignees: { create: parsed.assignedUserIds.map((userId) => ({ userId })) },
       dueDate: parsed.dueDate ? new Date(parsed.dueDate) : undefined,
       recurrenceRule: parsed.parentTaskId ? undefined : parsed.recurrenceRule,
@@ -528,6 +571,10 @@ export async function createStandaloneTask(formData: FormData) {
   }
 
   revalidatePath("/tasks");
+  if (service) {
+    revalidatePath(`/clients/${service.clientId}`);
+    revalidatePath(`/clients/${service.clientId}/services/${service.id}`);
+  }
   return toTaskItem(task);
 }
 

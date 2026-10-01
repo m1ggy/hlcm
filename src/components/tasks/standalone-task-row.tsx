@@ -10,7 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { MultiUserSelect } from "@/components/ui/multi-user-select";
-import { TASK_STATUSES, isTaskOverdue } from "@/lib/task-status";
+import { TASK_STATUSES, isTaskOverdue, type TaskPriorityValue } from "@/lib/task-status";
+import { TaskPriorityBadge } from "./task-priority-badge";
 import { TaskStatusSelect } from "./task-status-select";
 import { TaskDetailDialog } from "./task-detail-dialog";
 import { Option, TaskUserRef } from "./task-types";
@@ -37,6 +38,8 @@ type MyTask = {
   assignedUsers: TaskUserRef[];
   subtasks: Subtask[];
   application: { id: string; name: string; client: { name: string } } | null;
+  clientService: { id: string; name: string; client: { id: string; name: string } } | null;
+  priority: TaskPriorityValue | null;
 };
 
 function toDateInputValue(date: Date | null) {
@@ -135,11 +138,21 @@ export function MyTaskRow({
               <Briefcase /> {task.application.name} · {task.application.client.name}
             </Badge>
           </Link>
+        ) : task.clientService ? (
+          <Link
+            href={`/clients/${task.clientService.client.id}/services/${task.clientService.id}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Badge variant="outline" className="hover:bg-accent">
+              <Briefcase /> {task.clientService.name} · {task.clientService.client.name}
+            </Badge>
+          </Link>
         ) : (
           <Badge variant="outline" className="text-muted-foreground">
             <Briefcase /> Internal
           </Badge>
         )}
+        {task.priority && <TaskPriorityBadge priority={task.priority} />}
         {task.recurrenceRule && <Badge variant="outline">Repeats {task.recurrenceRule}</Badge>}
         {overdue && <Badge variant="destructive">Overdue</Badge>}
         {!isCaregiver && (

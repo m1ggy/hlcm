@@ -1,4 +1,5 @@
 import { formatActionVerb, formatAuditValue, formatFieldLabel, isEventAction, formatEventDescription } from "@/lib/audit-format";
+import Link from "next/link";
 import { AvatarInitials } from "@/components/ui/avatar-initials";
 
 function formatRelativeTime(date: Date) {
@@ -18,7 +19,7 @@ function formatRelativeTime(date: Date) {
   return "just now";
 }
 
-type AuditEntry = {
+export type AuditEntry = {
   id: string;
   action: string;
   field: string | null;
@@ -26,18 +27,23 @@ type AuditEntry = {
   newValue: string | null;
   createdAt: Date;
   actor: { name: string };
+  // What the entry is about, when the feed mixes several records (the
+  // client page's activity: its services, tasks and invoices).
+  context?: { label: string; href?: string } | null;
 };
 
-type Lookups = {
+export type Lookups = {
   clients?: Record<string, string>;
   users?: Record<string, string>;
   licenseTypes?: Record<string, string>;
   caseTypes?: Record<string, string>;
   stages?: Record<string, string>;
   clientGroups?: Record<string, string>;
+  services?: Record<string, string>;
+  serviceTypes?: Record<string, string>;
 };
 
-function describe(entry: AuditEntry, lookups: Lookups) {
+export function describeAuditEntry(entry: AuditEntry, lookups: Lookups) {
   if (isEventAction(entry.action)) {
     return formatEventDescription(entry.action, entry.oldValue, entry.newValue, lookups.users ?? {});
   }
@@ -52,12 +58,7 @@ function describe(entry: AuditEntry, lookups: Lookups) {
 
 export function AuditLogPanel({
   auditLog,
-  clients = {},
-  users = {},
-  licenseTypes = {},
-  caseTypes = {},
-  stages = {},
-  clientGroups = {},
+  ...lookups
 }: {
   auditLog: AuditEntry[];
 } & Lookups) {
@@ -77,9 +78,20 @@ export function AuditLogPanel({
             <p className="text-sm">
               <span className="font-medium">{entry.actor.name}</span>{" "}
               <span className="text-muted-foreground">
-                {describe(entry, { clients, users, licenseTypes, caseTypes, stages, clientGroups })}
+                {describeAuditEntry(entry, lookups)}
               </span>
             </p>
+            {entry.context && (
+              <p className="text-xs">
+                {entry.context.href ? (
+                  <Link href={entry.context.href} className="text-primary hover:underline">
+                    {entry.context.label}
+                  </Link>
+                ) : (
+                  entry.context.label
+                )}
+              </p>
+            )}
             <p className="text-xs text-muted-foreground" title={new Date(entry.createdAt).toLocaleString()}>
               {formatRelativeTime(new Date(entry.createdAt))}
             </p>

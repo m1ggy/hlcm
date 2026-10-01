@@ -2,6 +2,7 @@ import { STATUS_LABELS, ApplicationStatus } from "@/lib/status";
 import { TASK_STATUS_LABELS, TaskStatusValue } from "@/lib/task-status";
 import { PIPELINE_LABELS } from "@/lib/pipeline-labels";
 import { CLIENT_STATUS_LABELS, ClientStatus } from "@/lib/client-status";
+import { SERVICE_STATUS_LABELS, ServiceStatus } from "@/lib/service-status";
 
 const FIELD_LABELS: Record<string, string> = {
   name: "Name",
@@ -58,6 +59,13 @@ const FIELD_LABELS: Record<string, string> = {
   billingPostalCode: "Billing ZIP",
   billingCountry: "Billing country",
   clientGroupId: "Client group",
+  clientServiceId: "Service",
+  serviceTypeId: "Service type",
+  startDate: "Start date",
+  endDate: "Renewal/end date",
+  feeAmount: "Fee",
+  feeFrequency: "Fee frequency",
+  priority: "Priority",
   pipeline: "Pipeline",
   billingContactName: "Billing contact",
   billingContactEmail: "Billing contact email",
@@ -95,6 +103,16 @@ const ACTION_VERBS: Record<string, string> = {
   update_client_owner: "Updated an owner",
   remove_client_owner: "Removed an owner",
   add_client_agreement: "Added an agreement",
+  add_client_service: "Added a service",
+  update_client_service: "Updated a service",
+  change_service_status: "Changed a service's status",
+  archive_client_service: "Archived a service",
+  restore_client_service: "Restored a service",
+  add_adjustment: "Added an adjustment",
+  remove_adjustment: "Removed an adjustment",
+  // A client status set by suggestClientStatus (src/lib/service-status.ts)
+  // after one of its services changed, not by a person editing it.
+  auto_status: "Updated automatically (from its services)",
   update_client_agreement: "Updated an agreement",
   remove_client_agreement: "Removed an agreement",
   add_client_license: "Added a license",
@@ -202,6 +220,14 @@ const EVENT_ACTIONS = new Set([
   "update_client_agreement",
   "remove_client_agreement",
   "add_client_license",
+  "add_client_service",
+  "auto_status",
+  "update_client_service",
+  "change_service_status",
+  "archive_client_service",
+  "restore_client_service",
+  "add_adjustment",
+  "remove_adjustment",
   "update_client_license",
   "remove_client_license",
   "send_envelope",
@@ -286,6 +312,30 @@ export function formatEventDescription(
   if (action === "update_client_agreement" && newValue) return `Updated agreement "${newValue}"`;
   if (action === "remove_client_agreement" && oldValue) return `Removed agreement "${oldValue}"`;
   if (action === "add_client_license" && newValue) return `Added license "${newValue}"`;
+  if (action === "add_client_service" && newValue) return `Added service "${newValue}"`;
+  if (action === "auto_status" && newValue) {
+    const label = (st: string) => CLIENT_STATUS_LABELS[st as ClientStatus] ?? st;
+    const from = oldValue ? ` from “${label(oldValue)}”` : "";
+    return `Status changed${from} to “${label(newValue)}” automatically, based on its services`;
+  }
+  if (action === "update_client_service" && newValue) return `Updated service "${newValue}"`;
+  if (action === "archive_client_service" && oldValue) return `Archived service "${oldValue}"`;
+  if (action === "restore_client_service" && newValue) return `Restored service "${newValue}"`;
+  if (action === "add_adjustment" && newValue) return `Added an adjustment: ${newValue}`;
+  if (action === "remove_adjustment" && oldValue) return `Removed an adjustment: ${oldValue}`;
+  if (action === "change_service_status" && newValue) {
+    // "<service name>:<STATUS>" on both sides, same shape as change_mco_stage.
+    const split = (v: string) => {
+      const i = v.lastIndexOf(":");
+      return [v.slice(0, i), v.slice(i + 1)] as const;
+    };
+    const [name, newStatus] = split(newValue);
+    const oldStatus = oldValue ? split(oldValue)[1] : null;
+    const label = (st: string) => SERVICE_STATUS_LABELS[st as ServiceStatus] ?? st;
+    return oldStatus
+      ? `Service "${name}": ${label(oldStatus)} → ${label(newStatus)}`
+      : `Service "${name}" set to ${label(newStatus)}`;
+  }
   if (action === "update_client_license" && newValue) return `Updated license "${newValue}"`;
   if (action === "remove_client_license" && oldValue) return `Removed license "${oldValue}"`;
   // These carry an already-composed, human-readable sentence in
@@ -339,6 +389,8 @@ export function formatAuditValue(
     caseTypes?: Record<string, string>;
     stages?: Record<string, string>;
     clientGroups?: Record<string, string>;
+    services?: Record<string, string>;
+    serviceTypes?: Record<string, string>;
   } = {}
 ) {
   if (value === null || value === undefined || value === "") return "—";
@@ -347,6 +399,7 @@ export function formatAuditValue(
       STATUS_LABELS[value as ApplicationStatus] ??
       TASK_STATUS_LABELS[value as TaskStatusValue] ??
       CLIENT_STATUS_LABELS[value as ClientStatus] ??
+      SERVICE_STATUS_LABELS[value as ServiceStatus] ??
       value
     );
   }
@@ -367,6 +420,8 @@ export function formatAuditValue(
   if (field === "caseTypeId") return lookups.caseTypes?.[value] ?? value;
   if (field === "stageId") return lookups.stages?.[value] ?? value;
   if (field === "clientGroupId") return lookups.clientGroups?.[value] ?? value;
+  if (field === "clientServiceId") return lookups.services?.[value] ?? value;
+  if (field === "serviceTypeId") return lookups.serviceTypes?.[value] ?? value;
   if (field === "pipeline") return PIPELINE_LABELS[value as keyof typeof PIPELINE_LABELS] ?? value;
   if (
     field === "dueDate" ||
@@ -378,13 +433,19 @@ export function formatAuditValue(
     field === "effectiveDate" ||
     field === "recredentialingDueDate" ||
     field === "dateOfBirth" ||
-    field === "geocodedAt"
+    field === "geocodedAt" ||
+    field === "startDate" ||
+    field === "endDate"
   ) {
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString();
   }
   if (field === "agency") return AGENCY_LABELS[value] ?? value;
   if (field === "ballIsWith") return BALL_WITH_LABELS[value] ?? value;
+  if (field === "feeAmount") {
+    const fee = Number(value);
+    return Number.isNaN(fee) ? value : `$${fee.toFixed(2)}`;
+  }
   if (field === "hourlyRate") {
     const rate = Number(value);
     return Number.isNaN(rate) ? value : `$${rate.toFixed(2)}/hr`;

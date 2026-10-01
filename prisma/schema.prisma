@@ -52,6 +52,12 @@ enum Pipeline {
   MCO
 }
 
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
 enum TaskStatus {
   NOT_STARTED
   IN_PROGRESS
@@ -212,6 +218,9 @@ model User {
   clientOwnersCreated           ClientOwner[]             @relation("ClientOwnerCreatedBy")
   clientAgreementsCreated       ClientAgreement[]         @relation("ClientAgreementCreatedBy")
   clientLicensesCreated         ClientLicense[]           @relation("ClientLicenseCreatedBy")
+  clientServicesCreated         ClientService[]           @relation("ClientServiceCreatedBy")
+  clientServiceAssignments      ClientServiceAssignee[]
+  serviceAdjustmentsCreated     ServiceAdjustment[]       @relation("ServiceAdjustmentCreatedBy")
 
   @@map("users")
 }
@@ -393,20 +402,115 @@ model ServiceType {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  projects Project[]
+  projects       Project[]
+  clientServices ClientService[]
 
   @@map("service_types")
 }
 
 // Where a client stands in the engagement lifecycle — separate from `active`
-// below, which only means "archived or not" (a Completed or On Hold client
+// below, which only means "archived or not" (a Closed or On Hold client
 // is still active, just not currently being worked). Default is Prospect:
 // a brand-new client record starts as a lead, not already engaged.
+// ACTIVE/INACTIVE are suggested from the client's services (see
+// suggestClientStatus in src/lib/service-status.ts); ON_HOLD/CLOSED are only
+// ever set by hand. COMPLETED is superseded by CLOSED (migrated in
+// 20261001120000_client_services) — kept for one release so nothing that
+// still reads it breaks mid-rollout, then dropped.
 enum ClientStatus {
   PROSPECT
   ACTIVE
   ON_HOLD
+  INACTIVE
+  CLOSED
   COMPLETED
+}
+
+// Lifecycle of one service under a client — independent of the client's
+// own status: closing one service never closes the client.
+enum ServiceStatus {
+  PENDING
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+  CANCELLED
+  EXPIRED
+}
+
+// One service a client receives (Payroll, Bookkeeping, Compliance, …) — the
+// layer between a Client and its invoices/tasks/files/notes/cases, so each
+// service's work and money can be seen on its own while the client page
+// sums them (docs/CRM_Multi_Service_Client_Management_Requirements_Updated.pdf).
+// Every link to it (Invoice/Task/FileAsset/Note/Application.clientServiceId)
+// is optional — records with none show as "General" on the client.
+model ClientService {
+  id            String        @id @default(cuid())
+  client        Client        @relation(fields: [clientId], references: [id])
+  clientId      String
+  // Reuses the admin-managed ServiceType (name + pill color). Optional so a
+  // workspace with no types set up yet can still add services.
+  serviceType   ServiceType?  @relation(fields: [serviceTypeId], references: [id])
+  serviceTypeId String?
+  name          String
+  description   String?
+  status        ServiceStatus @default(PENDING)
+  startDate     DateTime?
+  // Renewal or end date, whichever applies to this service.
+  endDate       DateTime?
+  feeAmount     Float?
+  // Free text ("per month", "one-time", "per hour") — a label printed next
+  // to feeAmount, nothing computes from it.
+  feeFrequency  String?
+  notes         String?
+  // Archived or not — separate from status, same as Client.active.
+  active        Boolean       @default(true)
+  createdBy     User          @relation("ClientServiceCreatedBy", fields: [createdById], references: [id])
+  createdById   String
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  team         ClientServiceAssignee[]
+  invoices     Invoice[]
+  tasks        Task[]
+  files        FileAsset[]
+  notesThread  Note[]
+  applications Application[]
+  adjustments  ServiceAdjustment[]
+
+  @@index([clientId])
+  @@map("client_services")
+}
+
+// A manual credit or charge on a service's balance — a discount, a
+// write-off, a late fee — anything that changes what's owed without being
+// an invoice or a payment. Outstanding = invoiced − received + the sum of
+// these (see summarizeByService in src/lib/service-financials.ts), so
+// `amount` is signed: negative is a credit (owed less), positive a charge.
+model ServiceAdjustment {
+  id              String        @id @default(cuid())
+  clientService   ClientService @relation(fields: [clientServiceId], references: [id], onDelete: Cascade)
+  clientServiceId String
+  amount          Float
+  reason          String
+  date            DateTime
+  createdBy       User          @relation("ServiceAdjustmentCreatedBy", fields: [createdById], references: [id])
+  createdById     String
+  createdAt       DateTime      @default(now())
+
+  @@index([clientServiceId])
+  @@map("service_adjustments")
+}
+
+// The "assigned team" on a ClientService — same shape as TaskAssignee.
+model ClientServiceAssignee {
+  id              String        @id @default(cuid())
+  clientService   ClientService @relation(fields: [clientServiceId], references: [id], onDelete: Cascade)
+  clientServiceId String
+  user            User          @relation(fields: [userId], references: [id])
+  userId          String
+
+  @@unique([clientServiceId, userId])
+  @@map("client_service_assignees")
 }
 
 model Client {
@@ -467,6 +571,7 @@ model Client {
   agreements      ClientAgreement[]
   licenses        ClientLicense[]
   files           FileAsset[]
+  services        ClientService[]
 
   @@index([clientGroupId])
   @@map("clients")
@@ -840,6 +945,11 @@ model Application {
   caseType              CaseType?            @relation(fields: [caseTypeId], references: [id])
   caseTypeId            String?
 
+  // Which of the client's services this belongs to (see ClientService) —
+  // null means general/client-level.
+  clientService   ClientService? @relation(fields: [clientServiceId], references: [id], onDelete: SetNull)
+  clientServiceId String?
+
   // "Assigned VA" in the UI — the field/relation name predates the pipeline
   // spec's terminology, left as-is rather than churning every call site for
   // a label change.
@@ -969,24 +1079,26 @@ model AccessGrant {
 // fileName/mimeType/sizeBytes mirror the latest FileVersion so list queries
 // don't need to join versions just to show current metadata.
 model FileAsset {
-  id            String       @id @default(cuid())
-  application   Application? @relation(fields: [applicationId], references: [id])
-  applicationId String?
-  task          Task?        @relation(fields: [taskId], references: [id])
-  taskId        String?
+  id              String         @id @default(cuid())
+  application     Application?   @relation(fields: [applicationId], references: [id])
+  applicationId   String?
+  task            Task?          @relation(fields: [taskId], references: [id])
+  taskId          String?
   // Third parent kind, alongside applicationId/taskId above — the "one
   // stop shop" ask: a signed agreement, EIN letter, W-9, license, or
   // insurance certificate attached directly to the client, not routed
   // through a case or task.
-  client        Client?      @relation(fields: [clientId], references: [id])
-  clientId      String?
-  fileName      String
-  storageKey    String
-  mimeType      String
-  sizeBytes     Int
-  uploadedBy    User         @relation("FileUploadedBy", fields: [uploadedById], references: [id])
-  uploadedById  String
-  createdAt     DateTime     @default(now())
+  client          Client?        @relation(fields: [clientId], references: [id])
+  clientId        String?
+  clientService   ClientService? @relation(fields: [clientServiceId], references: [id], onDelete: SetNull)
+  clientServiceId String?
+  fileName        String
+  storageKey      String
+  mimeType        String
+  sizeBytes       Int
+  uploadedBy      User           @relation("FileUploadedBy", fields: [uploadedById], references: [id])
+  uploadedById    String
+  createdAt       DateTime       @default(now())
 
   versions            FileVersion[]
   signatureEvents     SignatureEvent[]
@@ -1098,19 +1210,25 @@ model Phase {
 // A checklist item / task. `applicationId` is null for standalone/recurring
 // ops tasks not tied to any case. `parentTaskId` set = this is a subtask.
 model Task {
-  id            String       @id @default(cuid())
-  application   Application? @relation(fields: [applicationId], references: [id])
-  applicationId String?
-  phase         Phase?       @relation(fields: [phaseId], references: [id])
-  phaseId       String?
+  id              String         @id @default(cuid())
+  application     Application?   @relation(fields: [applicationId], references: [id])
+  applicationId   String?
+  phase           Phase?         @relation(fields: [phaseId], references: [id])
+  phaseId         String?
   // Set only for a follow-up task auto-created by changeLeadStage
   // (src/lib/actions/leads.ts) on a NO_SHOW/MISSED transition — purely
   // informational (lets the Leads inbox show/link it), not an access
   // boundary: this is a standalone task like any other with no
   // applicationId, so assertCanAccessTask's existing
   // assignee/creator/ADMIN/MANAGER fallback already covers it unchanged.
-  lead          Lead?        @relation(fields: [leadId], references: [id])
-  leadId        String?
+  lead            Lead?          @relation(fields: [leadId], references: [id])
+  leadId          String?
+  // Which of the client's services this task is for — null for every
+  // task not filed under one (see ClientService).
+  clientService   ClientService? @relation(fields: [clientServiceId], references: [id], onDelete: SetNull)
+  clientServiceId String?
+
+  priority TaskPriority?
 
   checklistItemTemplateId String?
 
@@ -1324,17 +1442,19 @@ model Notification {
 // one checklist item or standalone task, Client comments are general notes
 // on that client (not tied to any one case).
 model Note {
-  id            String       @id @default(cuid())
-  application   Application? @relation(fields: [applicationId], references: [id])
-  applicationId String?
-  task          Task?        @relation(fields: [taskId], references: [id])
-  taskId        String?
-  client        Client?      @relation(fields: [clientId], references: [id])
-  clientId      String?
-  body          String
-  author        User         @relation("NoteAuthor", fields: [authorId], references: [id])
-  authorId      String
-  createdAt     DateTime     @default(now())
+  id              String         @id @default(cuid())
+  application     Application?   @relation(fields: [applicationId], references: [id])
+  applicationId   String?
+  task            Task?          @relation(fields: [taskId], references: [id])
+  taskId          String?
+  client          Client?        @relation(fields: [clientId], references: [id])
+  clientId        String?
+  clientService   ClientService? @relation(fields: [clientServiceId], references: [id], onDelete: SetNull)
+  clientServiceId String?
+  body            String
+  author          User           @relation("NoteAuthor", fields: [authorId], references: [id])
+  authorId        String
+  createdAt       DateTime       @default(now())
 
   @@map("notes")
 }
@@ -1466,6 +1586,11 @@ model Invoice {
   // destroy, a historical invoice's own record of who it billed for.
   careRecipient   CareRecipient? @relation(fields: [careRecipientId], references: [id], onDelete: SetNull)
   careRecipientId String?
+
+  // Which of the client's services this belongs to (see ClientService) —
+  // null means general/client-level.
+  clientService   ClientService? @relation(fields: [clientServiceId], references: [id], onDelete: SetNull)
+  clientServiceId String?
 
   lineItems         InvoiceLineItem[]
   payments          Payment[]
