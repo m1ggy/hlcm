@@ -61,7 +61,7 @@ import { CaregiverClientProfile } from "@/components/clients/caregiver-client-pr
 
 // ?tab= picks the opening tab, so other pages (and the Overview's own
 // "View all" links) can deep-link into one.
-const TABS = ["overview", "services", "tasks", "cases", "accounting", "documents", "activity"] as const;
+const TABS = ["overview", "services", "tasks", "licensing", "accounting", "documents", "activity"] as const;
 
 // Client profile (PDF screens 1–3): one record per client, its services
 // and their combined money/activity, with every existing client section
@@ -101,7 +101,8 @@ export default async function ClientDetailPage({
   const canManageInvoices = canAccessInvoices(session?.user?.role);
   const canArchive = isManagement(session?.user?.role);
   const isUserAdmin = isAdmin(session?.user?.role);
-  const requestedTab = TABS.find((t) => t === tab) ?? "overview";
+  // "cases" was this tab's name before it became Licensing — old links still land there.
+  const requestedTab = TABS.find((t) => t === (tab === "cases" ? "licensing" : tab)) ?? "overview";
   const initialTab = requestedTab === "accounting" && !canManageInvoices ? "overview" : requestedTab;
 
   const [
@@ -237,7 +238,7 @@ export default async function ClientDetailPage({
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="services">Services</TabsTrigger>
           <TabsTrigger value="tasks">Tasks</TabsTrigger>
-          <TabsTrigger value="cases">Cases</TabsTrigger>
+          <TabsTrigger value="licensing">Licensing</TabsTrigger>
           {canManageInvoices && <TabsTrigger value="accounting">Accounting</TabsTrigger>}
           <TabsTrigger value="documents">Documents</TabsTrigger>
           <TabsTrigger value="activity">Activity</TabsTrigger>
@@ -317,7 +318,7 @@ export default async function ClientDetailPage({
           />
         </TabsContent>
 
-        <TabsContent value="cases" className="space-y-6 pt-4">
+        <TabsContent value="licensing" className="space-y-6 pt-4">
           <Card>
             <CardContent>
               <h2 className="mb-3 text-base font-medium">Cases ({client.applications.length})</h2>
@@ -365,7 +366,11 @@ export default async function ClientDetailPage({
             </CardContent>
           </Card>
 
+          <ClientLicensesCard clientId={id} licenses={licenses} />
+
           <McoCredentialsCard clientId={id} credentials={mcoCredentialsWithStages} mcoStages={mcoStages} />
+
+          <ClientAgreementsCard clientId={id} agreements={agreements} />
         </TabsContent>
 
         {canManageInvoices && money && (
@@ -441,10 +446,6 @@ export default async function ClientDetailPage({
 
         <TabsContent value="documents" className="space-y-6 pt-4">
           <ClientFilePool clientId={id} files={files} canEdit />
-
-          <ClientAgreementsCard clientId={id} agreements={agreements} />
-
-          <ClientLicensesCard clientId={id} licenses={licenses} />
 
           <ClientCredentialsCard clientId={id} credentials={credentials} />
         </TabsContent>
