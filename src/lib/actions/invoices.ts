@@ -7,9 +7,9 @@ import { requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
 import { sendEmail, renderEmailLayout } from "@/lib/email";
-import { generateInvoicePdf } from "@/lib/invoice-pdf";
 import { generateCareRecipientInvoicePdf } from "@/lib/care-recipient-invoice-pdf";
-import { generateReceiptPdf } from "@/lib/receipt-pdf";
+import { renderInvoicePdf, renderReceiptPdf, profilePdfFields } from "@/lib/pdf-templates";
+import { resolvePdfTemplate } from "@/lib/pdf-templates/options";
 import { saveBuffer, readStoredFile, deleteStoredFile } from "@/lib/storage";
 import { getInvoiceProfile, getDefaultInvoiceProfile, getInvoiceLogo, parseCcEmails } from "@/lib/invoice-profiles";
 import { displayInvoiceNumber, displayReceiptNumber, formatCalendarDate } from "@/lib/invoice-format";
@@ -447,8 +447,36 @@ export async function updateManualInvoiceDraft(id: string, input: z.input<typeof
     );
   }
 
+  // Line items are diffed by id rather than deleted and recreated, so a
+  // Payment recorded against one (Payment.lineItemId) stays attached
+  // through an edit. An id that isn't this invoice's is treated as new.
   const invoice = await prisma.$transaction(async (tx) => {
-    await tx.invoiceLineItem.deleteMany({ where: { invoiceId: id } });
+    const existing = await tx.invoiceLineItem.findMany({
+      where: { invoiceId: id },
+      select: { id: true, description: true, _count: { select: { payments: true } } },
+    });
+    const existingIds = new Set(existing.map((li) => li.id));
+    const keptIds = new Set(parsed.lineItems.flatMap((li) => (li.id && existingIds.has(li.id) ? [li.id] : [])));
+    const removed = existing.filter((li) => !keptIds.has(li.id));
+    const withPayments = removed.find((li) => li._count.payments > 0);
+    if (withPayments) {
+      throw new Error(
+        `"${withPayments.description}" has payments recorded against it — change those payments to another line first`
+      );
+    }
+
+    if (removed.length) {
+      await tx.invoiceLineItem.deleteMany({ where: { id: { in: removed.map((li) => li.id) } } });
+    }
+    for (const [index, li] of parsed.lineItems.entries()) {
+      const data = toStructuredLineItemData(li, index);
+      if (li.id && keptIds.has(li.id)) {
+        await tx.invoiceLineItem.update({ where: { id: li.id }, data });
+      } else {
+        await tx.invoiceLineItem.create({ data: { ...data, invoiceId: id } });
+      }
+    }
+
     return tx.invoice.update({
       where: { id },
       data: {
@@ -460,9 +488,6 @@ export async function updateManualInvoiceDraft(id: string, input: z.input<typeof
         periodEnd: parsed.periodEnd ? new Date(parsed.periodEnd) : null,
         total,
         editedAfterSendAt: before.lastSentAt ? new Date() : undefined,
-        lineItems: {
-          create: parsed.lineItems.map((li, index) => toStructuredLineItemData(li, index)),
-        },
       },
       include: invoiceInclude,
     });
@@ -479,7 +504,22 @@ const additionalPaymentInputSchema = z.object({
   amount: z.coerce.number().positive("Amount must be greater than 0"),
   paidAt: z.string().min(1, "Payment date is required"),
   paymentMethod: z.string().min(1, "Payment method is required"),
+  // Optional — one of this same invoice's line items (see
+  // Payment.lineItemId). Empty string/null = the invoice as a whole.
+  lineItemId: z.string().nullish().transform((v) => v || null),
 });
+
+// Refuses a lineItemId from some other invoice — the foreign key alone
+// only checks that the line item exists.
+async function resolvePaymentLineItem(invoiceId: string, lineItemId: string | null) {
+  if (!lineItemId) return null;
+  const lineItem = await prisma.invoiceLineItem.findFirst({
+    where: { id: lineItemId, invoiceId },
+    select: { id: true, description: true },
+  });
+  if (!lineItem) throw new Error("That line item isn't on this invoice");
+  return lineItem;
+}
 
 // Records a payment against a manual invoice — the first one (bringing it
 // off SENT) or another installment on top of an existing PARTIALLY_PAID
@@ -501,6 +541,7 @@ export async function addManualPayment(id: string, input: z.infer<typeof additio
   if (before.status !== "SENT" && before.status !== "PARTIALLY_PAID") {
     throw new Error("This invoice isn't awaiting payment");
   }
+  const lineItem = await resolvePaymentLineItem(id, parsed.lineItemId);
 
   const amountPaid = (before.amountPaid ?? 0) + parsed.amount;
   const total = before.total ?? 0;
@@ -514,7 +555,14 @@ export async function addManualPayment(id: string, input: z.infer<typeof additio
       include: invoiceInclude,
     });
     const payment = await tx.payment.create({
-      data: { invoiceId: id, amount: parsed.amount, paidAt, paymentMethod: parsed.paymentMethod, recordedById: session.user.id },
+      data: {
+        invoiceId: id,
+        lineItemId: lineItem?.id ?? null,
+        amount: parsed.amount,
+        paidAt,
+        paymentMethod: parsed.paymentMethod,
+        recordedById: session.user.id,
+      },
     });
     // storageKey is filled in right after, once the PDF's been generated
     // and uploaded (slow I/O that shouldn't hold this transaction open) —
@@ -529,7 +577,7 @@ export async function addManualPayment(id: string, input: z.infer<typeof additio
     entityId: id,
     action: "record_manual_payment",
     actorId: session.user.id,
-    newValue: `${parsed.paymentMethod} (+$${parsed.amount.toFixed(2)})`,
+    newValue: `${parsed.paymentMethod} (+$${parsed.amount.toFixed(2)})${lineItem ? ` for "${lineItem.description}"` : ""}`,
   });
 
   // The payment itself is already committed above — a failure past this
@@ -540,15 +588,18 @@ export async function addManualPayment(id: string, input: z.infer<typeof additio
   try {
     const profile = await getInvoiceProfile(invoice.invoiceProfileId);
     const logo = await getInvoiceLogo(profile);
-    const pdfBytes = await generateReceiptPdf({
-      seq: receipt.seq,
-      payment,
-      invoice,
-      client: invoice.client,
-      logo,
-      footerText: profile?.footerText ?? null,
-      profileName: profile?.name ?? null,
-    });
+    const pdfBytes = await renderReceiptPdf(
+      {
+        seq: receipt.seq,
+        payment,
+        lineItemDescription: lineItem?.description ?? null,
+        invoice,
+        client: invoice.client,
+        logo,
+        ...profilePdfFields(profile),
+      },
+      resolvePdfTemplate(null, profile?.receiptTemplate)
+    );
     const { storageKey } = await saveBuffer(Buffer.from(pdfBytes), ".pdf");
     await prisma.receipt.update({ where: { id: receipt.id }, data: { storageKey } });
   } catch (error) {
@@ -597,9 +648,10 @@ export async function updatePayment(paymentId: string, input: z.infer<typeof add
 
   const before = await prisma.payment.findUniqueOrThrow({
     where: { id: paymentId },
-    include: { invoice: true, receipt: true },
+    include: { invoice: true, receipt: true, lineItem: { select: { description: true } } },
   });
   if (before.invoice.status === "VOID") throw new Error("This invoice is void — nothing to update");
+  const lineItem = await resolvePaymentLineItem(before.invoiceId, parsed.lineItemId);
 
   const paidAt = new Date(parsed.paidAt);
   const total = before.invoice.total ?? 0;
@@ -607,7 +659,7 @@ export async function updatePayment(paymentId: string, input: z.infer<typeof add
   const invoice = await prisma.$transaction(async (tx) => {
     await tx.payment.update({
       where: { id: paymentId },
-      data: { amount: parsed.amount, paidAt, paymentMethod: parsed.paymentMethod },
+      data: { amount: parsed.amount, paidAt, paymentMethod: parsed.paymentMethod, lineItemId: lineItem?.id ?? null },
     });
     return recomputeInvoiceFromPayments(tx, before.invoiceId, total);
   });
@@ -617,8 +669,8 @@ export async function updatePayment(paymentId: string, input: z.infer<typeof add
     entityId: before.invoiceId,
     action: "update_manual_payment",
     actorId: session.user.id,
-    oldValue: `${before.paymentMethod} $${before.amount.toFixed(2)} on ${before.paidAt.toISOString().slice(0, 10)}`,
-    newValue: `${parsed.paymentMethod} $${parsed.amount.toFixed(2)} on ${paidAt.toISOString().slice(0, 10)}`,
+    oldValue: `${before.paymentMethod} $${before.amount.toFixed(2)} on ${before.paidAt.toISOString().slice(0, 10)}${before.lineItem ? ` for "${before.lineItem.description}"` : ""}`,
+    newValue: `${parsed.paymentMethod} $${parsed.amount.toFixed(2)} on ${paidAt.toISOString().slice(0, 10)}${lineItem ? ` for "${lineItem.description}"` : ""}`,
   });
 
   // A receipt-regeneration failure must not read as "the edit failed" —
@@ -630,15 +682,18 @@ export async function updatePayment(paymentId: string, input: z.infer<typeof add
     try {
       const profile = await getInvoiceProfile(invoice.invoiceProfileId);
       const logo = await getInvoiceLogo(profile);
-      const pdfBytes = await generateReceiptPdf({
-        seq: before.receipt.seq,
-        payment: { amount: parsed.amount, paidAt, paymentMethod: parsed.paymentMethod },
-        invoice,
-        client: invoice.client,
-        logo,
-        footerText: profile?.footerText ?? null,
-        profileName: profile?.name ?? null,
-      });
+      const pdfBytes = await renderReceiptPdf(
+        {
+          seq: before.receipt.seq,
+          payment: { amount: parsed.amount, paidAt, paymentMethod: parsed.paymentMethod },
+          lineItemDescription: lineItem?.description ?? null,
+          invoice,
+          client: invoice.client,
+          logo,
+          ...profilePdfFields(profile),
+        },
+        resolvePdfTemplate(null, profile?.receiptTemplate)
+      );
       const { storageKey } = await saveBuffer(Buffer.from(pdfBytes), ".pdf");
       if (before.receipt.storageKey) await deleteStoredFile(before.receipt.storageKey);
       await prisma.receipt.update({ where: { id: before.receipt.id }, data: { storageKey } });
@@ -869,7 +924,10 @@ export async function sendManualInvoicePdf(id: string, formData?: FormData) {
         profileName: profile?.name ?? null,
         outstandingAccountBalance: await computeOutstandingAccountBalance(invoice.careRecipient.id),
       })
-    : await generateInvoicePdf({ ...invoice, logo, footerText: profile?.footerText ?? null, profileName: profile?.name ?? null });
+    : await renderInvoicePdf(
+        { ...invoice, logo, ...profilePdfFields(profile) },
+        resolvePdfTemplate(invoice.pdfTemplate, profile?.invoiceTemplate)
+      );
   const amountDue = (invoice.total ?? 0) - (invoice.amountPaid ?? 0);
   const attachments = [{ filename: `invoice-${number}.pdf`, content: pdfBytes }, ...invoiceAttachments, ...extraAttachments];
   assertAttachmentsFitInEmail(attachments);
@@ -1207,4 +1265,27 @@ export async function importStripeInvoice(input: z.infer<typeof importStripeInvo
 
   revalidatePath("/invoices");
   return created;
+}
+
+// One invoice's own PDF layout, overriding its profile's invoiceTemplate —
+// null goes back to the profile's. Manual invoices only: a Stripe-bound
+// one's PDF is Stripe's own.
+export async function setInvoicePdfTemplate(id: string, template: "CLASSIC" | "MODERN" | null) {
+  const session = await requireRole(MANAGE_ROLES);
+  const parsed = z.enum(["CLASSIC", "MODERN"]).nullable().parse(template);
+
+  const before = await prisma.invoice.findUniqueOrThrow({ where: { id } });
+  if (!isManual(before)) throw new Error("This invoice isn't a manually-recorded one");
+
+  await prisma.invoice.update({ where: { id }, data: { pdfTemplate: parsed } });
+  await recordAudit({
+    entityType: "Invoice",
+    entityId: id,
+    action: "set_pdf_template",
+    actorId: session.user.id,
+    oldValue: before.pdfTemplate ?? "profile default",
+    newValue: parsed ?? "profile default",
+  });
+
+  revalidatePath(`/invoices/${id}`);
 }

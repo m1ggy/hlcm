@@ -83,7 +83,7 @@ export function InvoiceAttachments({
             name="file"
             required
             accept="image/*,.pdf,.xlsx,.docx"
-            className="h-8 flex-1 rounded-lg border border-input bg-transparent text-sm file:mr-2 file:h-8 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground"
+            className="h-8 min-w-0 flex-1 rounded-lg border border-input bg-transparent text-sm file:mr-2 file:h-8 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground"
           />
           <Button type="submit" size="sm" loading={isUploading}>
             <Upload className="size-3.5" /> Upload

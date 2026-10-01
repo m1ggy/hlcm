@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { updatePayment } from "@/lib/actions/invoices";
 import { PaymentMethodSelect } from "./payment-method-select";
+import { PaymentLineItemSelect, type PaymentLineItemOption } from "./payment-line-item-select";
 
 function toDateInputValue(date: Date) {
   const d = new Date(date);
@@ -34,11 +35,15 @@ export function EditPaymentDialog({
   amount,
   paidAt,
   paymentMethod,
+  lineItemId,
+  lineItems,
 }: {
   paymentId: string;
   amount: number;
   paidAt: Date;
   paymentMethod: string;
+  lineItemId: string | null;
+  lineItems: PaymentLineItemOption[];
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -46,6 +51,7 @@ export function EditPaymentDialog({
   const [amountValue, setAmountValue] = useState(amount.toFixed(2));
   const [paidAtValue, setPaidAtValue] = useState(toDateInputValue(paidAt));
   const [methodValue, setMethodValue] = useState(paymentMethod);
+  const [lineItemValue, setLineItemValue] = useState(lineItemId ?? "");
 
   function handleSubmit() {
     const value = Number(amountValue);
@@ -63,6 +69,7 @@ export function EditPaymentDialog({
           amount: value,
           paidAt: paidAtValue,
           paymentMethod: methodValue.trim(),
+          lineItemId: lineItemValue,
         });
         toast.success("Payment updated");
         if (receiptAlreadySent) {
@@ -93,6 +100,7 @@ export function EditPaymentDialog({
             <Input id="edit-paidAt" type="date" value={paidAtValue} onChange={(e) => setPaidAtValue(e.target.value)} />
           </div>
           <PaymentMethodSelect value={methodValue} onChange={setMethodValue} />
+          {lineItems.length > 0 && <PaymentLineItemSelect lineItems={lineItems} value={lineItemValue} onChange={setLineItemValue} />}
           <Button onClick={handleSubmit} className="w-full" loading={isPending}>
             {isPending ? "Saving..." : "Save changes"}
           </Button>

@@ -55,7 +55,7 @@ function AddPaymentDialog({
     if (!paymentMethod.trim()) return toast.error("Pick or describe the payment method");
     startTransition(async () => {
       try {
-        await addManualPayment(invoiceId, { amount: value, paidAt, paymentMethod: paymentMethod.trim() });
+        await addManualPayment(invoiceId, { amount: value, paidAt, paymentMethod: paymentMethod.trim(), lineItemId: null });
         toast.success("Payment recorded");
         onOpenChange(false);
         router.refresh();

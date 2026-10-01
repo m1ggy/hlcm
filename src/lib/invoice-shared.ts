@@ -20,7 +20,7 @@ export const invoiceInclude = {
       name: true,
       businessName: true,
       businessEmail: true,
-      owners: { select: { email: true }, orderBy: { createdAt: "asc" }, take: 1 },
+      owners: { select: { email: true, name: true }, orderBy: { createdAt: "asc" }, take: 1 },
       stripeCustomerId: true,
       billingAddressLine1: true,
       billingCity: true,
@@ -36,7 +36,7 @@ export const invoiceInclude = {
   // Which of the client's services this is filed under, if any (see
   // ClientService) — null shows as "General".
   clientService: { select: { id: true, name: true } },
-  invoiceProfile: { select: { id: true, name: true } },
+  invoiceProfile: { select: { id: true, name: true, invoiceTemplate: true } },
   // Which Care Recipient this bills for, if any — set only by
   // createCareRecipientInvoice. The extra fields (address/email/
   // billingContact*/dateOfBirth/socialSecurityNumber) are what
@@ -59,7 +59,11 @@ export const invoiceInclude = {
   createdBy: { select: { id: true, name: true } },
   lineItems: { orderBy: { sortOrder: "asc" as const } },
   payments: {
-    include: { receipt: true, recordedBy: { select: { id: true, name: true } } },
+    include: {
+      receipt: true,
+      recordedBy: { select: { id: true, name: true } },
+      lineItem: { select: { id: true, description: true } },
+    },
     orderBy: { paidAt: "asc" as const },
   },
 } as const;
@@ -87,6 +91,10 @@ export const lineItemSchema = z.object({
 // invoice's structured hourly/day-rate lines to plain MANUAL ones the
 // first time anyone edited it after creation.
 export const structuredLineItemSchema = lineItemSchema.extend({
+  // An existing line's id, round-tripped by ManualInvoiceEditor so
+  // updateManualInvoiceDraft can update it in place — keeping any
+  // Payment.lineItemId pointing at it — instead of recreating it.
+  id: z.string().optional(),
   // Defaults to MANUAL so a plain typed extra charge (e.g. a supply fee)
   // needs nothing beyond description/quantity/unitPrice, same as today.
   kind: z.enum(["MANUAL", "VISIT_HOURLY", "VISIT_DAILY"]).default("MANUAL"),

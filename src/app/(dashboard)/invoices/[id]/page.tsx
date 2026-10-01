@@ -12,6 +12,9 @@ import { ManualInvoiceEditor } from "@/components/invoices/manual-invoice-editor
 import { SendReceiptDialog } from "@/components/invoices/send-receipt-dialog";
 import { PaymentRowActions } from "@/components/invoices/payment-row-actions";
 import { InvoiceAttachments } from "@/components/invoices/invoice-attachments";
+import { InvoiceTemplateSelect } from "@/components/invoices/invoice-template-select";
+import { PdfPreviewDialog } from "@/components/invoices/pdf-preview-dialog";
+import { DEFAULT_PDF_TEMPLATE } from "@/lib/pdf-templates/options";
 import { AuditLogPanel } from "@/components/applications/audit-log-panel";
 import { InvoiceServicePicker } from "@/components/invoices/invoice-service-picker";
 import { listClientServices } from "@/lib/actions/client-services";
@@ -77,8 +80,8 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
       </Breadcrumb>
 
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-semibold">{number}</h1>
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+          <h1 className="min-w-0 text-2xl font-semibold [overflow-wrap:anywhere]">{number}</h1>
           <InvoiceStatusBadge status={isInvoiceOverdue(invoice) ? "OVERDUE" : invoice.status} />
           {isManualInvoice(invoice) && (
             <span className="text-xs text-muted-foreground" title="Recorded manually — not billed through an online payment link">
@@ -148,18 +151,18 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                     <thead>
                       <tr className="border-b text-left text-muted-foreground">
                         <th className="pb-2 font-normal">Description</th>
-                        <th className="pb-2 font-normal">Quantity</th>
-                        <th className="pb-2 text-right font-normal">{invoice.careRecipient ? "Hourly Rate" : "Unit Price"}</th>
+                        <th className="pb-2 font-normal">{isManualInvoice(invoice) ? "Hours" : "Quantity"}</th>
+                        <th className="pb-2 text-right font-normal">{isManualInvoice(invoice) ? "Rate" : "Unit Price"}</th>
                         <th className="pb-2 text-right font-normal">Amount</th>
                       </tr>
                     </thead>
                     <tbody>
                       {invoice.lineItems.map((li) => (
                         <tr key={li.id} className="border-b last:border-0">
-                          <td className="py-2">{li.description}</td>
-                          <td className="py-2">{li.quantity}</td>
-                          <td className="py-2 text-right tabular-nums">${li.unitPrice.toFixed(2)}</td>
-                          <td className="py-2 text-right tabular-nums">${(li.quantity * li.unitPrice).toFixed(2)}</td>
+                          <td className="py-2 pr-3 [overflow-wrap:anywhere]">{li.description}</td>
+                          <td className="py-2 pr-3 whitespace-nowrap tabular-nums">{li.quantity}</td>
+                          <td className="py-2 pl-3 text-right whitespace-nowrap tabular-nums">${li.unitPrice.toFixed(2)}</td>
+                          <td className="py-2 pl-3 text-right whitespace-nowrap tabular-nums">${(li.quantity * li.unitPrice).toFixed(2)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -199,11 +202,13 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                 <CardTitle>Payments</CardTitle>
               </CardHeader>
               <CardContent>
-                <table className="w-full text-sm">
+                <div className="overflow-x-auto">
+                <table className="w-full min-w-[36rem] text-sm">
                   <thead>
                     <tr className="border-b text-left text-muted-foreground">
                       <th className="pb-2 font-normal">Date</th>
                       <th className="pb-2 font-normal">Method</th>
+                      <th className="pb-2 font-normal">Applies to</th>
                       <th className="pb-2 text-right font-normal">Amount</th>
                       <th className="pb-2 text-right font-normal">Receipt</th>
                       {canEditPayments && <th className="pb-2" />}
@@ -212,9 +217,10 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                   <tbody>
                     {invoice.payments.map((payment) => (
                       <tr key={payment.id} className="border-b last:border-0">
-                        <td className="py-2">{formatCalendarDate(payment.paidAt)}</td>
-                        <td className="py-2 text-muted-foreground">{payment.paymentMethod}</td>
-                        <td className="py-2 text-right tabular-nums">${payment.amount.toFixed(2)}</td>
+                        <td className="py-2 pr-3 whitespace-nowrap">{formatCalendarDate(payment.paidAt)}</td>
+                        <td className="py-2 pr-3 text-muted-foreground [overflow-wrap:anywhere]">{payment.paymentMethod}</td>
+                        <td className="py-2 pr-3 text-muted-foreground [overflow-wrap:anywhere]">{payment.lineItem?.description ?? "Whole invoice"}</td>
+                        <td className="py-2 pr-3 text-right whitespace-nowrap tabular-nums">${payment.amount.toFixed(2)}</td>
                         <td className="py-2">
                           {payment.receipt && !payment.receipt.storageKey ? (
                             <span className="text-xs text-destructive" title="The receipt PDF failed to generate — record the payment again">
@@ -223,6 +229,12 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                           ) : payment.receipt ? (
                             <div className="flex flex-col items-end gap-1">
                               <div className="flex items-center gap-1.5">
+                                <PdfPreviewDialog
+                                  href={`/api/receipts/${payment.receipt.id}/pdf`}
+                                  title={`Receipt ${displayReceiptNumber(payment.receipt)}`}
+                                  size="xs"
+                                  label="Preview"
+                                />
                                 <Button
                                   size="xs"
                                   variant="ghost"
@@ -245,7 +257,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                               )}
                             </div>
                           ) : (
-                            <span className="text-xs text-muted-foreground">No receipt</span>
+                            <span className="block text-right text-xs whitespace-nowrap text-muted-foreground">No receipt</span>
                           )}
                         </td>
                         {canEditPayments && (
@@ -255,6 +267,8 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                               amount={payment.amount}
                               paidAt={payment.paidAt}
                               paymentMethod={payment.paymentMethod}
+                              lineItemId={payment.lineItemId}
+                              lineItems={invoice.lineItems.map((li) => ({ id: li.id, description: li.description }))}
                             />
                           </td>
                         )}
@@ -262,6 +276,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                     ))}
                   </tbody>
                 </table>
+                </div>
               </CardContent>
             </Card>
           )}
@@ -310,15 +325,15 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
             <CardContent className="space-y-2 text-sm">
               {invoice.careRecipient && (
                 <div className="flex justify-between gap-3">
-                  <span className="text-muted-foreground">Care Recipient</span>
-                  <Link href={`/clients/${invoice.client.id}`} className="text-right hover:underline">
+                  <span className="shrink-0 text-muted-foreground">Care Recipient</span>
+                  <Link href={`/clients/${invoice.client.id}`} className="min-w-0 text-right [overflow-wrap:anywhere] hover:underline">
                     {invoice.careRecipient.name}
                   </Link>
                 </div>
               )}
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Client</span>
-                <Link href={`/clients/${invoice.client.id}`} className="hover:underline">
+              <div className="flex justify-between gap-3">
+                <span className="shrink-0 text-muted-foreground">Client</span>
+                <Link href={`/clients/${invoice.client.id}`} className="min-w-0 text-right [overflow-wrap:anywhere] hover:underline">
                   {invoice.client.businessName ?? invoice.client.name}
                 </Link>
               </div>
@@ -336,59 +351,69 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               )}
               {invoice.internalTag && (
                 <div className="flex justify-between gap-3">
-                  <span className="text-muted-foreground" title="Staff only — never shown to the client">
+                  <span className="shrink-0 text-muted-foreground" title="Staff only — never shown to the client">
                     Internal Tag
                   </span>
-                  <span className="text-right">{invoice.internalTag}</span>
+                  <span className="min-w-0 text-right [overflow-wrap:anywhere]">{invoice.internalTag}</span>
                 </div>
               )}
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Issued</span>
+              <div className="flex justify-between gap-3">
+                <span className="shrink-0 text-muted-foreground">Issued</span>
                 <span>{formatCalendarDate(invoice.issueDate)}</span>
               </div>
               {invoice.careRecipient && (invoice.periodStart || invoice.periodEnd) && (
                 <div className="flex justify-between gap-3">
-                  <span className="text-muted-foreground">Service period</span>
-                  <span className="text-right">
+                  <span className="shrink-0 text-muted-foreground">Service period</span>
+                  <span className="min-w-0 text-right [overflow-wrap:anywhere]">
                     {invoice.periodStart ? formatCalendarDate(invoice.periodStart) : "—"} –{" "}
                     {invoice.periodEnd ? formatCalendarDate(invoice.periodEnd) : "—"}
                   </span>
                 </div>
               )}
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Due</span>
+              <div className="flex justify-between gap-3">
+                <span className="shrink-0 text-muted-foreground">Due</span>
                 <span>{invoice.dueDate ? formatCalendarDate(invoice.dueDate) : "—"}</span>
               </div>
               {invoice.sentAt && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Sent</span>
+                <div className="flex justify-between gap-3">
+                  <span className="shrink-0 text-muted-foreground">Sent</span>
                   <span>{invoice.sentAt.toLocaleDateString()}</span>
                 </div>
               )}
               {invoice.paidAt && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">{invoice.status === "PARTIALLY_PAID" ? "Last payment" : "Paid"}</span>
+                <div className="flex justify-between gap-3">
+                  <span className="shrink-0 text-muted-foreground">{invoice.status === "PARTIALLY_PAID" ? "Last payment" : "Paid"}</span>
                   <span>{formatCalendarDate(invoice.paidAt)}</span>
                 </div>
               )}
               {invoice.paymentMethod && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Payment method</span>
-                  <span>{invoice.paymentMethod}</span>
+                <div className="flex justify-between gap-3">
+                  <span className="shrink-0 text-muted-foreground">Payment method</span>
+                  <span className="min-w-0 text-right [overflow-wrap:anywhere]">{invoice.paymentMethod}</span>
                 </div>
               )}
               {isManualInvoice(invoice) && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Amount received</span>
-                  <span>
+                <div className="flex justify-between gap-3">
+                  <span className="shrink-0 text-muted-foreground">Amount received</span>
+                  <span className="min-w-0 text-right [overflow-wrap:anywhere]">
                     ${(invoice.amountPaid ?? 0).toFixed(2)}
                     {invoice.status !== "PAID" && ` of $${(invoice.total ?? 0).toFixed(2)}`}
                   </span>
                 </div>
               )}
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Created by</span>
-                <span>{invoice.createdBy.name}</span>
+              {isManualInvoice(invoice) && !invoice.careRecipient && (
+                <div className="flex items-center justify-between gap-3">
+                  <span className="shrink-0 text-muted-foreground">PDF layout</span>
+                  <InvoiceTemplateSelect
+                    invoiceId={invoice.id}
+                    value={invoice.pdfTemplate}
+                    profileTemplate={invoice.invoiceProfile?.invoiceTemplate ?? DEFAULT_PDF_TEMPLATE}
+                  />
+                </div>
+              )}
+              <div className="flex justify-between gap-3">
+                <span className="shrink-0 text-muted-foreground">Created by</span>
+                <span className="min-w-0 text-right [overflow-wrap:anywhere]">{invoice.createdBy.name}</span>
               </div>
             </CardContent>
           </Card>
