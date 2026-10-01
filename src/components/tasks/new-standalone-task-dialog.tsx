@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select";
 import { MultiUserSelect } from "@/components/ui/multi-user-select";
 import { Option } from "./task-types";
+import { TASK_PRIORITIES, TASK_PRIORITY_LABELS } from "@/lib/task-status";
 
 const NONE = "__none__";
 const RECURRENCE_OPTIONS = ["daily", "weekly", "biweekly", "monthly"] as const;
@@ -29,18 +30,31 @@ const RECURRENCE_OPTIONS = ["daily", "weekly", "biweekly", "monthly"] as const;
 export function NewStandaloneTaskDialog({
   assignableUsers,
   currentUserId,
+  clientServiceId,
+  services,
+  triggerLabel = "New Task",
 }: {
   assignableUsers: Option[];
   currentUserId: string;
+  /** Files the new task under this ClientService (the service page). */
+  clientServiceId?: string;
+  /** Lets the person pick which service it's for (the client page's Tasks tab). */
+  services?: Option[];
+  triggerLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [assignedUserIds, setAssignedUserIds] = useState([currentUserId]);
   const [recurrenceRule, setRecurrenceRule] = useState(NONE);
+  const [priority, setPriority] = useState(NONE);
+  const [serviceId, setServiceId] = useState(services?.[0]?.id ?? NONE);
 
   function handleSubmit(formData: FormData) {
     for (const id of assignedUserIds) formData.append("assignedUserId", id);
     if (recurrenceRule !== NONE) formData.set("recurrenceRule", recurrenceRule);
+    if (priority !== NONE) formData.set("priority", priority);
+    const linkedServiceId = clientServiceId ?? (serviceId !== NONE ? serviceId : undefined);
+    if (linkedServiceId) formData.set("clientServiceId", linkedServiceId);
     startTransition(async () => {
       try {
         await createStandaloneTask(formData);
@@ -54,7 +68,7 @@ export function NewStandaloneTaskDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button>New Task</Button>} />
+      <DialogTrigger render={<Button>{triggerLabel}</Button>} />
       <DialogContent>
         <DialogHeader>
           <DialogTitle>New Task</DialogTitle>
@@ -64,6 +78,27 @@ export function NewStandaloneTaskDialog({
             <Label htmlFor="label">Label</Label>
             <Input id="label" name="label" required placeholder="e.g. Weekly client report update" />
           </div>
+          {services && services.length > 0 && (
+            <div className="space-y-1">
+              <Label>Service</Label>
+              <Select
+                items={Object.fromEntries(services.map((s) => [s.id, s.name]))}
+                value={serviceId}
+                onValueChange={(v) => setServiceId(v ?? serviceId)}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {services.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="space-y-1">
             <Label htmlFor="description">Description</Label>
             <Input id="description" name="description" />
@@ -76,7 +111,27 @@ export function NewStandaloneTaskDialog({
               onValueChange={setAssignedUserIds}
             />
           </div>
-          <div className="grid sm:grid-cols-2 gap-4">
+          <div className="grid sm:grid-cols-3 gap-4">
+            <div className="space-y-1">
+              <Label>Priority</Label>
+              <Select
+                items={{ [NONE]: "None", ...TASK_PRIORITY_LABELS }}
+                value={priority}
+                onValueChange={(v) => setPriority(v ?? NONE)}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>None</SelectItem>
+                  {TASK_PRIORITIES.map((p) => (
+                    <SelectItem key={p} value={p}>
+                      {TASK_PRIORITY_LABELS[p]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="space-y-1">
               <Label htmlFor="dueDate">Due date</Label>
               <Input id="dueDate" name="dueDate" type="date" />

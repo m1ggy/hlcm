@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { MyTaskRow } from "@/components/tasks/standalone-task-row";
-import { TASK_STATUSES, TASK_STATUS_LABELS, TaskStatusValue } from "@/lib/task-status";
+import { TASK_STATUSES, TASK_STATUS_LABELS, TaskStatusValue, type TaskPriorityValue } from "@/lib/task-status";
 import { Option, TaskUserRef } from "@/components/tasks/task-types";
 
 type Subtask = {
@@ -30,6 +30,9 @@ type MyTask = {
   // Which case this task is from — null for standalone tasks (internal
   // errands not tied to any client case).
   application: { id: string; name: string; client: { name: string } } | null;
+  // Which client service it's filed under, if any (see ClientService).
+  clientService: { id: string; name: string; client: { id: string; name: string } } | null;
+  priority: TaskPriorityValue | null;
 };
 
 const FILTER_KEY = "hclm:tasks-filter";

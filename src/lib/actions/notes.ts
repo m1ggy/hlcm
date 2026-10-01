@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireSession, requireRole, assertApplicationAccess, ForbiddenError, AppRole, isManagement } from "@/lib/rbac";
 import { notify } from "@/lib/notifications";
+import { resolveClientServiceId } from "@/lib/client-services";
 
 // Caregivers never hold an Application-level AccessGrant (see
 // ensureTaskAssigneeAccess in tasks.ts) — they always take the
@@ -138,11 +139,13 @@ export async function addTaskNote(input: z.infer<typeof addTaskNoteSchema>) {
 
 // Clients aren't ACL-scoped like Applications — same role gate as the rest
 // of src/lib/actions/clients.ts.
-export async function listClientNotes(clientId: string) {
+// `clientServiceId` narrows to one service's thread (the service page);
+// omitted = every note on the client.
+export async function listClientNotes(clientId: string, opts: { clientServiceId?: string } = {}) {
   await requireRole(["ADMIN", "MANAGER", "STAFF"]);
 
   return prisma.note.findMany({
-    where: { clientId },
+    where: { clientId, ...(opts.clientServiceId && { clientServiceId: opts.clientServiceId }) },
     include: { author: { select: { id: true, name: true } } },
     orderBy: { createdAt: "asc" },
   });
@@ -150,6 +153,7 @@ export async function listClientNotes(clientId: string) {
 
 const addClientNoteSchema = z.object({
   clientId: z.string().min(1),
+  clientServiceId: z.string().optional(),
   body: z.string().min(1, "Comment can't be empty"),
   mentionedUserIds: z.array(z.string()).default([]),
 });
@@ -163,9 +167,11 @@ export async function addClientNote(input: z.infer<typeof addClientNoteSchema>) 
     select: { name: true },
   });
 
+  const clientServiceId = await resolveClientServiceId(parsed.clientServiceId, parsed.clientId);
   const note = await prisma.note.create({
     data: {
       clientId: parsed.clientId,
+      clientServiceId,
       body: parsed.body,
       authorId: session.user.id,
     },
@@ -186,5 +192,6 @@ export async function addClientNote(input: z.infer<typeof addClientNoteSchema>) 
   }
 
   revalidatePath(`/clients/${parsed.clientId}`);
+  if (clientServiceId) revalidatePath(`/clients/${parsed.clientId}/services/${clientServiceId}`);
   return note;
 }

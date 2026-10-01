@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { InvoiceLineItemsEditor, emptyLineItem } from "./invoice-line-items-editor";
+import { ServiceSelect, NO_SERVICE, type ServiceOption } from "@/components/clients/service-select";
 
 // One combobox covers "just a client, no case" and "this specific case" —
 // prefixing the key is simpler than a parallel id/type pair to carry
@@ -46,12 +47,19 @@ export function RecordPaymentDialog({
   clients,
   applications,
   profiles,
+  services = [],
+  defaultClientId,
+  defaultServiceId,
   open: controlledOpen,
   onOpenChange: setControlledOpen,
 }: {
   clients: ClientOption[];
   applications: ApplicationOption[];
   profiles: ProfileOption[];
+  services?: ServiceOption[];
+  /** Pre-picks the client/service — the service page's "Add invoice". */
+  defaultClientId?: string;
+  defaultServiceId?: string;
   /** Omit both for a self-contained dialog with its own trigger button
    * (the default). Pass both to drive it from elsewhere instead — see
    * NewInvoiceMenu. */
@@ -64,7 +72,12 @@ export function RecordPaymentDialog({
   const open = isControlled ? controlledOpen : uncontrolledOpen;
   const setOpen = isControlled ? setControlledOpen! : setUncontrolledOpen;
   const [isPending, startTransition] = useTransition();
-  const [selection, setSelection] = useState(clients[0] ? `${CLIENT_PREFIX}${clients[0].id}` : "");
+  const initialSelection = () => {
+    const id = defaultClientId ?? clients[0]?.id;
+    return id ? `${CLIENT_PREFIX}${id}` : "";
+  };
+  const [selection, setSelection] = useState(initialSelection);
+  const [serviceId, setServiceId] = useState(defaultServiceId ?? NO_SERVICE);
   // profiles[0] is always the default — see listInvoiceProfiles' ordering
   // (isDefault desc) in src/lib/invoice-profiles.ts.
   const [profileId, setProfileId] = useState(profiles[0]?.id ?? "");
@@ -92,7 +105,8 @@ export function RecordPaymentDialog({
   const subtotal = lineItems.reduce((sum, li) => sum + li.quantity * li.unitPrice, 0);
 
   function reset() {
-    setSelection(clients[0] ? `${CLIENT_PREFIX}${clients[0].id}` : "");
+    setSelection(initialSelection());
+    setServiceId(defaultServiceId ?? NO_SERVICE);
     setProfileId(profiles[0]?.id ?? "");
     setInvoiceNumber("");
     setIssueDate(todayInputValue());
@@ -118,6 +132,7 @@ export function RecordPaymentDialog({
         await createManualInvoice({
           clientId,
           applicationId,
+          clientServiceId: serviceId === NO_SERVICE ? undefined : serviceId,
           invoiceProfileId: profileId || undefined,
           invoiceNumber: invoiceNumber.trim() || undefined,
           issueDate: issueDate || undefined,
@@ -164,10 +179,15 @@ export function RecordPaymentDialog({
             <SearchableSelect
               items={selectionItems}
               value={selection || null}
-              onValueChange={(v) => setSelection(v ?? selection)}
+              onValueChange={(v) => {
+                setSelection(v ?? selection);
+                setServiceId(NO_SERVICE);
+              }}
               searchPlaceholder="Search clients or cases..."
             />
           </div>
+
+          <ServiceSelect services={services} clientId={clientId} value={serviceId} onValueChange={setServiceId} />
 
           {profiles.length > 1 && (
             <div className="space-y-1">

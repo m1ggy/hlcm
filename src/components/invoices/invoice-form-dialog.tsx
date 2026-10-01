@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { InvoiceLineItemsEditor, emptyLineItem, type LineItem } from "./invoice-line-items-editor";
+import { ServiceSelect, NO_SERVICE, type ServiceOption } from "@/components/clients/service-select";
 
 const NONE = "__none__";
 
@@ -41,6 +42,9 @@ function toDateInputValue(date: Date | null) {
 export function InvoiceFormDialog({
   clients,
   applications,
+  services = [],
+  defaultClientId,
+  defaultServiceId,
   invoice,
   trigger,
   open: controlledOpen,
@@ -48,6 +52,12 @@ export function InvoiceFormDialog({
 }: {
   clients: ClientOption[];
   applications: ApplicationOption[];
+  /** The service picker only shows on create — an existing invoice's
+   * service is changed from its own page (InvoiceServicePicker). */
+  services?: ServiceOption[];
+  /** Pre-picks the client/service — the service page's "Add invoice". */
+  defaultClientId?: string;
+  defaultServiceId?: string;
   invoice?: ExistingInvoice;
   trigger?: React.ReactElement;
   /** Omit both for a self-contained dialog with its own trigger button
@@ -64,7 +74,8 @@ export function InvoiceFormDialog({
   const open = isControlled ? controlledOpen : uncontrolledOpen;
   const setOpen = isControlled ? setControlledOpen! : setUncontrolledOpen;
   const [isPending, startTransition] = useTransition();
-  const [clientId, setClientId] = useState(invoice?.clientId ?? clients[0]?.id ?? "");
+  const [clientId, setClientId] = useState(invoice?.clientId ?? defaultClientId ?? clients[0]?.id ?? "");
+  const [serviceId, setServiceId] = useState(defaultServiceId ?? NO_SERVICE);
   const [applicationId, setApplicationId] = useState(invoice?.applicationId ?? NONE);
   const [dueDate, setDueDate] = useState(toDateInputValue(invoice?.dueDate ?? null));
   const [notes, setNotes] = useState(invoice?.notes ?? "");
@@ -90,6 +101,7 @@ export function InvoiceFormDialog({
     const input = {
       clientId,
       applicationId: applicationId === NONE ? undefined : applicationId,
+      clientServiceId: isEdit ? undefined : serviceId === NO_SERVICE ? "" : serviceId,
       dueDate: dueDate || undefined,
       notes: notes || undefined,
       internalTag: internalTag || undefined,
@@ -130,6 +142,7 @@ export function InvoiceFormDialog({
                 onValueChange={(v) => {
                   setClientId(v ?? clientId);
                   setApplicationId(NONE);
+                  setServiceId(NO_SERVICE);
                 }}
                 searchPlaceholder="Search clients..."
               />
@@ -144,6 +157,10 @@ export function InvoiceFormDialog({
               />
             </div>
           </div>
+
+          {!isEdit && (
+            <ServiceSelect services={services} clientId={clientId} value={serviceId} onValueChange={setServiceId} />
+          )}
 
           <InvoiceLineItemsEditor lineItems={lineItems} onChange={setLineItems} />
 
