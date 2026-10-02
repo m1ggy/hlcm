@@ -51,8 +51,11 @@ export function renderEmailLayout(opts: {
   ctaUrl?: string;
   /** Hidden preview text shown next to the subject in most inboxes. */
   preheader?: string;
+  /** Replaces the default "you have notifications on" footer — for emails
+   * that aren't notifications (e.g. password reset). Already-escaped HTML. */
+  footerHtml?: string;
 }): string {
-  const { heading, bodyHtml, ctaLabel, ctaUrl, preheader } = opts;
+  const { heading, bodyHtml, ctaLabel, ctaUrl, preheader, footerHtml } = opts;
   const button =
     ctaLabel && ctaUrl
       ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:24px 0 4px">
@@ -85,8 +88,11 @@ export function renderEmailLayout(opts: {
             <tr>
               <td style="padding:16px 28px;border-top:1px solid #e5e7eb">
                 <p style="margin:0;font-size:12px;color:#9ca3af">
-                  You're getting this because you have email notifications on for ${BRAND}'s case management system.
-                  <a href="${getAppUrl()}/account" style="color:#9ca3af">Manage notification settings</a>.
+                  ${
+                    footerHtml ??
+                    `You're getting this because you have email notifications on for ${BRAND}'s case management system.
+                  <a href="${getAppUrl()}/account" style="color:#9ca3af">Manage notification settings</a>.`
+                  }
                 </p>
               </td>
             </tr>

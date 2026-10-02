@@ -127,6 +127,7 @@ const ACTION_VERBS: Record<string, string> = {
   save: "Saved",
   pay: "Paid via Wise",
   change_password: "Changed password",
+  reset_password: "Reset password via email link",
   enable_mfa: "Enabled MFA",
   disable_mfa: "Disabled MFA",
   flag_for_review: "Flagged for review",
