@@ -7,6 +7,16 @@ Status (2026-09-28): **all phases through 6 implemented** (billing deferred); se
 2. **Decisions pending:** tenant billing pricing (5g); product name + domain; legal (BAA/ToS).
 3. **Onboarding audit (2026-09-28), all fixed on `multitenancy/phase-6`, not pushed (user: don't push yet):** suspended-workspace sessions get the suspended notice instead of crashing; platform admins have an Account page and need MFA for the console; tenant email is sent as the org's name with the org's reply-to (Admin > Organization); Admin > Integrations explains each provider and registers the Calendly/DocuSign webhooks itself (old scripts removed); platform console "Invite owner" (typo'd or locked-out owner); failed sign-ins throttled per IP (30) and per account (8) per 15 min; dashboard "Set up your workspace" checklist for new owners (existing orgs pre-dismissed by migration); time clock default = `Organization.timezone`, fallback America/Chicago; handbook served with `PRODUCT_NAME`, Illinois mention removed. Suite: 112 tests pass normal and `TEST_RLS=1` (sim Postgres at localhost:55432 — the local dev Postgres user can't create roles).
 
+## Next up (planned 2026-10-06)
+
+From the re-scan after merging main (baf79c1):
+1. Pipeline is picked from hardcoded license-type names (`src/lib/pipeline.ts`: CILA/IDPH/IDOA) — renamed or new license types send cases to MCO. Make it a per-workspace setting on each license type (Admin > License Types), backfilled from the current mapping.
+2. Pipeline categories are a fixed enum (Home Care, CILA Group Home, MCO) — decide whether workspaces can define their own.
+3. One platform-wide `GOOGLE_MAPS_API_KEY` pays for every workspace's geocoding, uncapped.
+4. Illinois examples in UI placeholders ("e.g. IDPH Portal", "CILA, IDPH, IDOA, etc.").
+5. Report exports don't show the workspace name; "Generated" uses the server's timezone.
+6. Money is formatted as USD everywhere.
+
 ## Backlog (2026-10-01)
 
 Found in the second gap review; parked by the user:
