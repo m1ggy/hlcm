@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { auth } from "@/auth";
-import { isManagement } from "@/lib/rbac";
+import { canAccessInvoices, isManagement } from "@/lib/rbac";
 import { listClients, listCaregiverClients, archiveClient, restoreClient } from "@/lib/actions/clients";
 import { listProjects } from "@/lib/actions/projects";
+import { listMoneyByClient } from "@/lib/actions/invoices";
 import { PageInfoButton } from "@/components/shared/page-info-button";
 import { ClientsTable } from "@/components/clients/clients-table";
 import { CaregiverClientsTable } from "@/components/clients/caregiver-clients-table";
@@ -36,9 +37,12 @@ export default async function ClientsPage({
     );
   }
 
-  const [clients, projects] = await Promise.all([
+  // Gated on the fetch itself, not just the columns — listMoneyByClient is
+  // invoice-role only.
+  const [clients, projects, moneyByClient] = await Promise.all([
     listClients({ filter: showArchived ? "archived" : "active" }),
     listProjects(),
+    canAccessInvoices(session?.user?.role) ? listMoneyByClient() : Promise.resolve(null),
   ]);
 
   return (
@@ -74,6 +78,7 @@ export default async function ClientsPage({
         showArchived={showArchived}
         archiveAction={archiveClient}
         restoreAction={restoreClient}
+        moneyByClient={moneyByClient}
       />
     </div>
   );

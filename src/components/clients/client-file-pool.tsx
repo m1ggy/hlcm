@@ -20,7 +20,18 @@ import type { FileRow } from "@/components/files/types";
 // signature is a ClientAgreement-scoped flow (see
 // SendAgreementEnvelopeDialog on client-agreements-card.tsx), not a
 // generic action on every client file, so no signAction slot here.
-export function ClientFilePool({ clientId, files, canEdit }: { clientId: string; files: FileRow[]; canEdit: boolean }) {
+export function ClientFilePool({
+  clientId,
+  clientServiceId,
+  files,
+  canEdit,
+}: {
+  clientId: string;
+  /** Set on a service page — uploads are filed under that service. */
+  clientServiceId?: string;
+  files: FileRow[];
+  canEdit: boolean;
+}) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const [isPending, startTransition] = useTransition();
@@ -32,6 +43,7 @@ export function ClientFilePool({ clientId, files, canEdit }: { clientId: string;
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
+    if (clientServiceId) formData.set("clientServiceId", clientServiceId);
     const file = formData.get("file");
     if (!(file instanceof File) || file.size === 0) {
       toast.error("Choose a file to upload");

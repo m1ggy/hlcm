@@ -5,6 +5,7 @@ import { listClients } from "@/lib/actions/clients";
 import { listApplications } from "@/lib/actions/applications";
 import { listCareRecipients, listCaregivers } from "@/lib/actions/care-recipients";
 import { listInvoiceProfiles } from "@/lib/invoice-profiles";
+import { listServiceOptions } from "@/lib/actions/client-services";
 import { outstandingBalance } from "@/lib/invoice-format";
 import { InvoicesTable } from "@/components/invoices/invoices-table";
 import { NewInvoiceMenu } from "@/components/invoices/new-invoice-menu";
@@ -23,12 +24,13 @@ export default async function InvoicesPage() {
     throw error;
   }
 
-  const [clients, applications, profiles, recipients, caregivers] = await Promise.all([
+  const [clients, applications, profiles, recipients, caregivers, services] = await Promise.all([
     listClients({ filter: "all" }),
     listApplications(),
     listInvoiceProfiles(),
     listCareRecipients(),
     listCaregivers(),
+    listServiceOptions(),
   ]);
 
   return (
@@ -68,6 +70,7 @@ export default async function InvoicesPage() {
           <NewInvoiceMenu
             clients={clients.map((c) => ({ id: c.id, name: c.name }))}
             applications={applications.map((a) => ({ id: a.id, name: a.name, clientId: a.client.id }))}
+            services={services}
             profiles={profiles.map((p) => ({ id: p.id, name: p.name }))}
             recipients={recipients
               // A recipient not tied to any licensing Client can't be

@@ -17,6 +17,12 @@ export function formatCalendarDate(date: Date): string {
   return calendarDate(date).toLocaleDateString();
 }
 
+/** "Jan 01, 2024" — the compact form the client/service screens use
+ * (same UTC normalization as formatCalendarDate). */
+export function formatShortCalendarDate(date: Date): string {
+  return calendarDate(date).toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
+}
+
 /** Same UTC-normalization as formatCalendarDate, for the day-of-week a
  * live-in/day-rate line prints instead of a caregiver name. */
 export function formatCalendarWeekday(date: Date): string {

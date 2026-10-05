@@ -15,6 +15,10 @@ import {
 } from "@/components/ui/table";
 import { UNMAPPED_SERVICE_COLOR } from "@/lib/service-type";
 import { CLIENT_STATUS_LABELS, CLIENT_STATUSES, CLIENT_STATUS_BADGE_VARIANT, type ClientStatus } from "@/lib/client-status";
+import { formatMoney } from "@/lib/time-entries";
+import type { ServiceMoney } from "@/lib/service-financials";
+import { Search } from "lucide-react";
+import { Input } from "@/components/ui/input";
 
 type ServiceTypeRef = { hex: string; textColor: string } | null;
 
@@ -27,6 +31,7 @@ type ClientRow = {
   address: string | null;
   status: ClientStatus;
   projects: ClientProject[];
+  _count: { services: number };
 };
 
 const FILTER_KEY = "hclm:clients-project-filter";
@@ -38,9 +43,12 @@ export function ClientsTable({
   showArchived,
   archiveAction,
   restoreAction,
+  moneyByClient,
 }: {
   clients: ClientRow[];
   canArchive: boolean;
+  // Null for anyone without invoice access — the money columns are left out.
+  moneyByClient: Record<string, ServiceMoney> | null;
   showArchived: boolean;
   archiveAction: (id: string) => Promise<void>;
   restoreAction: (id: string) => Promise<void>;
@@ -100,7 +108,16 @@ export function ClientsTable({
     window.localStorage.setItem(STATUS_FILTER_KEY, JSON.stringify([]));
   }
 
+  const [query, setQuery] = useState("");
+  const q = query.trim().toLowerCase();
   const filtered = clients
+    .filter(
+      (client) =>
+        !q ||
+        client.name.toLowerCase().includes(q) ||
+        (client.contactInfo ?? "").toLowerCase().includes(q) ||
+        (client.address ?? "").toLowerCase().includes(q)
+    )
     .filter((client) => selectedProjectIds.size === 0 || client.projects.some((p) => selectedProjectIds.has(p.id)))
     .filter((client) => selectedStatuses.size === 0 || selectedStatuses.has(client.status));
 
@@ -120,6 +137,16 @@ export function ClientsTable({
 
   return (
     <div className="space-y-4">
+      <div className="relative max-w-md">
+        <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search clients..."
+          className="pl-8"
+          aria-label="Search clients"
+        />
+      </div>
       <div className="flex flex-wrap items-center gap-1.5">
         <button
           type="button"
@@ -193,19 +220,25 @@ export function ClientsTable({
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Name</TableHead>
+            <TableHead>Client Name</TableHead>
+            <TableHead className="text-right">Total Services</TableHead>
+            {moneyByClient && (
+              <>
+                <TableHead className="text-right">Total Invoiced</TableHead>
+                <TableHead className="text-right">Total Received</TableHead>
+                <TableHead className="text-right">Total Outstanding</TableHead>
+              </>
+            )}
             <TableHead>Status</TableHead>
             <TableHead>Projects</TableHead>
-            <TableHead>Contact Info</TableHead>
-            <TableHead>Address</TableHead>
-            {canArchive && <TableHead className="w-10" />}
+            {canArchive && <TableHead className="w-10 text-right">Actions</TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
           {filtered.map((client) => (
             <TableRow key={client.id}>
               <TableCell className="font-medium">
-                <Link href={`/clients/${client.id}`} className="hover:underline">
+                <Link href={`/clients/${client.id}`} className="text-primary hover:underline">
                   {client.name}
                 </Link>
                 {showArchived && (
@@ -214,6 +247,18 @@ export function ClientsTable({
                   </Badge>
                 )}
               </TableCell>
+              <TableCell className="text-right tabular-nums">{client._count.services}</TableCell>
+              {moneyByClient && (
+                <>
+                  <TableCell className="text-right tabular-nums">{formatMoney(moneyByClient[client.id]?.invoiced ?? 0)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{formatMoney(moneyByClient[client.id]?.received ?? 0)}</TableCell>
+                  <TableCell
+                    className={`text-right tabular-nums ${(moneyByClient[client.id]?.outstanding ?? 0) > 0 ? "text-destructive" : ""}`}
+                  >
+                    {formatMoney(moneyByClient[client.id]?.outstanding ?? 0)}
+                  </TableCell>
+                </>
+              )}
               <TableCell>
                 <Badge variant={CLIENT_STATUS_BADGE_VARIANT[client.status]}>{CLIENT_STATUS_LABELS[client.status]}</Badge>
               </TableCell>
@@ -225,12 +270,6 @@ export function ClientsTable({
                     </Link>
                   ))}
                 </div>
-              </TableCell>
-              <TableCell className="max-w-[14rem] truncate" title={client.contactInfo ?? undefined}>
-                {client.contactInfo ?? "—"}
-              </TableCell>
-              <TableCell className="max-w-[14rem] truncate" title={client.address ?? undefined}>
-                {client.address ?? "—"}
               </TableCell>
               {canArchive && (
                 <TableCell className="text-right">
@@ -247,7 +286,7 @@ export function ClientsTable({
           ))}
           {filtered.length === 0 && (
             <TableRow>
-              <TableCell colSpan={canArchive ? 6 : 5} className="text-center text-muted-foreground">
+              <TableCell colSpan={(canArchive ? 5 : 4) + (moneyByClient ? 3 : 0)} className="text-center text-muted-foreground">
                 {clients.length === 0
                   ? showArchived
                     ? "No archived clients."

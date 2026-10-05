@@ -16,6 +16,8 @@ import { InvoiceTemplateSelect } from "@/components/invoices/invoice-template-se
 import { PdfPreviewDialog } from "@/components/invoices/pdf-preview-dialog";
 import { DEFAULT_PDF_TEMPLATE } from "@/lib/pdf-templates/options";
 import { AuditLogPanel } from "@/components/applications/audit-log-panel";
+import { InvoiceServicePicker } from "@/components/invoices/invoice-service-picker";
+import { listClientServices } from "@/lib/actions/client-services";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -41,12 +43,15 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
     throw error;
   }
 
-  const [auditLog, clients, applications, attachments] = await Promise.all([
+  const [auditLog, clients, applications, attachments, clientServices] = await Promise.all([
     getInvoiceAuditLog(id),
     listClients({ filter: "all" }),
     listApplications(),
     listInvoiceAttachments(id),
+    listClientServices(invoice.client.id, { includeArchived: true }),
   ]);
+  // Archived services stay pickable only if this invoice is already on one.
+  const serviceChoices = clientServices.filter((s) => s.active || s.id === invoice.clientServiceId);
 
   const number = displayInvoiceNumber(invoice);
   const subtotal = invoice.lineItems.reduce((sum, li) => sum + li.quantity * li.unitPrice, 0);
@@ -297,7 +302,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               <CardTitle>History</CardTitle>
             </CardHeader>
             <CardContent>
-              <AuditLogPanel auditLog={auditLog} />
+              <AuditLogPanel auditLog={auditLog} services={Object.fromEntries(clientServices.map((s) => [s.id, s.name]))} />
             </CardContent>
           </Card>
         </div>
@@ -332,6 +337,18 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                   {invoice.client.businessName ?? invoice.client.name}
                 </Link>
               </div>
+              {serviceChoices.length > 0 && (
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground" title="Which of the client's services this counts toward">
+                    Service
+                  </span>
+                  <InvoiceServicePicker
+                    invoiceId={invoice.id}
+                    services={serviceChoices.map((s) => ({ id: s.id, name: s.name }))}
+                    value={invoice.clientServiceId}
+                  />
+                </div>
+              )}
               {invoice.internalTag && (
                 <div className="flex justify-between gap-3">
                   <span className="shrink-0 text-muted-foreground" title="Staff only — never shown to the client">

@@ -13,17 +13,20 @@ type Note = {
 
 export function ClientNotesPanel({
   clientId,
+  clientServiceId,
   notes,
   mentionableUsers,
 }: {
   clientId: string;
+  /** Set on a service page — new notes go on that service's thread. */
+  clientServiceId?: string;
   notes: Note[];
   mentionableUsers: { id: string; name: string }[];
 }) {
   const router = useRouter();
 
   async function handleSubmit(body: string, mentionedUserIds: string[]) {
-    await addClientNote({ clientId, body, mentionedUserIds });
+    await addClientNote({ clientId, clientServiceId, body, mentionedUserIds });
     router.refresh();
   }
 

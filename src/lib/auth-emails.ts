@@ -24,6 +24,7 @@ export async function sendInviteEmail(user: Recipient, invitedBy?: string) {
       preheader: `Set your password for ${brand}`,
       appUrl,
       brand,
+      footerHtml: `You're getting this because you were invited to ${escapeHtml(brand)}. If you weren't expecting it, you can ignore this email.`,
     }),
   });
 }
@@ -45,6 +46,7 @@ export async function sendPasswordResetEmail(user: Recipient) {
       preheader: "Reset your password",
       appUrl,
       brand,
+      footerHtml: "You're getting this because someone asked to reset your password. If it wasn't you, you can ignore this email.",
     }),
   });
 }
