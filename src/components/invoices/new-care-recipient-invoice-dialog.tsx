@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { CareRecipientInvoiceForm } from "@/components/invoices/care-recipient-invoice-form";
+import { formatMoney } from "@/lib/money";
 
 type RecipientOption = {
   id: string;
@@ -71,7 +72,7 @@ export function NewCareRecipientInvoiceDialog({
               items={Object.fromEntries(
                 sortedRecipients.map((r) => [
                   r.id,
-                  `${r.name} — ${r.clientName}${r.outstandingBalance > 0 ? ` · $${r.outstandingBalance.toFixed(2)} due` : ""}`,
+                  `${r.name} — ${r.clientName}${r.outstandingBalance > 0 ? ` · ${formatMoney(r.outstandingBalance)} due` : ""}`,
                 ])
               )}
               value={recipientId}

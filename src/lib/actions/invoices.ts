@@ -43,6 +43,7 @@ import type { $Enums, Prisma } from "@/generated/prisma/client";
 import { summarizeByService, type ServiceMoney } from "@/lib/service-financials";
 import { resolveClientServiceId } from "@/lib/client-services";
 import { toActionResult } from "@/lib/action-result";
+import { formatMoney } from "@/lib/money";
 
 export async function listInvoices(filters?: {
   status?: $Enums.InvoiceStatus;
@@ -306,7 +307,7 @@ export async function voidInvoiceWithPayments(id: string) {
     entityId: id,
     action: "void_with_payments",
     actorId: session.user.id,
-    oldValue: `${before.status}, $${(before.amountPaid ?? 0).toFixed(2)} recorded${before.invoiceNumber ? `, #${before.invoiceNumber}` : ""}`,
+    oldValue: `${before.status}, ${formatMoney((before.amountPaid ?? 0))} recorded${before.invoiceNumber ? `, #${before.invoiceNumber}` : ""}`,
   });
 
   revalidatePath("/invoices");
@@ -475,7 +476,7 @@ export async function updateManualInvoiceDraft(id: string, input: z.input<typeof
   const total = subtotalOf(parsed.lineItems);
   if (total < (before.amountPaid ?? 0)) {
     throw new Error(
-      `The new total ($${total.toFixed(2)}) can't be less than the $${(before.amountPaid ?? 0).toFixed(2)} already recorded as paid`
+      `The new total (${formatMoney(total)}) can't be less than the ${formatMoney((before.amountPaid ?? 0))} already recorded as paid`
     );
   }
 
@@ -609,7 +610,7 @@ export async function addManualPayment(id: string, input: z.infer<typeof additio
     entityId: id,
     action: "record_manual_payment",
     actorId: session.user.id,
-    newValue: `${parsed.paymentMethod} (+$${parsed.amount.toFixed(2)})${lineItem ? ` for "${lineItem.description}"` : ""}`,
+    newValue: `${parsed.paymentMethod} (+${formatMoney(parsed.amount)})${lineItem ? ` for "${lineItem.description}"` : ""}`,
   });
 
   // The payment itself is already committed above — a failure past this
@@ -701,8 +702,8 @@ export async function updatePayment(paymentId: string, input: z.infer<typeof add
     entityId: before.invoiceId,
     action: "update_manual_payment",
     actorId: session.user.id,
-    oldValue: `${before.paymentMethod} $${before.amount.toFixed(2)} on ${before.paidAt.toISOString().slice(0, 10)}${before.lineItem ? ` for "${before.lineItem.description}"` : ""}`,
-    newValue: `${parsed.paymentMethod} $${parsed.amount.toFixed(2)} on ${paidAt.toISOString().slice(0, 10)}${lineItem ? ` for "${lineItem.description}"` : ""}`,
+    oldValue: `${before.paymentMethod} ${formatMoney(before.amount)} on ${before.paidAt.toISOString().slice(0, 10)}${before.lineItem ? ` for "${before.lineItem.description}"` : ""}`,
+    newValue: `${parsed.paymentMethod} ${formatMoney(parsed.amount)} on ${paidAt.toISOString().slice(0, 10)}${lineItem ? ` for "${lineItem.description}"` : ""}`,
   });
 
   // A receipt-regeneration failure must not read as "the edit failed" —
@@ -768,7 +769,7 @@ export async function deletePayment(paymentId: string) {
     entityId: before.invoiceId,
     action: "delete_manual_payment",
     actorId: session.user.id,
-    oldValue: `${before.paymentMethod} $${before.amount.toFixed(2)} on ${before.paidAt.toISOString().slice(0, 10)}`,
+    oldValue: `${before.paymentMethod} ${formatMoney(before.amount)} on ${before.paidAt.toISOString().slice(0, 10)}`,
   });
 
   revalidatePath("/invoices");
@@ -872,7 +873,7 @@ export async function sendReceiptEmail(receiptId: string, recipientEmailOverride
     subject: `Receipt ${receiptNumber} — payment for Invoice ${number}`,
     html: renderEmailLayout({
       heading: "Payment received",
-      bodyHtml: `<p style="margin:0 0 8px">Thank you for your payment of $${payment.amount.toFixed(2)} on invoice ${number}.</p><p style="margin:0">A copy of your receipt is attached for your records.</p>`,
+      bodyHtml: `<p style="margin:0 0 8px">Thank you for your payment of ${formatMoney(payment.amount)} on invoice ${number}.</p><p style="margin:0">A copy of your receipt is attached for your records.</p>`,
       preheader: `Receipt for your payment on invoice ${number}`,
       appUrl,
       brand,
@@ -974,8 +975,8 @@ export async function sendManualInvoicePdf(id: string, formData?: FormData) {
     subject: `Invoice ${number} from ${profile?.name ?? brand}`,
     html: renderEmailLayout({
       heading: "Invoice",
-      bodyHtml: `<p style="margin:0 0 8px">Please find invoice ${number} attached${invoice.dueDate ? ` — due ${formatCalendarDate(invoice.dueDate)}` : ""}.</p><p style="margin:0">Amount due: $${amountDue.toFixed(2)}</p>`,
-      preheader: `Invoice ${number} — $${amountDue.toFixed(2)} due`,
+      bodyHtml: `<p style="margin:0 0 8px">Please find invoice ${number} attached${invoice.dueDate ? ` — due ${formatCalendarDate(invoice.dueDate)}` : ""}.</p><p style="margin:0">Amount due: ${formatMoney(amountDue)}</p>`,
+      preheader: `Invoice ${number} — ${formatMoney(amountDue)} due`,
       appUrl,
       brand,
     }),
@@ -1075,7 +1076,7 @@ export async function sendInvoice(id: string, recipientEmailOverride?: string) {
     await createInvoiceItem({
       customerId,
       stripeInvoiceId: draft.id,
-      description: `${li.description} (${li.quantity} × $${li.unitPrice.toFixed(2)})`,
+      description: `${li.description} (${li.quantity} × ${formatMoney(li.unitPrice)})`,
       amountCents: Math.round(li.quantity * li.unitPrice * 100),
     });
   }

@@ -12,6 +12,7 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { InvoiceLineItemsEditor, emptyLineItem, type LineItem } from "@/components/invoices/invoice-line-items-editor";
 import { UnbilledVisitsSection, type RecipientLineItem } from "@/components/invoices/unbilled-visits-section";
 import { DayRateSection } from "@/components/invoices/day-rate-section";
+import { formatMoney } from "@/lib/money";
 
 type ProfileOption = { id: string; name: string };
 type CaregiverOption = { id: string; name: string };
@@ -246,7 +247,7 @@ export function CareRecipientInvoiceForm({
 
       <div className="flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2 text-sm">
         <span className="text-muted-foreground">Subtotal (tax not calculated)</span>
-        <span className="font-medium">${subtotal.toFixed(2)}</span>
+        <span className="font-medium">{formatMoney(subtotal)}</span>
       </div>
 
       <Button onClick={handleSubmit} className="w-full" loading={isPending}>

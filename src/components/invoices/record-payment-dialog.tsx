@@ -20,6 +20,7 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { InvoiceLineItemsEditor, emptyLineItem, type LineItem } from "./invoice-line-items-editor";
 import { UnbilledTaskTimeSection } from "./unbilled-task-time-section";
 import { ServiceSelect, NO_SERVICE, type ServiceOption } from "@/components/clients/service-select";
+import { formatMoney } from "@/lib/money";
 
 // One combobox covers "just a client, no case" and "this specific case" —
 // prefixing the key is simpler than a parallel id/type pair to carry
@@ -257,7 +258,7 @@ export function RecordPaymentDialog({
 
           <div className="flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2 text-sm">
             <span className="text-muted-foreground">Subtotal (tax not calculated)</span>
-            <span className="font-medium">${subtotal.toFixed(2)}</span>
+            <span className="font-medium">{formatMoney(subtotal)}</span>
           </div>
 
           <Button onClick={handleSubmit} className="w-full" loading={isPending}>

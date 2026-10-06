@@ -15,6 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { formatMoney } from "@/lib/money";
 
 type InvoiceRow = {
   id: string;
@@ -284,9 +285,9 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
               <TableCell className={isInvoiceOverdue(invoice) ? "text-destructive" : undefined}>
                 {invoice.dueDate ? formatCalendarDate(invoice.dueDate) : "—"}
               </TableCell>
-              <TableCell className="text-right tabular-nums">{invoice.total != null ? `$${invoice.total.toFixed(2)}` : "—"}</TableCell>
+              <TableCell className="text-right tabular-nums">{invoice.total != null ? `${formatMoney(invoice.total)}` : "—"}</TableCell>
               <TableCell className={`text-right tabular-nums ${isInvoiceOverdue(invoice) ? "text-destructive" : ""}`}>
-                {outstandingBalance(invoice) > 0 ? `$${outstandingBalance(invoice).toFixed(2)}` : "—"}
+                {outstandingBalance(invoice) > 0 ? `${formatMoney(outstandingBalance(invoice))}` : "—"}
               </TableCell>
             </TableRow>
           ))}
@@ -395,7 +396,7 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
                       ({group.rows.length} {group.rows.length === 1 ? "invoice" : "invoices"})
                     </span>
                   </span>
-                  <span className="tabular-nums text-muted-foreground">${outstanding.toFixed(2)}</span>
+                  <span className="tabular-nums text-muted-foreground">{formatMoney(outstanding)}</span>
                 </summary>
                 <div className="space-y-2 border-t px-4 pb-3 pt-2">
                   {subgroups.length > 1
@@ -410,7 +411,7 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceRow[] }) {
                                   ({sub.rows.length} {sub.rows.length === 1 ? "invoice" : "invoices"})
                                 </span>
                               </span>
-                              <span className="tabular-nums text-muted-foreground">${subOutstanding.toFixed(2)}</span>
+                              <span className="tabular-nums text-muted-foreground">{formatMoney(subOutstanding)}</span>
                             </summary>
                             <div className="border-t px-3 pb-2 pt-1">
                               {renderTable(sub.rows, { showClient: distinctClients > 1 })}

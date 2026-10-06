@@ -12,6 +12,7 @@ import { SendInvoicePdfDialog } from "./send-invoice-pdf-dialog";
 import { SendInvoiceDialog } from "./send-invoice-dialog";
 import { isManualInvoice } from "./invoice-status-badge";
 import { PdfPreviewDialog } from "./pdf-preview-dialog";
+import { formatMoney } from "@/lib/money";
 
 type LineItem = { id: string; description: string; quantity: number; unitPrice: number };
 
@@ -78,11 +79,11 @@ export function InvoiceActions({
   }
 
   function handleVoidWithPayments() {
-    const amount = (invoice.amountPaid ?? 0).toFixed(2);
+    const amount = formatMoney(invoice.amountPaid ?? 0);
     const paymentWord = paymentsCount === 1 ? "payment" : "payments";
     if (
       !confirm(
-        `Void this invoice? It's recorded $${amount} across ${paymentsCount} ${paymentWord} — those payment records ` +
+        `Void this invoice? It's recorded ${amount} across ${paymentsCount} ${paymentWord} — those payment records ` +
           `are kept for history, but this invoice will stop counting them (status Void, balance reset to $0).`
       )
     ) {

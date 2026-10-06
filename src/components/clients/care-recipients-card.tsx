@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
+import { formatMoney } from "@/lib/money";
 
 export type CareRecipientInvoiceRow = {
   id: string;
@@ -643,7 +644,7 @@ export function CareRecipientsCard({
                         )}
                         {canManageInvoices && recipientOutstanding > 0 && (
                           <span className="text-amber-600 dark:text-amber-400">
-                            ${recipientOutstanding.toFixed(2)} due
+                            {formatMoney(recipientOutstanding)} due
                           </span>
                         )}
                       </span>
@@ -700,8 +701,8 @@ export function CareRecipientsCard({
                                   </span>
                                   <span className="tabular-nums text-muted-foreground">
                                     {outstandingBalance(inv) > 0
-                                      ? `$${outstandingBalance(inv).toFixed(2)} due`
-                                      : `$${(inv.total ?? 0).toFixed(2)}`}
+                                      ? `${formatMoney(outstandingBalance(inv))} due`
+                                      : `${formatMoney((inv.total ?? 0))}`}
                                   </span>
                                 </Link>
                               ))}

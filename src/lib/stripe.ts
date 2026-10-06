@@ -17,6 +17,7 @@
 
 import crypto from "crypto";
 import { getIntegration } from "@/lib/integrations";
+import { STRIPE_CURRENCY } from "@/lib/money";
 
 const API_BASE = "https://api.stripe.com/v1";
 
@@ -167,7 +168,7 @@ export async function createInvoiceItem(params: {
       customer: params.customerId,
       invoice: params.stripeInvoiceId,
       amount: params.amountCents,
-      currency: "usd",
+      currency: STRIPE_CURRENCY,
       description: params.description,
       tax_behavior: "exclusive",
     })

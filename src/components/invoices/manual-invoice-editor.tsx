@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { InvoiceLineItemsEditor, emptyLineItem, type LineItem } from "./invoice-line-items-editor";
+import { formatMoney } from "@/lib/money";
 
 function toDateInputValue(date: Date | null) {
   if (!date) return "";
@@ -135,7 +136,7 @@ export function ManualInvoiceEditor({
 
       <div className="flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2 text-sm">
         <span className="text-muted-foreground">Subtotal (tax not calculated)</span>
-        <span className="font-medium">${subtotal.toFixed(2)}</span>
+        <span className="font-medium">{formatMoney(subtotal)}</span>
       </div>
 
       <Button onClick={handleSave} loading={isPending}>

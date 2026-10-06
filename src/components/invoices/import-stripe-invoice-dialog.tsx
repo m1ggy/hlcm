@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { previewStripeInvoice, importStripeInvoice, findStripeInvoicesForClient } from "@/lib/actions/invoices";
+import { formatMoney } from "@/lib/money";
 
 const NONE = "__none__";
 
@@ -238,7 +239,7 @@ export function ImportStripeInvoiceDialog({
                           </span>
                         </span>
                         <span className="shrink-0 text-xs text-muted-foreground">
-                          {inv.alreadyImported ? "Already imported" : `${inv.status} · $${inv.total.toFixed(2)}`}
+                          {inv.alreadyImported ? "Already imported" : `${inv.status} · ${formatMoney(inv.total)}`}
                         </span>
                       </button>
                     ))}
@@ -261,7 +262,7 @@ export function ImportStripeInvoiceDialog({
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Total</p>
-                  <p>${preview.total.toFixed(2)}</p>
+                  <p>{formatMoney(preview.total)}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Line items</p>

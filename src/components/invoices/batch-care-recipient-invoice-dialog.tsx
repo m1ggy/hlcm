@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { formatMoney } from "@/lib/money";
 
 type ClientOption = { id: string; name: string };
 type ProfileOption = { id: string; name: string };
@@ -230,7 +231,7 @@ export function BatchCareRecipientInvoiceDialog({
                           {r.visits.length} visit{r.visits.length === 1 ? "" : "s"} · {hours.toFixed(2)}h
                         </span>
                       </span>
-                      <span className="tabular-nums text-muted-foreground">${amount.toFixed(2)}</span>
+                      <span className="tabular-nums text-muted-foreground">{formatMoney(amount)}</span>
                     </label>
                   );
                 })}
@@ -239,7 +240,7 @@ export function BatchCareRecipientInvoiceDialog({
 
             <div className="flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2 text-sm">
               <span className="text-muted-foreground">{selected.size} selected</span>
-              <span className="font-medium">${selectedTotal.toFixed(2)}</span>
+              <span className="font-medium">{formatMoney(selectedTotal)}</span>
             </div>
 
             <div className="flex gap-2">

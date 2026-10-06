@@ -18,6 +18,7 @@ import {
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { InvoiceLineItemsEditor, emptyLineItem, type LineItem } from "./invoice-line-items-editor";
 import { ServiceSelect, NO_SERVICE, type ServiceOption } from "@/components/clients/service-select";
+import { formatMoney } from "@/lib/money";
 
 const NONE = "__none__";
 
@@ -185,8 +186,8 @@ export function InvoiceFormDialog({
           </div>
 
           <div className="flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2 text-sm">
-            <span className="text-muted-foreground">Subtotal ${subtotal.toFixed(2)} — tax calculated automatically by Stripe Tax when sent</span>
-            <span className="font-medium">${subtotal.toFixed(2)}</span>
+            <span className="text-muted-foreground">Subtotal {formatMoney(subtotal)} — tax calculated automatically by Stripe Tax when sent</span>
+            <span className="font-medium">{formatMoney(subtotal)}</span>
           </div>
 
           <Button onClick={handleSubmit} className="w-full" loading={isPending}>

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { deletePayment } from "@/lib/actions/invoices";
 import { EditPaymentDialog } from "./edit-payment-dialog";
 import type { PaymentLineItemOption } from "./payment-line-item-select";
+import { formatMoney } from "@/lib/money";
 
 // Edit/delete for one row of the invoice detail page's Payments card —
 // split into its own small client component so that page itself stays a
@@ -31,7 +32,7 @@ export function PaymentRowActions({
   const [isDeleting, startDeleting] = useTransition();
 
   function handleDelete() {
-    if (!confirm(`Delete this $${amount.toFixed(2)} payment? The invoice's totals will recalculate without it.`)) return;
+    if (!confirm(`Delete this ${formatMoney(amount)} payment? The invoice's totals will recalculate without it.`)) return;
     startDeleting(async () => {
       try {
         const { receiptAlreadySent } = await deletePayment(paymentId);

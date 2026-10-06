@@ -3,6 +3,7 @@ import { TASK_STATUS_LABELS, TaskStatusValue } from "@/lib/task-status";
 import { PIPELINE_LABELS } from "@/lib/pipeline-labels";
 import { CLIENT_STATUS_LABELS, ClientStatus } from "@/lib/client-status";
 import { SERVICE_STATUS_LABELS, ServiceStatus } from "@/lib/service-status";
+import { formatMoney } from "@/lib/money";
 
 const FIELD_LABELS: Record<string, string> = {
   name: "Name",
@@ -441,11 +442,11 @@ export function formatAuditValue(
   if (field === "ballIsWith") return lookups.ballWith?.[value] ?? value;
   if (field === "feeAmount") {
     const fee = Number(value);
-    return Number.isNaN(fee) ? value : `$${fee.toFixed(2)}`;
+    return Number.isNaN(fee) ? value : `${formatMoney(fee)}`;
   }
   if (field === "hourlyRate") {
     const rate = Number(value);
-    return Number.isNaN(rate) ? value : `$${rate.toFixed(2)}/hr`;
+    return Number.isNaN(rate) ? value : `${formatMoney(rate)}/hr`;
   }
   // A handful of boolean columns (Client.active, User.mfaEnabled, ...) can
   // reach here via the generic field-diff path — "true"/"false" reads as a

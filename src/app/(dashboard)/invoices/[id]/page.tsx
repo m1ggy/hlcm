@@ -30,6 +30,7 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { ForbiddenError, blockCaregiverRoute } from "@/lib/rbac";
+import { formatMoney } from "@/lib/money";
 
 export default async function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   await blockCaregiverRoute();
@@ -161,8 +162,8 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                         <tr key={li.id} className="border-b last:border-0">
                           <td className="py-2 pr-3 [overflow-wrap:anywhere]">{li.description}</td>
                           <td className="py-2 pr-3 whitespace-nowrap tabular-nums">{li.quantity}</td>
-                          <td className="py-2 pl-3 text-right whitespace-nowrap tabular-nums">${li.unitPrice.toFixed(2)}</td>
-                          <td className="py-2 pl-3 text-right whitespace-nowrap tabular-nums">${(li.quantity * li.unitPrice).toFixed(2)}</td>
+                          <td className="py-2 pl-3 text-right whitespace-nowrap tabular-nums">{formatMoney(li.unitPrice)}</td>
+                          <td className="py-2 pl-3 text-right whitespace-nowrap tabular-nums">{formatMoney((li.quantity * li.unitPrice))}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -170,18 +171,18 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                   <div className="mt-4 flex flex-col items-end gap-1 text-sm">
                     <div className="flex w-48 justify-between text-muted-foreground">
                       <span>Subtotal</span>
-                      <span className="tabular-nums">${subtotal.toFixed(2)}</span>
+                      <span className="tabular-nums">{formatMoney(subtotal)}</span>
                     </div>
                     {invoice.taxAmount != null && (
                       <div className="flex w-48 justify-between text-muted-foreground">
                         <span>Tax</span>
-                        <span className="tabular-nums">${invoice.taxAmount.toFixed(2)}</span>
+                        <span className="tabular-nums">{formatMoney(invoice.taxAmount)}</span>
                       </div>
                     )}
                     <div className="flex w-48 justify-between font-medium">
                       <span>Total</span>
                       <span className="tabular-nums">
-                        {invoice.total != null ? `$${invoice.total.toFixed(2)}` : `~$${subtotal.toFixed(2)} (tax not yet calculated)`}
+                        {invoice.total != null ? `${formatMoney(invoice.total)}` : `~${formatMoney(subtotal)} (tax not yet calculated)`}
                       </span>
                     </div>
                   </div>
@@ -220,7 +221,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                         <td className="py-2 pr-3 whitespace-nowrap">{formatCalendarDate(payment.paidAt)}</td>
                         <td className="py-2 pr-3 text-muted-foreground [overflow-wrap:anywhere]">{payment.paymentMethod}</td>
                         <td className="py-2 pr-3 text-muted-foreground [overflow-wrap:anywhere]">{payment.lineItem?.description ?? "Whole invoice"}</td>
-                        <td className="py-2 pr-3 text-right whitespace-nowrap tabular-nums">${payment.amount.toFixed(2)}</td>
+                        <td className="py-2 pr-3 text-right whitespace-nowrap tabular-nums">{formatMoney(payment.amount)}</td>
                         <td className="py-2">
                           {payment.receipt && !payment.receipt.storageKey ? (
                             <span className="text-xs text-destructive" title="The receipt PDF failed to generate — record the payment again">
@@ -396,8 +397,8 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                 <div className="flex justify-between gap-3">
                   <span className="shrink-0 text-muted-foreground">Amount received</span>
                   <span className="min-w-0 text-right [overflow-wrap:anywhere]">
-                    ${(invoice.amountPaid ?? 0).toFixed(2)}
-                    {invoice.status !== "PAID" && ` of $${(invoice.total ?? 0).toFixed(2)}`}
+                    {formatMoney((invoice.amountPaid ?? 0))}
+                    {invoice.status !== "PAID" && ` of ${formatMoney((invoice.total ?? 0))}`}
                   </span>
                 </div>
               )}

@@ -17,6 +17,7 @@ import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { PaymentMethodSelect } from "./payment-method-select";
 import { PaymentLineItemSelect, type PaymentLineItemOption } from "./payment-line-item-select";
+import { formatMoney } from "@/lib/money";
 
 function todayInputValue() {
   const d = new Date();
@@ -77,7 +78,7 @@ export function AddManualPaymentDialog({
           <DialogTitle>Record payment</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          <p className="text-xs text-muted-foreground">${remaining.toFixed(2)} still owed on this invoice.</p>
+          <p className="text-xs text-muted-foreground">{formatMoney(remaining)} still owed on this invoice.</p>
           <div className="space-y-1">
             <Label htmlFor="add-amount">Amount received</Label>
             <Input id="add-amount" type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />

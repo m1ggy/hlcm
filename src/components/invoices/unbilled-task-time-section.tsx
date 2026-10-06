@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { listUnbilledTaskTime } from "@/lib/actions/task-time-entries";
 import { Checkbox } from "@/components/ui/checkbox";
 import { type LineItem } from "@/components/invoices/invoice-line-items-editor";
+import { formatMoney } from "@/lib/money";
 
 type UnbilledEntry = {
   id: string;
@@ -115,7 +116,7 @@ export function UnbilledTaskTimeSection({
           ))}
           {selected.length > 0 && (
             <p className="pt-1 text-xs text-muted-foreground">
-              {selected.length} selected — {selected.reduce((s, e) => s + hoursOf(e), 0).toFixed(2)}h · ${subtotal.toFixed(2)}
+              {selected.length} selected — {selected.reduce((s, e) => s + hoursOf(e), 0).toFixed(2)}h · {formatMoney(subtotal)}
             </p>
           )}
         </div>

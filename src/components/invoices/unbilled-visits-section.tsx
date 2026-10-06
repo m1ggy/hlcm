@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { type LineItem } from "@/components/invoices/invoice-line-items-editor";
+import { formatMoney } from "@/lib/money";
 
 // A Care Recipient invoice's line item, structured beyond the plain
 // description/qty/unit-price shape so generateCareRecipientInvoicePdf can
@@ -202,7 +203,7 @@ export function UnbilledVisitsSection({
           {selectedVisits.length > 0 && (
             <p className="pt-1 text-xs text-muted-foreground">
               {selectedVisits.length} selected — {selectedVisits.reduce((s, v) => s + hoursOf(v), 0).toFixed(2)}h
-              {hourlyRate != null ? ` · $${visitsSubtotal.toFixed(2)} at $${hourlyRate}/hr` : " (set an hourly rate to auto-price)"}
+              {hourlyRate != null ? ` · ${formatMoney(visitsSubtotal)} at ${formatMoney(hourlyRate)}/hr` : " (set an hourly rate to auto-price)"}
             </p>
           )}
         </div>

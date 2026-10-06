@@ -22,9 +22,8 @@ export function formatDuration(totalHours: number) {
   return `${h}h ${m}m`;
 }
 
-export function formatMoney(amount: number) {
-  return amount.toLocaleString("en-US", { style: "currency", currency: "USD" });
-}
+// Kept as a re-export: the time-clock components import it from here.
+export { formatMoney } from "@/lib/money";
 
 function pad(n: number) {
   return String(n).padStart(2, "0");

@@ -10,6 +10,7 @@ import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf
 import { displayInvoiceNumber, formatCalendarDate } from "@/lib/invoice-format";
 import { isManual } from "@/lib/invoice-shared";
 import { QUANTITY_LABELS, type QuantityLabelId, type SenderDetails } from "@/lib/pdf-templates/options";
+import { formatMoney } from "@/lib/money";
 
 // Exported for receipt-pdf.ts to share — a receipt uses the same page
 // geometry and hand-wrapping helpers, just a much shorter layout.
@@ -182,9 +183,7 @@ export type InvoicePdfInput = {
   quantityLabel?: QuantityLabelId | null;
 };
 
-export function money(n: number) {
-  return `$${n.toFixed(2)}`;
-}
+export const money = formatMoney;
 
 /** "Acme Home Care" (joined, a client is occasionally in more than one
  * Project) or null when the client isn't in any — shared by the invoice

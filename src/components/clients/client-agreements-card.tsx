@@ -22,6 +22,7 @@ import { Download } from "lucide-react";
 import { EnvelopeStatusBadge } from "@/components/files/envelope-status-badge";
 import { SendAgreementEnvelopeDialog } from "@/components/clients/send-agreement-envelope-dialog";
 import type { $Enums } from "@/generated/prisma/client";
+import { formatMoney } from "@/lib/money";
 
 type AgreementEnvelope = {
   id: string;
@@ -252,7 +253,7 @@ function AgreementRow({ agreement, clientId }: { agreement: ClientAgreement; cli
       </div>
       <div className="mt-1 flex flex-wrap gap-x-4 text-sm text-muted-foreground">
         {agreement.signedDate && <span>Signed {new Date(agreement.signedDate).toLocaleDateString()}</span>}
-        {agreement.amount != null && <span className="tabular-nums">${agreement.amount.toFixed(2)}</span>}
+        {agreement.amount != null && <span className="tabular-nums">{formatMoney(agreement.amount)}</span>}
         {latestEnvelope && (
           <span>
             Sent to {latestEnvelope.signerName} ({latestEnvelope.signerEmail})

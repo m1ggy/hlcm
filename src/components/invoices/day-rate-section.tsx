@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { type RecipientLineItem } from "@/components/invoices/unbilled-visits-section";
+import { formatMoney } from "@/lib/money";
 
 type CaregiverOption = { id: string; name: string };
 
@@ -150,7 +151,7 @@ export function DayRateSection({
       </div>
       {days.length > 0 && (
         <p className="text-xs text-muted-foreground">
-          {days.length} day{days.length === 1 ? "" : "s"} — ${(days.length * rate).toFixed(2)} at ${rate.toFixed(2)}/day
+          {days.length} day{days.length === 1 ? "" : "s"} — {formatMoney((days.length * rate))} at {formatMoney(rate)}/day
         </p>
       )}
     </div>

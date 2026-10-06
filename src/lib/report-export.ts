@@ -3,6 +3,7 @@ import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf
 import { NextResponse } from "next/server";
 import { currentOrganization } from "@/lib/db";
 import { DEFAULT_TIMEZONE } from "@/lib/time-entries";
+import { formatMoney } from "@/lib/money";
 
 // One report shape — a title plus titled tables — rendered three ways for
 // the client/service/report exports (PDF §8: "Preferred exports: Excel, PDF
@@ -40,9 +41,6 @@ function metaLine(doc: ExportDoc) {
   return parts.length ? parts.join(" · ") : null;
 }
 
-function formatMoney(amount: number) {
-  return amount.toLocaleString("en-US", { style: "currency", currency: "USD" });
-}
 
 function cellText(cell: ExportCell, column: ExportColumn | undefined): string {
   if (cell === null || cell === undefined) return "";
