@@ -50,7 +50,8 @@ export async function savePipelineSettings(input: { pipeline: string; label: str
         ]);
         if (cases || licenseTypes) {
           const uses = [cases && `${cases} open case${cases === 1 ? "" : "s"}`, licenseTypes && `${licenseTypes} license type${licenseTypes === 1 ? "" : "s"}`].filter(Boolean).join(" and ");
-          throw new UserFacingError(`${pipelineLabels(before)[key]} can't be hidden while ${uses} use it`);
+          const verb = cases + licenseTypes === 1 ? "uses" : "use";
+          throw new UserFacingError(`${pipelineLabels(before)[key]} can't be hidden while ${uses} ${verb} it`);
         }
       }
       const custom = label && label !== defaults[key] ? label : undefined;
