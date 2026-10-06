@@ -13,6 +13,7 @@ import {
   MARGIN,
   PageCursor,
   drawFitted,
+  embedPdfFont,
   drawLogoOrName,
   drawWrappedTextPaged,
   money,
@@ -58,8 +59,8 @@ export type ReceiptPdfInput = {
 
 export async function generateReceiptPdf(receipt: ReceiptPdfInput): Promise<Uint8Array> {
   const pdfDoc = await PDFDocument.create();
-  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const font = await embedPdfFont(pdfDoc, StandardFonts.Helvetica);
+  const boldFont = await embedPdfFont(pdfDoc, StandardFonts.HelveticaBold);
 
   const cursor = new PageCursor(pdfDoc);
   const page = cursor.page;

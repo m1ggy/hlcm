@@ -2,7 +2,7 @@
 // (./modern-invoice.ts), for one Payment. Same input as the Classic
 // generateReceiptPdf (src/lib/receipt-pdf.ts).
 import { PDFDocument, StandardFonts } from "pdf-lib";
-import { PAGE_SIZE, drawFitted, fitText, money, wrapText } from "@/lib/invoice-pdf";
+import { PAGE_SIZE, drawFitted, embedPdfFont, fitText, money, wrapText } from "@/lib/invoice-pdf";
 import { displayInvoiceNumber, displayReceiptNumber } from "@/lib/invoice-format";
 import type { ReceiptPdfInput } from "@/lib/receipt-pdf";
 import {
@@ -37,8 +37,8 @@ const COLS = [
 export async function generateModernReceiptPdf(receipt: ReceiptPdfInput): Promise<Uint8Array> {
   const pdfDoc = await PDFDocument.create();
   const fonts: Fonts = {
-    font: await pdfDoc.embedFont(StandardFonts.Helvetica),
-    bold: await pdfDoc.embedFont(StandardFonts.HelveticaBold),
+    font: await embedPdfFont(pdfDoc, StandardFonts.Helvetica),
+    bold: await embedPdfFont(pdfDoc, StandardFonts.HelveticaBold),
   };
   const page = pdfDoc.addPage(PAGE_SIZE);
   const profileName = receipt.profileName ?? "CTK";

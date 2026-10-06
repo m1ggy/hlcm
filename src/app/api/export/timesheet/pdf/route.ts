@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { embedPdfFont } from "@/lib/invoice-pdf";
 import { listTimeEntries, listBreakDeductions } from "@/lib/actions/time-entries";
 import {
   hoursBetween,
@@ -67,8 +68,8 @@ export async function GET(request: NextRequest) {
     const rangeLabel = `${from.toLocaleDateString(undefined, { timeZone })} – ${to.toLocaleDateString(undefined, { timeZone })}`;
 
     const pdfDoc = await PDFDocument.create();
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const font = await embedPdfFont(pdfDoc, StandardFonts.Helvetica);
+    const boldFont = await embedPdfFont(pdfDoc, StandardFonts.HelveticaBold);
 
     let page = pdfDoc.addPage(PAGE_SIZE);
     let y = PAGE_SIZE[1] - MARGIN;

@@ -15,6 +15,31 @@ import { QUANTITY_LABELS, type QuantityLabelId, type SenderDetails } from "@/lib
 export const PAGE_SIZE: [number, number] = [612, 792];
 export const MARGIN = 48;
 
+// The standard 14 fonts only encode WinAnsi, and pdf-lib throws ("WinAnsi
+// cannot encode ...") on anything outside it — a tab pasted into a line
+// item description or note was enough to make the whole PDF fail to
+// render, and with it the "Send invoice PDF" email. Rather than sanitize
+// at every drawText call site, the embedded font itself cleans its input:
+// tabs become spaces, carriage returns are dropped, and anything else it
+// can't encode (emoji, non-Latin scripts) becomes "?". Every PDF layout
+// embeds its fonts through this so measuring and drawing agree.
+export async function embedPdfFont(pdfDoc: PDFDocument, name: StandardFonts): Promise<PDFFont> {
+  const font = await pdfDoc.embedFont(name);
+  const supported = new Set(font.getCharacterSet());
+  const clean = (text: string) => {
+    let out = "";
+    for (const char of text.replace(/\t/g, "    ").replace(/\r/g, "")) {
+      out += char === "\n" || supported.has(char.codePointAt(0)!) ? char : "?";
+    }
+    return out;
+  };
+  const encodeText = font.encodeText.bind(font);
+  const widthOfTextAtSize = font.widthOfTextAtSize.bind(font);
+  font.encodeText = (text) => encodeText(clean(text));
+  font.widthOfTextAtSize = (text, size) => widthOfTextAtSize(clean(text), size);
+  return font;
+}
+
 // pdf-lib's own `maxWidth` option wraps long text for you, but never tells
 // you how many lines that produced — every call site here used to advance
 // `y` by a fixed guess afterward, which was wrong (and silently
@@ -226,8 +251,8 @@ export async function drawLogoOrName(
 
 export async function generateInvoicePdf(invoice: InvoicePdfInput): Promise<Uint8Array> {
   const pdfDoc = await PDFDocument.create();
-  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const font = await embedPdfFont(pdfDoc, StandardFonts.Helvetica);
+  const boldFont = await embedPdfFont(pdfDoc, StandardFonts.HelveticaBold);
 
   const cursor = new PageCursor(pdfDoc);
   const page = cursor.page;
