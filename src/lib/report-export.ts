@@ -1,6 +1,8 @@
 import ExcelJS from "exceljs";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { NextResponse } from "next/server";
+import { currentOrganization } from "@/lib/db";
+import { DEFAULT_TIMEZONE } from "@/lib/time-entries";
 
 // One report shape — a title plus titled tables — rendered three ways for
 // the client/service/report exports (PDF §8: "Preferred exports: Excel, PDF
@@ -10,7 +12,14 @@ import { NextResponse } from "next/server";
 export type ExportColumn = { label: string; kind?: "text" | "money" | "number" | "date"; width?: number };
 export type ExportCell = string | number | Date | null;
 export type ExportSection = { title: string; columns: ExportColumn[]; rows: ExportCell[][]; footer?: ExportCell[] };
-export type ExportDoc = { title: string; subtitle?: string; sections: ExportSection[] };
+export type ExportDoc = {
+  title: string;
+  subtitle?: string;
+  sections: ExportSection[];
+  /** Filled in by exportResponse: the workspace's name, and today in its timezone. */
+  workspace?: string;
+  generatedOn?: string;
+};
 export type ExportFormat = "csv" | "xlsx" | "pdf";
 
 export const EXPORT_FORMATS: ExportFormat[] = ["csv", "xlsx", "pdf"];
@@ -23,6 +32,12 @@ export function parseExportFormat(value: string | null): ExportFormat | null {
 // the UTC fields so the exported day is the one that was typed in.
 function formatDate(date: Date) {
   return `${date.getUTCMonth() + 1}/${date.getUTCDate()}/${date.getUTCFullYear()}`;
+}
+
+/** "Sunrise Home Care · Generated 10/6/2026" — who the report is from, and when. */
+function metaLine(doc: ExportDoc) {
+  const parts = [doc.workspace, doc.generatedOn && `Generated ${doc.generatedOn}`].filter(Boolean);
+  return parts.length ? parts.join(" · ") : null;
 }
 
 function formatMoney(amount: number) {
@@ -44,6 +59,8 @@ function csvEscape(value: string) {
 export function toCsv(doc: ExportDoc): string {
   const lines: string[] = [csvEscape(doc.title)];
   if (doc.subtitle) lines.push(csvEscape(doc.subtitle));
+  const meta = metaLine(doc);
+  if (meta) lines.push(csvEscape(meta));
   for (const section of doc.sections) {
     lines.push("", csvEscape(section.title));
     lines.push(section.columns.map((c) => csvEscape(c.label)).join(","));
@@ -66,6 +83,11 @@ export function toCsv(doc: ExportDoc): string {
 export async function toXlsx(doc: ExportDoc): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
   workbook.created = new Date();
+  workbook.title = doc.title;
+  if (doc.workspace) {
+    workbook.creator = doc.workspace;
+    workbook.company = doc.workspace;
+  }
   const usedNames = new Set<string>();
   for (const section of doc.sections) {
     // Sheet names: max 31 chars, no []:*?/\ , unique.
@@ -129,7 +151,7 @@ export async function toPdf(doc: ExportDoc): Promise<Uint8Array> {
 
   page.drawText(pdfSafe(doc.title), { x: MARGIN, y, size: 16, font: bold });
   y -= 18;
-  const subtitle = [doc.subtitle, `Generated ${formatDate(new Date())}`].filter(Boolean).join(" · ");
+  const subtitle = [doc.subtitle, metaLine(doc) ?? `Generated ${formatDate(new Date())}`].filter(Boolean).join(" · ");
   page.drawText(pdfSafe(subtitle), { x: MARGIN, y, size: 9, font, color: rgb(0.4, 0.4, 0.4) });
   y -= 22;
 
@@ -187,8 +209,13 @@ function slug(text: string) {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "export";
 }
 
-export async function exportResponse(doc: ExportDoc, format: ExportFormat, filenameBase = doc.title) {
+export async function exportResponse(input: ExportDoc, format: ExportFormat, filenameBase = input.title) {
   const name = slug(filenameBase);
+  // Stamped with the workspace and the date there (not the server's), so a
+  // report forwarded on still says whose it is and when it was pulled.
+  const org = await currentOrganization();
+  const generatedOn = new Date().toLocaleDateString("en-US", { timeZone: org.timezone || DEFAULT_TIMEZONE });
+  const doc: ExportDoc = { ...input, workspace: org.name, generatedOn };
   if (format === "csv") {
     return new NextResponse(toCsv(doc), {
       headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="${name}.csv"` },
