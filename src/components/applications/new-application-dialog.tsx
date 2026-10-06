@@ -82,7 +82,7 @@ export function NewApplicationDialog({
           </div>
           <div className="space-y-1">
             <Label htmlFor="name">Application name</Label>
-            <Input id="name" name="name" required placeholder="e.g. CILA Renewal" />
+            <Input id="name" name="name" required placeholder="e.g. Annual renewal" />
           </div>
           <div className="space-y-1">
             <Label htmlFor="description">Description</Label>

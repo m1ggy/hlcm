@@ -55,7 +55,7 @@ function LicenseFields({ defaultValues }: { defaultValues?: ClientLicense }) {
           <Input
             id="client-license-type"
             name="licenseType"
-            placeholder="e.g. IDPH Home Care License"
+            placeholder="e.g. Home Care License"
             defaultValue={defaultValues?.licenseType}
             required
           />

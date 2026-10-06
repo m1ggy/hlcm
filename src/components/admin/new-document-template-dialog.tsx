@@ -135,7 +135,7 @@ export function NewDocumentTemplateDialog({ licenseTypes }: { licenseTypes: Lice
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
-                placeholder="e.g. CILA Handbook"
+                placeholder="e.g. Client handbook"
               />
             </div>
             <div className="space-y-1">

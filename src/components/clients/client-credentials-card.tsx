@@ -35,7 +35,7 @@ function CredentialFields({ defaultValues }: { defaultValues?: ClientCredential 
     <>
       <div className="space-y-1">
         <Label htmlFor="label">Label</Label>
-        <Input id="label" name="label" placeholder="e.g. IDPH Portal" defaultValue={defaultValues?.label} required />
+        <Input id="label" name="label" placeholder="e.g. State licensing portal" defaultValue={defaultValues?.label} required />
       </div>
       <div className="space-y-1">
         <Label htmlFor="url">URL</Label>

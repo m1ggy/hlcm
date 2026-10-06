@@ -352,7 +352,7 @@ export function FormTemplateDialog({
                   <Input
                     value={field.options}
                     onChange={(e) => updateField(index, { options: e.target.value })}
-                    placeholder="Options, comma-separated — e.g. Home Care, CILA, MCO"
+                    placeholder="Options, comma-separated — e.g. Yes, No, Not sure"
                   />
                 )}
 

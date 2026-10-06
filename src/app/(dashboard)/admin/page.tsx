@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 const ADMIN_LINKS = [
   { href: "/admin/organization", label: "Organization", description: "This workspace's name and timezone (owners only)" },
   { href: "/admin/users", label: "Users", description: "Manage staff accounts and roles" },
-  { href: "/admin/license-types", label: "License Types", description: "CILA, IDPH, IDOA, etc." },
+  { href: "/admin/license-types", label: "License Types", description: "The licenses your clients apply for, and their pipelines" },
   { href: "/admin/case-types", label: "Case Types", description: "New, Renewal, Post-License, Change of Ownership" },
   { href: "/admin/lists", label: "Lists", description: "Agencies, MCOs/payers and \"ball is with\" choices" },
   { href: "/admin/integrations", label: "Integrations", description: "Connect Stripe, DocuSign, Calendly, Wise, Twilio and Teams (owners only)" },
