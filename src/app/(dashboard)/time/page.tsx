@@ -4,7 +4,6 @@ import { listAssignableUsers } from "@/lib/actions/applications";
 import { getAccount } from "@/lib/actions/account";
 import { MyTimeLog } from "@/components/time-clock/my-time-log";
 import { TimesheetReport } from "@/components/time-clock/timesheet-report";
-import { RecentPayouts } from "@/components/wise/recent-payouts";
 import { PageInfoButton } from "@/components/shared/page-info-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -30,7 +29,7 @@ export default async function TimePage() {
             out when it ends — every session you log shows up here.
           </p>
           {canSeeAllUsers && (
-            <p>As an admin or manager, you can also review everyone&apos;s hours and process pay from here.</p>
+            <p>As an admin or manager, you can also review everyone&apos;s hours from here.</p>
           )}
           {canPay && (
             <p>As an admin, hit Preview to see individual sessions below the totals — add a missed punch or delete a mistaken one from there.</p>
@@ -58,17 +57,6 @@ export default async function TimePage() {
               accountTimezone={account.timezone}
               isAdmin={canPay}
             />
-          </CardContent>
-        </Card>
-      )}
-
-      {canPay && (
-        <Card data-tour="recent-payouts">
-          <CardHeader>
-            <CardTitle>Recent payouts</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <RecentPayouts />
           </CardContent>
         </Card>
       )}
