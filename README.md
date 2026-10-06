@@ -109,6 +109,11 @@ New tables need a policy: end their migration with `SELECT ensure_tenant_policie
 - **Terms of service:** set `TERMS_VERSION`, `TERMS_URL` and `PRIVACY_URL` in `.env.production` to require each workspace owner to accept them before the workspace can be used (nothing is asked until all three are set). Changing `TERMS_VERSION` asks every owner again. The console's Terms column shows who has accepted which version.
 - **Restoring one workspace** without rolling back everyone else: see [docs/restore-single-workspace.md](docs/restore-single-workspace.md).
 
+## Platform-wide limits
+
+- **US workspaces only, in US dollars.** Every amount (screens, PDFs, emails, exports) is formatted by `src/lib/money.ts`, and Stripe invoices use the same currency. Supporting another currency starts there.
+- **Address lookups use the platform's Google Maps key** (`GOOGLE_MAPS_API_KEY`) for every workspace (saving a care recipient's address). The platform pays for them; there is no per-workspace cap.
+
 ## Connecting Calendly, DocuSign, Stripe, Wise, Twilio and Teams
 
 Each workspace connects its own accounts under **Admin → Integrations** (owners only); every card explains its setup, shows the webhook URL for that workspace, and has **Test connection**.
