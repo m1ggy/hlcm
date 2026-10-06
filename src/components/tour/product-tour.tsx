@@ -228,20 +228,7 @@ function buildStaffSteps(role: string | undefined): TourStep[] {
             element: '[data-tour="all-users-time"]',
             popover: {
               title: "Company-wide time report",
-              description: "Pick a user (or everyone) and a date range to see total hours × rate, download it as a PDF, or send it straight out as a Wise payout. Admins get individual sessions listed below the totals too, with an \"Add time\" button for a missed punch and a delete on each row for a mistaken one.",
-              side: "top",
-            },
-          } satisfies TourStep,
-        ]
-      : []),
-    ...(isAdmin
-      ? [
-          {
-            data: { path: "/time" },
-            element: '[data-tour="recent-payouts"]',
-            popover: {
-              title: "Payout history",
-              description: "Every payout attempt is logged here, including failures — so re-paying someone for a period is always a deliberate click, never an accident.",
+              description: "Pick a user (or everyone) and a date range to see total hours × rate and download it as a PDF. Admins get individual sessions listed below the totals too, with an \"Add time\" button for a missed punch and a delete on each row for a mistaken one.",
               side: "top",
             },
           } satisfies TourStep,
@@ -272,15 +259,6 @@ function buildStaffSteps(role: string | undefined): TourStep[] {
           } satisfies TourStep,
         ]
       : []),
-    {
-      data: { path: "/account" },
-      element: '[data-tour="payout-details"]',
-      popover: {
-        title: "Payout details",
-        description: "Everyone adds their own bank details here for Wise payouts. The fields change based on country — a US routing number, an Indian IFSC code, a Pakistani IBAN — pulled live from Wise, not hardcoded.",
-        side: "top",
-      },
-    },
     ...(isAdmin
       ? [
           {
@@ -338,7 +316,7 @@ function buildCaregiverSteps(): TourStep[] {
       element: '[data-tour="nav-settings"]',
       popover: {
         title: "Account",
-        description: "Password, MFA, notification preferences, and payout details for Wise — add your bank details here so a payroll run has somewhere to send your pay.",
+        description: "Password, MFA, notification preferences, and your timezone.",
         side: "right",
       },
     },
@@ -399,15 +377,6 @@ function buildCaregiverSteps(): TourStep[] {
       // Empty for a Caregiver with no assignments yet.
       skipMissingElement: true,
       waitForElement: 0,
-    },
-    {
-      data: { path: "/account" },
-      element: '[data-tour="payout-details"]',
-      popover: {
-        title: "Payout details",
-        description: "The fields change based on country — a US routing number, an Indian IFSC code, a Pakistani IBAN — pulled live from Wise, not hardcoded.",
-        side: "top",
-      },
     },
   ];
 }

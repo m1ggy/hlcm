@@ -1,14 +1,12 @@
 import { getAccount } from "@/lib/actions/account";
-import { getMyWiseRecipient } from "@/lib/actions/wise";
 import { PasswordChangeForm } from "@/components/account/password-change-form";
 import { MfaSection } from "@/components/account/mfa-section";
 import { EmailNotificationsToggle } from "@/components/account/email-notifications-toggle";
 import { TimezoneSection } from "@/components/account/timezone-section";
-import { PayoutDetailsForm } from "@/components/wise/payout-details-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default async function AccountPage() {
-  const [account, wiseRecipient] = await Promise.all([getAccount(), getMyWiseRecipient()]);
+  const account = await getAccount();
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -54,15 +52,6 @@ export default async function AccountPage() {
         </CardContent>
       </Card>
       </div>
-
-      <Card data-tour="payout-details">
-        <CardHeader>
-          <CardTitle>Payout details</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <PayoutDetailsForm saved={wiseRecipient} />
-        </CardContent>
-      </Card>
     </div>
   );
 }
