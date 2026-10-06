@@ -28,6 +28,7 @@ import { displayInvoiceNumber, formatShortCalendarDate } from "@/lib/invoice-for
 import { InvoiceStatusBadge, isInvoiceOverdue } from "@/components/invoices/invoice-status-badge";
 import { ClientNotesPanel } from "@/components/clients/client-notes-panel";
 import { McoCredentialsCard } from "@/components/clients/mco-credentials-card";
+import { getPipelineConfig } from "@/lib/actions/pipelines";
 import { getPicklists, picklistLabels } from "@/lib/picklists";
 import { ClientCredentialsCard } from "@/components/clients/client-credentials-card";
 import { ClientContactsCard } from "@/components/clients/client-contacts-card";
@@ -175,6 +176,8 @@ export default async function ClientDetailPage({
     payers: picklistLabels(picklists.PAYER),
   };
   const primaryContact = owners[0] ?? contacts[0] ?? null;
+  // Hiding the MCO pipeline (Admin > License Types) also hides MCO credentialing.
+  const pipelineConfig = await getPipelineConfig();
 
   return (
     <div className="space-y-6">
@@ -372,7 +375,9 @@ export default async function ClientDetailPage({
 
           <ClientLicensesCard clientId={id} licenses={licenses} />
 
-          <McoCredentialsCard clientId={id} credentials={mcoCredentialsWithStages} mcoStages={mcoStages} payerOptions={picklists.PAYER} />
+          {pipelineConfig.visible.includes("MCO") && (
+            <McoCredentialsCard clientId={id} credentials={mcoCredentialsWithStages} mcoStages={mcoStages} payerOptions={picklists.PAYER} />
+          )}
 
           <ClientAgreementsCard clientId={id} agreements={agreements} />
         </TabsContent>

@@ -25,7 +25,7 @@ beforeAll(async () => {
   // a checklist item that points at it.
   const tplOwner = await createOrgWithOwner(template);
   const t = tenantDb(template.id);
-  const cila = await t.licenseTypeTemplate.create({ data: { name: "CILA", description: "Group homes", createdById: tplOwner } });
+  const cila = await t.licenseTypeTemplate.create({ data: { name: "CILA", description: "Group homes", pipeline: "CILA_GROUP_HOME", createdById: tplOwner } });
   const retired = await t.licenseTypeTemplate.create({ data: { name: "Old License", active: false, createdById: tplOwner } });
   const renewal = await t.caseType.create({ data: { name: "Renewal", createdById: tplOwner } });
   const change = await t.caseType.create({ data: { name: "Change of Ownership", createdById: tplOwner } });
@@ -61,8 +61,8 @@ afterAll(async () => {
 describe("seedOrganization from a template org", () => {
   const a = () => tenantDb(acme.id);
 
-  it("copies active license types, case types and service types", async () => {
-    expect((await a().licenseTypeTemplate.findMany()).map((l) => [l.name, l.description])).toEqual([["CILA", "Group homes"]]);
+  it("copies active license types (with their pipeline), case types and service types", async () => {
+    expect((await a().licenseTypeTemplate.findMany()).map((l) => [l.name, l.description, l.pipeline])).toEqual([["CILA", "Group homes", "CILA_GROUP_HOME"]]);
     expect((await a().caseType.findMany({ orderBy: { name: "asc" } })).map((c) => c.name)).toEqual(["Change of Ownership", "Renewal"]);
     expect((await a().serviceType.findMany()).map((s) => [s.name, s.hex])).toEqual([["Home Care", "#E65100"]]);
   });

@@ -3,21 +3,11 @@ import { db } from "@/lib/db";
 
 export { PIPELINE_LABELS } from "@/lib/pipeline-labels";
 
-// LicenseTypeTemplate name -> pipeline (docs/pipeline-stage-plan.md). Single
-// source of truth — scripts/backfill-application-stages.ts mirrors this
-// exact mapping for the one-time historical backfill.
-const TEMPLATE_TO_PIPELINE: Record<string, $Enums.Pipeline> = {
-  CILA: "CILA_GROUP_HOME",
-  IDPH: "HOME_CARE",
-  IDOA: "HOME_CARE",
-};
-
-// Returns null when the license type isn't mapped (or wasn't set) — the
-// caller decides what that means (skip pipeline assignment, flag for
-// review, etc.) rather than this guessing.
-export function pipelineForLicenseType(name: string | null | undefined): $Enums.Pipeline | null {
-  if (!name) return null;
-  return TEMPLATE_TO_PIPELINE[name] ?? null;
+// Which pipeline a case runs through is the license type's own setting
+// (LicenseTypeTemplate.pipeline, set per workspace in Admin > License
+// Types). No license type at all (e.g. Change of Ownership) means MCO.
+export function pipelineForLicenseType(licenseType: { pipeline: $Enums.Pipeline } | null | undefined): $Enums.Pipeline {
+  return licenseType?.pipeline ?? "MCO";
 }
 
 // The stage a case starts in when it enters a pipeline — lowest sortOrder,

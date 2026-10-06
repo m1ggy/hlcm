@@ -15,7 +15,13 @@
 import "dotenv/config";
 import { Pipeline } from "../src/generated/prisma/client";
 import { db as prisma, runScriptAsTenant } from "./lib/tenant-script";
-import { pipelineForLicenseType, STATUS_TO_STAGE } from "../src/lib/pipeline";
+import { STATUS_TO_STAGE } from "../src/lib/pipeline";
+
+// The name -> pipeline mapping the app used before license types carried
+// their own pipeline (20261006120000_pipeline_per_license_type). Kept here
+// so this one-time historical backfill still means what it did.
+const TEMPLATE_TO_PIPELINE: Record<string, Pipeline> = { CILA: "CILA_GROUP_HOME", IDPH: "HOME_CARE", IDOA: "HOME_CARE" };
+const pipelineForLicenseType = (name: string | undefined): Pipeline | null => (name ? TEMPLATE_TO_PIPELINE[name] ?? null : null);
 
 
 async function main() {

@@ -47,6 +47,10 @@ model Organization {
   termsVersion              String?
   termsAcceptedAt           DateTime?
   termsAcceptedBy           String?
+  // This workspace's names for the three pipelines and which it hides
+  // (src/lib/pipeline-settings.ts): { HOME_CARE: { label, hidden }, … }.
+  // Null / missing keys = the built-in name, shown.
+  pipelineSettings          Json?
   createdAt                 DateTime  @default(now())
   updatedAt                 DateTime  @updatedAt
 
@@ -1093,6 +1097,9 @@ model LicenseTypeTemplate {
   organization   Organization @relation(fields: [organizationId], references: [id])
   name           String
   description    String?
+  // Which pipeline a case with this license type runs through. Set per
+  // license type by each workspace (Admin > License Types).
+  pipeline       Pipeline     @default(MCO)
   active         Boolean      @default(true)
   createdBy      User         @relation("LicenseTypeTemplateCreatedBy", fields: [createdById], references: [id])
   createdById    String

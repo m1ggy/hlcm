@@ -7,7 +7,6 @@ import { ApplicationsTable } from "@/components/applications/applications-table"
 import { PipelineApplicationsBoard, type BoardStage } from "@/components/applications/pipeline-applications-board";
 import { getFavoriteApplicationIds } from "@/lib/favorite-applications";
 import { APPLICATION_STATUSES, STATUS_LABELS, ApplicationStatus } from "@/lib/status";
-import { PIPELINE_LABELS } from "@/lib/pipeline-labels";
 import { PipelineDiagramDialog, type DiagramStage } from "@/components/shared/pipeline-diagram";
 import { StageLegendStrip } from "@/components/applications/stage-legend-strip";
 
@@ -33,7 +32,6 @@ const TAB_KEY = "hclm:applications-pipeline-tab";
 type Filter = "all" | "mine" | "favorites" | ApplicationStatus;
 type PipelineTab = "HOME_CARE" | "CILA_GROUP_HOME" | "MCO";
 
-const TABS: PipelineTab[] = ["HOME_CARE", "CILA_GROUP_HOME", "MCO"];
 
 export function ApplicationsViewSwitcher({
   applications,
@@ -41,6 +39,8 @@ export function ApplicationsViewSwitcher({
   currentUserId,
   pipelineStages,
   pipelineStagesFull,
+  pipelines,
+  pipelineLabels,
 }: {
   applications: AppRow[];
   assignableUsers: { id: string; name: string }[];
@@ -51,10 +51,14 @@ export function ApplicationsViewSwitcher({
   // deliberately excludes those (see pipeline-applications-board.tsx), but
   // the reference diagram and legend shouldn't hide them.
   pipelineStagesFull: { HOME_CARE: DiagramStage[]; CILA_GROUP_HOME: DiagramStage[]; MCO: DiagramStage[] };
+  // The workspace's visible pipelines (tab order) and its names for them —
+  // see src/lib/pipeline-labels.ts.
+  pipelines: PipelineTab[];
+  pipelineLabels: Record<PipelineTab, string>;
 }) {
   const [view, setView] = useState<"table" | "board">("table");
   const [filter, setFilter] = useState<Filter>("all");
-  const [tab, setTab] = useState<PipelineTab>("HOME_CARE");
+  const [tab, setTab] = useState<PipelineTab>(pipelines[0]);
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
   // Every mount starts on the "HOME_CARE" default for a tick before the
   // saved tab (below) loads — without this gate, the Pipeline Map's
@@ -71,11 +75,13 @@ export function ApplicationsViewSwitcher({
       const savedTab = window.localStorage.getItem(TAB_KEY);
       if (savedView === "table" || savedView === "board") setView(savedView);
       if (savedFilter) setFilter(savedFilter as Filter);
-      if (savedTab === "HOME_CARE" || savedTab === "CILA_GROUP_HOME" || savedTab === "MCO") setTab(savedTab);
+      if (savedTab && (pipelines as string[]).includes(savedTab)) setTab(savedTab as PipelineTab);
       setFavoriteIds(getFavoriteApplicationIds());
       setHydrated(true);
     }, 0);
     return () => clearTimeout(id);
+  // Runs once on mount — `pipelines` only changes with a page refresh.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function changeView(next: "table" | "board") {
@@ -147,9 +153,9 @@ export function ApplicationsViewSwitcher({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-1 rounded-lg bg-muted p-1 text-xs w-fit" data-tour="pipeline-tabs">
-        {TABS.map((t) => (
+        {pipelines.map((t) => (
           <Button key={t} variant={tab === t ? "default" : "ghost"} size="xs" onClick={() => changeTab(t)}>
-            {PIPELINE_LABELS[t]}
+            {pipelineLabels[t]}
             <span className="ml-1 opacity-70">
               {applications.filter((a) => (t === "MCO" ? a.pipeline === "MCO" || a.pipeline === null : a.pipeline === t)).length}
             </span>
@@ -169,7 +175,7 @@ export function ApplicationsViewSwitcher({
         <div className="flex items-center gap-2">
           <PipelineDiagramDialog
             pipeline={tab}
-            pipelineLabel={PIPELINE_LABELS[tab]}
+            pipelineLabel={pipelineLabels[tab]}
             stages={pipelineStagesFull[tab]}
             autoOpenKey={hydrated ? tab : undefined}
           />

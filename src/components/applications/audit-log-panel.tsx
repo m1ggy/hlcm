@@ -44,6 +44,7 @@ export type Lookups = {
   payers?: Record<string, string>;
   services?: Record<string, string>;
   serviceTypes?: Record<string, string>;
+  pipelines?: Record<string, string>;
 };
 
 export function describeAuditEntry(entry: AuditEntry, lookups: Lookups) {

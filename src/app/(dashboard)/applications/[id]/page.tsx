@@ -48,6 +48,7 @@ import {
 } from "@/components/ui/breadcrumb";
 import { ApplicationStatus } from "@/lib/status";
 import { ForbiddenError, requireSession, getApplicationAccessLevel, blockCaregiverRoute, isAdmin, isManagement } from "@/lib/rbac";
+import { getPipelineConfig } from "@/lib/actions/pipelines";
 
 export default async function ApplicationDetailPage({
   params,
@@ -259,6 +260,7 @@ export default async function ApplicationDetailPage({
                         stages={stageLookup}
                         agencies={agencyLookup}
                         ballWith={ballWithLookup}
+                        pipelines={(await getPipelineConfig()).labels}
                       />
                     </div>
                   </TabsContent>

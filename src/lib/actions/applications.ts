@@ -190,14 +190,13 @@ export async function createApplication(formData: FormData) {
   });
 
   // Which pipeline (and starting stage within it) this case enters, derived
-  // from the license type — see docs/pipeline-stage-plan.md. Falls back to
-  // MCO when the license type isn't mapped to Home Care/CILA (including no
-  // license type at all, e.g. Change of Ownership) — every case lands on a
-  // real pipeline now, none stay unassigned.
+  // from the license type's own pipeline setting (Admin > License Types).
+  // No license type at all (e.g. Change of Ownership) means MCO — every case
+  // lands on a real pipeline, none stay unassigned.
   const licenseType = parsed.licenseTypeTemplateId
     ? await db.licenseTypeTemplate.findUnique({ where: { id: parsed.licenseTypeTemplateId } })
     : null;
-  const pipeline = pipelineForLicenseType(licenseType?.name) ?? "MCO";
+  const pipeline = pipelineForLicenseType(licenseType);
   const initialStage = await getInitialStage(pipeline);
 
   const application = await db.application.create({
@@ -298,7 +297,7 @@ export async function updateApplicationLicenseType(id: string, licenseTypeTempla
   const licenseType = licenseTypeTemplateId
     ? await db.licenseTypeTemplate.findUniqueOrThrow({ where: { id: licenseTypeTemplateId } })
     : null;
-  const newPipeline = pipelineForLicenseType(licenseType?.name) ?? "MCO";
+  const newPipeline = pipelineForLicenseType(licenseType);
   const pipelineChanged = newPipeline !== before.pipeline;
   const initialStage = pipelineChanged ? await getInitialStage(newPipeline) : null;
 

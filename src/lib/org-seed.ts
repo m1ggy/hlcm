@@ -48,7 +48,7 @@ export async function seedOrganization({ org, ownerId, templateOrgSlug }: SeedOr
     const licenseTypeIds = new Map<string, string>(); // template id -> new id
     for (const lt of source?.licenseTypes ?? []) {
       const existing = await db.licenseTypeTemplate.findFirst({ where: { name: lt.name } });
-      const row = existing ?? (await db.licenseTypeTemplate.create({ data: { name: lt.name, description: lt.description, createdById: ownerId } }));
+      const row = existing ?? (await db.licenseTypeTemplate.create({ data: { name: lt.name, description: lt.description, pipeline: lt.pipeline, createdById: ownerId } }));
       licenseTypeIds.set(lt.id, row.id);
     }
     const caseTypeIds = new Map<string, string>();

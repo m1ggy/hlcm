@@ -11,6 +11,7 @@ import { NewApplicationDialog } from "@/components/applications/new-application-
 import { ApplicationsViewSwitcher } from "@/components/applications/applications-view-switcher";
 import { ArchiveButton } from "@/components/shared/archive-button";
 import { Button } from "@/components/ui/button";
+import { getPipelineConfig } from "@/lib/actions/pipelines";
 import {
   Table,
   TableBody,
@@ -58,6 +59,8 @@ export default async function ApplicationsPage({
     listPipelineStages("CILA_GROUP_HOME", { includeExit: true }),
     listPipelineStages("MCO", { includeExit: true }),
   ]);
+
+  const pipelineConfig = await getPipelineConfig();
 
   return (
     <div className="space-y-6">
@@ -138,6 +141,8 @@ export default async function ApplicationsPage({
           currentUserId={session.user.id}
           pipelineStages={{ HOME_CARE: homeCareStages, CILA_GROUP_HOME: cilaStages, MCO: mcoStages }}
           pipelineStagesFull={{ HOME_CARE: homeCareStagesFull, CILA_GROUP_HOME: cilaStagesFull, MCO: mcoStagesFull }}
+          pipelines={pipelineConfig.visible}
+          pipelineLabels={pipelineConfig.labels}
         />
       )}
     </div>

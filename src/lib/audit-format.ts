@@ -386,6 +386,8 @@ export function formatAuditValue(
     ballWith?: Record<string, string>;
     services?: Record<string, string>;
     serviceTypes?: Record<string, string>;
+    // The workspace's own pipeline names (src/lib/pipeline-labels.ts).
+    pipelines?: Record<string, string>;
   } = {}
 ) {
   if (value === null || value === undefined || value === "") return "—";
@@ -417,7 +419,7 @@ export function formatAuditValue(
   if (field === "clientGroupId") return lookups.clientGroups?.[value] ?? value;
   if (field === "clientServiceId") return lookups.services?.[value] ?? value;
   if (field === "serviceTypeId") return lookups.serviceTypes?.[value] ?? value;
-  if (field === "pipeline") return PIPELINE_LABELS[value as keyof typeof PIPELINE_LABELS] ?? value;
+  if (field === "pipeline") return lookups.pipelines?.[value] ?? PIPELINE_LABELS[value as keyof typeof PIPELINE_LABELS] ?? value;
   if (
     field === "dueDate" ||
     field === "createdAt" ||

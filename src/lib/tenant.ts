@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 import { systemPrisma as prisma } from "@/lib/prisma";
+import { Prisma } from "@/generated/prisma/client";
 import { orgSlugFromHost, requestHost } from "@/lib/tenant-host";
 
 // Request → organization. The host → slug rule itself is in
@@ -16,6 +17,7 @@ export type HostOrg = {
   replyToEmail: string | null;
   supportAccessUntil: Date | null;
   termsVersion: string | null;
+  pipelineSettings: unknown;
 };
 
 const HOST_ORG_SELECT = {
@@ -27,6 +29,7 @@ const HOST_ORG_SELECT = {
   replyToEmail: true,
   supportAccessUntil: true,
   termsVersion: true,
+  pipelineSettings: true,
 } as const;
 
 // slug → org, cached briefly: this runs on every tenant-scoped query's first
@@ -103,6 +106,16 @@ export async function setSupportAccessUntil(orgId: string, until: Date | null) {
 export async function readSupportAccessUntil(orgId: string) {
   const org = await prisma.organization.findUnique({ where: { id: orgId }, select: { supportAccessUntil: true } });
   return org?.supportAccessUntil ?? null;
+}
+
+/** Saves the workspace's pipeline names / hidden pipelines (src/lib/actions/pipelines.ts). */
+export async function updatePipelineSettings(orgId: string, settings: Record<string, unknown> | null) {
+  const org = await prisma.organization.update({
+    where: { id: orgId },
+    data: { pipelineSettings: settings ? (settings as Prisma.InputJsonObject) : Prisma.DbNull },
+    select: { slug: true },
+  });
+  forgetOrg(org.slug);
 }
 
 /** Records the owner's acceptance of a terms version (src/lib/terms.ts). */
