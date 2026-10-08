@@ -30,10 +30,9 @@ export async function listAllStageNames() {
   return Object.fromEntries(stages.map((s) => [s.id, s.name]));
 }
 
-// Moves an Application to a different stage within its own pipeline —
-// forward moves and exit statuses (On Hold/Withdrawn/Hearing Lost) are
-// always allowed, backward moves only if explicitly whitelisted (see
-// resolveStageChange / docs/pipeline-stage-plan.md rule 2). Same edit-access
+// Moves an Application to any other stage within its own pipeline, forward
+// or backward (see resolveStageChange for the reason/follow-up-date
+// requirements on stages like On Hold / Withdrawn). Same edit-access
 // check as the old status field (assigned user, access grant, or
 // admin/manager) — nothing new to configure there.
 export async function changeApplicationStage(
