@@ -1,16 +1,16 @@
 import { blockCaregiverRoute, isSuperuser, requireSession } from "@/lib/rbac";
 import { getOrganizationSettings } from "@/lib/actions/organization";
-import { currentOrganization } from "@/lib/db";
 import { getAppUrl } from "@/lib/email";
 import { PRODUCT_NAME } from "@/lib/branding";
 import { listSupportActivity } from "@/lib/support-access";
 import { OrganizationSettingsForm } from "@/components/admin/organization-settings-form";
-import { SupportAccessSection } from "@/components/admin/support-access-section";
+import { PlatformAccessSection } from "@/components/admin/platform-access-section";
 
 export default async function OrganizationPage() {
   await blockCaregiverRoute();
   const session = await requireSession();
-  const isOwner = isSuperuser(session.user.role) && !session.user.isSupport;
+  // Platform admins enter as an OWNER, so they can change these too.
+  const isOwner = isSuperuser(session.user.role);
 
   return (
     <div className="space-y-6">
@@ -21,11 +21,7 @@ export default async function OrganizationPage() {
             initial={await getOrganizationSettings().then(({ name, timezone, replyToEmail }) => ({ name, timezone, replyToEmail }))}
             workspaceUrl={await getAppUrl()}
           />
-          <SupportAccessSection
-            until={(await currentOrganization()).supportAccessUntil}
-            productName={PRODUCT_NAME}
-            activity={await listSupportActivity()}
-          />
+          <PlatformAccessSection productName={PRODUCT_NAME} activity={await listSupportActivity()} />
         </>
       ) : (
         <p className="text-sm text-muted-foreground">Only owners can change organization settings.</p>

@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import { systemPrisma as prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
-import { orgSlugFromHost, requestHost } from "@/lib/tenant-host";
+import { orgSlugFromHost, PLATFORM_SLUG, requestHost } from "@/lib/tenant-host";
 
 // Request → organization. The host → slug rule itself is in
 // src/lib/tenant-host.ts (kept Prisma-free for the proxy).
@@ -15,7 +15,6 @@ export type HostOrg = {
   status: "ACTIVE" | "SUSPENDED";
   timezone: string | null;
   replyToEmail: string | null;
-  supportAccessUntil: Date | null;
   termsVersion: string | null;
   pipelineSettings: unknown;
 };
@@ -27,7 +26,6 @@ const HOST_ORG_SELECT = {
   status: true,
   timezone: true,
   replyToEmail: true,
-  supportAccessUntil: true,
   termsVersion: true,
   pipelineSettings: true,
 } as const;
@@ -92,22 +90,6 @@ export async function updateOrganizationSettings(orgId: string, data: { name?: s
   return org;
 }
 
-/**
- * Sets (or clears, with null) how long platform support may open this
- * workspace (src/lib/support-access.ts). Clearing takes effect for open
- * support sessions at their next request.
- */
-export async function setSupportAccessUntil(orgId: string, until: Date | null) {
-  const org = await prisma.organization.update({ where: { id: orgId }, data: { supportAccessUntil: until }, select: { slug: true } });
-  forgetOrg(org.slug);
-}
-
-/** The org's support-access expiry, read fresh (not from the org cache) — for granting a support sign-in. */
-export async function readSupportAccessUntil(orgId: string) {
-  const org = await prisma.organization.findUnique({ where: { id: orgId }, select: { supportAccessUntil: true } });
-  return org?.supportAccessUntil ?? null;
-}
-
 /** Saves the workspace's pipeline names / hidden pipelines (src/lib/actions/pipelines.ts). */
 export async function updatePipelineSettings(orgId: string, settings: Record<string, unknown> | null) {
   const org = await prisma.organization.update({
@@ -116,6 +98,20 @@ export async function updatePipelineSettings(orgId: string, settings: Record<str
     select: { slug: true },
   });
   forgetOrg(org.slug);
+}
+
+/**
+ * Whether `userId` is still an active platform admin (a DEVELOPER of the
+ * platform org) — checked when their one-time link signs them into a
+ * workspace, so a deactivated admin's leftover link is useless.
+ */
+export async function isActivePlatformAdmin(userId: string | null | undefined) {
+  if (!userId) return false;
+  const user = await prisma.user.findFirst({
+    where: { id: userId, role: "DEVELOPER", active: true, organization: { slug: PLATFORM_SLUG } },
+    select: { id: true },
+  });
+  return Boolean(user);
 }
 
 /** Records the owner's acceptance of a terms version (src/lib/terms.ts). */

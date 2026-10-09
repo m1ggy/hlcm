@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { ForbiddenError, requireSession } from "@/lib/rbac";
 import { db } from "@/lib/db";
+import { UserFacingError } from "@/lib/user-facing-error";
 import { recordAudit } from "@/lib/audit";
 import { toActionResult, type ActionResult } from "@/lib/action-result";
 import { isPlatformAdmin, orgAppUrl } from "@/lib/tenant-host";
@@ -82,14 +83,20 @@ export async function inviteOwnerFromPlatform(orgId: string, input: { name: stri
 }
 
 /**
- * A one-time link that opens the workspace as its support user — only while
- * the workspace's owner has support access on (src/lib/support-access.ts).
+ * A one-time link that opens the workspace as the signed-in platform admin's
+ * hidden account in it (src/lib/support-access.ts). No owner grant needed;
+ * the entry is logged here and in the workspace's own audit log.
  */
 export async function openSupportSessionFromPlatform(orgId: string): Promise<ActionResult<string>> {
   return toActionResult(async () => {
     const session = await requirePlatformAdmin();
     const org = await getTenantOrganization(orgId);
-    const url = await startSupportSession(org, session.user.email ?? session.user.id);
+    if (org.status !== "ACTIVE") throw new UserFacingError(`${org.name} is suspended — reactivate it to open it`);
+    const url = await startSupportSession(org, {
+      id: session.user.id,
+      name: session.user.name ?? session.user.email ?? "Platform admin",
+      email: session.user.email ?? session.user.id,
+    });
     await recordAudit({ entityType: "Organization", entityId: orgId, action: "support_session_started", actorId: session.user.id, newValue: org.slug });
     return url;
   });

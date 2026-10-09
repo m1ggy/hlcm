@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
-import { PLATFORM_SLUG } from "@/lib/tenant-host";
+import { orgAppUrl, PLATFORM_SLUG } from "@/lib/tenant-host";
 import { currentOrganization } from "@/lib/db";
-import { PRODUCT_NAME } from "@/lib/branding";
 import { needsTermsAcceptance } from "@/lib/terms";
 import { auth } from "@/auth";
 import { isAdmin } from "@/lib/rbac";
@@ -51,8 +50,10 @@ export default async function DashboardLayout({
       <SidebarInset>
         {session?.user?.isSupport && (
           <div role="status" className="border-b border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
-            You&apos;re in {org.name} as {PRODUCT_NAME} Support. Everything you do is recorded in its audit log
-            {org.supportAccessUntil ? `, and access ends ${org.supportAccessUntil.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: org.timezone ?? undefined })}` : ""}.
+            You&apos;re in {org.name} as a platform admin. Everything you do is recorded in its audit log, which its owners can see.{" "}
+            <a href={`${orgAppUrl(PLATFORM_SLUG)}/platform`} className="font-medium underline">
+              Back to the console
+            </a>
           </div>
         )}
         <header className="flex flex-wrap items-center justify-between gap-x-2 gap-y-2 border-b px-4 py-3">

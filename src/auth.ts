@@ -2,9 +2,8 @@ import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { getDb } from "@/lib/db";
-import { getHostOrg, getOrgBySlug, readSupportAccessUntil } from "@/lib/tenant";
+import { getHostOrg, getOrgBySlug, isActivePlatformAdmin } from "@/lib/tenant";
 import { consumeAuthToken } from "@/lib/auth-tokens";
-import { isSupportAccessActive } from "@/lib/support-access";
 import { verifyTotpToken } from "@/lib/totp";
 import { verifyMfaChallenge } from "@/lib/mfa-challenge";
 import { authConfig, isPublicPath } from "@/auth.config";
@@ -37,15 +36,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // — this is also what guards a direct POST to the credentials endpoint.
         const ip = await getClientIp().catch(() => null);
 
-        // Platform support (src/lib/support-access.ts): a one-time link from
-        // the console, only while the owner's support access is on.
+        // A platform admin entering the workspace (src/lib/support-access.ts):
+        // a one-time link from the console, as their own hidden account here.
         const supportToken = credentials?.supportToken as string | undefined;
         if (supportToken) {
-          if (!isSupportAccessActive(await readSupportAccessUntil(org.id))) return null;
           const used = await consumeAuthToken(supportToken, ["SUPPORT_LOGIN"]);
           if (!used) return null;
           const user = await db.user.findUnique({ where: { id: used.userId } });
           if (!user || !user.active || !user.isSupport) return null;
+          if (!(await isActivePlatformAdmin(user.platformAdminId))) return null;
           return { id: user.id, name: user.name, email: user.email, role: user.role, organizationId: org.id, orgSlug: org.slug, isSupport: true };
         }
 
@@ -108,10 +107,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       const allowed = authConfig.callbacks.authorized(params);
       if (!allowed || !params.auth?.user || isPublicPath(params.request.nextUrl.pathname)) return allowed;
       const org = await getOrgBySlug(params.auth.user.orgSlug);
-      if (org?.status !== "ACTIVE") return false;
-      // A support session ends the moment the owner's grant runs out or is revoked.
-      if (params.auth.user.isSupport) return isSupportAccessActive(org.supportAccessUntil);
-      return true;
+      return org?.status === "ACTIVE";
     },
     async jwt({ token, user }) {
       if (user) {

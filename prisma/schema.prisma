@@ -38,10 +38,6 @@ model Organization {
   // When an owner dismissed the dashboard's "Set up your workspace"
   // checklist (src/lib/actions/setup-checklist.ts). Null = still shown.
   setupChecklistDismissedAt DateTime?
-  // Support access: until when the owner lets platform staff open this
-  // workspace as its hidden support user (src/lib/support-access.ts).
-  // Null or past = no access.
-  supportAccessUntil        DateTime?
   // Which version of the platform's terms/privacy policy this workspace's
   // owner accepted, when, and who (src/lib/terms.ts). Null = not yet.
   termsVersion              String?
@@ -353,10 +349,13 @@ model User {
   active                    Boolean      @default(true)
   hourlyRate                Float?
   emailNotificationsEnabled Boolean      @default(true)
-  // The workspace's hidden platform-support account (src/lib/support-access.ts):
+  // A platform admin's hidden account in this workspace (src/lib/support-access.ts):
   // left out of user lists and counts, can't sign in with a password, only
-  // via a one-time link while the owner has support access switched on.
+  // via a one-time link from the platform console. One per platform admin
+  // (platformAdminId = their user id in the platform org — no FK, it's
+  // another org's row) so the workspace's audit log names the real person.
   isSupport                 Boolean      @default(false)
+  platformAdminId           String?
   // IANA zone id (e.g. "America/Chicago") — null means "use the browser's
   // own timezone" (the pre-existing behavior). Set from Account settings;
   // controls both how this user's own times are displayed and how a typed
@@ -432,6 +431,7 @@ model User {
   serviceAdjustmentsCreated     ServiceAdjustment[]       @relation("ServiceAdjustmentCreatedBy")
 
   @@unique([organizationId, email])
+  @@unique([organizationId, platformAdminId])
   @@index([organizationId])
   @@map("users")
 }

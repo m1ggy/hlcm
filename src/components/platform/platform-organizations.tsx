@@ -190,7 +190,6 @@ function InviteOwnerDialog({ org }: { org: Org }) {
 function OrganizationRow({ org }: { org: Org }) {
   const { isPending, run } = useAction();
   const suspended = org.status === "SUSPENDED";
-  const supportOpen = !suspended && org.supportAccessUntil !== null && new Date(org.supportAccessUntil) > new Date();
 
   function toggleStatus() {
     const next = suspended ? "ACTIVE" : "SUSPENDED";
@@ -242,10 +241,9 @@ function OrganizationRow({ org }: { org: Org }) {
           "Not yet"
         )}
       </TableCell>
-      <TableCell className="text-muted-foreground">{supportOpen ? `Until ${formatDate(org.supportAccessUntil)}` : "Off"}</TableCell>
       <TableCell className="space-x-1 whitespace-nowrap text-right">
-        <Button variant="ghost" size="sm" disabled={isPending || !supportOpen} onClick={openSupport} title={supportOpen ? undefined : "The owner hasn't turned on support access"}>
-          Open as support
+        <Button variant="ghost" size="sm" disabled={isPending || suspended} onClick={openSupport} title={suspended ? "Reactivate it to open it" : undefined}>
+          Open workspace
         </Button>
         <InviteOwnerDialog org={org} />
         <Button variant="ghost" size="sm" disabled={isPending || suspended} onClick={resendInvite}>
@@ -276,7 +274,6 @@ export function PlatformOrganizations({ organizations }: { organizations: Org[] 
             <TableHead className="text-right">Files</TableHead>
             <TableHead>Last active</TableHead>
             <TableHead>Terms</TableHead>
-            <TableHead>Support</TableHead>
             <TableHead />
           </TableRow>
         </TableHeader>

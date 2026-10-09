@@ -34,7 +34,7 @@ Why owners should still see entries: tenants hold client PHI; a BAA/ToS will nee
   - Still hidden from user lists and counts (`hideSupportUser`), still can't sign in with a password.
 - In the workspace: a fixed banner "You're in <workspace> as platform admin — Back to console".
 - Audit: "entered workspace" row in both logs on every open; everything done inside is already audited in the workspace's log under that user.
-- Suspended workspaces can still be entered by a superadmin (to look and fix), with the banner saying so.
+- Suspended workspaces can't be entered (tenant resolution refuses a suspended org everywhere); reactivate first. **Done 2026-10-10** (§1 + §2). Sessions end like any other after 15 idle minutes; a deactivated admin's link stops working.
 
 ### 3. Console layout
 Top nav: **Workspaces · Users · Admins · Activity · Settings · Account**. Every page behind `requirePlatformAdmin()` (MFA required).

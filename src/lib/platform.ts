@@ -28,7 +28,6 @@ export type PlatformOrganization = {
   storageBytes: number;
   /** The newest audit-log entry — someone changed something. */
   lastActivityAt: Date | null;
-  supportAccessUntil: Date | null;
   termsVersion: string | null;
   termsAcceptedAt: Date | null;
 };
@@ -50,7 +49,6 @@ export async function listOrganizations(): Promise<PlatformOrganization[]> {
       name: true,
       status: true,
       createdAt: true,
-      supportAccessUntil: true,
       termsVersion: true,
       termsAcceptedAt: true,
       _count: { select: { users: { where: { isSupport: false, active: true } } } },
@@ -81,7 +79,7 @@ export async function listOrganizations(): Promise<PlatformOrganization[]> {
 
 /** A tenant workspace by id (never the platform org), for acting on it from the console. */
 export async function getTenantOrganization(orgId: string) {
-  const org = await prisma.organization.findUnique({ where: { id: orgId }, select: { id: true, slug: true, name: true } });
+  const org = await prisma.organization.findUnique({ where: { id: orgId }, select: { id: true, slug: true, name: true, status: true } });
   if (!org || org.slug === PLATFORM_SLUG) throw new UserFacingError("Workspace not found");
   return org;
 }
