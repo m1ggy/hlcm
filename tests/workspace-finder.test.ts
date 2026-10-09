@@ -14,7 +14,9 @@ const orgs = [
 beforeAll(async () => {
   for (const org of orgs) await prisma.organization.upsert({ where: { id: org.id }, create: org, update: {} });
   const mk = (orgId: string, email: string, active = true) =>
-    tenantDb(orgId).user.create({ data: { name: "U", email, passwordHash: "x", active } });
+    tenantDb(orgId).user.create({
+      data: { name: "U", email, passwordHash: "x", active, ...(orgId === "org_platform" ? { role: "DEVELOPER" as const } : {}) },
+    });
   await mk("org_find_a", "multi@find.test");
   await mk("org_find_b", "Multi@Find.test");
   await mk("org_find_s", "multi@find.test");

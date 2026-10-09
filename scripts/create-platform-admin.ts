@@ -1,5 +1,5 @@
-// Creates (or re-invites) a platform admin — an OWNER of the platform
-// organization, who can reach the console at admin.<ROOT_DOMAIN> — and
+// Creates (or re-invites) a platform admin — a DEVELOPER (superadmin) of the
+// platform organization, who can reach the console at admin.<ROOT_DOMAIN> — and
 // prints a one-time link to set their password. There's no one to invite
 // the very first one, hence the script.
 //
@@ -19,7 +19,7 @@ async function main() {
   const user =
     (await prisma.user.findFirst({ where: { email: email.toLowerCase() } })) ??
     (await prisma.user.create({
-      data: { name, email: email.toLowerCase(), role: "OWNER", passwordHash: await bcrypt.hash(randomBytes(32).toString("hex"), 12) },
+      data: { name, email: email.toLowerCase(), role: "DEVELOPER", passwordHash: await bcrypt.hash(randomBytes(32).toString("hex"), 12) },
     }));
   const token = await issueAuthToken(user.id, "INVITE");
   console.log(`Platform admin: ${user.email}`);

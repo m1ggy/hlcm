@@ -11,8 +11,8 @@ import { ForbiddenError, blockCaregiverRoute, isSuperuser } from "@/lib/rbac";
 export default async function UsersPage() {
   await blockCaregiverRoute();
   const session = await auth();
-  // OWNER and DEVELOPER (break-glass superuser) both manage admin-tier
-  // accounts and can assign OWNER — see isSuperuser() in rbac.ts and the
+  // OWNER manages admin-tier accounts and can assign OWNER — see
+  // isSuperuser() in rbac.ts and the
   // matching server-side gate in src/lib/actions/users.ts.
   const canManageAdmins = isSuperuser(session?.user?.role);
   let users;

@@ -21,7 +21,7 @@ import { postTeamsMessage } from "@/lib/teams";
 // Calendly, Wise, Twilio and Teams accounts (src/lib/integrations.ts).
 // Owners only — a Stripe key decides where clients' payments go, so this
 // is deliberately narrower than the ADMIN gate most Admin pages use
-// (requireRole lets OWNER/DEVELOPER through). Secret values never come back
+// (requireRole lets OWNER through). Secret values never come back
 // out of these actions; the audit log records that an integration changed,
 // never what it changed to.
 

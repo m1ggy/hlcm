@@ -217,11 +217,11 @@ model AuthToken {
   @@map("auth_tokens")
 }
 
-// DEVELOPER is a break-glass superuser, same reach as OWNER — it exists
-// only to bootstrap the first OWNER (or fix a locked-out account) without
-// touching the database by hand every time. It's deliberately NOT
-// assignable through the app (see ROLE_VALUES in src/lib/actions/users.ts)
-// — the only way to create or edit a DEVELOPER account is direct SQL.
+// DEVELOPER is the platform superadmin: it exists only in the platform
+// organization (a CHECK constraint ties DEVELOPER <-> org_platform), runs
+// the console at admin.<ROOT_DOMAIN>, and reaches workspaces by entering
+// them (src/lib/support-access.ts). It has no power inside a workspace and
+// is never assignable through a workspace's Users screen.
 //
 // OWNER sits above ADMIN — same access everywhere ADMIN has it, plus
 // exclusive rights to create/edit/demote other ADMIN/ACCOUNTANT/OWNER

@@ -21,8 +21,17 @@
 
 // The operator's own organization: the platform console (create / suspend
 // tenant workspaces) lives there, reached at admin.<ROOT_DOMAIN>. Its users
-// are the platform admins; like any org, it can't see tenants' data.
+// are the platform admins (role DEVELOPER); they reach a workspace's data
+// only by entering it (src/lib/support-access.ts).
 export const PLATFORM_SLUG = "platform";
+
+/**
+ * The platform superadmin: a DEVELOPER of the platform organization — the
+ * only org a DEVELOPER can exist in (a DB check enforces it).
+ */
+export function isPlatformAdmin(user: { orgSlug?: string | null; role?: string | null } | null | undefined): boolean {
+  return user?.orgSlug === PLATFORM_SLUG && user.role === "DEVELOPER";
+}
 const PLATFORM_SUBDOMAIN = "admin";
 
 // Subdomains that can never be a tenant slug (see the reserved list in the plan).

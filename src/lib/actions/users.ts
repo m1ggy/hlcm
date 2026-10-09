@@ -176,12 +176,11 @@ export async function updateUser(input: z.infer<typeof updateSchema>) {
     select: { name: true, email: true, role: true, active: true, phone: true, smsRemindersEnabled: true },
   });
 
-  // DEVELOPER is break-glass-only — ROLE_VALUES above already keeps
-  // parsed.role from ever being DEVELOPER, but an *existing* DEVELOPER row
-  // still needs protecting from every other field (name/active/password),
-  // for every actor including another DEVELOPER or an OWNER. Direct SQL only.
+  // DEVELOPER is the platform superadmin role and only exists in the
+  // platform org (DB check), which has no Users screen — ROLE_VALUES keeps
+  // it unassignable, and this keeps such a row untouchable from here anyway.
   if (before.role === "DEVELOPER") {
-    throw new ForbiddenError("Developer accounts can only be changed directly in the database");
+    throw new ForbiddenError("Platform admin accounts are managed from the platform console");
   }
 
   const isSelfEdit = parsed.userId === session.user.id;

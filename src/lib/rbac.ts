@@ -7,13 +7,13 @@ import { UserFacingError } from "@/lib/user-facing-error";
 export const ROLES = ["DEVELOPER", "OWNER", "ADMIN", "ACCOUNTANT", "MANAGER", "STAFF", "CLIENT", "CAREGIVER"] as const;
 export type AppRole = (typeof ROLES)[number];
 
-/** DEVELOPER is a break-glass superuser, same reach as OWNER — see requireRole(). */
+/** OWNER — the top role inside a workspace; see requireRole(). */
 export function isSuperuser(role: string | null | undefined): boolean {
-  return role === "OWNER" || role === "DEVELOPER";
+  return role === "OWNER";
 }
 
 /**
- * OWNER/DEVELOPER inherit every ADMIN permission; ACCOUNTANT also carries
+ * OWNER inherits every ADMIN permission; ACCOUNTANT also carries
  * full ADMIN permissions everywhere (on top of the Invoices exclusivity
  * below) — check this instead of `role === "ADMIN"`. Takes `string` (not
  * `AppRole`) since it's most often called directly on `session.user.role`,
@@ -23,13 +23,13 @@ export function isAdmin(role: string | null | undefined): boolean {
   return role === "ADMIN" || role === "ACCOUNTANT" || isSuperuser(role);
 }
 
-/** ADMIN/ACCOUNTANT/MANAGER/OWNER/DEVELOPER — the "management" tier used across visibility and archive checks. */
+/** ADMIN/ACCOUNTANT/MANAGER/OWNER — the "management" tier used across visibility and archive checks. */
 export function isManagement(role: string | null | undefined): boolean {
   return isAdmin(role) || role === "MANAGER";
 }
 
 /**
- * Invoices are ACCOUNTANT-exclusive (plus the OWNER/DEVELOPER superusers) —
+ * Invoices are ACCOUNTANT-exclusive (plus OWNER) —
  * unlike every other ADMIN-gated feature, plain ADMIN and MANAGER do NOT get
  * this one. See MANAGE_ROLES in src/lib/actions/invoices.ts /
  * invoice-attachments.ts.
@@ -77,8 +77,8 @@ export async function blockCaregiverRoute(fallback = "/tasks") {
 }
 
 /**
- * Throws unless the current user's role is one of `allowed`. OWNER and
- * DEVELOPER sit above every role and always pass, including an
+ * Throws unless the current user's role is one of `allowed`. OWNER sits
+ * above every role and always passes, including an
  * ACCOUNTANT-exclusive `allowed` list (e.g. Invoices) that doesn't even
  * mention ADMIN. ACCOUNTANT passes any `allowed` list that includes ADMIN —
  * every call site written as ADMIN-gated doesn't need to separately

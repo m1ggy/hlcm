@@ -152,7 +152,7 @@ export async function getApplicationAuditLog(applicationId: string) {
 // Every internal-staff role — everything except CLIENT (never staff) and
 // CAREGIVER (own separate pool, see listTaskAssignableUsers below). Also
 // backs the "All users" list on /time, so this is who's payroll-visible.
-const INTERNAL_STAFF_ROLES: AppRole[] = ["OWNER", "DEVELOPER", "ADMIN", "ACCOUNTANT", "MANAGER", "STAFF"];
+const INTERNAL_STAFF_ROLES: AppRole[] = ["OWNER", "ADMIN", "ACCOUNTANT", "MANAGER", "STAFF"];
 
 export async function listAssignableUsers() {
   await requireRole(["ADMIN", "MANAGER", "STAFF"]);

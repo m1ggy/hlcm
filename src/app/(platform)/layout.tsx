@@ -1,19 +1,18 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { auth, signOut } from "@/auth";
-import { isSuperuser } from "@/lib/rbac";
-import { PLATFORM_SLUG } from "@/lib/tenant-host";
+import { isPlatformAdmin } from "@/lib/tenant-host";
 import { PRODUCT_NAME } from "@/lib/branding";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 // The platform console's own chrome — deliberately not the CRM sidebar:
 // platform admins manage workspaces, not cases. Only reachable on the
-// platform org's host (admin.<ROOT_DOMAIN>) by its owners.
+// platform org's host (admin.<ROOT_DOMAIN>) by its DEVELOPERs (superadmins).
 export default async function PlatformLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
   if (!session?.user) redirect("/login");
-  if (session.user.orgSlug !== PLATFORM_SLUG || !isSuperuser(session.user.role)) notFound();
+  if (!isPlatformAdmin(session.user)) notFound();
 
   return (
     <div className="flex min-h-screen flex-col">
