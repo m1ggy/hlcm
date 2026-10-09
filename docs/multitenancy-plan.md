@@ -7,6 +7,79 @@ Status (2026-09-28): **all phases through 6 implemented** (billing deferred); se
 2. **Decisions pending:** tenant billing pricing (5g); product name + domain; legal (BAA/ToS).
 3. **Onboarding audit (2026-09-28), all fixed on `multitenancy/phase-6`, not pushed (user: don't push yet):** suspended-workspace sessions get the suspended notice instead of crashing; platform admins have an Account page and need MFA for the console; tenant email is sent as the org's name with the org's reply-to (Admin > Organization); Admin > Integrations explains each provider and registers the Calendly/DocuSign webhooks itself (old scripts removed); platform console "Invite owner" (typo'd or locked-out owner); failed sign-ins throttled per IP (30) and per account (8) per 15 min; dashboard "Set up your workspace" checklist for new owners (existing orgs pre-dismissed by migration); time clock default = `Organization.timezone`, fallback America/Chicago; handbook served with `PRODUCT_NAME`, Illinois mention removed. Suite: 112 tests pass normal and `TEST_RLS=1` (sim Postgres at localhost:55432 — the local dev Postgres user can't create roles).
 
+## Next: superadmin console — DEVELOPER = superadmin (planned 2026-10-10)
+
+Decisions (user, 2026-10-10):
+- **DEVELOPER is the superadmin role** and exists only in the `platform` org. Tenant DEVELOPER rows become OWNER.
+- **Superadmin can reach every workspace's data with no owner grant.** "Open workspace" on any org lands in its full CRM as a superuser. This **replaces owner-granted support access** (the Admin > Organization grant and `supportAccessUntil` go away).
+- **Superadmin manages every user in every workspace**: edit name/email/role, activate/deactivate, send password reset, reset two-factor, resend invite. No "sign in as a specific user" (impersonation) — not wanted.
+- **Superadmin creates, onboards and manages every workspace** (create wizard, rename, suspend, export, guarded delete, template).
+- **Owners see it**: every superadmin entry into a workspace and every change to its users is written to the platform log **and** the workspace's own audit log, under the admin's name.
+- Also this round: activity log, rename, template picker, per-workspace user view.
+
+Why owners should still see entries: tenants hold client PHI; a BAA/ToS will need to say the operator can access data, and a visible log is what makes that acceptable. The ToS/BAA wording is part of the pending legal decision.
+
+### 1. Role change (do first — everything else gates on it)
+- `rbac.ts`: split the checks. `isSuperuser()` (workspace power) = OWNER only. New `isPlatformAdmin(session)` = `orgSlug === PLATFORM_SLUG && role === "DEVELOPER"`. Gate `(platform)/layout.tsx` and `requirePlatformAdmin()` on it.
+- Sweep every other `DEVELOPER` mention (`product-tour.tsx`, `applications.ts` INTERNAL_STAFF_ROLES, `admin/users/page.tsx`, `edit-user-dialog.tsx`, `users.ts`, schema comment).
+- Migration (hand-written): platform-org OWNER → DEVELOPER; tenant-org DEVELOPER → OWNER (count on prod first, confirm with the user). Rehearse with `rehearse-migration.sh`.
+- Guard: DEVELOPER only in `org_platform` (users.ts + DB CHECK/trigger).
+- `create-platform-admin.ts` creates DEVELOPER.
+- Superadmin keeps mandatory two-factor (more important now that it reaches everything); add a short console session lifetime (e.g. 8h, then sign in again with MFA).
+
+### 2. Entering a workspace (replaces support access)
+- Reuse the support-session mechanism in `src/lib/support-access.ts` (single-use login link → hidden `isSupport` user in the target workspace), minus the owner grant:
+  - Drop the `isSupportAccessActive` checks in `startSupportSession` and `src/auth.ts`; remove the grant UI in Admin > Organization and `Organization.supportAccessUntil` (migration).
+  - One hidden user **per superadmin per workspace** (`User.platformAdminId`), named "<Admin name> (Platform)", role OWNER — so the workspace's audit log names the real person and they have full workspace power.
+  - Still hidden from user lists and counts (`hideSupportUser`), still can't sign in with a password.
+- In the workspace: a fixed banner "You're in <workspace> as platform admin — Back to console".
+- Audit: "entered workspace" row in both logs on every open; everything done inside is already audited in the workspace's log under that user.
+- Suspended workspaces can still be entered by a superadmin (to look and fix), with the banner saying so.
+
+### 3. Console layout
+Top nav: **Workspaces · Users · Admins · Activity · Settings · Account**. Every page behind `requirePlatformAdmin()` (MFA required).
+
+### 4. Workspaces
+- **List** (`/platform`): search (name/slug), status filter (Active / Suspended / Onboarding), usage columns, setup-progress column; row → detail page. Row action: **Open workspace**.
+- **Create / onboard** (`/platform/workspaces/new`, wizard replacing the dialog):
+  1. Company — name, address (slug suggested from the name, live availability check), timezone, reply-to email.
+  2. Setup — template workspace to copy from (default = Settings template) or the generic set.
+  3. Owner — name + email; invite sent on finish.
+  4. Review → create → lands on the detail page.
+- **Onboarding status** (list + detail): invite pending / owner signed in / setup checklist n of m (`getSetupChecklist()` logic, per org) / terms accepted / integrations connected.
+- **Detail** (`/platform/workspaces/[slug]`):
+  - Overview: address, created, status, usage (users, clients, cases, storage, last activity), terms, onboarding status, recent superadmin entries.
+  - **Open workspace** button.
+  - Users tab: §5, filtered to this workspace.
+  - Actions: edit settings (name, timezone, reply-to), suspend / reactivate, export data (zip download — wraps `exportOrganizationData`), rename.
+  - **Rename**: name freely; slug change warns the old address stops working (emailed links break). Storage keys use the org *id* (`org/<id>/…`), so files are safe. Old slug reserved for N days.
+  - **Danger zone — delete**: only when suspended, only after an export was downloaded (recorded), type the slug to confirm, audited; wraps `deleteOrganization` + deletes stored files.
+
+### 5. Users — every account in every workspace (`/platform/users`, and per workspace)
+- Table across all workspaces: name, email, workspace, role, active, last sign-in, two-factor, invite pending. Search by name/email, filter by workspace/role/status. Excludes hidden support users.
+- Per-user actions: edit name / email / role (OWNER…CAREGIVER — never DEVELOPER), activate / deactivate, send password-reset email, reset two-factor, resend invite, add a user to a workspace (invite).
+- Guards: can't deactivate or demote a workspace's last active OWNER (reuse the in-workspace rule from `users.ts`); email stays unique per workspace.
+- Every change audited in both logs.
+- Implementation: writes run inside `runAsTenant(orgId, …)` so RLS still applies; the cross-workspace list is a read through `systemPrisma` limited to user columns.
+
+### 6. Admins (`/platform/admins`)
+List DEVELOPER users (name, email, MFA, last sign-in, active). Invite admin (invite → set password → must set up MFA before the console opens). Deactivate (not yourself, not the last active admin). Reset someone's two-factor. All audited.
+
+### 7. Activity (`/platform/activity`)
+Platform audit log, newest first, filter by admin / workspace / action: created, renamed, settings changed, suspended, reactivated, entered workspace, user edited / deactivated / password reset / MFA reset, exported, deleted, admin invited / deactivated, template changed.
+
+### 8. Settings (`/platform/settings`)
+**Template workspace** picker (stored as a platform setting, replacing `TEMPLATE_ORG_SLUG`; env stays the fallback). Shows what gets copied.
+
+### Schema changes
+- `User.lastSignInAt DateTime?` (set in the auth callback).
+- `User.platformAdminId String?` (the hidden per-admin user in each workspace).
+- Drop `Organization.supportAccessUntil`; add `Organization.exportedAt`, `previousSlug` + `slugChangedAt`; platform setting for the template org.
+- Role migration + DEVELOPER-only-in-platform guard (§1).
+
+### Build order
+1 role change + tests → 2 enter-any-workspace (drop grant, per-admin hidden user, banner, both logs) → 3 layout/nav → 4 list + detail → `lastSignInAt` + users (§5) → create wizard + onboarding status → export/delete → rename → admins → activity → settings/template. Each its own commit on `multitenancy/phase-6`. **No merges until the user says so** (user, 2026-10-10): not main → phase-6, not phase-6 → main. The superadmin console ships as part of phase-6, before it is ever merged. When the merge with main does happen, fix main's PLA-stage migration for per-workspace stages.
+
 ## Done 2026-10-06 (from the post-merge re-scan)
 
 1. **Pipeline per license type** — `LicenseTypeTemplate.pipeline`, set in Admin > License Types (backfilled from the old CILA/IDPH/IDOA mapping; `20261006120000_pipeline_per_license_type`).
