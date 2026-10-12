@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { embedPdfFont } from "@/lib/invoice-pdf";
 import { listApplications } from "@/lib/actions/applications";
 import { STATUS_LABELS, ApplicationStatus } from "@/lib/status";
 import { UnauthorizedError, ForbiddenError } from "@/lib/rbac";
@@ -33,8 +34,8 @@ export async function GET() {
     ]);
 
     const pdfDoc = await PDFDocument.create();
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const font = await embedPdfFont(pdfDoc, StandardFonts.Helvetica);
+    const boldFont = await embedPdfFont(pdfDoc, StandardFonts.HelveticaBold);
 
     let page = pdfDoc.addPage(PAGE_SIZE);
     let y = PAGE_SIZE[1] - MARGIN;

@@ -60,6 +60,10 @@ const CILA_GROUP_HOME: StageSeed[] = [
   { pipeline: "CILA_GROUP_HOME", abbrev: "S2 COR", name: "Step II Corrections Received", sortOrder: 220, hex: "#F44336", colorLabel: "Red" },
   { pipeline: "CILA_GROUP_HOME", abbrev: "S2 ACC", name: "Step II Accepted by IDHS", sortOrder: 230, hex: "#8BC34A", colorLabel: "Light Green" },
   { pipeline: "CILA_GROUP_HOME", abbrev: "LRD", name: "CILA License Released", sortOrder: 240, hex: "#4CAF50", colorLabel: "Green" },
+  // Requested to sit after Hearing Lost (920) in the stage list, so it sorts
+  // past the exit statuses — but it's ongoing work, not an exit status, so it
+  // still shows as a board column (the last one, after License Released).
+  { pipeline: "CILA_GROUP_HOME", abbrev: "PLA", name: "Post-License Compliance", sortOrder: 930, hex: "#1B5E20", colorLabel: "Dark Green" },
 ];
 
 const MCO: StageSeed[] = [

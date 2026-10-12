@@ -11,31 +11,21 @@ export type StageChangeInput = {
 
 export type StageChangeResult = { ok: true } | { ok: false; message: string };
 
-// Structural check only — same pipeline, and forward/backward/exit rules.
-// Deliberately doesn't look at reason/followUpDate: a picker UI (Phase 7)
-// needs to know "is this move on the map at all" separately from "does it
-// still need a reason typed in", so the two are kept apart rather than
-// folded into one boolean.
+// Structural check only — same pipeline, different stage. Deliberately
+// doesn't look at reason/followUpDate: a picker UI (Phase 7) needs to know
+// "is this move on the map at all" separately from "does it still need a
+// reason typed in", so the two are kept apart rather than folded into one
+// boolean.
 //
-// Forward = higher sortOrder in the same pipeline, always allowed. Backward
-// is denied unless the current stage's own whitelist names the target
-// (Corrections Received -> Submitted, etc). Exit statuses (On Hold,
-// Withdrawn, Hearing Lost) break both rules on purpose:
-//   - reachable as a TARGET from any stage (pausing/closing doesn't care
-//     where the case currently sits)
-//   - reachable AS a SOURCE to any stage (resuming from a pause has no
-//     natural "forward" direction to compare sortOrder against — a case on
-//     hold isn't "ahead of" every real stage just because Hold sorts last)
+// Any stage in the same pipeline is reachable, forward or backward. The
+// original spec (rule 2) only allowed whitelisted backward moves
+// (allowedBackwardStageIds), but in practice staff need to correct
+// mis-clicks and step cases back freely, so that restriction was dropped.
+// allowedBackwardStageIds is still seeded and drawn by the pipeline
+// diagram as the "expected" back-paths, it just isn't enforced.
 export function isStructurallyReachable(current: PipelineStage, target: PipelineStage): boolean {
   if (current.pipeline !== target.pipeline) return false;
-  if (current.id === target.id) return false;
-
-  const movingFromExit = current.isExitStatus;
-  const movingToExit = target.isExitStatus;
-  const isForward = target.sortOrder > current.sortOrder;
-  const isWhitelistedBackward = current.allowedBackwardStageIds.includes(target.id);
-
-  return movingFromExit || movingToExit || isForward || isWhitelistedBackward;
+  return current.id !== target.id;
 }
 
 // Spec field ("Days in current stage: auto counted from the last stage
@@ -55,12 +45,7 @@ export function resolveStageChange(
     return { ok: false, message: `Already at "${current.name}".` };
   }
   if (!isStructurallyReachable(current, target)) {
-    return current.pipeline !== target.pipeline
-      ? { ok: false, message: `"${target.name}" isn't part of this case's pipeline.` }
-      : {
-          ok: false,
-          message: `Can't move from "${current.name}" back to "${target.name}" — that move isn't allowed. Contact an admin if this needs an exception.`,
-        };
+    return { ok: false, message: `"${target.name}" isn't part of this case's pipeline.` };
   }
 
   if (target.requiresReason && !input.reason?.trim()) {

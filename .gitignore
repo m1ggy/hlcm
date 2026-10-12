@@ -50,3 +50,6 @@ next-env.d.ts
 
 # Organization exports (scripts/export-organization.ts) — contain customer data
 /exports/
+
+# docs
+.screenshots/

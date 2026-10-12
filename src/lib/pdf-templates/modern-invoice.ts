@@ -3,7 +3,7 @@
 // plus the profile's sender details and quantity-column heading.
 import { currentOrganization } from "@/lib/db";
 import { PDFDocument, StandardFonts, type PDFPage } from "pdf-lib";
-import { PAGE_SIZE, drawFitted, fitText, money, wrapText, type InvoicePdfInput } from "@/lib/invoice-pdf";
+import { PAGE_SIZE, drawFitted, embedPdfFont, fitText, money, wrapText, type InvoicePdfInput } from "@/lib/invoice-pdf";
 import { displayInvoiceNumber } from "@/lib/invoice-format";
 import { QUANTITY_LABELS } from "./options";
 import {
@@ -54,8 +54,8 @@ type Row = { description: string[]; hours: string; rate: string; amount: string;
 export async function generateModernInvoicePdf(invoice: InvoicePdfInput): Promise<Uint8Array> {
   const pdfDoc = await PDFDocument.create();
   const fonts: Fonts = {
-    font: await pdfDoc.embedFont(StandardFonts.Helvetica),
-    bold: await pdfDoc.embedFont(StandardFonts.HelveticaBold),
+    font: await embedPdfFont(pdfDoc, StandardFonts.Helvetica),
+    bold: await embedPdfFont(pdfDoc, StandardFonts.HelveticaBold),
   };
   const profileName = invoice.profileName ?? (await currentOrganization()).name;
   const quantityLabel = QUANTITY_LABELS[invoice.quantityLabel ?? "HOURS"];

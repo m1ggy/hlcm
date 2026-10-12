@@ -15,6 +15,7 @@ import {
   PageCursor,
   wrapText,
   drawFitted,
+  embedPdfFont,
   drawWrappedTextPaged,
   money,
   drawLogoOrName,
@@ -250,8 +251,8 @@ function drawTotalsBlock(cursor: PageCursor, font: PDFFont, boldFont: PDFFont, i
 
 export async function generateCareRecipientInvoicePdf(input: CareRecipientInvoicePdfInput): Promise<Uint8Array> {
   const pdfDoc = await PDFDocument.create();
-  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const font = await embedPdfFont(pdfDoc, StandardFonts.Helvetica);
+  const boldFont = await embedPdfFont(pdfDoc, StandardFonts.HelveticaBold);
   const cursor = new PageCursor(pdfDoc);
   const page = cursor.page;
 
