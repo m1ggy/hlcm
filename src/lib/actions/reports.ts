@@ -1,9 +1,12 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { requireRole, canAccessInvoices } from "@/lib/rbac";
+import { requireRole, canAccessInvoices, ForbiddenError } from "@/lib/rbac";
+import { listClients } from "@/lib/actions/clients";
+import { listMoneyByClient } from "@/lib/actions/invoices";
+import { NO_PROFILE, clientMatchesFilters, moneyForProfiles, type ClientListFilters } from "@/lib/client-list-filters";
 import { invoiceMoney, summarizeByService, type ServiceMoney } from "@/lib/service-financials";
-import type { Prisma } from "@/generated/prisma/client";
+import type { $Enums, Prisma } from "@/generated/prisma/client";
 import { SERVICE_STATUSES, type ServiceStatus } from "@/lib/service-status";
 import { TASK_CLOSED_STATUSES } from "@/lib/task-status";
 
@@ -13,6 +16,16 @@ import { TASK_CLOSED_STATUSES } from "@/lib/task-status";
 // same rule the client page follows.
 
 const VIEW_ROLES = ["ADMIN", "MANAGER", "STAFF"] as const;
+
+// Matches BILLED_STATUSES in src/lib/service-financials.ts — drafts and
+// voids are left out of the invoice/payment listings, same as the totals.
+const BILLED_STATUSES: $Enums.InvoiceStatus[] = ["SENT", "PARTIALLY_PAID", "PAID", "OVERDUE"];
+
+const billedInvoiceInclude = {
+  clientService: { select: { name: true } },
+  invoiceProfile: { select: { name: true } },
+  payments: { orderBy: { paidAt: "asc" } },
+} satisfies Prisma.InvoiceInclude;
 
 export type ReportFilters = {
   clientId?: string;
@@ -177,7 +190,7 @@ export async function getClientStatement(clientId: string) {
     showMoney
       ? prisma.invoice.findMany({
           where: { clientId },
-          include: { clientService: { select: { name: true } } },
+          include: billedInvoiceInclude,
           orderBy: { issueDate: "asc" },
         })
       : Promise.resolve([]),
@@ -195,7 +208,44 @@ export async function getClientStatement(clientId: string) {
   ]);
   const summary = showMoney ? summarizeByService(invoices, serviceIds, adjustments) : null;
   const outstandingInvoices = invoices.filter((i) => invoiceMoney(i).outstanding > 0);
-  return { client, showMoney, summary, outstandingInvoices, tasks };
+  const billedInvoices = invoices.filter((i) => BILLED_STATUSES.includes(i.status));
+  return { client, showMoney, summary, outstandingInvoices, billedInvoices, tasks };
+}
+
+// The Clients list's invoice & payment summary export: the clients the
+// list is currently showing (same filters, re-applied here — see
+// src/lib/client-list-filters.ts), their totals, and every billed invoice
+// and recorded payment behind them. When a profile filter is on, the
+// totals and invoices are just that profile's (no adjustments), the same
+// as the list's money columns. Invoice roles only — it's all money.
+export async function getClientsInvoiceSummary(filters: ClientListFilters, archived: boolean) {
+  const session = await requireRole([...VIEW_ROLES]);
+  if (!canAccessInvoices(session.user.role)) throw new ForbiddenError();
+  const [clients, money] = await Promise.all([
+    listClients({ filter: archived ? "archived" : "active" }),
+    listMoneyByClient(),
+  ]);
+  const shown = clients.filter((c) => clientMatchesFilters(c, filters, money));
+  const profileIds = filters.profileIds.filter((id) => id !== NO_PROFILE);
+  const profileWhere: Prisma.InvoiceWhereInput =
+    filters.profileIds.length === 0
+      ? {}
+      : {
+          OR: [
+            ...(profileIds.length > 0 ? [{ invoiceProfileId: { in: profileIds } }] : []),
+            ...(filters.profileIds.includes(NO_PROFILE) ? [{ invoiceProfileId: null }] : []),
+          ],
+        };
+  const invoices = await prisma.invoice.findMany({
+    where: { clientId: { in: shown.map((c) => c.id) }, status: { in: BILLED_STATUSES }, ...profileWhere },
+    include: { ...billedInvoiceInclude, client: { select: { name: true } } },
+    orderBy: [{ client: { name: "asc" } }, { issueDate: "asc" }],
+  });
+  const clientRows = shown.map((c) => ({
+    client: c,
+    money: moneyForProfiles(money[c.id], filters.profileIds),
+  }));
+  return { clientRows, invoices, profileFiltered: filters.profileIds.length > 0 };
 }
 
 // The service-level export: only what belongs to this one service.

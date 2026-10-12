@@ -4,6 +4,7 @@ import { canAccessInvoices, isManagement } from "@/lib/rbac";
 import { listClients, listCaregiverClients, archiveClient, restoreClient } from "@/lib/actions/clients";
 import { listProjects } from "@/lib/actions/projects";
 import { listMoneyByClient } from "@/lib/actions/invoices";
+import { listInvoiceProfiles } from "@/lib/invoice-profiles";
 import { PageInfoButton } from "@/components/shared/page-info-button";
 import { ClientsTable } from "@/components/clients/clients-table";
 import { CaregiverClientsTable } from "@/components/clients/caregiver-clients-table";
@@ -38,11 +39,13 @@ export default async function ClientsPage({
   }
 
   // Gated on the fetch itself, not just the columns — listMoneyByClient is
-  // invoice-role only.
-  const [clients, projects, moneyByClient] = await Promise.all([
+  // invoice-role only, and the profile filter is built from it.
+  const showMoney = canAccessInvoices(session?.user?.role);
+  const [clients, projects, moneyByClient, invoiceProfiles] = await Promise.all([
     listClients({ filter: showArchived ? "archived" : "active" }),
     listProjects(),
-    canAccessInvoices(session?.user?.role) ? listMoneyByClient() : Promise.resolve(null),
+    showMoney ? listMoneyByClient() : Promise.resolve(null),
+    showMoney ? listInvoiceProfiles() : Promise.resolve([]),
   ]);
 
   return (
@@ -79,6 +82,7 @@ export default async function ClientsPage({
         archiveAction={archiveClient}
         restoreAction={restoreClient}
         moneyByClient={moneyByClient}
+        invoiceProfiles={invoiceProfiles.map((p) => ({ id: p.id, name: p.name }))}
       />
     </div>
   );

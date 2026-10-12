@@ -41,6 +41,7 @@ import {
 } from "@/lib/stripe";
 import type { $Enums, Prisma } from "@/generated/prisma/client";
 import { summarizeByService, type ServiceMoney } from "@/lib/service-financials";
+import { NO_PROFILE, type ClientMoney } from "@/lib/client-list-filters";
 import { resolveClientServiceId } from "@/lib/client-services";
 import { toActionResult } from "@/lib/action-result";
 
@@ -66,27 +67,35 @@ export async function listInvoices(filters?: {
 
 // Invoiced / received / outstanding per client id for the Clients list —
 // the same math as the client page's totals (summarizeByService in
-// src/lib/service-financials.ts), including service adjustments.
-export async function listMoneyByClient(): Promise<Record<string, ServiceMoney>> {
+// src/lib/service-financials.ts), including service adjustments — plus the
+// invoices split by invoice profile, behind the list's profile filter.
+export async function listMoneyByClient(): Promise<Record<string, ClientMoney>> {
   await requireRole(MANAGE_ROLES);
   const [invoices, adjustments] = await Promise.all([
     prisma.invoice.findMany({
       where: { status: { in: ["SENT", "PARTIALLY_PAID", "PAID", "OVERDUE"] } },
-      select: { clientId: true, clientServiceId: true, status: true, total: true, amountPaid: true },
+      select: { clientId: true, clientServiceId: true, invoiceProfileId: true, status: true, total: true, amountPaid: true },
     }),
     prisma.serviceAdjustment.findMany({
       select: { amount: true, clientServiceId: true, clientService: { select: { clientId: true } } },
     }),
   ]);
   const clientIds = new Set([...invoices.map((i) => i.clientId), ...adjustments.map((a) => a.clientService.clientId)]);
-  const byClient: Record<string, ServiceMoney> = {};
+  const byClient: Record<string, ClientMoney> = {};
   for (const clientId of clientIds) {
+    const ownInvoices = invoices.filter((i) => i.clientId === clientId);
     const own = adjustments.filter((a) => a.clientService.clientId === clientId);
-    byClient[clientId] = summarizeByService(
-      invoices.filter((i) => i.clientId === clientId),
-      [...new Set(own.map((a) => a.clientServiceId))],
-      own
-    ).total;
+    const byProfile: Record<string, ServiceMoney> = {};
+    for (const profileId of new Set(ownInvoices.map((i) => i.invoiceProfileId ?? NO_PROFILE))) {
+      byProfile[profileId] = summarizeByService(
+        ownInvoices.filter((i) => (i.invoiceProfileId ?? NO_PROFILE) === profileId),
+        []
+      ).total;
+    }
+    byClient[clientId] = {
+      total: summarizeByService(ownInvoices, [...new Set(own.map((a) => a.clientServiceId))], own).total,
+      byProfile,
+    };
   }
   return byClient;
 }
