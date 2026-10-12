@@ -7,6 +7,16 @@ Status (2026-09-28): **all phases through 6 implemented** (billing deferred); se
 2. **Decisions pending:** tenant billing pricing (5g); product name + domain; legal (BAA/ToS).
 3. **Onboarding audit (2026-09-28), all fixed on `multitenancy/phase-6`, not pushed (user: don't push yet):** suspended-workspace sessions get the suspended notice instead of crashing; platform admins have an Account page and need MFA for the console; tenant email is sent as the org's name with the org's reply-to (Admin > Organization); Admin > Integrations explains each provider and registers the Calendly/DocuSign webhooks itself (old scripts removed); platform console "Invite owner" (typo'd or locked-out owner); failed sign-ins throttled per IP (30) and per account (8) per 15 min; dashboard "Set up your workspace" checklist for new owners (existing orgs pre-dismissed by migration); time clock default = `Organization.timezone`, fallback America/Chicago; handbook served with `PRODUCT_NAME`, Illinois mention removed. Suite: 112 tests pass normal and `TEST_RLS=1` (sim Postgres at localhost:55432 — the local dev Postgres user can't create roles).
 
+## Rehearsal 2026-10-12 (local, seeded data)
+
+Scratch Postgres 16 brought to `origin/main`'s schema (`ea3d0a1`, i.e. what prod runs) and filled with the repo seeds plus extra rows for what Phases 2–3 rewrite: 36 invoices in every status, payments with 12 receipts, client services + adjustments, leads, agency / ball-with values on cases and MCO credentials. Then `prisma migrate deploy` from:
+- **`multitenancy/phase-6` as-is:** all 22 pending migrations applied. No rows lost (only the new tables appear: `organizations` 2, `org_counters` 2, `picklist_options` 14, `auth_tokens`, `organization_integrations`, `task_time_entries`); every `organizationId` = `org_ctk`; invoice/receipt counters = max + 1 (37 / 13), existing numbers unchanged; agency / ball-with values identical (checksums of the columns match, now `text`); stage roles backfilled (15 stages); `prisma migrate diff` to `schema.prisma` empty.
+- **phase-6 + latest main** (local branch `rehearsal/phase6-plus-main`, not pushed; phase-6 itself unchanged): same result on the prod-like copy; main's PLA stage ends up in `org_ctk`.
+
+**Found: main's `20261009120000_cila_post_license_compliance_stage` breaks a fresh install** (CI, any new environment) once merged. On an empty database the per-org unique keys migration (`20260925174913`) runs first and drops `(pipeline, abbrev)`, so its `ON CONFLICT ("pipeline", "abbrev")` fails with `42P10: there is no unique or exclusion constraint matching the ON CONFLICT specification`. Fix (commit `ed9d64c` on `rehearsal/phase6-plus-main`): target-less `ON CONFLICT DO NOTHING`, which matches either key. Prod already applied the original, and `migrate deploy` / `migrate status` accept the edited file on the prod copy. Also on that branch: PLA added to `src/lib/pipeline-stage-catalog.ts` so every workspace gets it; merge conflicts resolved (`.gitignore` both sides; `scripts/seed-pipeline-stages.ts` = phase-6's catalog version). Fresh install + seeds then pass with PLA per workspace. **Reuse both commits when main is merged for real.**
+
+Still to do: the real rehearsal on the prod server (`rehearse-migration.sh`) with an image built from the merged code — seeded data doesn't show prod's volume or odd values.
+
 ## Next: superadmin console — DEVELOPER = superadmin (planned 2026-10-10)
 
 Decisions (user, 2026-10-10):
@@ -78,7 +88,7 @@ Platform audit log, newest first, filter by admin / workspace / action: created,
 - Role migration + DEVELOPER-only-in-platform guard (§1).
 
 ### Build order
-1 role change + tests → 2 enter-any-workspace (drop grant, per-admin hidden user, banner, both logs) → 3 layout/nav → 4 list + detail → `lastSignInAt` + users (§5) → create wizard + onboarding status → export/delete → rename → admins → activity → settings/template. Each its own commit on `multitenancy/phase-6`. **No merges until the user says so** (user, 2026-10-10): not main → phase-6, not phase-6 → main. The superadmin console ships as part of phase-6, before it is ever merged. When the merge with main does happen, fix main's PLA-stage migration for per-workspace stages.
+1 role change + tests → 2 enter-any-workspace (drop grant, per-admin hidden user, banner, both logs) → 3 layout/nav → 4 list + detail → `lastSignInAt` + users (§5) → create wizard + onboarding status → export/delete → rename → admins → activity → settings/template. Each its own commit on `multitenancy/phase-6`. **No merges until the user says so** (user, 2026-10-10): not main → phase-6, not phase-6 → main. The superadmin console ships as part of phase-6, before it is ever merged. When the merge with main does happen, fix main's PLA-stage migration for per-workspace stages — done and tested on `rehearsal/phase6-plus-main` (see "Rehearsal 2026-10-12").
 
 ## Done 2026-10-06 (from the post-merge re-scan)
 
@@ -276,7 +286,8 @@ Risk: largest phase — mitigated by spike, per-area PRs, lint rule.
 - 3d': `PipelineStage.role` (5 roles) backfilled from the old abbrev rules; aging alerts match on role.
 - 3e: `seedOrganization()` (`src/lib/org-seed.ts`) — copies the **template org's** current setup (CTK by default, `TEMPLATE_ORG_SLUG`; decided 2026-09-26): active license types, case types, checklist templates (re-pointed at the new org's own types), service types, and active picklists (the template's own ball-with option becomes the new org). Always seeds the stage catalog (moved to `src/lib/pipeline-stage-catalog.ts`; "CTK" in stage names → org name) and an org-named default invoice profile. Generic fallback when there's no template org. Not copied: document templates (uploaded .docx), forms, invoice profiles.
 - Verified: typecheck, lint, 52 tests, `next build`, smoke of 13 pages, Admin > Lists driven in the browser (add, duplicate rejected, rename, retire keeps existing cases' label).
-- Not yet: stage roles/names editable in the UI (stages still come from the catalog); migration rehearsal of Phases 2–3 on a prod-like copy (Docker was down).
+- Not yet: stage roles/names editable in the UI (stages still come from the catalog).
+- Rehearsed locally 2026-10-12 (all phase-6 migrations, Phases 1–6, not just 2–3 — see "Rehearsal 2026-10-12" under the resume point).
 
 
 **3a. Uniques → per-org:**
