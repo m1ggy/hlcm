@@ -24,7 +24,6 @@ import {
   deleteTimeEntry,
   deleteBreakEntry,
 } from "@/lib/actions/time-entries";
-import { payUserViaWise } from "@/lib/actions/wise";
 import {
   effectiveTimezone,
   currentMonthRange,
@@ -151,8 +150,6 @@ export function TimesheetReport({
   const [breakEntries, setBreakEntries] = useState<BreakEntryRow[]>([]);
   const [breaks, setBreaks] = useState<BreakDeductionRow[]>([]);
   const [isPending, startTransition] = useTransition();
-  const [payStatus, setPayStatus] = useState<Record<string, "paying" | "paid">>({});
-  const [, startPaying] = useTransition();
   const [deletingId, setDeletingId] = useState<string | null>(null);
   // Two different "delete a break" flows on this page: a BreakDeduction
   // (a retroactive per-day policy, no clock time of its own) vs an actual
@@ -160,25 +157,6 @@ export function TimesheetReport({
   // pending-state ids so a spinner on one row never bleeds into the other.
   const [deletingBreakDeductionId, setDeletingBreakDeductionId] = useState<string | null>(null);
   const [deletingBreakEntryId, setDeletingBreakEntryId] = useState<string | null>(null);
-
-  function handlePay(payUserId: string) {
-    setPayStatus((s) => ({ ...s, [payUserId]: "paying" }));
-    startPaying(async () => {
-      try {
-        const range = dayRangeToInstants(from, to, timezone);
-        await payUserViaWise({ userId: payUserId, from: range.from, to: range.to, timeZone: timezone });
-        setPayStatus((s) => ({ ...s, [payUserId]: "paid" }));
-        toast.success("Payout sent via Wise");
-      } catch (error) {
-        setPayStatus((s) => {
-          const next = { ...s };
-          delete next[payUserId];
-          return next;
-        });
-        toast.error(error instanceof Error ? error.message : "Payout failed");
-      }
-    });
-  }
 
   function pdfUrl() {
     const params = new URLSearchParams({ from, to, tz: timezone });
@@ -387,7 +365,6 @@ export function TimesheetReport({
               <TableHead>Rate</TableHead>
               <TableHead>Hours</TableHead>
               <TableHead>Total pay</TableHead>
-              {isAdmin && <TableHead>Payout</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -410,27 +387,11 @@ export function TimesheetReport({
                   )}
                 </TableCell>
                 <TableCell>{t.pay != null ? formatMoney(t.pay) : "—"}</TableCell>
-                {isAdmin && (
-                  <TableCell>
-                    {payStatus[t.userId] === "paid" ? (
-                      <span className="text-xs text-muted-foreground">Sent</span>
-                    ) : (
-                      <Button
-                        size="xs"
-                        variant="outline"
-                        disabled={!t.pay || t.hours <= 0} loading={payStatus[t.userId] === "paying"}
-                        onClick={() => handlePay(t.userId)}
-                      >
-                        Pay via Wise
-                      </Button>
-                    )}
-                  </TableCell>
-                )}
               </TableRow>
             ))}
             {totals.length === 0 && (
               <TableRow>
-                <TableCell colSpan={isAdmin ? 5 : 4} className="text-center text-muted-foreground">
+                <TableCell colSpan={4} className="text-center text-muted-foreground">
                   No sessions in this range.
                 </TableCell>
               </TableRow>

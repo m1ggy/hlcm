@@ -1,5 +1,6 @@
 import ExcelJS from "exceljs";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import { embedPdfFont } from "@/lib/invoice-pdf";
 import { NextResponse } from "next/server";
 import { currentOrganization } from "@/lib/db";
 import { DEFAULT_TIMEZONE } from "@/lib/time-entries";
@@ -133,8 +134,8 @@ function pdfSafe(text: string) {
 
 export async function toPdf(doc: ExportDoc): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
-  const font = await pdf.embedFont(StandardFonts.Helvetica);
-  const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const font = await embedPdfFont(pdf, StandardFonts.Helvetica);
+  const bold = await embedPdfFont(pdf, StandardFonts.HelveticaBold);
   const usable = PAGE[0] - MARGIN * 2;
   let page: PDFPage = pdf.addPage(PAGE);
   let y = PAGE[1] - MARGIN;
