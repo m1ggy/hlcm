@@ -49,8 +49,8 @@ export default async function ClientsPage({
   ]);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+    <ClientsTable
+      header={
         <div>
           <div className="flex items-center gap-1.5">
             <h1 className="text-2xl font-semibold">{showArchived ? "Archived Clients" : "Clients"}</h1>
@@ -73,17 +73,15 @@ export default async function ClientsPage({
             {showArchived ? "← Back to active clients" : "View archived clients"}
           </Link>
         </div>
-        {!showArchived && <NewClientDialog projects={projects.map((p) => ({ id: p.id, name: p.name }))} />}
-      </div>
-      <ClientsTable
-        clients={clients}
-        canArchive={canArchive}
-        showArchived={showArchived}
-        archiveAction={archiveClient}
-        restoreAction={restoreClient}
-        moneyByClient={moneyByClient}
-        invoiceProfiles={invoiceProfiles.map((p) => ({ id: p.id, name: p.name }))}
-      />
-    </div>
+      }
+      actions={!showArchived && <NewClientDialog projects={projects.map((p) => ({ id: p.id, name: p.name }))} />}
+      clients={clients}
+      canArchive={canArchive}
+      showArchived={showArchived}
+      archiveAction={archiveClient}
+      restoreAction={restoreClient}
+      moneyByClient={moneyByClient}
+      invoiceProfiles={invoiceProfiles.map((p) => ({ id: p.id, name: p.name }))}
+    />
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import Link from "next/link";
 import { ArchiveButton } from "@/components/shared/archive-button";
 import { ServicePill } from "@/components/shared/service-pill";
@@ -24,7 +24,8 @@ import {
   type ClientListFilters,
   type ClientMoney,
 } from "@/lib/client-list-filters";
-import { Download, Search } from "lucide-react";
+import { Download, Search, X } from "lucide-react";
+import { FilterMenu, type FilterOption } from "@/components/shared/filter-menu";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -62,7 +63,13 @@ export function ClientsTable({
   restoreAction,
   moneyByClient,
   invoiceProfiles,
+  header,
+  actions,
 }: {
+  // The page's title block and its own header buttons — rendered here so
+  // the Export button (which needs the live filters) can sit beside them.
+  header: ReactNode;
+  actions?: ReactNode;
   clients: ClientRow[];
   canArchive: boolean;
   // Null for anyone without invoice access — the money columns, profile
@@ -107,82 +114,23 @@ export function ClientsTable({
     return () => clearTimeout(id);
   }, []);
 
-  function toggleProject(projectId: string) {
-    setSelectedProjectIds((prev) => {
+  // Every filter is a Set persisted to its own localStorage key.
+  function toggleIn<T>(setter: Dispatch<SetStateAction<Set<T>>>, key: string, value: T) {
+    setter((prev) => {
       const next = new Set(prev);
-      if (next.has(projectId)) next.delete(projectId);
-      else next.add(projectId);
-      window.localStorage.setItem(FILTER_KEY, JSON.stringify([...next]));
+      if (next.has(value)) next.delete(value);
+      else next.add(value);
+      window.localStorage.setItem(key, JSON.stringify([...next]));
       return next;
     });
   }
 
-  function clearFilter() {
-    setSelectedProjectIds(new Set());
-    window.localStorage.setItem(FILTER_KEY, JSON.stringify([]));
-  }
-
-  function toggleStatus(status: ClientStatus) {
-    setSelectedStatuses((prev) => {
-      const next = new Set(prev);
-      if (next.has(status)) next.delete(status);
-      else next.add(status);
-      window.localStorage.setItem(STATUS_FILTER_KEY, JSON.stringify([...next]));
-      return next;
-    });
-  }
-
-  function clearStatusFilter() {
-    setSelectedStatuses(new Set());
-    window.localStorage.setItem(STATUS_FILTER_KEY, JSON.stringify([]));
-  }
-
-  function toggleProfile(profileId: string) {
-    setSelectedProfileIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(profileId)) next.delete(profileId);
-      else next.add(profileId);
-      window.localStorage.setItem(PROFILE_FILTER_KEY, JSON.stringify([...next]));
-      return next;
-    });
-  }
-
-  function clearProfileFilter() {
-    setSelectedProfileIds(new Set());
-    window.localStorage.setItem(PROFILE_FILTER_KEY, JSON.stringify([]));
+  function clearIn<T>(setter: Dispatch<SetStateAction<Set<T>>>, key: string) {
+    setter(new Set());
+    window.localStorage.setItem(key, JSON.stringify([]));
   }
 
   const [query, setQuery] = useState("");
-
-  // Derived from the clients' billed invoices (not the full profile list) —
-  // never offers a profile no client on screen has billed under. A saved
-  // selection for a profile that's no longer offered is ignored, so it
-  // can't silently hide every client.
-  const profileOptions: { id: string; name: string; count: number }[] = [];
-  if (moneyByClient) {
-    const countFor = (profileId: string) =>
-      clients.filter((c) => (moneyByClient[c.id]?.byProfile[profileId]?.invoiceCount ?? 0) > 0).length;
-    for (const profile of invoiceProfiles) {
-      const count = countFor(profile.id);
-      if (count > 0) profileOptions.push({ ...profile, count });
-    }
-    const noneCount = countFor(NO_PROFILE);
-    if (noneCount > 0) profileOptions.push({ id: NO_PROFILE, name: "No profile", count: noneCount });
-  }
-  const activeProfileIds = profileOptions.map((p) => p.id).filter((id) => selectedProfileIds.has(id));
-
-  const filters: ClientListFilters = {
-    query,
-    statuses: [...selectedStatuses],
-    projectIds: [...selectedProjectIds],
-    profileIds: activeProfileIds,
-  };
-  const filtered = clients.filter((client) => clientMatchesFilters(client, filters, moneyByClient));
-  const exportHref = (format: string) => {
-    const params = filtersToSearchParams(filters, showArchived);
-    params.set("format", format);
-    return `/api/export/clients?${params}`;
-  };
 
   // Derived from the clients already on screen (not a separate project
   // fetch) — naturally scoped to active vs archived, and never offers a
@@ -198,144 +146,143 @@ export function ClientsTable({
   }
   projectOptions.sort((a, b) => a.name.localeCompare(b.name));
 
+  // Derived from the clients' billed invoices (not the full profile list) —
+  // never offers a profile no client on screen has billed under.
+  const profileOptions: FilterOption[] = [];
+  if (moneyByClient) {
+    const countFor = (profileId: string) =>
+      clients.filter((c) => (moneyByClient[c.id]?.byProfile[profileId]?.invoiceCount ?? 0) > 0).length;
+    for (const profile of invoiceProfiles) {
+      const count = countFor(profile.id);
+      if (count > 0) profileOptions.push({ value: profile.id, label: profile.name, count });
+    }
+    const noneCount = countFor(NO_PROFILE);
+    if (noneCount > 0) profileOptions.push({ value: NO_PROFILE, label: "No profile", count: noneCount });
+  }
+
+  // A saved selection for a project/profile that's no longer offered is
+  // ignored, so it can't silently hide every client behind an invisible
+  // filter.
+  const activeProjectIds = projectOptions.map((p) => p.id).filter((id) => selectedProjectIds.has(id));
+  const activeProfileIds = profileOptions.map((p) => p.value).filter((id) => selectedProfileIds.has(id));
+
+  const filters: ClientListFilters = {
+    query,
+    statuses: [...selectedStatuses],
+    projectIds: activeProjectIds,
+    profileIds: activeProfileIds,
+  };
+  const filtered = clients.filter((client) => clientMatchesFilters(client, filters, moneyByClient));
+  const anyFilter =
+    query.trim() !== "" || filters.statuses.length + activeProjectIds.length + activeProfileIds.length > 0;
+  const exportHref = (format: string) => {
+    const params = filtersToSearchParams(filters, showArchived);
+    params.set("format", format);
+    return `/api/export/clients?${params}`;
+  };
+
+  function clearAll() {
+    setQuery("");
+    clearIn(setSelectedStatuses, STATUS_FILTER_KEY);
+    clearIn(setSelectedProjectIds, FILTER_KEY);
+    clearIn(setSelectedProfileIds, PROFILE_FILTER_KEY);
+  }
+
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative max-w-md flex-1">
-          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search clients..."
-            className="pl-8"
-            aria-label="Search clients"
-          />
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        {header}
+        <div className="flex items-center gap-2">
+          {moneyByClient && (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button variant="outline">
+                    <Download className="size-4" />
+                    Export
+                  </Button>
+                }
+              />
+              <DropdownMenuContent align="end" className="w-auto min-w-56">
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>
+                    Invoices &amp; payments summary
+                    {anyFilter && <span className="block font-normal">For the {filtered.length} filtered clients</span>}
+                  </DropdownMenuLabel>
+                  <DropdownMenuItem render={<a href={exportHref("xlsx")} />}>Excel (.xlsx)</DropdownMenuItem>
+                  <DropdownMenuItem render={<a href={exportHref("pdf")} />}>PDF</DropdownMenuItem>
+                  <DropdownMenuItem render={<a href={exportHref("csv")} />}>CSV</DropdownMenuItem>
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+          {actions}
         </div>
-        {moneyByClient && (
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <Button variant="outline">
-                  <Download className="size-4" />
-                  Export
-                </Button>
-              }
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative w-full sm:w-72">
+            <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search clients..."
+              className="pl-8"
+              aria-label="Search clients"
             />
-            <DropdownMenuContent align="end" className="min-w-56">
-              <DropdownMenuGroup>
-                <DropdownMenuLabel>Invoices &amp; payments summary</DropdownMenuLabel>
-                <DropdownMenuItem render={<a href={exportHref("xlsx")} />}>Excel (.xlsx)</DropdownMenuItem>
-                <DropdownMenuItem render={<a href={exportHref("pdf")} />}>PDF</DropdownMenuItem>
-                <DropdownMenuItem render={<a href={exportHref("csv")} />}>CSV</DropdownMenuItem>
-              </DropdownMenuGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-      </div>
-      <div className="flex flex-wrap items-center gap-1.5">
-        <button
-          type="button"
-          onClick={clearStatusFilter}
-          className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
-            selectedStatuses.size === 0
-              ? "border-primary bg-primary text-primary-foreground"
-              : "border-input bg-transparent text-muted-foreground hover:bg-muted"
-          }`}
-        >
-          All statuses
-        </button>
-        {CLIENT_STATUSES.map((status) => {
-          const count = clients.filter((c) => c.status === status).length;
-          const selected = selectedStatuses.has(status);
-          return (
-            <button
-              key={status}
-              type="button"
-              onClick={() => toggleStatus(status)}
-              className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors ${
-                selected
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "border-input bg-transparent text-muted-foreground hover:bg-muted"
-              }`}
-            >
-              {CLIENT_STATUS_LABELS[status]}
-              <span className="tabular-nums opacity-70">{count}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      {projectOptions.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <button
-            type="button"
-            onClick={clearFilter}
-            className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
-              selectedProjectIds.size === 0
-                ? "border-primary bg-primary text-primary-foreground"
-                : "border-input bg-transparent text-muted-foreground hover:bg-muted"
-            }`}
-          >
-            All
-          </button>
-          {projectOptions.map((project) => {
-            const count = clients.filter((c) => c.projects.some((p) => p.id === project.id)).length;
-            const selected = selectedProjectIds.has(project.id);
-            const { hex } = project.serviceType ?? UNMAPPED_SERVICE_COLOR;
-            return (
-              <button
-                key={project.id}
-                type="button"
-                onClick={() => toggleProject(project.id)}
-                className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors ${
-                  selected
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-input bg-transparent text-muted-foreground hover:bg-muted"
-                }`}
-              >
-                <span className="size-1.5 shrink-0 rounded-full" style={{ backgroundColor: hex }} />
-                {project.name}
-                <span className="tabular-nums opacity-70">{count}</span>
-              </button>
-            );
-          })}
+          </div>
+          <FilterMenu
+            label="Status"
+            options={CLIENT_STATUSES.map((status) => ({
+              value: status,
+              label: CLIENT_STATUS_LABELS[status],
+              count: clients.filter((c) => c.status === status).length,
+            }))}
+            selected={filters.statuses}
+            onToggle={(value) => toggleIn(setSelectedStatuses, STATUS_FILTER_KEY, value as ClientStatus)}
+            onClear={() => clearIn(setSelectedStatuses, STATUS_FILTER_KEY)}
+          />
+          {projectOptions.length > 0 && (
+            <FilterMenu
+              label="Project"
+              options={projectOptions.map((project) => ({
+                value: project.id,
+                label: project.name,
+                count: clients.filter((c) => c.projects.some((p) => p.id === project.id)).length,
+                icon: (
+                  <span
+                    className="size-2 shrink-0 rounded-full"
+                    style={{ backgroundColor: (project.serviceType ?? UNMAPPED_SERVICE_COLOR).hex }}
+                  />
+                ),
+              }))}
+              selected={activeProjectIds}
+              onToggle={(value) => toggleIn(setSelectedProjectIds, FILTER_KEY, value)}
+              onClear={() => clearIn(setSelectedProjectIds, FILTER_KEY)}
+            />
+          )}
+          {profileOptions.length > 0 && (
+            <FilterMenu
+              label="Invoice profile"
+              options={profileOptions}
+              selected={activeProfileIds}
+              onToggle={(value) => toggleIn(setSelectedProfileIds, PROFILE_FILTER_KEY, value)}
+              onClear={() => clearIn(setSelectedProfileIds, PROFILE_FILTER_KEY)}
+            />
+          )}
+          {anyFilter && (
+            <Button variant="ghost" onClick={clearAll} className="text-muted-foreground">
+              <X className="size-4" />
+              Clear filters
+            </Button>
+          )}
         </div>
-      )}
-
-      {profileOptions.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="mr-1 text-xs text-muted-foreground">Invoice profile:</span>
-          <button
-            type="button"
-            onClick={clearProfileFilter}
-            className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
-              activeProfileIds.length === 0
-                ? "border-primary bg-primary text-primary-foreground"
-                : "border-input bg-transparent text-muted-foreground hover:bg-muted"
-            }`}
-          >
-            All profiles
-          </button>
-          {profileOptions.map((profile) => {
-            const selected = activeProfileIds.includes(profile.id);
-            return (
-              <button
-                key={profile.id}
-                type="button"
-                onClick={() => toggleProfile(profile.id)}
-                className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors ${
-                  selected
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-input bg-transparent text-muted-foreground hover:bg-muted"
-                }`}
-              >
-                {profile.name}
-                <span className="tabular-nums opacity-70">{profile.count}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
+        <p className="text-xs text-muted-foreground">
+          {anyFilter ? `Showing ${filtered.length} of ${clients.length} clients` : `${clients.length} clients`}
+          {activeProfileIds.length > 0 && " · totals count only the selected invoice profiles"}
+        </p>
+      </div>
 
       <Table>
         <TableHeader>
