@@ -8,11 +8,13 @@
 --
 -- Safe everywhere: a fresh database with no ADMIN user yet inserts nothing
 -- (the seed creates it later), and ON CONFLICT skips a database where the
--- seed already created it.
+-- seed already created it. No conflict target, so it matches either unique
+-- key: (pipeline, abbrev), or (organizationId, pipeline, abbrev) on a fresh
+-- database where the per-org unique keys migration has already run.
 INSERT INTO "pipeline_stages" ("id", "pipeline", "abbrev", "name", "sortOrder", "hex", "colorLabel", "createdById", "updatedAt")
 SELECT 'stg_' || md5(random()::text || clock_timestamp()::text), 'CILA_GROUP_HOME', 'PLA', 'Post-License Compliance', 930, '#1B5E20', 'Dark Green', u."id", CURRENT_TIMESTAMP
 FROM "users" u
 WHERE u."role" = 'ADMIN'
 ORDER BY u."createdAt"
 LIMIT 1
-ON CONFLICT ("pipeline", "abbrev") DO NOTHING;
+ON CONFLICT DO NOTHING;
