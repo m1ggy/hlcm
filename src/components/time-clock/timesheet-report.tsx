@@ -36,8 +36,10 @@ import {
   segmentsByDay,
   fillSegmentsRange,
   breakComplianceByDay,
+  hoursByDay,
   type TimesheetTotal,
 } from "@/lib/time-entries";
+import { DailyTotalsTable, type DayTotal } from "@/components/time-clock/daily-totals";
 import { mapsLinkForCoordinates, haversineMeters, formatDistance, NEAR_THRESHOLD_METERS } from "@/lib/geolocation";
 import { AddTimeEntryDialog } from "@/components/time-clock/add-time-entry-dialog";
 import { EditTimeEntryDialog } from "@/components/time-clock/edit-time-entry-dialog";
@@ -286,6 +288,31 @@ export function TimesheetReport({
   }, [userId, dailyChartData, dailyBreakChartData]);
   const missingBreakDays = compliance?.filter((c) => !c.meetsBreakPolicy).length ?? 0;
 
+  // Clocked time per day across the loaded sessions (split at midnight,
+  // same as the chart) — not limited by MAX_CHARTABLE_DAYS, since it's a
+  // table. Days outside [from, to] are dropped: a session that started
+  // before `from` still spills its in-range part in. Break deductions
+  // aren't applied here (they're per-user policy, shown in the totals).
+  const dailyTotals = useMemo((): DayTotal[] | null => {
+    if (!entries) return null;
+    const people = new Map<string, number>();
+    const byUser = new Map<string, TimeEntryRow[]>();
+    for (const e of entries) byUser.set(e.userId, [...(byUser.get(e.userId) ?? []), e]);
+    for (const userEntries of byUser.values()) {
+      for (const [day, hours] of hoursByDay(userEntries, timezone)) {
+        if (hours > 0) people.set(day, (people.get(day) ?? 0) + 1);
+      }
+    }
+    const breakHours = hoursByDay(
+      breakEntries.map((b) => ({ clockIn: b.breakStart, clockOut: b.breakEnd })),
+      timezone
+    );
+    return [...hoursByDay(entries, timezone)]
+      .filter(([day, hours]) => hours > 0 && day >= from && day <= to)
+      .sort(([a], [b]) => (a < b ? 1 : -1))
+      .map(([day, hours]) => ({ day, hours, breakHours: breakHours.get(day) ?? 0, people: people.get(day) ?? 0 }));
+  }, [entries, breakEntries, timezone, from, to]);
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-3">
@@ -407,6 +434,19 @@ export function TimesheetReport({
             )}
           </TableBody>
         </Table>
+      )}
+
+      {dailyTotals && (
+        <div className="space-y-1.5">
+          <p className="text-sm font-medium">
+            Daily totals{" "}
+            <span className="font-normal text-muted-foreground">
+              ({userId === "all" ? "all users combined" : users.find((u) => u.id === userId)?.name}; clocked time, before break
+              deductions)
+            </span>
+          </p>
+          <DailyTotalsTable days={dailyTotals} showPeople={userId === "all"} />
+        </div>
       )}
 
       {totals && (

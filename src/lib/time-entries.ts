@@ -322,6 +322,18 @@ export function sumSegmentHours(segments: DaySegment[]): number {
   return segments.reduce((sum, s) => sum + (s.endHour - s.startHour), 0);
 }
 
+/** Clocked hours per "yyyy-mm-dd" day in `timeZone` — a shift that runs
+ * past midnight counts toward each day it touches (same split as the
+ * chart), and a still-open one counts up to `now`. Days with no time are
+ * simply absent. */
+export function hoursByDay(
+  entries: EntryForSegments[],
+  timeZone: string = DEFAULT_TIMEZONE,
+  now: Date = new Date()
+): Map<string, number> {
+  return new Map(segmentsByDay(entries, timeZone, now).map((d) => [d.day, sumSegmentHours(d.segments)]));
+}
+
 export type DayBreakStatus = { day: string; workedHours: number; breakMinutes: number; meetsBreakPolicy: boolean };
 
 /**
