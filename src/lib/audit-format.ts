@@ -96,6 +96,10 @@ const ACTION_VERBS: Record<string, string> = {
   unassign_caregiver: "Unassigned caregiver",
   add_care_instruction: "Added a care instruction",
   remove_care_instruction: "Removed a care instruction",
+  report_care_incident: "Caregiver reported a concern",
+  resolve_care_incident: "Resolved a caregiver concern",
+  add_visit_shift: "Added scheduled visits",
+  remove_visit_shift: "Removed a scheduled visit",
   add_client_contact: "Added a contact",
   update_client_contact: "Updated a contact",
   remove_client_contact: "Removed a contact",
@@ -211,6 +215,10 @@ const EVENT_ACTIONS = new Set([
   "unassign_caregiver",
   "add_care_instruction",
   "remove_care_instruction",
+  "report_care_incident",
+  "resolve_care_incident",
+  "add_visit_shift",
+  "remove_visit_shift",
   "add_client_contact",
   "update_client_contact",
   "remove_client_contact",
@@ -303,6 +311,10 @@ export function formatEventDescription(
   if (action === "unassign_caregiver" && oldValue) return `Unassigned ${oldValue} as caregiver`;
   if (action === "add_care_instruction" && newValue) return `Added care instruction "${newValue}"`;
   if (action === "remove_care_instruction" && oldValue) return `Removed care instruction "${oldValue}"`;
+  if (action === "report_care_incident" && newValue) return `Caregiver reported a concern: ${newValue}`;
+  if (action === "resolve_care_incident" && newValue) return `Resolved concern: ${newValue}`;
+  if (action === "add_visit_shift" && newValue) return `Scheduled visits — ${newValue}`;
+  if (action === "remove_visit_shift" && oldValue) return `Removed scheduled visit — ${oldValue}`;
   if (action === "add_client_contact" && newValue) return `Added contact "${newValue}"`;
   if (action === "update_client_contact" && newValue) return `Updated contact "${newValue}"`;
   if (action === "remove_client_contact" && oldValue) return `Removed contact "${oldValue}"`;

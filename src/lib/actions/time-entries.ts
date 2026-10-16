@@ -37,12 +37,34 @@ type LocationInput = {
   locationError?: string;
 };
 
+// Written at clock-out of a visit — trimmed, blank treated as "no note".
+// Capped so a pasted wall of text can't bloat every visit-history fetch.
+const visitNoteSchema = z.string().trim().max(4000).optional();
+
+/** Stores the note on the visit's first segment — see TimeEntry.visitStartId. */
+async function saveVisitNote(entry: { id: string; visitStartId: string | null; careRecipientId: string | null }, note: string | undefined) {
+  const visitNote = visitNoteSchema.parse(note);
+  if (!entry.careRecipientId || !visitNote) return;
+  await prisma.timeEntry.update({ where: { id: entry.visitStartId ?? entry.id }, data: { visitNote } });
+}
+
 export async function clockIn(input: { careRecipientId?: string } & LocationInput = {}) {
   const session = await requireSession();
   const open = await prisma.timeEntry.findFirst({
     where: { userId: session.user.id, clockOut: null },
   });
   if (open) throw new TimeClockError("Already clocked in");
+
+  // A visit can only be for someone this Caregiver is actually assigned to
+  // — otherwise a crafted request could log (and later bill) time against
+  // any recipient by id.
+  if (input.careRecipientId) {
+    const assigned = await prisma.careRecipientAssignment.findUnique({
+      where: { careRecipientId_caregiverId: { careRecipientId: input.careRecipientId, caregiverId: session.user.id } },
+      select: { careRecipient: { select: { active: true } } },
+    });
+    if (!assigned?.careRecipient.active) throw new TimeClockError("You're not assigned to that recipient");
+  }
 
   const entry = await prisma.timeEntry.create({
     data: {
@@ -67,7 +89,7 @@ export async function clockIn(input: { careRecipientId?: string } & LocationInpu
   return entry;
 }
 
-export async function clockOut(input: LocationInput = {}) {
+export async function clockOut(input: LocationInput & { visitNote?: string } = {}) {
   const session = await requireSession();
   const open = await prisma.timeEntry.findFirst({
     where: { userId: session.user.id, clockOut: null },
@@ -85,6 +107,7 @@ export async function clockOut(input: LocationInput = {}) {
       clockOutLocationError: input.locationError,
     },
   });
+  await saveVisitNote(entry, input.visitNote);
 
   await recordAudit({
     entityType: "TimeEntry",
@@ -95,6 +118,16 @@ export async function clockOut(input: LocationInput = {}) {
 
   revalidatePath("/", "layout");
   return entry;
+}
+
+/** The session a break interrupted — startBreak closes it at exactly
+ * breakStart, so it's the latest entry that ended by then. */
+async function entryBeforeBreak(userId: string, breakStart: Date) {
+  return prisma.timeEntry.findFirst({
+    where: { userId, clockOut: { lte: breakStart } },
+    orderBy: { clockOut: "desc" },
+    select: { id: true, careRecipientId: true, visitStartId: true },
+  });
 }
 
 /**
@@ -140,10 +173,22 @@ export async function endBreak() {
   });
   if (!openBreak) throw new TimeClockError("Not on a break");
 
+  // Resuming after a break mid-visit is still the same visit — carry the
+  // recipient over and link back to the visit's first segment, otherwise
+  // the rest of the visit would bill to nobody and lose its checklist.
+  const beforeBreak = await entryBeforeBreak(session.user.id, openBreak.breakStart);
+
   const now = new Date();
   const [, entry] = await prisma.$transaction([
     prisma.breakEntry.update({ where: { id: openBreak.id }, data: { breakEnd: now } }),
-    prisma.timeEntry.create({ data: { userId: session.user.id, clockIn: now } }),
+    prisma.timeEntry.create({
+      data: {
+        userId: session.user.id,
+        clockIn: now,
+        careRecipientId: beforeBreak?.careRecipientId ?? null,
+        visitStartId: beforeBreak?.careRecipientId ? (beforeBreak.visitStartId ?? beforeBreak.id) : null,
+      },
+    }),
   ]);
 
   await recordAudit({
@@ -160,7 +205,7 @@ export async function endBreak() {
 /** Ends a break without resuming work — the break turned into being done
  * for the day. Just closes the BreakEntry; the TimeEntry it started from
  * stays closed, so no new session opens (unlike endBreak). */
-export async function endBreakForDay() {
+export async function endBreakForDay(input: { visitNote?: string } = {}) {
   const session = await requireSession();
   const openBreak = await prisma.breakEntry.findFirst({
     where: { userId: session.user.id, breakEnd: null },
@@ -169,6 +214,11 @@ export async function endBreakForDay() {
   if (!openBreak) throw new TimeClockError("Not on a break");
 
   const entry = await prisma.breakEntry.update({ where: { id: openBreak.id }, data: { breakEnd: new Date() } });
+
+  // Ending the day from a break ends the visit too — same note prompt as
+  // a normal clock-out.
+  const beforeBreak = await entryBeforeBreak(session.user.id, openBreak.breakStart);
+  if (beforeBreak) await saveVisitNote(beforeBreak, input.visitNote);
 
   await recordAudit({
     entityType: "BreakEntry",

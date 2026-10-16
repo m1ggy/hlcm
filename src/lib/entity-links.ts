@@ -19,6 +19,12 @@ export const ENTITY_LINKS: Record<EntityLinkVariant, Record<string, (id: string)
     // No per-lead detail route exists (yet) — only the /leads list, same
     // situation as Task above.
     Lead: () => "/leads",
+    // A Caregiver's own recipients (assignment notifications).
+    CareRecipient: () => "/care-recipients",
+    // Staff side of a recipient — they live on their agency's client page.
+    ClientCareRecipients: (id) => `/clients/${id}#care-recipients`,
+    // A concern on a recipient with no agency: the dashboard's Care visits card.
+    Dashboard: () => "/",
   },
   portal: {
     Application: (id) => `/portal/applications/${id}`,

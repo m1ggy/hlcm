@@ -1,5 +1,6 @@
-// Extends seed-demo.ts with a Caregiver account and an assigned Care
-// Recipient, so the Caregiver-access and geo-located clock-in/out test
+// Extends seed-demo.ts with a Caregiver account, an assigned Care
+// Recipient with care tasks, and a weekly visit schedule (one slot every
+// day, so the Today page always has something to show), so the Caregiver-access and geo-located clock-in/out test
 // steps (see the "HCLM Backlog Test Plan" artifact) have something to test
 // against without extra manual setup. Additive, idempotent, local dev DB
 // only — same convention as seed-demo.ts/seed-demo-credentials.ts.
@@ -42,7 +43,11 @@ async function main() {
         address: "233 S Wacker Dr, Chicago, IL 60606",
         phone: "312-555-0142",
         preferredContactMethod: "Phone",
-        visitSchedule: "Mon/Wed/Fri mornings",
+        emergencyContactName: "Karen Simmons",
+        emergencyContactRelationship: "Daughter",
+        emergencyContactPhone: "312-555-0199",
+        careNotes: "Type 2 diabetes. Walker for anything past the hallway. Allergic to penicillin.",
+        visitSchedule: "Prefers mornings",
         clientId: client?.id,
         createdById: admin.id,
       },
@@ -62,6 +67,28 @@ async function main() {
     console.log("Assigned Dorothy Simmons to Priya Nair.");
   } else {
     console.log("Assignment already exists, skipping.");
+  }
+
+  if ((await prisma.careInstruction.count({ where: { careRecipientId: recipient.id } })) === 0) {
+    const labels = ["Give morning medication with breakfast", "Check blood sugar and log it", "Help with a short walk", "Tidy kitchen"];
+    await prisma.careInstruction.createMany({
+      data: labels.map((label, sortOrder) => ({ careRecipientId: recipient.id, label, sortOrder, createdById: admin.id })),
+    });
+    console.log(`Added ${labels.length} care tasks.`);
+  }
+
+  if ((await prisma.visitShift.count({ where: { careRecipientId: recipient.id, caregiverId: caregiver.id } })) === 0) {
+    await prisma.visitShift.createMany({
+      data: [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
+        careRecipientId: recipient.id,
+        caregiverId: caregiver.id,
+        weekday,
+        startMinute: 9 * 60,
+        endMinute: 13 * 60,
+        createdById: admin.id,
+      })),
+    });
+    console.log("Scheduled daily 9:00 AM – 1:00 PM visits.");
   }
 }
 

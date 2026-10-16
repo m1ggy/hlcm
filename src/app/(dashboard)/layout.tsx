@@ -13,7 +13,7 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/s
 import { Button } from "@/components/ui/button";
 import { BookOpen } from "lucide-react";
 import { getMyActiveEntry, getMyActiveBreak } from "@/lib/actions/time-entries";
-import { listMyCareRecipients } from "@/lib/actions/care-recipients";
+import { listMyStartableRecipients, getMyCurrentVisitRecipientId } from "@/lib/actions/visits";
 
 export default async function DashboardLayout({
   children,
@@ -23,10 +23,11 @@ export default async function DashboardLayout({
   const session = await auth();
   if (session?.user?.role === "CLIENT") redirect("/portal");
   const isCaregiver = session?.user?.role === "CAREGIVER";
-  const [activeEntry, activeBreak, careRecipients] = await Promise.all([
+  const [activeEntry, activeBreak, careRecipients, visitRecipientId] = await Promise.all([
     getMyActiveEntry(),
     getMyActiveBreak(),
-    isCaregiver ? listMyCareRecipients() : Promise.resolve([]),
+    isCaregiver ? listMyStartableRecipients() : Promise.resolve([]),
+    isCaregiver ? getMyCurrentVisitRecipientId() : Promise.resolve(null),
   ]);
 
   return (
@@ -40,9 +41,14 @@ export default async function DashboardLayout({
           </div>
           <div className="flex flex-wrap items-center justify-end gap-1">
             <TimeClockWidget
+              // Remount whenever the server-side clock state changes — the
+              // widget seeds its state from these props once, so without
+              // this a clock-in from the Today page would leave the header
+              // showing "Clock in".
+              key={`${activeEntry?.id ?? "-"}:${activeBreak?.id ?? "-"}`}
               initialClockIn={activeEntry ? activeEntry.clockIn.toISOString() : null}
               initialBreakStart={activeBreak ? activeBreak.breakStart.toISOString() : null}
-              initialCareRecipientId={activeEntry?.careRecipientId ?? null}
+              initialCareRecipientId={visitRecipientId}
               isCaregiver={isCaregiver}
               careRecipients={careRecipients}
             />

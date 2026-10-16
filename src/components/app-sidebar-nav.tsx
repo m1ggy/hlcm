@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FolderKanban, Users, ClipboardList, UserCog, CheckSquare, Clock, Receipt, Settings, Inbox, MapPin, CalendarCheck, BarChart3 } from "lucide-react";
+import { FolderKanban, Users, ClipboardList, UserCog, CheckSquare, Clock, Receipt, Settings, Inbox, MapPin, CalendarCheck, BarChart3, Sun } from "lucide-react";
 import {
   SidebarMenu,
   SidebarMenuButton,
@@ -21,12 +21,15 @@ const LINKS = [
 ];
 
 // Caregiver-restricted set — no Projects/Applications/Time/Invoices/Admin,
-// same My Tasks/My Recipients/Clients/Settings scope the role is limited to
-// everywhere else (see src/lib/rbac.ts, src/lib/actions/clients.ts,
-// src/lib/actions/care-recipients.ts).
+// same scope the role is limited to everywhere else (see src/lib/rbac.ts,
+// src/lib/actions/clients.ts, src/lib/actions/care-recipients.ts). Today
+// first: it's their home screen. Clients only when they actually have any
+// (it's derived from licensing tasks most hands-on caregivers never get).
 const CAREGIVER_LINKS = [
-  { href: "/tasks", label: "My Tasks", icon: CheckSquare, tour: "nav-tasks" },
+  { href: "/today", label: "Today", icon: Sun, tour: "nav-today" },
   { href: "/care-recipients", label: "My Recipients", icon: MapPin, tour: "nav-recipients" },
+  { href: "/hours", label: "My Hours", icon: Clock, tour: "nav-hours" },
+  { href: "/tasks", label: "My Tasks", icon: CheckSquare, tour: "nav-tasks" },
   { href: "/clients", label: "Clients", icon: Users, tour: "nav-clients" },
   { href: "/account", label: "Settings", icon: Settings, tour: "nav-settings" },
 ];
@@ -35,16 +38,18 @@ export function AppSidebarNav({
   isAdmin,
   canManageInvoices,
   isCaregiver,
+  showCaregiverClients = true,
 }: {
   isAdmin: boolean;
   canManageInvoices: boolean;
   isCaregiver: boolean;
+  showCaregiverClients?: boolean;
 }) {
   const pathname = usePathname();
 
   let links: typeof LINKS;
   if (isCaregiver) {
-    links = CAREGIVER_LINKS;
+    links = showCaregiverClients ? CAREGIVER_LINKS : CAREGIVER_LINKS.filter((l) => l.href !== "/clients");
   } else {
     links = canManageInvoices
       ? [...LINKS, { href: "/invoices", label: "Invoices", icon: Receipt, tour: "nav-invoices" }]

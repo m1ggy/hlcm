@@ -125,6 +125,8 @@ enum NotificationType {
   MEETING_REMINDER
   ENVELOPE_COMPLETED
   ENVELOPE_DECLINED
+  CARE_RECIPIENT_ASSIGNED
+  CARE_INCIDENT_REPORTED
 }
 
 enum InvoiceStatus {
@@ -214,6 +216,11 @@ model User {
   careRecipientAssignments      CareRecipientAssignment[] @relation("CareRecipientAssignmentCaregiver")
   careRecipientAssignmentsGiven CareRecipientAssignment[] @relation("CareRecipientAssignmentAssignedBy")
   careInstructionsCreated       CareInstruction[]         @relation("CareInstructionCreatedBy")
+  visitInstructionChecks        VisitInstructionCheck[]   @relation("VisitInstructionCheckedBy")
+  visitShifts                   VisitShift[]              @relation("VisitShiftCaregiver")
+  visitShiftsCreated            VisitShift[]              @relation("VisitShiftCreatedBy")
+  careIncidentsReported         CareIncident[]            @relation("CareIncidentReportedBy")
+  careIncidentsResolved         CareIncident[]            @relation("CareIncidentResolvedBy")
   clientContactsCreated         ClientContact[]           @relation("ClientContactCreatedBy")
   clientOwnersCreated           ClientOwner[]             @relation("ClientOwnerCreatedBy")
   clientAgreementsCreated       ClientAgreement[]         @relation("ClientAgreementCreatedBy")
@@ -314,7 +321,25 @@ model TimeEntry {
   billedInvoice   Invoice? @relation(fields: [billedInvoiceId], references: [id], onDelete: SetNull)
   billedInvoiceId String?
 
+  // A break closes the open entry and endBreak opens a fresh one (see
+  // src/lib/actions/time-entries.ts), so one visit can span several rows.
+  // The first segment leaves this null and *is* the visit; every
+  // continuation segment points back at it. Everything visit-level —
+  // checklist ticks, the visit note, incidents — hangs off that first
+  // segment, so `visitStartId ?? id` is "which visit is this".
+  visitStart    TimeEntry?  @relation("VisitSegments", fields: [visitStartId], references: [id], onDelete: SetNull)
+  visitStartId  String?
+  visitSegments TimeEntry[] @relation("VisitSegments")
+
+  // What happened on the visit, written by the Caregiver at clock-out.
+  // Only ever set on a visit's first segment (see visitStartId above).
+  visitNote String?
+
+  visitChecks VisitInstructionCheck[]
+  incidents   CareIncident[]
+
   @@index([userId, clockIn])
+  @@index([visitStartId])
   @@index([careRecipientId])
   @@map("time_entries")
 }
@@ -672,10 +697,10 @@ model ClientLicense {
 // so an agency's page can list its own recipients, but standing up a
 // recipient never requires picking one.
 model CareRecipient {
-  id          String    @id @default(cuid())
-  name        String
-  address     String?
-  dateOfBirth DateTime?
+  id                   String    @id @default(cuid())
+  name                 String
+  address              String?
+  dateOfBirth          DateTime?
   // Optional, printed masked (last 4 digits only) on a Care Recipient
   // invoice — see generateCareRecipientInvoicePdf. Plain storage, no
   // encryption at rest, same trade-off already made for
@@ -706,8 +731,9 @@ model CareRecipient {
   // to-dos they check off.
   careNotes String?
 
-  // Freeform, informational only — "Mon/Wed/Fri mornings" — not tied to any
-  // actual scheduling/calendar logic.
+  // Freeform, informational only — "Mon/Wed/Fri mornings". The structured
+  // schedule that drives the Caregiver's Today page and late/missed visit
+  // flags is VisitShift below; this stays as a free-text supplement.
   visitSchedule String?
 
   // Private-pay hourly rate for this recipient's care — used to auto-price
@@ -754,6 +780,8 @@ model CareRecipient {
   assignments  CareRecipientAssignment[]
   timeEntries  TimeEntry[]
   instructions CareInstruction[]
+  shifts       VisitShift[]
+  incidents    CareIncident[]
   // Manual invoices billed for this recipient's care — see
   // Invoice.careRecipientId. Always billed through their own `client`
   // above (Invoice.clientId is a hard requirement, unrelated to this).
@@ -766,20 +794,20 @@ model CareRecipient {
 // A specific request for whoever visits this recipient — "Give medication
 // at 2pm", "Help with laundry on Fridays" — distinct from careNotes above
 // (background to read once) and from the licensing Task model (tied to
-// Applications/checklists, nothing to do with a care visit). Plain
-// standing checklist, not per-visit: `completed` isn't reset on a new
-// clock-in — an admin/staff or the assigned Caregiver toggles it directly.
+// Applications/checklists, nothing to do with a care visit). The standing
+// list itself; whether it was done is recorded per visit in
+// VisitInstructionCheck, so every visit starts with a fresh checklist.
 model CareInstruction {
-  id              String        @id @default(cuid())
-  careRecipient   CareRecipient @relation(fields: [careRecipientId], references: [id], onDelete: Cascade)
+  id              String                  @id @default(cuid())
+  careRecipient   CareRecipient           @relation(fields: [careRecipientId], references: [id], onDelete: Cascade)
   careRecipientId String
   label           String
-  completed       Boolean       @default(false)
-  sortOrder       Int           @default(0)
-  createdBy       User          @relation("CareInstructionCreatedBy", fields: [createdById], references: [id])
+  sortOrder       Int                     @default(0)
+  checks          VisitInstructionCheck[]
+  createdBy       User                    @relation("CareInstructionCreatedBy", fields: [createdById], references: [id])
   createdById     String
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
 
   @@index([careRecipientId])
   @@map("care_instructions")
@@ -801,6 +829,83 @@ model CareRecipientAssignment {
   @@unique([careRecipientId, caregiverId])
   @@index([caregiverId])
   @@map("care_recipient_assignments")
+}
+
+// One CareInstruction ticked off on one visit. timeEntryId is always the
+// visit's first segment (TimeEntry.visitStartId ?? id) so a break mid-visit
+// doesn't lose what was already checked. No row = not done on that visit.
+model VisitInstructionCheck {
+  id            String          @id @default(cuid())
+  timeEntry     TimeEntry       @relation(fields: [timeEntryId], references: [id], onDelete: Cascade)
+  timeEntryId   String
+  instruction   CareInstruction @relation(fields: [instructionId], references: [id], onDelete: Cascade)
+  instructionId String
+  checkedBy     User            @relation("VisitInstructionCheckedBy", fields: [checkedById], references: [id])
+  checkedById   String
+  checkedAt     DateTime        @default(now())
+
+  @@unique([timeEntryId, instructionId])
+  @@index([instructionId])
+  @@map("visit_instruction_checks")
+}
+
+// A recurring weekly slot: "Maria visits Mrs. Lee Mondays 9:00–13:00".
+// Wall-clock times, read in the Caregiver's own effective timezone (see
+// effectiveTimezone in src/lib/time-entries.ts) — that's where the visit
+// happens. A slot never crosses midnight; a live-in day is 0–1440.
+model VisitShift {
+  id              String        @id @default(cuid())
+  careRecipient   CareRecipient @relation(fields: [careRecipientId], references: [id], onDelete: Cascade)
+  careRecipientId String
+  caregiver       User          @relation("VisitShiftCaregiver", fields: [caregiverId], references: [id], onDelete: Cascade)
+  caregiverId     String
+  // 0 = Sunday … 6 = Saturday, matching Date#getDay().
+  weekday         Int
+  // Minutes since local midnight.
+  startMinute     Int
+  endMinute       Int
+  createdBy       User          @relation("VisitShiftCreatedBy", fields: [createdById], references: [id])
+  createdById     String
+  createdAt       DateTime      @default(now())
+
+  @@index([careRecipientId])
+  @@index([caregiverId, weekday])
+  @@map("visit_shifts")
+}
+
+enum CareIncidentCategory {
+  FALL_OR_INJURY
+  HEALTH_CHANGE
+  MEDICATION
+  BEHAVIOR
+  HOME_SAFETY
+  OTHER
+}
+
+// Something a Caregiver flags for the office to follow up on — a fall, a
+// medication problem, a change in condition. Notifies managers on create;
+// stays open on the recipient until someone resolves it.
+model CareIncident {
+  id              String               @id @default(cuid())
+  careRecipient   CareRecipient        @relation(fields: [careRecipientId], references: [id], onDelete: Cascade)
+  careRecipientId String
+  // The visit it was reported during, if any (first segment, same as
+  // VisitInstructionCheck). SetNull: deleting a time entry keeps the report.
+  timeEntry       TimeEntry?           @relation(fields: [timeEntryId], references: [id], onDelete: SetNull)
+  timeEntryId     String?
+  category        CareIncidentCategory
+  urgent          Boolean              @default(false)
+  description     String
+  reportedBy      User                 @relation("CareIncidentReportedBy", fields: [reportedById], references: [id])
+  reportedById    String
+  createdAt       DateTime             @default(now())
+  resolvedAt      DateTime?
+  resolvedBy      User?                @relation("CareIncidentResolvedBy", fields: [resolvedById], references: [id])
+  resolvedById    String?
+  resolutionNote  String?
+
+  @@index([careRecipientId, resolvedAt])
+  @@map("care_incidents")
 }
 
 // A named bundle of Clients that should be treated as one section on the

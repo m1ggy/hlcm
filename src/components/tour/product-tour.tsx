@@ -277,106 +277,85 @@ function buildStaffSteps(role: string | undefined): TourStep[] {
   return steps;
 }
 
-// A Caregiver's whole UI is My Tasks + Clients + Account (see
-// CAREGIVER_LINKS in app-sidebar-nav.tsx) — everything else in the staff
-// tour above (Projects, Applications, pipeline board, Invoices, Admin)
-// doesn't exist for this role at all, so it gets its own short list rather
-// than reusing the staff one with steps skipped.
+// A Caregiver's whole UI is Today + My Recipients + My Hours + My Tasks
+// (+ Clients when they have any) + Account (see CAREGIVER_LINKS in
+// app-sidebar-nav.tsx) — everything else in the staff tour above doesn't
+// exist for this role at all, so it gets its own short list rather than
+// reusing the staff one with steps skipped.
 function buildCaregiverSteps(): TourStep[] {
   return [
     {
-      data: { path: "/tasks" },
-      element: '[data-tour="task-list"]',
+      data: { path: "/today" },
+      element: '[data-tour="today"]',
       popover: {
-        title: "My Tasks",
-        description: "Everything assigned to you — checklist items from cases you're helping with, plus any one-off task someone hands you directly. Anything with subtasks expands right in the list.",
-        side: "top",
+        title: "Today",
+        description: "Your home screen. Today's scheduled visits, each with a Start visit button. During a visit this becomes your checklist: tick off each care task, take a break, report a concern, and End visit with a short note when you leave.",
+        side: "bottom",
       },
     },
     {
-      data: { path: "/tasks" },
+      data: { path: "/today" },
       element: '[data-tour="nav-recipients"]',
       popover: {
         title: "My Recipients",
-        description: "Who you actually visit and give care to — different from Clients below, which is the licensing businesses behind your task assignments. This is also who you'll pick between when you clock in for a visit.",
+        description: "Everyone you care for — address, contacts, care needs, your visit times, and the last few visit notes from whoever went before you.",
         side: "right",
       },
     },
     {
-      data: { path: "/tasks" },
-      element: '[data-tour="nav-clients"]',
+      data: { path: "/today" },
+      element: '[data-tour="nav-hours"]',
       popover: {
-        title: "Clients",
-        description: "The businesses behind your own task assignments — read-only, just contact details and your tasks there. No billing, no other clients' cases.",
+        title: "My Hours",
+        description: "Every visit and shift you've clocked, by week. If something looks wrong, tell the office — they can fix it.",
         side: "right",
       },
     },
     {
-      data: { path: "/tasks" },
-      element: '[data-tour="nav-settings"]',
+      data: { path: "/today" },
+      element: '[data-tour="nav-tasks"]',
       popover: {
-        title: "Account",
-        description: "Password, MFA, notification preferences, and your timezone.",
+        title: "My Tasks",
+        description: "Anything else the office assigns you — paperwork, trainings, one-off to-dos.",
         side: "right",
       },
     },
     {
-      data: { path: "/tasks" },
+      data: { path: "/today" },
       element: '[data-tour="time-clock"]',
       popover: {
-        title: "Clock in / out",
-        description: "Stays in the header on every page. If you're assigned to more than one recipient, clocking in asks which visit it's for — one recipient auto-selects, and it also captures your location for that visit. A manager or admin pulls your hours (and that location) from their own report.",
+        title: "Start / end a visit from anywhere",
+        description: "The same visit controls also sit in the header on every page. Starting a visit captures your location so the office can confirm you're on site — allow location when your browser asks.",
         side: "bottom",
       },
     },
     {
-      data: { path: "/tasks" },
-      element: '[data-tour="handbook-link"]',
-      popover: {
-        title: "Handbook",
-        description: "A written walkthrough, including a section written specifically for Caregiver accounts — opens in a new tab, no login needed.",
-        side: "bottom",
-      },
-    },
-    {
-      data: { path: "/tasks" },
-      element: '[data-tour="search"]',
-      popover: {
-        title: "Quick search",
-        description: "Jump straight to a client or case by name. Ctrl+K (⌘K on a Mac) does the same thing from anywhere.",
-        side: "bottom",
-      },
-    },
-    {
-      data: { path: "/tasks" },
+      data: { path: "/today" },
       element: '[data-tour="notifications"]',
       popover: {
         title: "Notifications",
-        description: "New task assignments and reassignments land here.",
+        description: "New people assigned to you and new tasks land here (and in your email, unless you turn that off in Settings).",
         side: "bottom",
         align: "end",
       },
     },
     {
-      data: { path: "/care-recipients" },
-      element: '[data-tour="recipients-list"]',
+      data: { path: "/today" },
+      element: '[data-tour="handbook-link"]',
       popover: {
-        title: "Your recipients",
-        description: "Name, address, and who they're served under — the address doubles as a map link, handy for planning a visit.",
-        side: "top",
+        title: "Handbook",
+        description: "A written walkthrough, including a section written specifically for caregivers — opens in a new tab, no login needed.",
+        side: "bottom",
       },
     },
     {
-      data: { path: "/clients" },
-      element: '[data-slot="table-container"]',
+      data: { path: "/today" },
+      element: '[data-tour="nav-settings"]',
       popover: {
-        title: "Your clients",
-        description: "Click one for its contact details and your own tasks there — each still editable for status and notes.",
-        side: "top",
+        title: "Settings",
+        description: "Password, MFA, notification preferences, and your timezone — set it so your visit times line up.",
+        side: "right",
       },
-      // Empty for a Caregiver with no assignments yet.
-      skipMissingElement: true,
-      waitForElement: 0,
     },
   ];
 }
@@ -425,7 +404,7 @@ function buildSteps(role: string | undefined): TourStep[] {
 }
 
 function firstPathFor(role: string | undefined): string {
-  if (role === "CAREGIVER") return "/tasks";
+  if (role === "CAREGIVER") return "/today";
   if (role === "CLIENT") return "/portal";
   return "/applications";
 }

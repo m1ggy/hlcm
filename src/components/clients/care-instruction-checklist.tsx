@@ -3,38 +3,26 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, X } from "lucide-react";
-import {
-  createCareInstruction,
-  toggleCareInstruction,
-  deleteCareInstruction,
-} from "@/lib/actions/care-recipients";
+import { Check, Plus, X } from "lucide-react";
+import { createCareInstruction, deleteCareInstruction } from "@/lib/actions/care-recipients";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
 
-export type CareInstructionRow = { id: string; label: string; completed: boolean };
+export type CareInstructionRow = { id: string; label: string };
 
 function InstructionRow({
   instruction,
   canManage,
+  doneLastVisit,
 }: {
   instruction: CareInstructionRow;
   canManage: boolean;
+  /** Staff view: whether this was ticked on the most recent visit
+   * (undefined = no visit yet, so no marker at all). */
+  doneLastVisit?: boolean;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-
-  function handleToggle(checked: boolean) {
-    startTransition(async () => {
-      try {
-        await toggleCareInstruction(instruction.id, checked);
-        router.refresh();
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Failed to update");
-      }
-    });
-  }
 
   function handleDelete() {
     startTransition(async () => {
@@ -49,11 +37,23 @@ function InstructionRow({
   }
 
   return (
-    <label className="flex items-center gap-2 rounded-md px-1.5 py-1 -mx-1.5 hover:bg-muted/60">
-      <Checkbox checked={instruction.completed} onCheckedChange={handleToggle} disabled={isPending} />
-      <span className={instruction.completed ? "flex-1 text-sm text-muted-foreground line-through" : "flex-1 text-sm"}>
-        {instruction.label}
-      </span>
+    <div className="-mx-1.5 flex items-center gap-2 rounded-md px-1.5 py-1 hover:bg-muted/60">
+      <span className="text-muted-foreground">•</span>
+      <span className="flex-1 text-sm">{instruction.label}</span>
+      {doneLastVisit !== undefined && (
+        <span
+          className={doneLastVisit ? "flex items-center gap-0.5 text-xs text-green-700 dark:text-green-400" : "text-xs text-amber-700 dark:text-amber-400"}
+          title="On the most recent visit"
+        >
+          {doneLastVisit ? (
+            <>
+              <Check className="size-3" /> Done last visit
+            </>
+          ) : (
+            "Not done last visit"
+          )}
+        </span>
+      )}
       {canManage && (
         <button
           type="button"
@@ -64,7 +64,7 @@ function InstructionRow({
           <X className="size-3.5" />
         </button>
       )}
-    </label>
+    </div>
   );
 }
 
@@ -102,41 +102,38 @@ function AddInstructionRow({ careRecipientId }: { careRecipientId: string }) {
   );
 }
 
-// Concrete, checkable requests for a visit — "Give medication at 2pm" —
-// distinct from careNotes (background read once). Used both on the admin
-// Care Recipients card (canManage: add/remove + toggle) and the Caregiver's
-// own My Recipients page (toggle only — see toggleCareInstruction's own
-// assignment check in src/lib/actions/care-recipients.ts).
+// Concrete requests for whoever visits — "Give medication at 2pm" —
+// distinct from careNotes (background read once). This is the standing
+// list: staff add/remove here (canManage); a Caregiver sees it read-only on
+// My Recipients and checks items off per visit on their Today page (see
+// VisitChecklist and VisitInstructionCheck).
 export function CareInstructionChecklist({
   careRecipientId,
   instructions,
   canManage = false,
-  hideHeader = false,
+  lastVisitCheckedIds,
 }: {
   careRecipientId: string;
   instructions: CareInstructionRow[];
   canManage?: boolean;
-  /** The caller already renders its own "To do this visit" + progress
-   * header (see the Caregiver's My Recipients page) — skip the internal
-   * one rather than show it twice. */
-  hideHeader?: boolean;
+  /** Staff view: instruction ids ticked on the most recent visit, to show
+   * how it went per item. Omitted when there's been no visit. */
+  lastVisitCheckedIds?: string[];
 }) {
-  const done = instructions.filter((i) => i.completed).length;
+  const lastChecked = lastVisitCheckedIds ? new Set(lastVisitCheckedIds) : null;
 
   return (
     <div className="space-y-0.5">
-      {!hideHeader && (instructions.length > 0 || canManage) && (
-        <div className="mb-1 flex items-center justify-between">
-          <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">To do this visit</p>
-          {instructions.length > 0 && (
-            <span className="text-xs text-muted-foreground">
-              {done}/{instructions.length} done
-            </span>
-          )}
-        </div>
+      {(instructions.length > 0 || canManage) && (
+        <p className="mb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">Care tasks each visit</p>
       )}
       {instructions.map((i) => (
-        <InstructionRow key={i.id} instruction={i} canManage={canManage} />
+        <InstructionRow
+          key={i.id}
+          instruction={i}
+          canManage={canManage}
+          doneLastVisit={lastChecked ? lastChecked.has(i.id) : undefined}
+        />
       ))}
       {canManage && <AddInstructionRow careRecipientId={careRecipientId} />}
     </div>

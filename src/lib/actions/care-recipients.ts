@@ -3,10 +3,11 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireRole, requireSession, ForbiddenError } from "@/lib/rbac";
+import { requireRole } from "@/lib/rbac";
 import { recordAudit, recordFieldChanges } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
 import { geocodeAddress } from "@/lib/geocoding";
+import { notify } from "@/lib/notifications";
 
 // A CareRecipient is the person a Caregiver actually visits and gives
 // hands-on care to — a different thing from Client (the licensed
@@ -21,6 +22,38 @@ const INCLUDE = {
   client: { select: { id: true as const, name: true as const } },
   assignments: { include: { caregiver: { select: { id: true as const, name: true as const } } } },
   instructions: { orderBy: { sortOrder: "asc" as const } },
+  shifts: {
+    include: { caregiver: { select: { id: true as const, name: true as const } } },
+    orderBy: [{ weekday: "asc" as const }, { startMinute: "asc" as const }],
+  },
+  // Open concerns first, then the most recent resolved ones for context.
+  incidents: {
+    include: {
+      reportedBy: { select: { name: true as const } },
+      resolvedBy: { select: { name: true as const } },
+    },
+    orderBy: [{ resolvedAt: { sort: "desc" as const, nulls: "first" as const } }, { createdAt: "desc" as const }],
+    take: 10,
+  },
+  // Recent visits for the staff "Recent visits" list — first segments only
+  // (visitStartId null), each carrying its continuation segments so the
+  // full visit span and hours survive a mid-visit break.
+  timeEntries: {
+    where: { visitStartId: null },
+    orderBy: { clockIn: "desc" as const },
+    take: 8,
+    select: {
+      id: true as const,
+      clockIn: true as const,
+      clockOut: true as const,
+      visitNote: true as const,
+      clockInLatitude: true as const,
+      clockInLongitude: true as const,
+      user: { select: { name: true as const } },
+      visitSegments: { select: { clockIn: true as const, clockOut: true as const } },
+      visitChecks: { select: { instructionId: true as const } },
+    },
+  },
   // Powers the recipient-scoped "Invoices" section in CareRecipientsCard —
   // reads off the same fetch the Client detail page already does, no extra
   // round trip. See Invoice.careRecipientId in prisma/schema.prisma.
@@ -264,6 +297,17 @@ export async function assignCaregiver(careRecipientId: string, caregiverId: stri
     newValue: caregiver.name,
   });
 
+  await notify(
+    {
+      userId: caregiverId,
+      type: "CARE_RECIPIENT_ASSIGNED",
+      message: `You've been assigned to care for ${recipient.name}`,
+      entityType: "CareRecipient",
+      entityId: recipient.id,
+    },
+    session.user.id
+  );
+
   revalidatePath("/clients");
   revalidatePath("/care-recipients");
   if (recipient.clientId) revalidatePath(`/clients/${recipient.clientId}`);
@@ -276,7 +320,12 @@ export async function unassignCaregiver(careRecipientId: string, caregiverId: st
     prisma.user.findUnique({ where: { id: caregiverId }, select: { name: true } }),
   ]);
 
-  await prisma.careRecipientAssignment.deleteMany({ where: { careRecipientId, caregiverId } });
+  // Their weekly slots for this person go with the assignment — otherwise
+  // they'd keep showing as late/missed for someone they no longer visit.
+  await prisma.$transaction([
+    prisma.careRecipientAssignment.deleteMany({ where: { careRecipientId, caregiverId } }),
+    prisma.visitShift.deleteMany({ where: { careRecipientId, caregiverId } }),
+  ]);
 
   await recordAudit({
     ...auditTargetFor(recipient),
@@ -346,6 +395,20 @@ export async function listMyCareRecipients() {
     include: {
       client: { select: { id: true, name: true } },
       instructions: { orderBy: { sortOrder: "asc" } },
+      // Only this Caregiver's own slots — a rotation partner's schedule
+      // isn't theirs to plan around.
+      shifts: {
+        where: { caregiverId: session.user.id },
+        orderBy: [{ weekday: "asc" }, { startMinute: "asc" }],
+      },
+      // Handoff: the last few notes from anyone who visited, so whoever's
+      // next on the rotation knows how the previous visit went.
+      timeEntries: {
+        where: { visitStartId: null, visitNote: { not: null } },
+        orderBy: { clockIn: "desc" },
+        take: 3,
+        select: { id: true, clockIn: true, visitNote: true, user: { select: { name: true } } },
+      },
     },
     orderBy: { name: "asc" },
   });
@@ -376,29 +439,6 @@ export async function createCareInstruction(careRecipientId: string, label: stri
   revalidatePath("/clients");
   revalidatePath("/care-recipients");
   if (recipient.clientId) revalidatePath(`/clients/${recipient.clientId}`);
-}
-
-// Reachable by staff managing the record, and by the Caregiver actually on
-// the visit checking items off — but a Caregiver only for a recipient
-// they're assigned to, never any instruction by id.
-export async function toggleCareInstruction(id: string, completed: boolean) {
-  const session = await requireSession();
-  const role = session.user.role as (typeof MANAGE_ROLES)[number] | "OWNER" | "CAREGIVER" | string;
-
-  const instruction = await prisma.careInstruction.findUniqueOrThrow({ where: { id } });
-
-  if (role !== "OWNER" && !MANAGE_ROLES.includes(role as (typeof MANAGE_ROLES)[number])) {
-    if (role !== "CAREGIVER") throw new ForbiddenError();
-    const assigned = await prisma.careRecipientAssignment.findUnique({
-      where: { careRecipientId_caregiverId: { careRecipientId: instruction.careRecipientId, caregiverId: session.user.id } },
-    });
-    if (!assigned) throw new ForbiddenError();
-  }
-
-  await prisma.careInstruction.update({ where: { id }, data: { completed } });
-
-  revalidatePath("/clients");
-  revalidatePath("/care-recipients");
 }
 
 export async function deleteCareInstruction(id: string) {

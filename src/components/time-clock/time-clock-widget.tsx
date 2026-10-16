@@ -8,7 +8,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { AvatarInitials } from "@/components/ui/avatar-initials";
 import { clockIn, clockOut, startBreak, endBreak, endBreakForDay } from "@/lib/actions/time-entries";
 import { formatDuration } from "@/lib/time-entries";
-import { captureLocation, haversineMeters, formatDistance, NEAR_THRESHOLD_METERS } from "@/lib/geolocation";
+import { useStartVisit } from "@/components/visits/use-start-visit";
+import { EndVisitDialog } from "@/components/visits/end-visit-dialog";
 
 type CareRecipient = { id: string; name: string; address: string | null; latitude: number | null; longitude: number | null };
 
@@ -23,8 +24,8 @@ export function TimeClockWidget({
   /** Server passes the open BreakEntry's breakStart as an ISO string, same
    * as initialClockIn — null means not currently on a break. */
   initialBreakStart: string | null;
-  /** The open TimeEntry's careRecipientId, if any — lets a page reload
-   * mid-shift still know whether clock-out should capture location. */
+  /** The recipient of the visit in progress (open, or paused on a break),
+   * if any — clock-out/End day then go through the End visit dialog. */
   initialCareRecipientId?: string | null;
   /** Caregiver-only: whether to prompt for a recipient + capture GPS on
    * clock-in/out at all. Every other role's flow below is byte-for-byte
@@ -40,11 +41,13 @@ export function TimeClockWidget({
   const [elapsedHours, setElapsedHours] = useState(0);
   const [isPending, startTransition] = useTransition();
   const [pickerOpen, setPickerOpen] = useState(false);
-  // Only set while an actual visit is open (a recipient was picked/
-  // auto-selected at clock-in) — office work (no recipient) leaves this
-  // null, so clock-out for that session skips the geo prompt too, matching
-  // clock-in's own "no recipient, no prompt" rule.
-  const [activeRecipientId, setActiveRecipientId] = useState<string | null>(initialCareRecipientId);
+  const [endVisitOpen, setEndVisitOpen] = useState(false);
+  const { startVisit, isPending: isStartingVisit } = useStartVisit();
+  // Only set while an actual visit is in progress — office work (no
+  // recipient) clocks out directly, same as any other role. The layout
+  // remounts this widget whenever the server-side clock state changes, so
+  // seeding it once from props is enough.
+  const activeRecipientId = isCaregiver ? initialCareRecipientId : null;
 
   // Starting a break closes the open TimeEntry, so clockedInAt goes back to
   // null while on break — this picks whichever of the two is the "live"
@@ -66,34 +69,12 @@ export function TimeClockWidget({
     };
   }, [anchor]);
 
-  function doClockIn(careRecipientId?: string) {
+  function doClockIn() {
     startTransition(async () => {
       try {
-        // Only an actual visit (a recipient was picked/auto-selected)
-        // prompts for location — a Caregiver clocking in for plain office
-        // work behaves exactly like any other role, no geo prompt at all.
-        const location = isCaregiver && careRecipientId ? await captureLocation() : {};
-        const entry = await clockIn({ careRecipientId, ...location });
+        const entry = await clockIn();
         setClockedInAt(new Date(entry.clockIn));
-        setActiveRecipientId(careRecipientId ?? null);
         toast.success("Clocked in");
-
-        // Purely informational, never re-litigates the clock-in above —
-        // only shown when both sides of the comparison actually exist: the
-        // capture succeeded (no locationError) and the recipient's address
-        // was geocoded. Anything else (denied permission, no address on
-        // file, GEOCODING key unset) just silently skips this toast.
-        const recipient = careRecipients.find((r) => r.id === careRecipientId);
-        if (recipient?.latitude != null && recipient.longitude != null && location.latitude != null && location.longitude != null) {
-          const distance = haversineMeters(location.latitude, location.longitude, recipient.latitude, recipient.longitude);
-          if (distance <= NEAR_THRESHOLD_METERS) {
-            toast.success(
-              distance < 5 ? `You're at ${recipient.name}'s` : `You're at ${recipient.name}'s (${formatDistance(distance)} away)`
-            );
-          } else {
-            toast.warning(`You're ${formatDistance(distance)} from ${recipient.name}'s house`);
-          }
-        }
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to clock in");
       }
@@ -108,7 +89,7 @@ export function TimeClockWidget({
       return;
     }
     if (careRecipients.length === 1) {
-      doClockIn(careRecipients[0].id);
+      startVisit(careRecipients[0]);
       return;
     }
     setPickerOpen(true);
@@ -116,16 +97,20 @@ export function TimeClockWidget({
 
   function handlePickRecipient(id: string) {
     setPickerOpen(false);
-    doClockIn(id);
+    const recipient = careRecipients.find((r) => r.id === id);
+    if (recipient) startVisit(recipient);
   }
 
   function handleClockOut() {
+    // A visit ends through the End visit dialog (checklist recap + note).
+    if (activeRecipientId) {
+      setEndVisitOpen(true);
+      return;
+    }
     startTransition(async () => {
       try {
-        const location = isCaregiver && activeRecipientId ? await captureLocation() : {};
-        await clockOut(location);
+        await clockOut();
         setClockedInAt(null);
-        setActiveRecipientId(null);
         toast.success("Clocked out");
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to clock out");
@@ -160,6 +145,10 @@ export function TimeClockWidget({
   }
 
   function handleEndBreakForDay() {
+    if (activeRecipientId) {
+      setEndVisitOpen(true);
+      return;
+    }
     startTransition(async () => {
       try {
         await endBreakForDay();
@@ -197,9 +186,14 @@ export function TimeClockWidget({
     </Dialog>
   );
 
+  const endVisitDialog = activeRecipientId && (
+    <EndVisitDialog open={endVisitOpen} onOpenChange={setEndVisitOpen} fromBreak={Boolean(breakStartedAt)} />
+  );
+
   if (breakStartedAt) {
     return (
       <div className="flex items-center gap-1" data-tour="time-clock">
+        {endVisitDialog}
         <span className="rounded-md border border-amber-500/40 px-2 py-1 text-xs font-medium text-amber-700 dark:text-amber-400">
           On break · {formatDuration(elapsedHours)}
         </span>
@@ -207,7 +201,7 @@ export function TimeClockWidget({
           <Clock className="size-3.5" /> End break
         </Button>
         <Button variant="ghost" size="sm" onClick={handleEndBreakForDay} loading={isPending}>
-          <LogOut className="size-3.5" /> End day
+          <LogOut className="size-3.5" /> {activeRecipientId ? "End visit" : "End day"}
         </Button>
       </div>
     );
@@ -216,6 +210,7 @@ export function TimeClockWidget({
   if (clockedInAt) {
     return (
       <div className="flex items-center gap-1" data-tour="time-clock">
+        {endVisitDialog}
         <Button
           variant="outline"
           size="sm"
@@ -223,7 +218,7 @@ export function TimeClockWidget({
           loading={isPending}
           className="border-green-600/40 text-green-700 dark:text-green-400"
         >
-          <LogOut className="size-3.5" /> Clock out · {formatDuration(elapsedHours)}
+          <LogOut className="size-3.5" /> {activeRecipientId ? "End visit" : "Clock out"} · {formatDuration(elapsedHours)}
         </Button>
         <Button variant="ghost" size="sm" onClick={handleStartBreak} loading={isPending}>
           <Coffee className="size-3.5" /> Break
@@ -234,8 +229,8 @@ export function TimeClockWidget({
 
   return (
     <>
-      <Button variant="default" size="sm" onClick={handleClockIn} loading={isPending} data-tour="time-clock">
-        <Clock className="size-3.5" /> {isPending ? "Clocking in..." : "Clock in"}
+      <Button variant="default" size="sm" onClick={handleClockIn} loading={isPending || isStartingVisit} data-tour="time-clock">
+        <Clock className="size-3.5" /> {isPending || isStartingVisit ? "Clocking in..." : isCaregiver && careRecipients.length > 0 ? "Start visit" : "Clock in"}
       </Button>
       {picker}
     </>

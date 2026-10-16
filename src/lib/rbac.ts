@@ -59,12 +59,13 @@ export async function requireSession() {
 }
 
 /**
- * A Caregiver's dashboard is just My Tasks + Clients (see AppSidebarNav) —
- * every other top-level page (Projects, Applications, Time, Invoices,
- * Admin) calls this first so a typed-in URL redirects cleanly instead of
- * crashing into a ForbiddenError from whatever data call comes next.
+ * A Caregiver's app is Today/My Recipients/My Hours/My Tasks/Clients (see
+ * AppSidebarNav) — every other top-level page (Projects, Applications,
+ * Time, Invoices, Admin) calls this first so a typed-in URL redirects
+ * cleanly to their Today page instead of crashing into a ForbiddenError
+ * from whatever data call comes next.
  */
-export async function blockCaregiverRoute(fallback = "/tasks") {
+export async function blockCaregiverRoute(fallback = "/today") {
   const session = await auth();
   if (session?.user?.role === "CAREGIVER") redirect(fallback);
 }

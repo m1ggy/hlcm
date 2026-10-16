@@ -8,12 +8,15 @@ import {
   SidebarHeader,
 } from "@/components/ui/sidebar";
 import { AppSidebarNav } from "@/components/app-sidebar-nav";
+import { caregiverHasClients } from "@/lib/actions/visits";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 export async function AppSidebar() {
   const session = await auth();
   if (!session?.user) return null;
+  const isCaregiver = session.user.role === "CAREGIVER";
+  const showCaregiverClients = isCaregiver ? await caregiverHasClients() : true;
 
   return (
     <Sidebar>
@@ -26,7 +29,8 @@ export async function AppSidebar() {
         <AppSidebarNav
           isAdmin={isAdmin(session.user.role)}
           canManageInvoices={canAccessInvoices(session.user.role)}
-          isCaregiver={session.user.role === "CAREGIVER"}
+          isCaregiver={isCaregiver}
+          showCaregiverClients={showCaregiverClients}
         />
       </SidebarContent>
       <SidebarFooter className="gap-2 border-t px-3 py-3">

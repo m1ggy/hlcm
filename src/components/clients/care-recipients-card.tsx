@@ -15,6 +15,14 @@ import {
 } from "@/lib/actions/care-recipients";
 import { CareInstructionChecklist, type CareInstructionRow } from "@/components/clients/care-instruction-checklist";
 import { CreateRecipientInvoiceDialog } from "@/components/clients/create-recipient-invoice-dialog";
+import {
+  VisitScheduleEditor,
+  RecentVisits,
+  CareIncidents,
+  type VisitShiftRow,
+  type RecentVisitRow,
+  type CareIncidentRow,
+} from "@/components/clients/care-recipient-visits";
 import { RecipientSummary, ageFromDob } from "@/components/clients/care-recipient-summary";
 import { AvatarInitials } from "@/components/ui/avatar-initials";
 import { InvoiceStatusBadge } from "@/components/invoices/invoice-status-badge";
@@ -84,6 +92,11 @@ export type CareRecipientRow = {
   assignments: { caregiver: { id: string; name: string } }[];
   instructions: CareInstructionRow[];
   invoices: CareRecipientInvoiceRow[];
+  shifts: VisitShiftRow[];
+  incidents: CareIncidentRow[];
+  // Most recent visits, newest first (first segments only — see
+  // TimeEntry.visitStartId).
+  timeEntries: RecentVisitRow[];
 };
 
 function toDateInputValue(date: Date | null): string {
@@ -245,11 +258,13 @@ function CareRecipientFields({ defaultValues }: { defaultValues?: CareRecipientR
         />
       </div>
       <div className="space-y-1">
-        <Label htmlFor="care-recipient-schedule">Visit schedule</Label>
+        <Label htmlFor="care-recipient-schedule">
+          Schedule notes <span className="font-normal text-muted-foreground">(the visit times themselves are set under Visit schedule)</span>
+        </Label>
         <Input
           id="care-recipient-schedule"
           name="visitSchedule"
-          placeholder="e.g. Mon/Wed/Fri mornings"
+          placeholder="e.g. Flexible on Fridays, family visits Sundays"
           defaultValue={defaultValues?.visitSchedule ?? ""}
         />
       </div>
@@ -575,6 +590,7 @@ function ArchivedRecipients({ clientId }: { clientId: string }) {
 // the Client itself (the licensing agency) — see prisma/schema.prisma. This
 // card is where an agency's own recipients live, mirroring
 // McoCredentialsCard/ClientCredentialsCard's shape on this same page.
+// Card anchor — concern notifications deep-link here (see ENTITY_LINKS).
 export function CareRecipientsCard({
   clientId,
   recipients,
@@ -599,7 +615,7 @@ export function CareRecipientsCard({
   isAdmin: boolean;
 }) {
   return (
-    <Card>
+    <Card id="care-recipients" className="scroll-mt-20">
       <CardContent>
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-base font-medium">Care Recipients</h2>
@@ -611,7 +627,9 @@ export function CareRecipientsCard({
           <Accordion multiple className="rounded-lg border">
             {recipients.map((r) => {
               const recipientAge = ageFromDob(r.dateOfBirth);
-              const doneCount = r.instructions.filter((i) => i.completed).length;
+              const openConcerns = r.incidents.filter((i) => !i.resolvedAt);
+              const lastVisit = r.timeEntries[0];
+              const lastFinishedVisit = r.timeEntries.find((v) => v.clockOut && v.visitSegments.every((seg) => seg.clockOut));
               const recipientOutstanding = r.invoices.reduce((sum, inv) => sum + outstandingBalance(inv), 0);
               return (
                 <AccordionItem key={r.id} value={r.id} className="px-3">
@@ -636,9 +654,21 @@ export function CareRecipientsCard({
                             ? `${r.assignments.length} caregiver${r.assignments.length === 1 ? "" : "s"}`
                             : "Unassigned"}
                         </span>
-                        {r.instructions.length > 0 && (
-                          <span>
-                            {doneCount}/{r.instructions.length} done
+                        {lastVisit && (
+                          <span className="hidden sm:inline">
+                            Last visit{" "}
+                            {new Date(lastVisit.clockIn).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                          </span>
+                        )}
+                        {openConcerns.length > 0 && (
+                          <span
+                            className={
+                              openConcerns.some((i) => i.urgent)
+                                ? "rounded-full bg-destructive px-2 py-0.5 font-medium text-white"
+                                : "rounded-full bg-amber-500/15 px-2 py-0.5 font-medium text-amber-800 dark:text-amber-300"
+                            }
+                          >
+                            {openConcerns.length} concern{openConcerns.length === 1 ? "" : "s"}
                           </span>
                         )}
                         {canManageInvoices && recipientOutstanding > 0 && (
@@ -655,6 +685,7 @@ export function CareRecipientsCard({
                         <EditCareRecipientDialog recipient={r} />
                         <ArchiveRecipientButton id={r.id} />
                       </div>
+                      {r.incidents.length > 0 && <CareIncidents incidents={r.incidents} />}
                       <RecipientSummary recipient={r} />
                       <div className="flex flex-wrap items-center gap-1.5">
                         {r.assignments.map((a) => (
@@ -667,7 +698,24 @@ export function CareRecipientsCard({
                         />
                       </div>
                       <div className="border-t pt-3">
-                        <CareInstructionChecklist careRecipientId={r.id} instructions={r.instructions} canManage />
+                        <VisitScheduleEditor
+                          careRecipientId={r.id}
+                          shifts={r.shifts}
+                          assignedCaregivers={r.assignments.map((a) => a.caregiver)}
+                        />
+                      </div>
+                      <div className="border-t pt-3">
+                        <CareInstructionChecklist
+                          careRecipientId={r.id}
+                          instructions={r.instructions}
+                          canManage
+                          lastVisitCheckedIds={
+                            lastFinishedVisit?.visitChecks.map((c) => c.instructionId)
+                          }
+                        />
+                      </div>
+                      <div className="border-t pt-3">
+                        <RecentVisits visits={r.timeEntries} recipient={r} instructionCount={r.instructions.length} />
                       </div>
                       {canManageInvoices && (
                         <div className="border-t pt-3">

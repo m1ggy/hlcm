@@ -8,7 +8,8 @@ import { PageInfoButton } from "@/components/shared/page-info-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default async function TimePage() {
-  await blockCaregiverRoute();
+  // Caregivers have their own hours page without the team timesheet.
+  await blockCaregiverRoute("/hours");
   const session = await auth();
   const role = session?.user?.role;
   const canSeeAllUsers = isManagement(role);
