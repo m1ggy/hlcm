@@ -33,6 +33,26 @@ type Lead = {
   tasks: LinkedTask[];
 };
 
+// Answers past this length collapse behind a "Show more" toggle so one long
+// free-text answer doesn't make the whole card very tall.
+const ANSWER_COLLAPSE_AT = 300;
+
+function IntakeAnswer({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  if (!text) return <p className="text-sm">—</p>;
+  const long = text.length > ANSWER_COLLAPSE_AT;
+  return (
+    <div>
+      <p className={`text-sm whitespace-pre-wrap break-words ${long && !open ? "line-clamp-4" : ""}`}>{text}</p>
+      {long && (
+        <button type="button" onClick={() => setOpen(!open)} className="mt-0.5 text-xs text-primary hover:underline">
+          {open ? "Show less" : "Show more"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 const STAGE_TABS = [
   { key: "all", label: "All" },
   ...(Object.entries(LEAD_STAGE_LABELS) as [$Enums.LeadStage, string][]).map(([key, label]) => ({ key, label })),
@@ -141,30 +161,36 @@ export function LeadsInbox({
                 className="flex w-full flex-wrap items-center gap-2 p-3 text-left"
               >
                 {expanded ? <ChevronDown className="size-4 shrink-0" /> : <ChevronRight className="size-4 shrink-0" />}
-                <span className="min-w-0 flex-1">
-                  <span className="font-medium">{lead.inviteeName}</span>
-                  <span className="ml-2 text-xs text-muted-foreground">{new Date(lead.meetingStartAt).toLocaleString()}</span>
+                <span className="flex min-w-0 flex-1 items-baseline gap-2">
+                  <span className="truncate font-medium" title={lead.inviteeName}>
+                    {lead.inviteeName}
+                  </span>
+                  <span className="shrink-0 text-xs text-muted-foreground">{new Date(lead.meetingStartAt).toLocaleString()}</span>
                 </span>
                 {lead.client && (
                   <Link
                     href={`/clients/${lead.client.id}`}
                     onClick={(e) => e.stopPropagation()}
-                    className="text-xs text-muted-foreground hover:underline"
+                    className="max-w-[12rem] truncate text-xs text-muted-foreground hover:underline"
+                    title={lead.client.name}
                   >
                     {lead.client.name}
                   </Link>
                 )}
                 {lead.assignedTo && (
-                  <span className="text-xs text-muted-foreground" title="Assigned to">
+                  <span className="max-w-[10rem] shrink-0 truncate text-xs text-muted-foreground" title={`Assigned to ${lead.assignedTo.name}`}>
                     {lead.assignedTo.name}
                   </span>
                 )}
                 {lead.canceledAt && (
-                  <Badge variant="destructive" className="text-[0.65rem]">
+                  <Badge variant="destructive" className="shrink-0 text-[0.65rem]">
                     Canceled
                   </Badge>
                 )}
-                <Badge variant={lead.stage === "CONVERTED" ? "default" : lead.stage === "LOST" ? "secondary" : "outline"}>
+                <Badge
+                  className="shrink-0"
+                  variant={lead.stage === "CONVERTED" ? "default" : lead.stage === "LOST" ? "secondary" : "outline"}
+                >
                   {LEAD_STAGE_LABELS[lead.stage]}
                 </Badge>
               </button>
@@ -172,28 +198,28 @@ export function LeadsInbox({
               {expanded && (
                 <div className="space-y-4 border-t p-3">
                   <div className="grid gap-2 sm:grid-cols-2">
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-xs text-muted-foreground">Email</p>
-                      <p className="text-sm">{lead.inviteeEmail}</p>
+                      <p className="text-sm break-words">{lead.inviteeEmail}</p>
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-xs text-muted-foreground">Phone</p>
-                      <p className="text-sm">{lead.inviteePhone || "—"}</p>
+                      <p className="text-sm break-words">{lead.inviteePhone || "—"}</p>
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-xs text-muted-foreground">Timezone</p>
-                      <p className="text-sm">{lead.timezone || "—"}</p>
+                      <p className="text-sm break-words">{lead.timezone || "—"}</p>
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-xs text-muted-foreground">Booked</p>
                       <p className="text-sm">{new Date(lead.createdAt).toLocaleString()}</p>
                     </div>
                   </div>
 
                   {lead.tasks.length > 0 && (
-                    <div className="flex items-center gap-1.5 text-sm">
-                      <ListTodo className="size-3.5 text-muted-foreground" />
-                      <span>
+                    <div className="flex items-start gap-1.5 text-sm">
+                      <ListTodo className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                      <span className="min-w-0 break-words">
                         Follow-up task: {lead.tasks[0].label}
                         <span className="ml-1 text-xs text-muted-foreground">
                           ({lead.tasks[0].status}
@@ -212,13 +238,11 @@ export function LeadsInbox({
                   {qa.length > 0 && (
                     <div className="space-y-2">
                       <p className="text-xs text-muted-foreground">Intake answers</p>
-                      <div className="grid gap-2 sm:grid-cols-2">
+                      <div className="space-y-3">
                         {qa.map((item, i) => (
                           <div key={i} className="min-w-0">
-                            <p className="text-xs text-muted-foreground">{item.question}</p>
-                            <p className="truncate text-sm" title={item.answer}>
-                              {item.answer || "—"}
-                            </p>
+                            <p className="text-xs text-muted-foreground break-words">{item.question}</p>
+                            <IntakeAnswer text={item.answer} />
                           </div>
                         ))}
                       </div>
