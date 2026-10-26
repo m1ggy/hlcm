@@ -110,7 +110,7 @@ export async function getMyToday() {
   const clock = zonedClock(now, timeZone);
   const dayBounds = dayRangeToInstants(clock.day, clock.day, timeZone);
 
-  const [recipients, shifts, visitSegments, openEntry, openBreak, current] = await Promise.all([
+  const [baseRecipients, shifts, visitSegments, openEntry, openBreak, current] = await Promise.all([
     prisma.careRecipient.findMany({
       where: { active: true, assignments: { some: { caregiverId: userId } } },
       select: RECIPIENT_FOR_VISIT,
@@ -135,6 +135,61 @@ export async function getMyToday() {
     prisma.breakEntry.findFirst({ where: { userId, breakEnd: null }, select: { breakStart: true } }),
     myCurrentVisit(userId),
   ]);
+
+  // Handoff + planning context, kept out of the first round trip because it
+  // needs the current visit's id to leave that visit out.
+  const currentVisitId = current ? visitIdOf(current) : null;
+  const recipientIds = baseRecipients.map((r) => r.id);
+  const notCurrent = currentVisitId ? { id: { not: currentVisitId } } : {};
+  const [lastVisitRows, myPastVisits, tomorrowShiftRows] = await Promise.all([
+    // The most recent finished visit per recipient, by anyone on the
+    // rotation — same handoff My Recipients shows, but where it's needed.
+    prisma.timeEntry.findMany({
+      where: { careRecipientId: { in: recipientIds }, visitStartId: null, clockOut: { not: null }, ...notCurrent },
+      orderBy: { clockIn: "desc" },
+      distinct: ["careRecipientId"],
+      select: {
+        careRecipientId: true,
+        clockIn: true,
+        visitNote: true,
+        userId: true,
+        user: { select: { name: true } },
+        visitChecks: { select: { instructionId: true } },
+      },
+    }),
+    // Which recipients this caregiver has visited before — a first visit
+    // opens the care notes by default.
+    prisma.timeEntry.findMany({
+      where: { userId, careRecipientId: { in: recipientIds }, visitStartId: null, ...notCurrent },
+      distinct: ["careRecipientId"],
+      select: { careRecipientId: true },
+    }),
+    prisma.visitShift.findMany({
+      where: { caregiverId: userId, weekday: (clock.weekday + 1) % 7, careRecipient: { active: true } },
+      orderBy: { startMinute: "asc" },
+      select: { id: true, careRecipientId: true, startMinute: true, endMinute: true },
+    }),
+  ]);
+  const lastVisitByRecipient = new Map(lastVisitRows.map((v) => [v.careRecipientId!, v]));
+  const visitedBefore = new Set(myPastVisits.map((v) => v.careRecipientId!));
+  const recipients = baseRecipients.map((r) => {
+    const last = lastVisitByRecipient.get(r.id);
+    const checked = new Set(last?.visitChecks.map((c) => c.instructionId));
+    return {
+      ...r,
+      firstVisit: !visitedBefore.has(r.id),
+      lastVisit: last
+        ? {
+            at: last.clockIn,
+            by: last.userId === userId ? "You" : last.user.name,
+            note: last.visitNote,
+            // Measured against today's task list — a task added since then
+            // shows as not done, which is the safe direction to err.
+            notDone: r.instructions.filter((i) => !checked.has(i.id)).map((i) => i.label),
+          }
+        : null,
+    };
+  });
 
   // Visits as minutes-of-day, grouped per recipient. A break splits a visit
   // into segments; each segment still counts toward its shift on its own.
@@ -167,8 +222,8 @@ export async function getMyToday() {
     }));
 
   let currentVisit = null;
-  if (current) {
-    const visitId = visitIdOf(current);
+  if (current && currentVisitId) {
+    const visitId = currentVisitId;
     const [first, checks] = await Promise.all([
       prisma.timeEntry.findUniqueOrThrow({ where: { id: visitId }, select: { clockIn: true } }),
       prisma.visitInstructionCheck.findMany({ where: { timeEntryId: visitId }, select: { instructionId: true } }),
@@ -197,6 +252,9 @@ export async function getMyToday() {
     today: clock.day,
     recipients,
     todayShifts,
+    tomorrowShifts: tomorrowShiftRows
+      .filter((s) => recipientById.has(s.careRecipientId))
+      .map((s) => ({ ...s, recipient: recipientById.get(s.careRecipientId)! })),
     currentVisit,
     // Clocked in with no recipient (office work) — Today still needs to
     // offer a way to clock out of that.

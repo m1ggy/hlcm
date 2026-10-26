@@ -9,6 +9,7 @@ import { GlobalShortcuts } from "@/components/global-shortcuts";
 import { SessionExpiredDialog } from "@/components/auth/session-expired-dialog";
 import { ProductTour } from "@/components/tour/product-tour";
 import { TimeClockWidget } from "@/components/time-clock/time-clock-widget";
+import { CaregiverBottomNav } from "@/components/caregiver-bottom-nav";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { BookOpen } from "lucide-react";
@@ -67,7 +68,9 @@ export default async function DashboardLayout({
             <NotificationBell />
           </div>
         </header>
-        <main className="w-full min-w-0 flex-1 px-4 py-6 md:px-6">{children}</main>
+        {/* Extra bottom padding on phones keeps content clear of the caregiver tab bar. */}
+        <main className={`w-full min-w-0 flex-1 px-4 py-6 md:px-6 ${isCaregiver ? "pb-24 md:pb-6" : ""}`}>{children}</main>
+        {isCaregiver && <CaregiverBottomNav />}
       </SidebarInset>
       <CommandPalette isAdmin={isAdmin(session?.user?.role)} />
       <GlobalShortcuts />

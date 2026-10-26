@@ -1,7 +1,6 @@
 "use client";
 
-import { useOptimistic, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { toast } from "sonner";
 import { Check } from "lucide-react";
 import { setVisitInstructionCheck } from "@/lib/actions/visits";
@@ -10,7 +9,7 @@ import { cn } from "@/lib/utils";
 
 /**
  * The visit-in-progress checklist: big tap targets (it's used on a phone,
- * often one-handed), optimistic so a tick lands instantly, and a progress
+ * often one-handed), ticks land instantly and roll back on error, and a progress
  * bar so "how much is left" reads at a glance.
  */
 export function VisitChecklist({
@@ -23,30 +22,34 @@ export function VisitChecklist({
   /** On a break — the list stays visible but can't be changed. */
   disabled?: boolean;
 }) {
-  const router = useRouter();
-  const [, startTransition] = useTransition();
-  const [checked, setOptimistic] = useOptimistic(
-    new Set(checkedIds),
-    (current: Set<string>, change: { id: string; checked: boolean }) => {
-      const next = new Set(current);
-      if (change.checked) next.add(change.id);
-      else next.delete(change.id);
-      return next;
-    }
-  );
+  // Local state, not useOptimistic + router.refresh(): a refresh per tick
+  // re-ran the whole Today page on a phone signal. The parent keys this by
+  // visit id, so a new visit starts from the server's state again; the End
+  // visit dialog re-reads checks from the server on open.
+  const [checked, setChecked] = useState(() => new Set(checkedIds));
 
-  function toggle(id: string) {
-    const next = !checked.has(id);
-    startTransition(async () => {
-      setOptimistic({ id, checked: next });
-      try {
-        const result = await setVisitInstructionCheck(id, next);
-        if (!result.ok) toast.error(result.error);
-      } catch (error) {
-        toast.error(unexpectedErrorMessage(error, "Couldn't save — check your connection"));
-      }
-      router.refresh();
+  function apply(id: string, value: boolean) {
+    setChecked((current) => {
+      const next = new Set(current);
+      if (value) next.add(id);
+      else next.delete(id);
+      return next;
     });
+  }
+
+  async function toggle(id: string) {
+    const next = !checked.has(id);
+    apply(id, next);
+    try {
+      const result = await setVisitInstructionCheck(id, next);
+      if (!result.ok) {
+        apply(id, !next);
+        toast.error(result.error);
+      }
+    } catch (error) {
+      apply(id, !next);
+      toast.error(unexpectedErrorMessage(error, "Couldn't save — check your connection"));
+    }
   }
 
   if (instructions.length === 0) {
