@@ -4,7 +4,7 @@ Status (2026-09-28): **all phases through 6 implemented** (billing deferred); se
 
 **Resume point (2026-09-28):** Phases 0–6 implemented (tenant billing deferred by the user) on branches `multitenancy/phase-1` … `multitenancy/phase-6`, each built on the previous — `multitenancy/phase-6` contains everything. Nothing merged or deployed. Next:
 1. **Rollout** (each step deployable on its own, none changes behavior until switched on): merge `multitenancy/phase-6` → `dev` (deploys to dev; CI runs the suite incl. RLS) → rehearse on the prod server with `rehearse-migration.sh` → `main`. Then, when ready: set `INTEGRATION_ENCRYPTION_KEY`; run `setup-app-db-role.sh` + split `DATABASE_URL`/`SYSTEM_DATABASE_URL` (RLS on); DNS + `ROOT_DOMAIN` (subdomains on) — see README.
-2. **Decisions pending:** tenant billing sales tax + trial confirmation (tiers and $20 add-on decided 2026-10-28, see "Next: tenant billing"); product name + domain; legal (BAA/ToS).
+2. **Decisions pending:** tenant billing — tax registrations + product tax code, an owner/accountant task (pricing, trial, add-on and "collect tax now" decided 2026-10-28, see "Next: tenant billing"); product name + domain; legal (BAA/ToS).
 3. **Onboarding audit (2026-09-28), all fixed on `multitenancy/phase-6`, not pushed (user: don't push yet):** suspended-workspace sessions get the suspended notice instead of crashing; platform admins have an Account page and need MFA for the console; tenant email is sent as the org's name with the org's reply-to (Admin > Organization); Admin > Integrations explains each provider and registers the Calendly/DocuSign webhooks itself (old scripts removed); platform console "Invite owner" (typo'd or locked-out owner); failed sign-ins throttled per IP (30) and per account (8) per 15 min; dashboard "Set up your workspace" checklist for new owners (existing orgs pre-dismissed by migration); time clock default = `Organization.timezone`, fallback America/Chicago; handbook served with `PRODUCT_NAME`, Illinois mention removed. Suite: 112 tests pass normal and `TEST_RLS=1` (sim Postgres at localhost:55432 — the local dev Postgres user can't create roles).
 
 ## Rehearsal 2026-10-12 (local, seeded data)
@@ -96,7 +96,8 @@ The platform charges each workspace a monthly fee through the **platform's own S
 
 Decisions (user, 2026-10-28):
 - **Flat tiers** (e.g. Starter / Growth / Pro): fixed monthly price, each with a user limit. One Stripe Product per tier, one monthly Price each.
-- **3-month free trial, card required.** The owner adds a card to start; Stripe charges automatically when the trial ends.
+- **3-month free trial, card required up front** (confirmed 2026-10-28). The owner adds a card to start; Stripe charges automatically when the trial ends.
+- **Collect sales tax from launch** (user, 2026-10-28) with Stripe Tax — see §1a.
 - **14-day grace** after a failed payment, then the workspace locks.
 - **Every active user counts** toward the limit, caregivers included. Hidden platform-admin users (`hideSupportUser`) don't.
 - CTK and the platform workspace are **exempt** (never billed).
@@ -109,10 +110,9 @@ Decisions (user, 2026-10-28):
   | Pro | $499 | 40 |
 - **Extra-user add-on** (user, 2026-10-28): going past the plan's included users is allowed — each extra active user is **$20/month, same on every plan**, on top of the plan, instead of being blocked. See §6. Cheaper to move up at 13 users (Starter + 8 extra = $259 > Growth $249) and at 28 users (Growth + 13 extra = $509 > Pro $499).
 
-Still open:
-1. ~~Extra-user price~~ — $20/month, all plans (2026-10-28).
-2. Confirm the trial reading above (card up front, auto-charge after 90 days).
-3. Sales tax: Stripe Tax collects nothing until there are state registrations; software is taxable in some US states — ask an accountant. Launch without and add later, or register first.
+Still open (business, not code):
+1. **Tax registrations** — which states the business must register in (home state at least), done by the owner/accountant in Stripe (Dashboard → Tax → Registrations, or "Register for me" where offered). **Without an active registration Stripe collects no tax and raises no error.** Launch blocker for the "collect now" decision.
+2. **Product tax code** for the plans — pick the SaaS/business-use code from Stripe's list (https://docs.stripe.com/tax/tax-codes) and confirm with the accountant; never guessed in code.
 
 ### 1. Stripe setup
 - A dedicated Stripe sandbox for development (and one for CI), then live mode.
@@ -121,6 +121,14 @@ Still open:
 - New `src/lib/platform-billing.ts` with its own `StripeClient` instance — never shares code paths or credentials with the per-workspace Stripe.
 - **Inert until the env is set** (same rollout as the rest): no keys → no billing UI, no locks, every workspace treated as exempt.
 - Stripe settings to turn on: trial-ending reminder email, failed-payment emails, Smart Retries over the 14-day window, customer portal (update card, invoices, switch plan, cancel at period end).
+
+### 1a. Sales tax (Stripe Tax)
+- Stripe → Tax → Settings: head office address (tax stays `pending` and calculates nothing until it's set), default tax behavior **exclusive** (tax added on top of $99/$249/$499/$20 — US norm), preset tax code = the confirmed SaaS code; same code on every plan Product and the Extra user Product.
+- Registrations per state as above; turn on threshold monitoring alerts so new states show up when sales cross a state's limit.
+- `automatic_tax: { enabled: true }` on the Checkout Session and the Subscription (plan changes and extra-user quantity updates are taxed the same way). Checkout collects the address it needs for a new customer; `tax_id_collection` on for business customers.
+- Choose your plan and Billing show prices "plus applicable sales tax"; Stripe's invoices and receipts itemize the tax.
+- Before launch: test calculation in the sandbox with an address in a registered state — `taxability_reason` must not be `not_collecting` (that means a missing registration or a nontaxable code).
+- Stripe Tax has its own per-transaction fee (check current Stripe pricing).
 
 ### 2. Schema
 - `Organization`: `plan` (tier key, nullable), `extraUsersBilled Int @default(0)` (what Stripe was last told — compared on each user change), `subscriptionStatus` (mirrors Stripe: `trialing`, `active`, `past_due`, `unpaid`, `canceled`, `incomplete`; null = never subscribed), `stripeCustomerId` (unique), `stripeSubscriptionId` (unique), `trialEndsAt`, `currentPeriodEnd`, `pastDueSince`, `billingExempt Boolean @default(false)`.
@@ -167,10 +175,11 @@ Required, not optional: renewals, failed payments and cancellations only ever ar
 - Unit: `getBillingAccess` for every status + exempt + grace boundary; user count rules; extra-user math per tier (0 at/below included, n above, plan change up/down).
 - `syncExtraUsers`: updates Stripe only on change; a Stripe error leaves the user change in place and the next sync catches up.
 - Webhook: bad signature → 400; duplicate event processed once; unknown customer → 200; event for workspace A never changes B (incl. `TEST_RLS=1`).
+- Tax: sandbox test calculation per registered state (see §1a); a Checkout and a renewal invoice both show tax.
 - Manual in the Stripe sandbox with the Stripe CLI forwarding webhooks and **test clocks**: trial start → trial end charge → failed renewal → 14-day lock → pay → unlock; cancel at period end.
 
 ### Build order
-1 Stripe setup + `platform-billing.ts` → 2 schema/migration → 3 webhook + idempotency → 4 Choose your plan + Admin > Billing → 5 billing lock + banner → 6 included users + extra-user add-on → 7 superadmin billing view/actions → 8 tests throughout. Each its own commit on `multitenancy/phase-6`. Rough effort 4–6 days. Ships with phase-6; no merges until the user says so.
+1 Stripe setup + tax settings + `platform-billing.ts` → 2 schema/migration → 3 webhook + idempotency → 4 Choose your plan + Admin > Billing → 5 billing lock + banner → 6 included users + extra-user add-on → 7 superadmin billing view/actions → 8 tests throughout. Each its own commit on `multitenancy/phase-6`. Rough effort 4–6 days. Ships with phase-6; no merges until the user says so.
 
 ## Done 2026-10-06 (from the post-merge re-scan)
 
@@ -545,4 +554,4 @@ Current favorites: 1) Permitwell, 2) Licensure HQ, 3) Stateline.
 1. Product name + root domain (brainstorm above).
 2. CTK slug — `ctk`?
 3. Email: platform Resend with per-tenant display name only, or tenant-owned sending domains?
-4. ~~Tenant pricing model~~ — flat tiers $99/$249/$499 for 5/15/40 users + $20/month per extra user (2026-10-28). Still open: sales tax.
+4. ~~Tenant pricing model~~ — flat tiers $99/$249/$499 for 5/15/40 users + $20/month per extra user, 3-month trial with card, tax collected from launch (2026-10-28). Still open: state tax registrations + tax code (accountant).
