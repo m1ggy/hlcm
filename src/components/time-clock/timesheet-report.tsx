@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { FileDown, MapPin, Trash2, X } from "lucide-react";
+import { FileDown, RefreshCw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -40,83 +40,17 @@ import {
   type TimesheetTotal,
 } from "@/lib/time-entries";
 import { DailyTotalsTable, type DayTotal } from "@/components/time-clock/daily-totals";
-import { mapsLinkForCoordinates, haversineMeters, formatDistance, NEAR_THRESHOLD_METERS } from "@/lib/geolocation";
 import { AddTimeEntryDialog } from "@/components/time-clock/add-time-entry-dialog";
-import { EditTimeEntryDialog } from "@/components/time-clock/edit-time-entry-dialog";
-import { EditBreakEntryDialog } from "@/components/time-clock/edit-break-entry-dialog";
 import { BreakDeductionDialog } from "@/components/time-clock/break-deduction-dialog";
 import { DailyTimelineChart } from "@/components/time-clock/daily-timeline-chart";
+import { TimesheetDayList, type DayListEntry, type DayListBreak } from "@/components/time-clock/timesheet-day-list";
 
 // Beyond this, a per-day bar chart gets too cramped to read — the table above
 // still covers longer ranges fine, this just stops trying to chart them.
 const MAX_CHARTABLE_DAYS = 62;
 
-type TimeEntryRow = {
-  id: string;
-  userId: string;
-  clockIn: Date;
-  clockOut: Date | null;
+type TimeEntryRow = DayListEntry & {
   user: { id: string; name: string; hourlyRate: number | null };
-  // Caregiver visits only — every other role's sessions leave all of these
-  // null. See src/lib/actions/care-recipients.ts / geo-location-login plan.
-  careRecipient: { id: string; name: string; latitude: number | null; longitude: number | null } | null;
-  clockInLatitude: number | null;
-  clockInLongitude: number | null;
-  clockOutLatitude: number | null;
-  clockOutLongitude: number | null;
-};
-
-// A small "View on map" pin next to a clock-in/out time — only rendered
-// when that specific moment actually has coordinates (a Caregiver session
-// with location captured), never for anything else.
-function LocationPin({ latitude, longitude }: { latitude: number | null; longitude: number | null }) {
-  if (latitude == null || longitude == null) return null;
-  return (
-    <a
-      href={mapsLinkForCoordinates(latitude, longitude)}
-      target="_blank"
-      rel="noreferrer"
-      title="View on map"
-      className="ml-1 inline-flex align-middle text-muted-foreground hover:text-foreground"
-    >
-      <MapPin className="size-3" />
-    </a>
-  );
-}
-
-// How far the clock-in pin landed from the recipient's own geocoded
-// address — only rendered when both sides exist (a captured clock-in
-// location and a successfully geocoded recipient). Same threshold/colors
-// as the toast a Caregiver sees at the moment they clock in
-// (TimeClockWidget) — this is the admin-side, after-the-fact view of the
-// same comparison.
-function DistanceFromRecipient({
-  clockInLatitude,
-  clockInLongitude,
-  recipient,
-}: {
-  clockInLatitude: number | null;
-  clockInLongitude: number | null;
-  recipient: { latitude: number | null; longitude: number | null } | null;
-}) {
-  if (clockInLatitude == null || clockInLongitude == null || recipient?.latitude == null || recipient.longitude == null) {
-    return null;
-  }
-  const distance = haversineMeters(clockInLatitude, clockInLongitude, recipient.latitude, recipient.longitude);
-  const near = distance <= NEAR_THRESHOLD_METERS;
-  return (
-    <span className={near ? "ml-1 text-xs text-muted-foreground" : "ml-1 text-xs text-amber-600 dark:text-amber-400"}>
-      ({formatDistance(distance)}{near ? "" : " away"})
-    </span>
-  );
-}
-
-type BreakEntryRow = {
-  id: string;
-  userId: string;
-  breakStart: Date;
-  breakEnd: Date | null;
-  user: { id: string; name: string };
 };
 
 type BreakDeductionRow = {
@@ -130,15 +64,18 @@ type BreakDeductionRow = {
   createdBy: { name: string };
 };
 
-// isAdmin gates both the Pay button and the entry-level management (add/
-// delete) below — same population (role === "ADMIN") the caller already
-// computes for pay, reused rather than adding a second identical prop.
+// isAdmin gates the Pay button and every change (add/edit/delete time and
+// breaks) — admin and above (ADMIN, ACCOUNTANT, OWNER), the same population
+// the server actions allow. Managers see the same view read-only.
 export function TimesheetReport({
   users,
+  recipients = [],
   accountTimezone,
   isAdmin = false,
 }: {
   users: { id: string; name: string }[];
+  /** Active care recipients, for the visit picker when adding/editing time. */
+  recipients?: { id: string; name: string }[];
   /** The viewer's own Account timezone setting, or null if unset (falls back to the browser's). */
   accountTimezone: string | null;
   isAdmin?: boolean;
@@ -149,16 +86,14 @@ export function TimesheetReport({
   const [to, setTo] = useState(() => toDateInputValue(new Date(), timezone));
   const [totals, setTotals] = useState<TimesheetTotal[] | null>(null);
   const [entries, setEntries] = useState<TimeEntryRow[] | null>(null);
-  const [breakEntries, setBreakEntries] = useState<BreakEntryRow[]>([]);
+  const [breakEntries, setBreakEntries] = useState<DayListBreak[]>([]);
   const [breaks, setBreaks] = useState<BreakDeductionRow[]>([]);
   const [isPending, startTransition] = useTransition();
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  // Two different "delete a break" flows on this page: a BreakDeduction
-  // (a retroactive per-day policy, no clock time of its own) vs an actual
-  // BreakEntry (a real break-start/break-end punch) — kept as separate
-  // pending-state ids so a spinner on one row never bleeds into the other.
-  const [deletingBreakDeductionId, setDeletingBreakDeductionId] = useState<string | null>(null);
-  const [deletingBreakEntryId, setDeletingBreakEntryId] = useState<string | null>(null);
+  // One id at a time is enough — only one delete runs at once.
+  const [busyId, setBusyId] = useState<string | null>(null);
+  // Filters reload on every change; a slow earlier response must not
+  // overwrite a newer one.
+  const requestId = useRef(0);
 
   function pdfUrl() {
     const params = new URLSearchParams({ from, to, tz: timezone });
@@ -166,93 +101,76 @@ export function TimesheetReport({
     return `/api/export/timesheet/pdf?${params.toString()}`;
   }
 
-  // Takes an explicit range rather than reading `from`/`to` state so preset
-  // buttons can set the date fields and load in the same click — state
-  // updates from setFrom/setTo wouldn't be visible yet if this read them.
-  function loadRange(range: { from: string; to: string }) {
-    if (!range.from || !range.to) {
-      toast.error("Pick a date range");
-      return;
-    }
+  const load = useCallback(() => {
+    if (!from || !to || from > to) return;
+    const id = ++requestId.current;
     startTransition(async () => {
       try {
-        const instants = dayRangeToInstants(range.from, range.to, timezone);
-        const query = {
-          userId: userId === "all" ? undefined : userId,
-          from: instants.from,
-          to: instants.to,
-        };
+        const instants = dayRangeToInstants(from, to, timezone);
+        const query = { userId: userId === "all" ? undefined : userId, from: instants.from, to: instants.to };
         const [rows, rawEntries, rawBreakEntries, rawBreaks] = await Promise.all([
           getTimesheetTotals({ ...query, timeZone: timezone }),
           listTimeEntries(query),
           listBreakEntries(query),
           listBreakDeductions(query),
         ]);
+        if (id !== requestId.current) return;
         setTotals(rows);
         setEntries(rawEntries);
         setBreakEntries(rawBreakEntries);
         setBreaks(rawBreaks);
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Failed to load totals");
+        if (id === requestId.current) toast.error(error instanceof Error ? error.message : "Failed to load time");
       }
     });
-  }
+  }, [from, to, timezone, userId]);
 
-  function handlePreview() {
-    loadRange({ from, to });
-  }
+  // Loads on open and whenever the person or dates change — no Preview click.
+  useEffect(() => {
+    load();
+  }, [load]);
 
   function applyPreset(range: { from: string; to: string }) {
     setFrom(range.from);
     setTo(range.to);
-    loadRange(range);
   }
 
-  function handleDelete(entryId: string) {
-    if (!confirm("Delete this time entry? This can't be undone.")) return;
-    setDeletingId(entryId);
+  function runDelete(id: string, action: () => Promise<void>) {
+    setBusyId(id);
     startTransition(async () => {
       try {
-        await deleteTimeEntry(entryId);
-        toast.success("Time entry deleted");
-        handlePreview();
+        await action();
+        load();
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Failed to delete entry");
+        toast.error(error instanceof Error ? error.message : "Failed to delete");
       } finally {
-        setDeletingId(null);
+        setBusyId(null);
       }
+    });
+  }
+
+  function handleDeleteEntry(id: string) {
+    if (!confirm("Delete this time? This can't be undone.")) return;
+    runDelete(id, async () => {
+      await deleteTimeEntry(id);
+      toast.success("Time deleted");
+    });
+  }
+
+  function handleDeleteBreak(id: string) {
+    if (!confirm("Delete this break? The work time on either side is joined back into one session, so the break becomes paid time.")) return;
+    runDelete(id, async () => {
+      const result = await deleteBreakEntry(id);
+      if (result.merged) toast.success("Break deleted — the time is paid again");
+      else toast.success("Break deleted", { description: `The sessions weren't joined: ${result.reason}.` });
     });
   }
 
   function handleDeleteBreakDeduction(id: string) {
     if (!confirm("Remove this break deduction? Hours/pay for this range will recalculate without it.")) return;
-    setDeletingBreakDeductionId(id);
-    startTransition(async () => {
-      try {
-        await deleteBreakDeduction(id);
-        toast.success("Break deduction removed");
-        handlePreview();
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Failed to remove break deduction");
-      } finally {
-        setDeletingBreakDeductionId(null);
-      }
-    });
-  }
-
-  function handleDeleteBreakEntry(id: string) {
-    if (!confirm("Delete this break? This can't be undone.")) return;
-    setDeletingBreakEntryId(id);
-    startTransition(async () => {
-      try {
-        await deleteBreakEntry(id);
-        toast.success("Break deleted");
-        handlePreview();
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Failed to delete break");
-      } finally {
-        setDeletingBreakEntryId(null);
-      }
+    runDelete(id, async () => {
+      await deleteBreakDeduction(id);
+      toast.success("Break deduction removed");
     });
   }
 
@@ -260,6 +178,19 @@ export function TimesheetReport({
   const grandPay = totals?.reduce((sum, t) => sum + (t.pay ?? 0), 0) ?? 0;
 
   const openBreakUserIds = useMemo(() => new Set(breakEntries.filter((b) => !b.breakEnd).map((b) => b.userId)), [breakEntries]);
+
+  // Actual breaks taken (not deduction rules) and session counts per person.
+  const perUser = useMemo(() => {
+    const map = new Map<string, { breakHours: number; sessions: number }>();
+    const get = (id: string) => map.get(id) ?? { breakHours: 0, sessions: 0 };
+    for (const e of entries ?? []) map.set(e.userId, { ...get(e.userId), sessions: get(e.userId).sessions + 1 });
+    for (const b of breakEntries) {
+      if (b.breakEnd) map.set(b.userId, { ...get(b.userId), breakHours: get(b.userId).breakHours + hoursBetween(b.breakStart, b.breakEnd) });
+    }
+    return map;
+  }, [entries, breakEntries]);
+  const grandBreakHours = [...perUser.values()].reduce((sum, u) => sum + u.breakHours, 0);
+  const grandSessions = [...perUser.values()].reduce((sum, u) => sum + u.sessions, 0);
 
   const dayCount = Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000) + 1;
   const chartTooLong = Number.isFinite(dayCount) && dayCount > MAX_CHARTABLE_DAYS;
@@ -317,7 +248,7 @@ export function TimesheetReport({
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-3">
         <div className="space-y-1">
-          <Label>User</Label>
+          <Label>Person</Label>
           <SearchableSelect
             items={{ all: "All users", ...Object.fromEntries(users.map((u) => [u.id, u.name])) }}
             value={userId}
@@ -334,27 +265,36 @@ export function TimesheetReport({
           <Label htmlFor="to">To</Label>
           <Input id="to" type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-40" />
         </div>
-        <Button variant="outline" onClick={handlePreview} loading={isPending}>
-          Preview
-        </Button>
         <div className="flex items-center gap-1.5">
-          <Button variant="ghost" size="sm" onClick={() => applyPreset(currentPayPeriodRange(timezone))} loading={isPending}>
+          <Button variant="ghost" size="sm" onClick={() => applyPreset(currentPayPeriodRange(timezone))}>
             This pay period
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => applyPreset(currentMonthRange(timezone))} loading={isPending}>
+          <Button variant="ghost" size="sm" onClick={() => applyPreset(currentMonthRange(timezone))}>
             This month
           </Button>
+          <Button variant="ghost" size="icon-sm" onClick={load} loading={isPending} title="Refresh" aria-label="Refresh">
+            {!isPending && <RefreshCw className="size-3.5" />}
+          </Button>
         </div>
-        <Button nativeButton={false} render={<a href={pdfUrl()} target="_blank" rel="noopener noreferrer" />}>
-          <FileDown className="size-3.5" /> Download PDF
-        </Button>
-        {isAdmin && (
-          <AddTimeEntryDialog users={users} accountTimezone={accountTimezone} onAdded={handlePreview} />
-        )}
-        {isAdmin && (
-          <BreakDeductionDialog users={users} defaultUserId={userId} defaultFrom={from} defaultTo={to} onAdded={handlePreview} />
-        )}
+        <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+          <Button variant="outline" size="sm" nativeButton={false} render={<a href={pdfUrl()} target="_blank" rel="noopener noreferrer" />}>
+            <FileDown className="size-3.5" /> PDF
+          </Button>
+          {isAdmin && (
+            <AddTimeEntryDialog
+              users={users}
+              recipients={recipients}
+              accountTimezone={accountTimezone}
+              defaultUserId={userId}
+              onAdded={load}
+            />
+          )}
+          {isAdmin && (
+            <BreakDeductionDialog users={users} defaultUserId={userId} defaultFrom={from} defaultTo={to} onAdded={load} />
+          )}
+        </div>
       </div>
+      {from > to && <p className="text-sm text-destructive">The start date is after the end date.</p>}
 
       {breaks.length > 0 && (
         <div className="space-y-1.5 rounded-lg border bg-muted/30 p-3">
@@ -369,12 +309,7 @@ export function TimesheetReport({
                   <span className="text-muted-foreground"> (added by {b.createdBy.name})</span>
                 </span>
                 {isAdmin && (
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    loading={deletingBreakDeductionId === b.id}
-                    onClick={() => handleDeleteBreakDeduction(b.id)}
-                  >
+                  <Button size="xs" variant="ghost" loading={busyId === b.id} onClick={() => handleDeleteBreakDeduction(b.id)}>
                     <X className="size-3.5 text-destructive" />
                   </Button>
                 )}
@@ -388,9 +323,11 @@ export function TimesheetReport({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>User</TableHead>
+              <TableHead>Person</TableHead>
               <TableHead>Rate</TableHead>
-              <TableHead>Hours</TableHead>
+              <TableHead>Paid hours</TableHead>
+              <TableHead>Breaks</TableHead>
+              <TableHead>Sessions</TableHead>
               <TableHead>Total pay</TableHead>
             </TableRow>
           </TableHeader>
@@ -398,10 +335,14 @@ export function TimesheetReport({
             {totals.map((t) => (
               <TableRow key={t.userId}>
                 <TableCell className="font-medium">
-                  {t.userName}
-                  {t.hasOpenEntry && (
-                    <span className="ml-1.5 text-xs text-muted-foreground">(on the clock)</span>
+                  {userId === "all" ? (
+                    <button type="button" className="text-left hover:underline" onClick={() => setUserId(t.userId)} title="Show only this person">
+                      {t.userName}
+                    </button>
+                  ) : (
+                    t.userName
                   )}
+                  {t.hasOpenEntry && <span className="ml-1.5 text-xs text-muted-foreground">(on the clock)</span>}
                   {openBreakUserIds.has(t.userId) && (
                     <span className="ml-1.5 text-xs text-amber-600 dark:text-amber-400">(on break)</span>
                   )}
@@ -410,16 +351,18 @@ export function TimesheetReport({
                 <TableCell>
                   {formatDuration(t.hours)}
                   {t.breakHours > 0 && (
-                    <span className="ml-1 text-xs text-muted-foreground">(−{formatDuration(t.breakHours)} break)</span>
+                    <span className="ml-1 text-xs text-muted-foreground">(−{formatDuration(t.breakHours)} deducted)</span>
                   )}
                 </TableCell>
+                <TableCell className="text-muted-foreground">{formatDuration(perUser.get(t.userId)?.breakHours ?? 0)}</TableCell>
+                <TableCell className="text-muted-foreground">{perUser.get(t.userId)?.sessions ?? 0}</TableCell>
                 <TableCell>{t.pay != null ? formatMoney(t.pay) : "—"}</TableCell>
               </TableRow>
             ))}
             {totals.length === 0 && (
               <TableRow>
-                <TableCell colSpan={4} className="text-center text-muted-foreground">
-                  No sessions in this range.
+                <TableCell colSpan={6} className="text-center text-muted-foreground">
+                  No time in this range.
                 </TableCell>
               </TableRow>
             )}
@@ -428,8 +371,9 @@ export function TimesheetReport({
                 <TableCell className="font-medium">Total</TableCell>
                 <TableCell />
                 <TableCell className="font-medium">{formatDuration(grandHours)}</TableCell>
+                <TableCell className="font-medium">{formatDuration(grandBreakHours)}</TableCell>
+                <TableCell className="font-medium">{grandSessions}</TableCell>
                 <TableCell className="font-medium">{formatMoney(grandPay)}</TableCell>
-                {isAdmin && <TableCell />}
               </TableRow>
             )}
           </TableBody>
@@ -476,138 +420,26 @@ export function TimesheetReport({
 
       {entries && (
         <div className="space-y-1.5">
-          <p className="text-sm font-medium">Individual sessions</p>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>User</TableHead>
-                <TableHead>Visit</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Clock in</TableHead>
-                <TableHead>Clock out</TableHead>
-                <TableHead>Hours</TableHead>
-                {isAdmin && <TableHead className="w-20" />}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {[...entries]
-                .sort((a, b) => b.clockIn.getTime() - a.clockIn.getTime())
-                .map((entry) => (
-                  <TableRow key={entry.id}>
-                    <TableCell className="font-medium">{entry.user.name}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {entry.careRecipient?.name ?? "—"}
-                      <DistanceFromRecipient
-                        clockInLatitude={entry.clockInLatitude}
-                        clockInLongitude={entry.clockInLongitude}
-                        recipient={entry.careRecipient}
-                      />
-                    </TableCell>
-                    <TableCell>{entry.clockIn.toLocaleDateString(undefined, { timeZone: timezone })}</TableCell>
-                    <TableCell>
-                      {entry.clockIn.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZone: timezone })}
-                      <LocationPin latitude={entry.clockInLatitude} longitude={entry.clockInLongitude} />
-                    </TableCell>
-                    <TableCell>
-                      {entry.clockOut ? (
-                        <>
-                          {entry.clockOut.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZone: timezone })}
-                          <LocationPin latitude={entry.clockOutLatitude} longitude={entry.clockOutLongitude} />
-                        </>
-                      ) : (
-                        "In progress"
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {entry.clockOut ? formatDuration(hoursBetween(entry.clockIn, entry.clockOut)) : "—"}
-                    </TableCell>
-                    {isAdmin && (
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          <EditTimeEntryDialog entry={entry} accountTimezone={accountTimezone} onUpdated={handlePreview} />
-                          <Button
-                            size="xs"
-                            variant="ghost"
-                            loading={deletingId === entry.id}
-                            onClick={() => handleDelete(entry.id)}
-                          >
-                            <Trash2 className="size-3.5 text-destructive" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    )}
-                  </TableRow>
-                ))}
-              {entries.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={isAdmin ? 7 : 6} className="text-center text-muted-foreground">
-                    No sessions in this range.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      )}
-
-      {entries && (
-        <div className="space-y-1.5">
-          <p className="text-sm font-medium">Individual breaks</p>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>User</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Break start</TableHead>
-                <TableHead>Break end</TableHead>
-                <TableHead>Duration</TableHead>
-                {isAdmin && <TableHead className="w-20" />}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {[...breakEntries]
-                .sort((a, b) => b.breakStart.getTime() - a.breakStart.getTime())
-                .map((entry) => (
-                  <TableRow key={entry.id}>
-                    <TableCell className="font-medium">{entry.user.name}</TableCell>
-                    <TableCell>{entry.breakStart.toLocaleDateString(undefined, { timeZone: timezone })}</TableCell>
-                    <TableCell>
-                      {entry.breakStart.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZone: timezone })}
-                    </TableCell>
-                    <TableCell>
-                      {entry.breakEnd
-                        ? entry.breakEnd.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZone: timezone })
-                        : "In progress"}
-                    </TableCell>
-                    <TableCell>
-                      {entry.breakEnd ? formatDuration(hoursBetween(entry.breakStart, entry.breakEnd)) : "—"}
-                    </TableCell>
-                    {isAdmin && (
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          <EditBreakEntryDialog entry={entry} accountTimezone={accountTimezone} onUpdated={handlePreview} />
-                          <Button
-                            size="xs"
-                            variant="ghost"
-                            loading={deletingBreakEntryId === entry.id}
-                            onClick={() => handleDeleteBreakEntry(entry.id)}
-                          >
-                            <Trash2 className="size-3.5 text-destructive" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    )}
-                  </TableRow>
-                ))}
-              {breakEntries.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={isAdmin ? 6 : 5} className="text-center text-muted-foreground">
-                    No breaks in this range.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+          <p className="text-sm font-medium">
+            Time by day
+            {isAdmin && (
+              <span className="font-normal text-muted-foreground"> — edit, add a break, or delete from each row</span>
+            )}
+          </p>
+          <TimesheetDayList
+            entries={entries}
+            breaks={breakEntries}
+            timeZone={timezone}
+            accountTimezone={accountTimezone}
+            from={from}
+            to={to}
+            isAdmin={isAdmin}
+            recipients={recipients}
+            busyId={busyId}
+            onChanged={load}
+            onDeleteEntry={handleDeleteEntry}
+            onDeleteBreak={handleDeleteBreak}
+          />
         </div>
       )}
     </div>

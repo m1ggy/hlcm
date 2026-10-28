@@ -4,56 +4,63 @@ import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { DateTimeInput } from "@/components/ui/datetime-input";
-import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { updateBreakEntry } from "@/lib/actions/time-entries";
-import { toDatetimeLocalValue, effectiveTimezone, zonedInputToISOString, timezoneLabel } from "@/lib/time-entries";
+import { effectiveTimezone, formatDuration, hoursBetween } from "@/lib/time-entries";
+import { DateInput, TimeInput, TimezoneNote, resolveRange, splitInstant, zonedInstant } from "@/components/time-clock/time-fields";
 
-// Admin-only correction for an existing break (wrong break start/end time on
-// someone else's session) — same shape as EditTimeEntryDialog, just against
-// BreakEntry. Leaving "Break end" blank re-opens the break — the server
-// checks that doesn't create a second open break for the user.
+// Admin-only correction for an existing break. The server moves the edges
+// of the work sessions on either side along with it, so paid hours follow.
 export function EditBreakEntryDialog({
   entry,
   accountTimezone,
   onUpdated,
 }: {
-  entry: { id: string; breakStart: Date; breakEnd: Date | null };
+  entry: { id: string; breakStart: Date; breakEnd: Date | null; user: { name: string } };
   /** The admin's own Account timezone setting, or null if unset. */
   accountTimezone: string | null;
   onUpdated?: () => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [breakStart, setBreakStart] = useState("");
-  const [breakEnd, setBreakEnd] = useState("");
-  const [isPending, startTransition] = useTransition();
   const timezone = effectiveTimezone(accountTimezone);
+  const [open, setOpen] = useState(false);
+  const [date, setDate] = useState("");
+  const [start, setStart] = useState("");
+  const [end, setEnd] = useState("");
+  const [stillOpen, setStillOpen] = useState(false);
+  const [isPending, startTransition] = useTransition();
 
   function handleOpenChange(next: boolean) {
     setOpen(next);
     if (next) {
-      setBreakStart(toDatetimeLocalValue(entry.breakStart, timezone));
-      setBreakEnd(entry.breakEnd ? toDatetimeLocalValue(entry.breakEnd, timezone) : "");
+      const s = splitInstant(entry.breakStart, timezone);
+      setDate(s.date);
+      setStart(s.time);
+      setEnd(entry.breakEnd ? splitInstant(entry.breakEnd, timezone).time : "");
+      setStillOpen(!entry.breakEnd);
     }
   }
 
+  const range = !stillOpen ? resolveRange(date, start, end, timezone) : null;
+
   function handleSubmit() {
-    if (!breakStart) {
-      toast.error("Break start is required");
+    if (!date || !start || (!stillOpen && !range)) {
+      toast.error("Fill in the date and times");
       return;
     }
     startTransition(async () => {
       try {
         await updateBreakEntry(entry.id, {
-          breakStart: zonedInputToISOString(breakStart, timezone),
-          breakEnd: breakEnd ? zonedInputToISOString(breakEnd, timezone) : null,
+          breakStart: (range?.from ?? zonedInstant(date, start, timezone)).toISOString(),
+          breakEnd: range ? range.to.toISOString() : null,
         });
         toast.success("Break updated");
         setOpen(false);
@@ -68,7 +75,7 @@ export function EditBreakEntryDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger
         render={
-          <Button size="xs" variant="ghost" title="Edit">
+          <Button size="xs" variant="ghost" title="Edit break" aria-label="Edit break">
             <Pencil className="size-3.5" />
           </Button>
         }
@@ -76,25 +83,31 @@ export function EditBreakEntryDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Edit break</DialogTitle>
+          <DialogDescription>
+            {entry.user.name} · the work time before and after moves with the break, so paid hours stay right.
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
-          <div className="space-y-1">
-            <Label>Break start</Label>
-            <DateTimeInput value={breakStart} onChange={setBreakStart} timeZone={timezone} clearable={false} />
+          <DateInput id="break-date" value={date} onChange={setDate} />
+          <div className="flex gap-3">
+            <TimeInput id="break-start" label="Break start" value={start} onChange={setStart} />
+            <TimeInput id="break-end" label="Break end" value={end} onChange={setEnd} disabled={stillOpen} />
           </div>
-          <div className="space-y-1">
-            <Label>Break end</Label>
-            <DateTimeInput value={breakEnd} onChange={setBreakEnd} timeZone={timezone} />
-            <p className="text-xs text-muted-foreground">Clear it to re-open this break.</p>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Times are read in your timezone — {timezoneLabel(timezone)}.{" "}
-            <a href="/account" className="underline">Change it</a>.
-          </p>
-          <Button onClick={handleSubmit} loading={isPending} className="w-full">
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox checked={stillOpen} onCheckedChange={(c) => setStillOpen(c === true)} />
+            Still on break (no end yet)
+          </label>
+          {range && <p className="text-sm">{formatDuration(hoursBetween(range.from, range.to))} break</p>}
+          <TimezoneNote timeZone={timezone} />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)} disabled={isPending}>
+            Cancel
+          </Button>
+          <Button onClick={handleSubmit} loading={isPending}>
             Save changes
           </Button>
-        </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
