@@ -4,7 +4,7 @@ Status (2026-09-28): **all phases through 6 implemented** (billing deferred); se
 
 **Resume point (2026-09-28):** Phases 0–6 implemented (tenant billing deferred by the user) on branches `multitenancy/phase-1` … `multitenancy/phase-6`, each built on the previous — `multitenancy/phase-6` contains everything. Nothing merged or deployed. Next:
 1. **Rollout** (each step deployable on its own, none changes behavior until switched on): merge `multitenancy/phase-6` → `dev` (deploys to dev; CI runs the suite incl. RLS) → rehearse on the prod server with `rehearse-migration.sh` → `main`. Then, when ready: set `INTEGRATION_ENCRYPTION_KEY`; run `setup-app-db-role.sh` + split `DATABASE_URL`/`SYSTEM_DATABASE_URL` (RLS on); DNS + `ROOT_DOMAIN` (subdomains on) — see README.
-2. **Decisions pending:** tenant billing pricing (5g); product name + domain; legal (BAA/ToS).
+2. **Decisions pending:** tenant billing tier names/prices/limits + sales tax (model decided 2026-10-28, see "Next: tenant billing"); product name + domain; legal (BAA/ToS).
 3. **Onboarding audit (2026-09-28), all fixed on `multitenancy/phase-6`, not pushed (user: don't push yet):** suspended-workspace sessions get the suspended notice instead of crashing; platform admins have an Account page and need MFA for the console; tenant email is sent as the org's name with the org's reply-to (Admin > Organization); Admin > Integrations explains each provider and registers the Calendly/DocuSign webhooks itself (old scripts removed); platform console "Invite owner" (typo'd or locked-out owner); failed sign-ins throttled per IP (30) and per account (8) per 15 min; dashboard "Set up your workspace" checklist for new owners (existing orgs pre-dismissed by migration); time clock default = `Organization.timezone`, fallback America/Chicago; handbook served with `PRODUCT_NAME`, Illinois mention removed. Suite: 112 tests pass normal and `TEST_RLS=1` (sim Postgres at localhost:55432 — the local dev Postgres user can't create roles).
 
 ## Rehearsal 2026-10-12 (local, seeded data)
@@ -89,6 +89,74 @@ Platform audit log, newest first, filter by admin / workspace / action: created,
 
 ### Build order
 1 role change + tests → 2 enter-any-workspace (drop grant, per-admin hidden user, banner, both logs) → 3 layout/nav → 4 list + detail → `lastSignInAt` + users (§5) → create wizard + onboarding status → export/delete → rename → admins → activity → settings/template. Each its own commit on `multitenancy/phase-6`. **No merges until the user says so** (user, 2026-10-10): not main → phase-6, not phase-6 → main. (2026-10-12: user approved main → phase-6, done as `dc8a405`; phase-6 → main still waits.) The superadmin console ships as part of phase-6, before it is ever merged. When the merge with main does happen, fix main's PLA-stage migration for per-workspace stages — done (see "Rehearsal 2026-10-12").
+
+## Next: tenant billing (5g) — monthly subscriptions (planned 2026-10-28, not started)
+
+The platform charges each workspace a monthly fee through the **platform's own Stripe account**. This is separate from each workspace's own Stripe connection (Admin > Integrations, `src/lib/stripe.ts`), which they use to invoice their clients. Built on `multitenancy/phase-6` (main has no `Organization`). **Wait for the user's go-ahead before building** (user, 2026-10-28).
+
+Decisions (user, 2026-10-28):
+- **Flat tiers** (e.g. Starter / Growth / Pro): fixed monthly price, each with a user limit. One Stripe Product per tier, one monthly Price each.
+- **3-month free trial, card required.** The owner adds a card to start; Stripe charges automatically when the trial ends.
+- **14-day grace** after a failed payment, then the workspace locks.
+- **Every active user counts** toward the limit, caregivers included. Hidden platform-admin users (`hideSupportUser`) don't.
+- CTK and the platform workspace are **exempt** (never billed).
+
+Still open:
+1. Tier names, monthly prices and user limits.
+2. Confirm the trial reading above (card up front, auto-charge after 90 days).
+3. Sales tax: Stripe Tax collects nothing until there are state registrations; software is taxable in some US states — ask an accountant. Launch without and add later, or register first.
+
+### 1. Stripe setup
+- A dedicated Stripe sandbox for development (and one for CI), then live mode.
+- Restricted API key (`rk_`), not a secret key. Env: `PLATFORM_STRIPE_KEY`, `PLATFORM_STRIPE_WEBHOOK_SECRET`, plus the tier price ids (or look them up by Product metadata/lookup key).
+- New `src/lib/platform-billing.ts` with its own `StripeClient` instance — never shares code paths or credentials with the per-workspace Stripe.
+- **Inert until the env is set** (same rollout as the rest): no keys → no billing UI, no locks, every workspace treated as exempt.
+- Stripe settings to turn on: trial-ending reminder email, failed-payment emails, Smart Retries over the 14-day window, customer portal (update card, invoices, switch plan, cancel at period end).
+
+### 2. Schema
+- `Organization`: `plan` (tier key, nullable), `subscriptionStatus` (mirrors Stripe: `trialing`, `active`, `past_due`, `unpaid`, `canceled`, `incomplete`; null = never subscribed), `stripeCustomerId` (unique), `stripeSubscriptionId` (unique), `trialEndsAt`, `currentPeriodEnd`, `pastDueSince`, `billingExempt Boolean @default(false)`.
+- `PlatformStripeEvent(id = Stripe event id, type, receivedAt, processedAt)` — handle each event once.
+- Migration sets `billingExempt = true` for `org_ctk` and `org_platform`. Rehearse with `rehearse-migration.sh`.
+- Both are platform tables/columns, read and written through the system client (not tenant-scoped; no RLS policy needed on `PlatformStripeEvent`).
+
+### 3. Webhook — `admin.<domain>/api/webhooks/platform-stripe`
+Required, not optional: renewals, failed payments and cancellations only ever arrive here.
+- Verify the signature with `PLATFORM_STRIPE_WEBHOOK_SECRET`; record the event id first and skip if already processed.
+- Resolve the workspace from the Stripe **customer id** → `Organization.stripeCustomerId` (not metadata; metadata only as fallback).
+- Events: `checkout.session.completed`, `customer.subscription.created` / `updated` / `deleted`, `customer.subscription.trial_will_end`, `invoice.paid`, `invoice.payment_failed`, `charge.dispute.created`, `charge.refunded`, `radar.early_fraud_warning.created`.
+- Each updates the org's billing columns from the subscription object (re-fetch it rather than trusting event order). `invoice.payment_failed` sets `pastDueSince` if unset; `invoice.paid` clears it. Disputes / refunds / fraud warnings write to the platform activity log and notify superadmins.
+- Unknown customer → 200 + log (so Stripe stops retrying), never 500.
+
+### 4. Owner flow
+- **First sign-in, no subscription** (not exempt): owners land on **Choose your plan** — the tiers with prices and limits → Stripe Checkout (`mode: 'subscription'`, `subscription_data.trial_period_days: 90`, no `payment_method_types`, `integration_identifier` set). Create the Stripe Customer up front and store its id so the webhook can match. The workspace stays locked (non-owners see "Your workspace isn't set up yet — ask your owner") until the webhook confirms the subscription. The success page only shows "Finishing up…" and polls; it never grants access itself.
+- **Admin > Billing** (owners): plan, status, trial days left, next charge date + amount, users used / limit. "Manage billing" → Stripe customer portal session.
+- Superadmin "Create workspace" wizard: no change except a note that the owner picks a plan on first sign-in.
+
+### 5. Access rules (new billing lock — separate from `OrgStatus.SUSPENDED`)
+- `trialing`, `active`, or `billingExempt` → normal.
+- `past_due` → normal for everyone, banner for owners ("Payment failed — update your card", days left). Lock when `pastDueSince` + 14 days passes (checked on request; no cron needed).
+- `unpaid`, `canceled`, `incomplete` past expiry, or grace over → **billing lock**: every page shows a billing-issue screen; owners can still open Billing (pay / portal), Account, and export their data. Server actions refuse writes. Nothing is deleted.
+- Paying (webhook `invoice.paid` / status `active`) unlocks immediately.
+- `SUSPENDED` stays the superadmin's manual switch and still blocks sign-in entirely — it would stop an owner from paying, which is why the billing lock is separate.
+- One helper `getBillingAccess(org)` → `ok | banner | locked`, used by the tenant layout, server-action guard and API routes; unit-tested per status.
+
+### 6. User limits
+- Count = active users in the workspace, all roles incl. caregivers, excluding hidden platform-admin users.
+- At the limit: inviting, creating or reactivating a user is refused with "Your plan allows N users — upgrade in Billing". Existing users are never removed.
+- Downgrading to a plan below the current count is blocked (portal plan switching limited to allowed plans, or handled via our own Billing page instead of the portal).
+- Exempt workspaces: no limit.
+
+### 7. Superadmin console
+- Workspace list: plan, billing status, trial end / next charge columns; filter by billing status.
+- Workspace detail: billing card (plan, status, past-due since, Stripe customer link), actions **Mark exempt / Remove exempt**, **Extend trial** (updates the Stripe subscription's `trial_end`). Each logged in the platform log and the workspace's audit log.
+
+### 8. Tests
+- Unit: `getBillingAccess` for every status + exempt + grace boundary; user-limit count rules.
+- Webhook: bad signature → 400; duplicate event processed once; unknown customer → 200; event for workspace A never changes B (incl. `TEST_RLS=1`).
+- Manual in the Stripe sandbox with the Stripe CLI forwarding webhooks and **test clocks**: trial start → trial end charge → failed renewal → 14-day lock → pay → unlock; cancel at period end.
+
+### Build order
+1 Stripe setup + `platform-billing.ts` → 2 schema/migration → 3 webhook + idempotency → 4 Choose your plan + Admin > Billing → 5 billing lock + banner → 6 user limits → 7 superadmin billing view/actions → 8 tests throughout. Each its own commit on `multitenancy/phase-6`. Rough effort 4–6 days. Ships with phase-6; no merges until the user says so.
 
 ## Done 2026-10-06 (from the post-merge re-scan)
 
@@ -379,7 +447,7 @@ Risk: medium — test webhook cutover in Stripe/DocuSign sandbox first.
   Cookies stay host-only (default). Confirm next-auth builds callback URLs from the request host.
 - CTK cutover to `ctk.<domain>`; old domain stays as an alias (`Organization.domainAliases`) so existing webhooks/bookmarks work. Redirect browsers, not webhooks.
 - Root domain login: "find your workspace" page — enter email → email the matching workspace link(s). Never reveal on-page whether an email exists.
-- **Tenant billing (platform charges consultancies):** platform-owned Stripe account (separate from each tenant's own Stripe) with Stripe Billing subscriptions; `Organization.plan`, `subscriptionStatus`, `stripeCustomerId`; platform webhook at `admin.<domain>/api/webhooks/platform-stripe`; unpaid past grace → `SUSPENDED` (read-only first, then locked). Pricing model (flat / per-seat / per-client) TBD.
+- **Tenant billing (platform charges consultancies):** platform-owned Stripe account (separate from each tenant's own Stripe) with Stripe Billing subscriptions; `Organization.plan`, `subscriptionStatus`, `stripeCustomerId`; platform webhook at `admin.<domain>/api/webhooks/platform-stripe`; unpaid past grace → `SUSPENDED` (read-only first, then locked). Pricing model decided 2026-10-28 (flat tiers) — superseded by "Next: tenant billing (5g)" above.
 - **Offboarding:** per-org export (all DB rows as JSON/CSV + GCS files under `org/<orgId>/` zipped) and hard-delete script. Also covers "restore one tenant" — shared-DB backups can't restore a single org, so the export doubles as a per-tenant backup.
 
 ## Legal / compliance (not code, can block launch)
@@ -463,4 +531,4 @@ Current favorites: 1) Permitwell, 2) Licensure HQ, 3) Stateline.
 1. Product name + root domain (brainstorm above).
 2. CTK slug — `ctk`?
 3. Email: platform Resend with per-tenant display name only, or tenant-owned sending domains?
-4. Tenant pricing model (flat / per-seat / per-client).
+4. ~~Tenant pricing model~~ — flat tiers (2026-10-28). Still open: tier names, prices, user limits; sales tax.
