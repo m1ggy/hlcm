@@ -4,7 +4,7 @@ Status (2026-09-28): **all phases through 6 implemented** (billing deferred); se
 
 **Resume point (2026-09-28):** Phases 0–6 implemented (tenant billing deferred by the user) on branches `multitenancy/phase-1` … `multitenancy/phase-6`, each built on the previous — `multitenancy/phase-6` contains everything. Nothing merged or deployed. Next:
 1. **Rollout** (each step deployable on its own, none changes behavior until switched on): merge `multitenancy/phase-6` → `dev` (deploys to dev; CI runs the suite incl. RLS) → rehearse on the prod server with `rehearse-migration.sh` → `main`. Then, when ready: set `INTEGRATION_ENCRYPTION_KEY`; run `setup-app-db-role.sh` + split `DATABASE_URL`/`SYSTEM_DATABASE_URL` (RLS on); DNS + `ROOT_DOMAIN` (subdomains on) — see README.
-2. **Decisions pending:** tenant billing extra-user price + sales tax (tiers and add-on decided 2026-10-28, see "Next: tenant billing"); product name + domain; legal (BAA/ToS).
+2. **Decisions pending:** tenant billing sales tax + trial confirmation (tiers and $20 add-on decided 2026-10-28, see "Next: tenant billing"); product name + domain; legal (BAA/ToS).
 3. **Onboarding audit (2026-09-28), all fixed on `multitenancy/phase-6`, not pushed (user: don't push yet):** suspended-workspace sessions get the suspended notice instead of crashing; platform admins have an Account page and need MFA for the console; tenant email is sent as the org's name with the org's reply-to (Admin > Organization); Admin > Integrations explains each provider and registers the Calendly/DocuSign webhooks itself (old scripts removed); platform console "Invite owner" (typo'd or locked-out owner); failed sign-ins throttled per IP (30) and per account (8) per 15 min; dashboard "Set up your workspace" checklist for new owners (existing orgs pre-dismissed by migration); time clock default = `Organization.timezone`, fallback America/Chicago; handbook served with `PRODUCT_NAME`, Illinois mention removed. Suite: 112 tests pass normal and `TEST_RLS=1` (sim Postgres at localhost:55432 — the local dev Postgres user can't create roles).
 
 ## Rehearsal 2026-10-12 (local, seeded data)
@@ -107,17 +107,17 @@ Decisions (user, 2026-10-28):
   | Starter | $99 | 5 |
   | Growth | $249 | 15 |
   | Pro | $499 | 40 |
-- **Extra-user add-on** (user, 2026-10-28): going past the plan's included users is allowed — each extra active user is billed per month on top of the plan, instead of being blocked. See §6.
+- **Extra-user add-on** (user, 2026-10-28): going past the plan's included users is allowed — each extra active user is **$20/month, same on every plan**, on top of the plan, instead of being blocked. See §6. Cheaper to move up at 13 users (Starter + 8 extra = $259 > Growth $249) and at 28 users (Growth + 13 extra = $509 > Pro $499).
 
 Still open:
-1. Extra-user price per month (and whether it differs per tier).
+1. ~~Extra-user price~~ — $20/month, all plans (2026-10-28).
 2. Confirm the trial reading above (card up front, auto-charge after 90 days).
 3. Sales tax: Stripe Tax collects nothing until there are state registrations; software is taxable in some US states — ask an accountant. Launch without and add later, or register first.
 
 ### 1. Stripe setup
 - A dedicated Stripe sandbox for development (and one for CI), then live mode.
 - Restricted API key (`rk_`), not a secret key. Env: `PLATFORM_STRIPE_KEY`, `PLATFORM_STRIPE_WEBHOOK_SECRET`, plus the tier price ids (or look them up by Product metadata/lookup key).
-- Products: one per tier (flat monthly Price, `metadata.includedUsers`), plus one **"Extra user"** Product with a per-unit monthly Price (one Price per tier if the add-on price differs by tier). A subscription carries two items: the tier (quantity 1) and extra users (quantity = users over the included count, may be 0).
+- Products: one per tier (flat monthly Price, `metadata.includedUsers`), plus one **"Extra user"** Product with a single $20/month per-unit Price shared by every tier. A subscription carries two items: the tier (quantity 1) and extra users (quantity = users over the included count, may be 0).
 - New `src/lib/platform-billing.ts` with its own `StripeClient` instance — never shares code paths or credentials with the per-workspace Stripe.
 - **Inert until the env is set** (same rollout as the rest): no keys → no billing UI, no locks, every workspace treated as exempt.
 - Stripe settings to turn on: trial-ending reminder email, failed-payment emails, Smart Retries over the 14-day window, customer portal (update card, invoices, switch plan, cancel at period end).
@@ -545,4 +545,4 @@ Current favorites: 1) Permitwell, 2) Licensure HQ, 3) Stateline.
 1. Product name + root domain (brainstorm above).
 2. CTK slug — `ctk`?
 3. Email: platform Resend with per-tenant display name only, or tenant-owned sending domains?
-4. ~~Tenant pricing model~~ — flat tiers $99/$249/$499 for 5/15/40 users + per-user add-on (2026-10-28). Still open: add-on price; sales tax.
+4. ~~Tenant pricing model~~ — flat tiers $99/$249/$499 for 5/15/40 users + $20/month per extra user (2026-10-28). Still open: sales tax.
