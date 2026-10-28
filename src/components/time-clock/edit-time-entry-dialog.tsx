@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { updateTimeEntry } from "@/lib/actions/time-entries";
+import { unexpectedErrorMessage } from "@/lib/action-result";
 import { effectiveTimezone, formatDuration, hoursBetween } from "@/lib/time-entries";
 import { DateInput, TimeInput, TimezoneNote, resolveRange, splitInstant, zonedInstant } from "@/components/time-clock/time-fields";
 
@@ -80,16 +81,20 @@ export function EditTimeEntryDialog({
     }
     startTransition(async () => {
       try {
-        await updateTimeEntry(entry.id, {
+        const result = await updateTimeEntry(entry.id, {
           clockIn: (range?.from ?? zonedInstant(date, start, timezone)).toISOString(),
           clockOut: range ? range.to.toISOString() : null,
           careRecipientId: visitId === NO_VISIT ? null : visitId,
         });
+        if (!result.ok) {
+          toast.error(result.error);
+          return;
+        }
         toast.success("Time updated");
         setOpen(false);
         onUpdated?.();
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Failed to update time entry");
+        toast.error(unexpectedErrorMessage(error, "Couldn't save the time — try again"));
       }
     });
   }

@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { createManualTimeEntry } from "@/lib/actions/time-entries";
+import { unexpectedErrorMessage } from "@/lib/action-result";
 import { effectiveTimezone, formatDuration, hoursBetween, zonedNowParts } from "@/lib/time-entries";
 import { DateInput, TimeInput, TimezoneNote, instantAtOrAfter, resolveRange } from "@/components/time-clock/time-fields";
 
@@ -89,7 +90,7 @@ export function AddTimeEntryDialog({
     }
     startTransition(async () => {
       try {
-        await createManualTimeEntry({
+        const result = await createManualTimeEntry({
           userId,
           clockIn: shift.from.toISOString(),
           clockOut: shift.to.toISOString(),
@@ -97,12 +98,16 @@ export function AddTimeEntryDialog({
           breakStart: brk?.from.toISOString(),
           breakEnd: brk?.to.toISOString(),
         });
+        if (!result.ok) {
+          toast.error(result.error);
+          return;
+        }
         toast.success(`Added ${formatDuration(shiftHours - breakHours)} for ${users.find((u) => u.id === userId)?.name ?? "them"}`);
         onAdded?.();
         // Keep the person and date for the next missed punch; just move on.
         if (!addAnother) setOpen(false);
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Failed to add time entry");
+        toast.error(unexpectedErrorMessage(error, "Couldn't add the time — try again"));
       }
     });
   }

@@ -14,6 +14,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { addBreakToEntry } from "@/lib/actions/time-entries";
+import { unexpectedErrorMessage } from "@/lib/action-result";
 import { effectiveTimezone, formatDuration, hoursBetween } from "@/lib/time-entries";
 import { TimeInput, TimezoneNote, formatClock, instantAtOrAfter, splitInstant } from "@/components/time-clock/time-fields";
 
@@ -62,12 +63,16 @@ export function AddBreakDialog({
     }
     startTransition(async () => {
       try {
-        await addBreakToEntry(entry.id, { breakStart: from.toISOString(), breakEnd: to.toISOString() });
+        const result = await addBreakToEntry(entry.id, { breakStart: from.toISOString(), breakEnd: to.toISOString() });
+        if (!result.ok) {
+          toast.error(result.error);
+          return;
+        }
         toast.success(`Added a ${formatDuration(hoursBetween(from, to))} break`);
         setOpen(false);
         onAdded?.();
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Failed to add break");
+        toast.error(unexpectedErrorMessage(error, "Couldn't add the break — try again"));
       }
     });
   }

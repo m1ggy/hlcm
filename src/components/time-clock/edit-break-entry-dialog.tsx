@@ -15,6 +15,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { updateBreakEntry } from "@/lib/actions/time-entries";
+import { unexpectedErrorMessage } from "@/lib/action-result";
 import { effectiveTimezone, formatDuration, hoursBetween } from "@/lib/time-entries";
 import { DateInput, TimeInput, TimezoneNote, resolveRange, splitInstant, zonedInstant } from "@/components/time-clock/time-fields";
 
@@ -58,15 +59,19 @@ export function EditBreakEntryDialog({
     }
     startTransition(async () => {
       try {
-        await updateBreakEntry(entry.id, {
+        const result = await updateBreakEntry(entry.id, {
           breakStart: (range?.from ?? zonedInstant(date, start, timezone)).toISOString(),
           breakEnd: range ? range.to.toISOString() : null,
         });
+        if (!result.ok) {
+          toast.error(result.error);
+          return;
+        }
         toast.success("Break updated");
         setOpen(false);
         onUpdated?.();
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Failed to update break");
+        toast.error(unexpectedErrorMessage(error, "Couldn't save the break — try again"));
       }
     });
   }

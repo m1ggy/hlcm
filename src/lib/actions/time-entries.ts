@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requireSession, requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
+import { toActionResult } from "@/lib/action-result";
 import { TimeClockError, summarizeByUser, DEFAULT_TIMEZONE, type TimeEntryRangeInput, type BreakDeductionRule } from "@/lib/time-entries";
 
 export async function getMyActiveEntry() {
@@ -473,15 +474,57 @@ async function assertNoOverlap(
   if (brk) throw new TimeClockError("This overlaps a break already logged for this person");
 }
 
+// How far a session's edge may sit from its break's edge and still count as
+// "the session around this break". Punched breaks line up exactly, but
+// breaks edited before 2026-10-28 only moved the break row, leaving the
+// sessions around it a few minutes off (or overlapping it).
+const BREAK_EDGE_TOLERANCE_MS = 15 * 60_000;
+
 /** The work sessions on either side of a break. A break is the gap between
- * them: the session before ends exactly when it starts, the one after
- * starts exactly when it ends (see startBreak / endBreak). */
+ * them: the session before ends when it starts, the one after starts when
+ * it ends (see startBreak / endBreak). Exact matches first; otherwise the
+ * nearest session within BREAK_EDGE_TOLERANCE_MS of each edge, including
+ * one that overlaps the break, so editing an older break snaps them back. */
 async function sessionsAroundBreak(brk: { userId: string; breakStart: Date; breakEnd: Date | null }) {
-  const [before, after] = await Promise.all([
-    prisma.timeEntry.findFirst({ where: { userId: brk.userId, clockOut: brk.breakStart } }),
-    brk.breakEnd ? prisma.timeEntry.findFirst({ where: { userId: brk.userId, clockIn: brk.breakEnd } }) : null,
+  const { userId, breakStart, breakEnd } = brk;
+  const startMs = breakStart.getTime();
+  const [exactBefore, exactAfter] = await Promise.all([
+    prisma.timeEntry.findFirst({ where: { userId, clockOut: breakStart } }),
+    breakEnd ? prisma.timeEntry.findFirst({ where: { userId, clockIn: breakEnd } }) : null,
   ]);
+  const before =
+    exactBefore ??
+    (await prisma.timeEntry.findFirst({
+      where: {
+        userId,
+        clockIn: { lt: breakStart },
+        clockOut: {
+          gte: new Date(startMs - BREAK_EDGE_TOLERANCE_MS),
+          lte: breakEnd ?? new Date(startMs + BREAK_EDGE_TOLERANCE_MS),
+        },
+      },
+      orderBy: { clockOut: "desc" },
+    }));
+  const after = !breakEnd
+    ? null
+    : (exactAfter ??
+      (await prisma.timeEntry.findFirst({
+        where: {
+          userId,
+          ...(before ? { id: { not: before.id } } : {}),
+          clockIn: { gt: breakStart, lte: new Date(breakEnd.getTime() + BREAK_EDGE_TOLERANCE_MS) },
+        },
+        orderBy: { clockIn: "asc" },
+      })));
   return { before, after };
+}
+
+/** Schema parse whose failure message is safe to show (zod's own error is
+ * redacted in production like any other throw). */
+function parseInput<T extends z.ZodTypeAny>(schema: T, input: unknown): z.output<T> {
+  const result = schema.safeParse(input);
+  if (!result.success) throw new TimeClockError(result.error.issues[0]?.message ?? "Check the times and try again");
+  return result.data;
 }
 
 const CLEARED_CLOCK_OUT_LOCATION = {
@@ -537,7 +580,7 @@ const manualEntrySchema = z
  * the same way — and, with careRecipientId set, into that recipient's
  * billable visits too.
  */
-export async function createManualTimeEntry(input: {
+async function createManualTimeEntryImpl(input: {
   userId: string;
   clockIn: string;
   clockOut: string;
@@ -546,7 +589,7 @@ export async function createManualTimeEntry(input: {
   breakEnd?: string;
 }) {
   const session = await requireRole(["ADMIN"]);
-  const parsed = manualEntrySchema.parse(input);
+  const parsed = parseInput(manualEntrySchema, input);
   await assertNoOverlap(parsed.userId, parsed.clockIn, parsed.clockOut);
 
   const careRecipientId = parsed.careRecipientId || null;
@@ -601,13 +644,13 @@ const updateEntrySchema = z
  * but lets an admin undo an accidental clock-out) — checked against other
  * open entries for that user so it can't create a second one.
  */
-export async function updateTimeEntry(
+async function updateTimeEntryImpl(
   id: string,
   input: { clockIn: string; clockOut: string | null; careRecipientId?: string | null }
 ) {
   const session = await requireRole(["ADMIN"]);
   const existing = await prisma.timeEntry.findUniqueOrThrow({ where: { id } });
-  const parsed = updateEntrySchema.parse(input);
+  const parsed = parseInput(updateEntrySchema, input);
 
   if (!parsed.clockOut) {
     const otherOpen = await prisma.timeEntry.findFirst({
@@ -675,10 +718,10 @@ const addBreakSchema = z
  * everything downstream (totals, PDFs, payouts, the break-policy check)
  * treats it like a punched break. A visit stays one visit across the gap.
  */
-export async function addBreakToEntry(entryId: string, input: { breakStart: string; breakEnd: string }) {
+async function addBreakToEntryImpl(entryId: string, input: { breakStart: string; breakEnd: string }) {
   const session = await requireRole(["ADMIN"]);
   const entry = await prisma.timeEntry.findUniqueOrThrow({ where: { id: entryId } });
-  const { breakStart, breakEnd } = addBreakSchema.parse(input);
+  const { breakStart, breakEnd } = parseInput(addBreakSchema, input);
 
   if (!entry.clockOut) throw new TimeClockError("This session is still open — add the break once it's clocked out");
   if (breakStart <= entry.clockIn || breakEnd >= entry.clockOut) {
@@ -719,7 +762,7 @@ export async function addBreakToEntry(entryId: string, input: { breakStart: stri
 }
 
 /** Admin-only: removes a mistaken or duplicate entry (e.g. a double clock-in left dangling open). */
-export async function deleteTimeEntry(id: string) {
+async function deleteTimeEntryImpl(id: string) {
   const session = await requireRole(["ADMIN"]);
   const entry = await prisma.timeEntry.findUniqueOrThrow({ where: { id } });
 
@@ -752,10 +795,10 @@ const updateBreakEntrySchema = z
  * clock-out), checked against other open breaks for that user so it can't
  * create a second one.
  */
-export async function updateBreakEntry(id: string, input: { breakStart: string; breakEnd: string | null }) {
+async function updateBreakEntryImpl(id: string, input: { breakStart: string; breakEnd: string | null }) {
   const session = await requireRole(["ADMIN"]);
   const existing = await prisma.breakEntry.findUniqueOrThrow({ where: { id } });
-  const parsed = updateBreakEntrySchema.parse(input);
+  const parsed = parseInput(updateBreakEntrySchema, input);
 
   if (!parsed.breakEnd) {
     const otherOpen = await prisma.breakEntry.findFirst({
@@ -776,9 +819,9 @@ export async function updateBreakEntry(id: string, input: { breakStart: string; 
   if (after && parsed.breakEnd && after.clockOut && parsed.breakEnd >= after.clockOut) {
     throw new TimeClockError("The break would end after the session it leads into ended");
   }
-  const startMoved = parsed.breakStart.getTime() !== existing.breakStart.getTime();
-  const endMoved = (parsed.breakEnd?.getTime() ?? null) !== (existing.breakEnd?.getTime() ?? null);
-  if ((startMoved && before?.billedInvoiceId) || (endMoved && after?.billedInvoiceId)) {
+  const moveBefore = Boolean(before && before.clockOut?.getTime() !== parsed.breakStart.getTime());
+  const moveAfter = Boolean(after && parsed.breakEnd && after.clockIn.getTime() !== parsed.breakEnd.getTime());
+  if ((moveBefore && before?.billedInvoiceId) || (moveAfter && after?.billedInvoiceId)) {
     throw new TimeClockError(ALREADY_INVOICED);
   }
   await assertNoOverlap(
@@ -793,8 +836,8 @@ export async function updateBreakEntry(id: string, input: { breakStart: string; 
       where: { id },
       data: { breakStart: parsed.breakStart, breakEnd: parsed.breakEnd },
     }),
-    ...(before && startMoved ? [prisma.timeEntry.update({ where: { id: before.id }, data: { clockOut: parsed.breakStart } })] : []),
-    ...(after && endMoved && parsed.breakEnd
+    ...(before && moveBefore ? [prisma.timeEntry.update({ where: { id: before.id }, data: { clockOut: parsed.breakStart } })] : []),
+    ...(after && moveAfter && parsed.breakEnd
       ? [prisma.timeEntry.update({ where: { id: after.id }, data: { clockIn: parsed.breakEnd } })]
       : []),
   ]);
@@ -819,7 +862,7 @@ export async function updateBreakEntry(id: string, input: { breakStart: string; 
  * there's nothing to join — no session on one side, the two sides are
  * different visits, or the later one is already invoiced — and says why.
  */
-export async function deleteBreakEntry(id: string): Promise<{ merged: boolean; reason?: string }> {
+async function deleteBreakEntryImpl(id: string): Promise<{ merged: boolean; reason?: string }> {
   const session = await requireRole(["ADMIN"]);
   const brk = await prisma.breakEntry.findUniqueOrThrow({ where: { id } });
   const { before, after } = await sessionsAroundBreak(brk);
@@ -870,4 +913,33 @@ export async function deleteBreakEntry(id: string): Promise<{ merged: boolean; r
   revalidatePath("/time");
   if (before?.careRecipientId) revalidatePath("/clients");
   return reason ? { merged: false, reason } : { merged: true };
+}
+
+// --- Exported admin corrections ---------------------------------------------
+// Wrapped in toActionResult: in production a thrown message is redacted, so
+// "This overlaps…", "already on an invoice" and validation errors come back
+// as { ok: false, error } for the dialog to show (see UserFacingError).
+
+export async function createManualTimeEntry(input: Parameters<typeof createManualTimeEntryImpl>[0]) {
+  return toActionResult(() => createManualTimeEntryImpl(input));
+}
+
+export async function updateTimeEntry(id: string, input: Parameters<typeof updateTimeEntryImpl>[1]) {
+  return toActionResult(() => updateTimeEntryImpl(id, input));
+}
+
+export async function addBreakToEntry(entryId: string, input: Parameters<typeof addBreakToEntryImpl>[1]) {
+  return toActionResult(() => addBreakToEntryImpl(entryId, input));
+}
+
+export async function deleteTimeEntry(id: string) {
+  return toActionResult(() => deleteTimeEntryImpl(id));
+}
+
+export async function updateBreakEntry(id: string, input: Parameters<typeof updateBreakEntryImpl>[1]) {
+  return toActionResult(() => updateBreakEntryImpl(id, input));
+}
+
+export async function deleteBreakEntry(id: string) {
+  return toActionResult(() => deleteBreakEntryImpl(id));
 }

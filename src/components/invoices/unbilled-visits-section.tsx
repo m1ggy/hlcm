@@ -154,7 +154,12 @@ export function UnbilledVisitsSection({
       clockOut: clockOut.toISOString(),
       careRecipientId,
     })
-      .then((entry) => {
+      .then((result) => {
+        if (!result.ok) {
+          toast.error(result.error);
+          return;
+        }
+        const entry = result.data;
         toast.success("Visit logged");
         setLogCaregiverId("");
         setLogStart("");

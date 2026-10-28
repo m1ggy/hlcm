@@ -40,6 +40,7 @@ import {
   type TimesheetTotal,
 } from "@/lib/time-entries";
 import { DailyTotalsTable, type DayTotal } from "@/components/time-clock/daily-totals";
+import { unexpectedErrorMessage } from "@/lib/action-result";
 import { AddTimeEntryDialog } from "@/components/time-clock/add-time-entry-dialog";
 import { BreakDeductionDialog } from "@/components/time-clock/break-deduction-dialog";
 import { DailyTimelineChart } from "@/components/time-clock/daily-timeline-chart";
@@ -142,7 +143,7 @@ export function TimesheetReport({
         await action();
         load();
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Failed to delete");
+        toast.error(unexpectedErrorMessage(error, "Couldn't delete — try again"));
       } finally {
         setBusyId(null);
       }
@@ -152,7 +153,8 @@ export function TimesheetReport({
   function handleDeleteEntry(id: string) {
     if (!confirm("Delete this time? This can't be undone.")) return;
     runDelete(id, async () => {
-      await deleteTimeEntry(id);
+      const result = await deleteTimeEntry(id);
+      if (!result.ok) return void toast.error(result.error);
       toast.success("Time deleted");
     });
   }
@@ -161,8 +163,9 @@ export function TimesheetReport({
     if (!confirm("Delete this break? The work time on either side is joined back into one session, so the break becomes paid time.")) return;
     runDelete(id, async () => {
       const result = await deleteBreakEntry(id);
-      if (result.merged) toast.success("Break deleted — the time is paid again");
-      else toast.success("Break deleted", { description: `The sessions weren't joined: ${result.reason}.` });
+      if (!result.ok) return void toast.error(result.error);
+      if (result.data.merged) toast.success("Break deleted — the time is paid again");
+      else toast.success("Break deleted", { description: `The sessions weren't joined: ${result.data.reason}.` });
     });
   }
 
