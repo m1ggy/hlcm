@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toDatetimeLocalValue, zonedInputToISOString, timezoneLabel } from "@/lib/time-entries";
@@ -8,9 +9,19 @@ import { toDatetimeLocalValue, zonedInputToISOString, timezoneLabel } from "@/li
 // instead of two full date-time pickers. An end time earlier than the start
 // means the next day, so an overnight shift needs no second date.
 
-function nextDay(date: string) {
+/** "yyyy-mm-dd" moved by `days`. */
+export function shiftDate(date: string, days: number) {
   const [y, m, d] = date.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+
+function nextDay(date: string) {
+  return shiftDate(date, 1);
+}
+
+/** Whole days from `a` to `b` ("yyyy-mm-dd"). */
+export function daysBetween(a: string, b: string) {
+  return Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000);
 }
 
 /** "yyyy-mm-dd" + "HH:mm" in `timeZone` → instant. */
@@ -87,11 +98,101 @@ export function TimeInput({
   );
 }
 
-export function DateInput({ id, value, onChange }: { id: string; value: string; onChange: (value: string) => void }) {
+export function DateInput({
+  id,
+  value,
+  onChange,
+  label = "Date",
+  disabled,
+}: {
+  id: string;
+  value: string;
+  onChange: (value: string) => void;
+  label?: string;
+  disabled?: boolean;
+}) {
   return (
-    <div className="space-y-1">
-      <Label htmlFor={id}>Date</Label>
-      <Input id={id} type="date" value={value} onChange={(e) => onChange(e.target.value)} />
+    <div className="min-w-0 flex-1 space-y-1">
+      <Label htmlFor={id}>{label}</Label>
+      <Input id={id} type="date" value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled} />
+    </div>
+  );
+}
+
+/** Start and end, each with its own date and time, for the edit dialogs.
+ * Moving the start date carries the end date along by the same days. */
+export function useStartEnd(timeZone: string, stillOpen: boolean) {
+  const [startDate, setStartDateRaw] = useState("");
+  const [start, setStart] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [end, setEnd] = useState("");
+
+  function reset(from: Date, to: Date | null) {
+    const s = splitInstant(from, timeZone);
+    const e = to ? splitInstant(to, timeZone) : null;
+    setStartDateRaw(s.date);
+    setStart(s.time);
+    setEndDate(e?.date ?? s.date);
+    setEnd(e?.time ?? "");
+  }
+
+  function setStartDate(next: string) {
+    if (next && startDate && endDate) setEndDate(shiftDate(endDate, daysBetween(startDate, next)));
+    setStartDateRaw(next);
+  }
+
+  const from = startDate && start ? zonedInstant(startDate, start, timeZone) : null;
+  const to = !stillOpen && endDate && end ? zonedInstant(endDate, end, timeZone) : null;
+  const endBeforeStart = Boolean(from && to && to <= from);
+  const range = from && to && !endBeforeStart ? { from, to } : null;
+
+  return {
+    startDate, setStartDate, start, setStart, endDate, setEndDate, end, setEnd,
+    reset, from, range, endBeforeStart, timeZone,
+    /** Fixes the common slip: an overnight end left on the start date. */
+    moveEndToNextDay: () => setEndDate(shiftDate(startDate, 1)),
+  };
+}
+
+export function StartEndFields({
+  idPrefix,
+  startLabel,
+  endLabel,
+  fields,
+  endDisabled,
+}: {
+  idPrefix: string;
+  startLabel: string;
+  endLabel: string;
+  fields: ReturnType<typeof useStartEnd>;
+  endDisabled?: boolean;
+}) {
+  const f = fields;
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-3">
+        <DateInput id={`${idPrefix}-start-date`} label={`${startLabel} date`} value={f.startDate} onChange={f.setStartDate} />
+        <TimeInput id={`${idPrefix}-start`} label={`${startLabel} time`} value={f.start} onChange={f.setStart} />
+      </div>
+      <div className="flex gap-3">
+        <DateInput id={`${idPrefix}-end-date`} label={`${endLabel} date`} value={f.endDate} onChange={f.setEndDate} disabled={endDisabled} />
+        <TimeInput id={`${idPrefix}-end`} label={`${endLabel} time`} value={f.end} onChange={f.setEnd} disabled={endDisabled} />
+      </div>
+      {!endDisabled && f.range && f.endDate !== f.startDate && (
+        <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
+          Crosses midnight — ends {formatDay(f.range.to, f.timeZone)}
+        </p>
+      )}
+      {!endDisabled && f.endBeforeStart && (
+        <p className="text-sm text-destructive">
+          {endLabel} is before {startLabel.toLowerCase()}.{" "}
+          {f.endDate === f.startDate && (
+            <button type="button" className="underline" onClick={f.moveEndToNextDay}>
+              Make it the next day
+            </button>
+          )}
+        </p>
+      )}
     </div>
   );
 }

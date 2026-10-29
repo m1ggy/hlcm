@@ -19,7 +19,7 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { updateTimeEntry } from "@/lib/actions/time-entries";
 import { unexpectedErrorMessage } from "@/lib/action-result";
 import { effectiveTimezone, formatDuration, hoursBetween } from "@/lib/time-entries";
-import { DateInput, TimeInput, TimezoneNote, dayOf, resolveRange, splitInstant, zonedInstant } from "@/components/time-clock/time-fields";
+import { StartEndFields, TimezoneNote, useStartEnd } from "@/components/time-clock/time-fields";
 
 const NO_VISIT = "__none__";
 
@@ -47,26 +47,21 @@ export function EditTimeEntryDialog({
 }) {
   const timezone = effectiveTimezone(accountTimezone);
   const [open, setOpen] = useState(false);
-  const [date, setDate] = useState("");
-  const [start, setStart] = useState("");
-  const [end, setEnd] = useState("");
   const [stillOpen, setStillOpen] = useState(false);
+  const fields = useStartEnd(timezone, stillOpen);
+  const { from, range } = fields;
   const [visitId, setVisitId] = useState(NO_VISIT);
   const [isPending, startTransition] = useTransition();
 
   function handleOpenChange(next: boolean) {
     setOpen(next);
     if (next) {
-      const s = splitInstant(entry.clockIn, timezone);
-      setDate(s.date);
-      setStart(s.time);
-      setEnd(entry.clockOut ? splitInstant(entry.clockOut, timezone).time : "");
+      fields.reset(entry.clockIn, entry.clockOut);
       setStillOpen(!entry.clockOut);
       setVisitId(entry.careRecipient?.id ?? NO_VISIT);
     }
   }
 
-  const range = !stillOpen ? resolveRange(date, start, end, timezone) : null;
   // A recipient no longer in the active list still shows by name.
   const visitItems = {
     [NO_VISIT]: "Not a visit",
@@ -75,14 +70,14 @@ export function EditTimeEntryDialog({
   };
 
   function handleSubmit() {
-    if (!date || !start || (!stillOpen && !range)) {
-      toast.error("Fill in the date and times");
+    if (!from || (!stillOpen && !range)) {
+      toast.error(fields.endBeforeStart ? "The end has to be after the start" : "Fill in the dates and times");
       return;
     }
     startTransition(async () => {
       try {
         const result = await updateTimeEntry(entry.id, {
-          clockIn: (range?.from ?? zonedInstant(date, start, timezone)).toISOString(),
+          clockIn: from.toISOString(),
           clockOut: range ? range.to.toISOString() : null,
           careRecipientId: visitId === NO_VISIT ? null : visitId,
         });
@@ -131,11 +126,7 @@ export function EditTimeEntryDialog({
               )}
             </div>
           )}
-          <DateInput id="edit-date" value={date} onChange={setDate} />
-          <div className="flex gap-3">
-            <TimeInput id="edit-start" label="Start" value={start} onChange={setStart} day={dayOf(date, date && start ? zonedInstant(date, start, timezone) : null, timezone)} />
-            <TimeInput id="edit-end" label="End" value={end} onChange={setEnd} disabled={stillOpen} day={dayOf(date, range?.to, timezone)} />
-          </div>
+          <StartEndFields idPrefix="edit" startLabel="Start" endLabel="End" fields={fields} endDisabled={stillOpen} />
           <label className="flex items-center gap-2 text-sm">
             <Checkbox checked={stillOpen} onCheckedChange={(c) => setStillOpen(c === true)} />
             Still clocked in (no end yet)

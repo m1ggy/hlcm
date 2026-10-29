@@ -17,7 +17,7 @@ import {
 import { updateBreakEntry } from "@/lib/actions/time-entries";
 import { unexpectedErrorMessage } from "@/lib/action-result";
 import { effectiveTimezone, formatDuration, hoursBetween } from "@/lib/time-entries";
-import { DateInput, TimeInput, TimezoneNote, dayOf, resolveRange, splitInstant, zonedInstant } from "@/components/time-clock/time-fields";
+import { StartEndFields, TimezoneNote, useStartEnd } from "@/components/time-clock/time-fields";
 
 // Admin-only correction for an existing break. The server moves the edges
 // of the work sessions on either side along with it, so paid hours follow.
@@ -33,34 +33,28 @@ export function EditBreakEntryDialog({
 }) {
   const timezone = effectiveTimezone(accountTimezone);
   const [open, setOpen] = useState(false);
-  const [date, setDate] = useState("");
-  const [start, setStart] = useState("");
-  const [end, setEnd] = useState("");
   const [stillOpen, setStillOpen] = useState(false);
+  const fields = useStartEnd(timezone, stillOpen);
+  const { from, range } = fields;
   const [isPending, startTransition] = useTransition();
 
   function handleOpenChange(next: boolean) {
     setOpen(next);
     if (next) {
-      const s = splitInstant(entry.breakStart, timezone);
-      setDate(s.date);
-      setStart(s.time);
-      setEnd(entry.breakEnd ? splitInstant(entry.breakEnd, timezone).time : "");
+      fields.reset(entry.breakStart, entry.breakEnd);
       setStillOpen(!entry.breakEnd);
     }
   }
 
-  const range = !stillOpen ? resolveRange(date, start, end, timezone) : null;
-
   function handleSubmit() {
-    if (!date || !start || (!stillOpen && !range)) {
-      toast.error("Fill in the date and times");
+    if (!from || (!stillOpen && !range)) {
+      toast.error(fields.endBeforeStart ? "The end has to be after the start" : "Fill in the dates and times");
       return;
     }
     startTransition(async () => {
       try {
         const result = await updateBreakEntry(entry.id, {
-          breakStart: (range?.from ?? zonedInstant(date, start, timezone)).toISOString(),
+          breakStart: from.toISOString(),
           breakEnd: range ? range.to.toISOString() : null,
         });
         if (!result.ok) {
@@ -93,11 +87,7 @@ export function EditBreakEntryDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
-          <DateInput id="break-date" value={date} onChange={setDate} />
-          <div className="flex gap-3">
-            <TimeInput id="break-start" label="Break start" value={start} onChange={setStart} day={dayOf(date, date && start ? zonedInstant(date, start, timezone) : null, timezone)} />
-            <TimeInput id="break-end" label="Break end" value={end} onChange={setEnd} disabled={stillOpen} day={dayOf(date, range?.to, timezone)} />
-          </div>
+          <StartEndFields idPrefix="break" startLabel="Break start" endLabel="Break end" fields={fields} endDisabled={stillOpen} />
           <label className="flex items-center gap-2 text-sm">
             <Checkbox checked={stillOpen} onCheckedChange={(c) => setStillOpen(c === true)} />
             Still on break (no end yet)
