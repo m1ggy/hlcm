@@ -45,6 +45,7 @@ import { NO_PROFILE, type ClientMoney } from "@/lib/client-list-filters";
 import { resolveClientServiceId } from "@/lib/client-services";
 import { toActionResult } from "@/lib/action-result";
 import { UserFacingError } from "@/lib/user-facing-error";
+import { findInvalidEmail, invalidEmailMessage, splitEmailList } from "@/lib/email-list";
 
 export async function listInvoices(filters?: {
   status?: $Enums.InvoiceStatus;
@@ -785,10 +786,9 @@ function resolveRecipientEmail(
 // "a@x.com; b@y.com" — split on ; , or spaces and check each one, so a
 // bad address names itself instead of failing the whole send blindly.
 function parseEmailList(raw: string): string[] {
-  const emails = raw.split(/[;,\s]+/).map((e) => e.trim()).filter(Boolean);
-  const check = z.string().email();
-  const bad = emails.find((e) => !check.safeParse(e).success);
-  if (bad) throw new UserFacingError(`"${bad}" isn't a valid email address — fix it on the client or type a different email`);
+  const emails = splitEmailList(raw);
+  const bad = findInvalidEmail(raw);
+  if (bad) throw new UserFacingError(invalidEmailMessage(bad));
   if (emails.length === 0) throw new UserFacingError("Enter an email address to send to");
   return emails;
 }

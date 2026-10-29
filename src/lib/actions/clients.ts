@@ -7,6 +7,7 @@ import { requireRole } from "@/lib/rbac";
 import { recordAudit, recordFieldChanges } from "@/lib/audit";
 import { caregiverClientScope } from "@/lib/caregiver-scope";
 import { CLIENT_STATUSES } from "@/lib/client-status";
+import { findInvalidEmail, invalidEmailMessage } from "@/lib/email-list";
 
 const clientDetailFields = {
   name: z.string().min(1, "Name is required"),
@@ -30,7 +31,13 @@ const createClientSchema = z.object({
   // missing once someone tries to send one (see sendInvoice /
   // sendManualInvoicePdf below). Existing clients created before this
   // still won't have one; that's a client-page edit, not a create.
-  businessEmail: z.string().min(1, "Business email is required").email("Enter a valid email address"),
+  businessEmail: z
+    .string()
+    .min(1, "Business email is required")
+    .superRefine((v, ctx) => {
+      const bad = findInvalidEmail(v);
+      if (bad) ctx.addIssue({ code: "custom", message: invalidEmailMessage(bad) });
+    }),
 });
 
 // status isn't set on create — every new client starts at the schema
@@ -211,6 +218,12 @@ export async function updateClient(id: string, formData: FormData) {
   const clientGroupId = formData.get("clientGroupId");
 
   const before = await prisma.client.findUniqueOrThrow({ where: { id } });
+  // Checked only when it changes: every save sends all fields, and an
+  // older saved value mustn't block edits to the rest of the client.
+  if (parsed.businessEmail !== undefined && parsed.businessEmail !== (before.businessEmail ?? undefined)) {
+    const bad = findInvalidEmail(parsed.businessEmail);
+    if (bad) throw new Error(invalidEmailMessage(bad));
+  }
   const client = await prisma.client.update({
     where: { id },
     data: {

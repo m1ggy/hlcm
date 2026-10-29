@@ -66,11 +66,13 @@ export function EmailRecipientPicker({
   };
 
   return (
-    <div className="space-y-2">
+    <div className="min-w-0 space-y-2">
       <div className="space-y-1">
         <Label>Send to</Label>
         <Select items={items} value={mode} onValueChange={(v) => handleModeChange(v ?? mode)}>
-          <SelectTrigger>
+          {/* Full width and cut off with "…", so a long saved address (or two)
+              can't push the dialog wider than the screen. */}
+          <SelectTrigger className="w-full min-w-0 *:data-[slot=select-value]:block *:data-[slot=select-value]:truncate">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

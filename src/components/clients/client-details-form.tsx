@@ -1,5 +1,6 @@
 "use client";
 
+import { findInvalidEmail, invalidEmailMessage } from "@/lib/email-list";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -147,6 +148,15 @@ export function ClientDetailsForm({
       setValues((prev) => ({ ...prev, name: lastSavedRef.current.name }));
       return;
     }
+    if (field === "businessEmail") {
+      const bad = findInvalidEmail(next.businessEmail);
+      if (bad) {
+        const message = invalidEmailMessage(bad);
+        toast.error(message);
+        setSaveError({ field, message });
+        return;
+      }
+    }
     const ticket = ++nextTicketRef.current;
     saveTicketRef.current[field] = ticket;
     const formData = new FormData();
@@ -264,7 +274,7 @@ export function ClientDetailsForm({
           <LabeledInput id="businessName" label="Legal business name" value={values.businessName} onChange={(v) => set("businessName", v)} onBlur={() => save("businessName")} error={errorFor("businessName")} />
           <LabeledInput id="address" label="Address" value={values.address} onChange={(v) => set("address", v)} onBlur={() => save("address")} error={errorFor("address")} />
           <LabeledInput id="businessPhone" label="Business phone" value={values.businessPhone} onChange={(v) => set("businessPhone", v)} onBlur={() => save("businessPhone")} type="tel" error={errorFor("businessPhone")} />
-          <LabeledInput id="businessEmail" label="Business email" value={values.businessEmail} onChange={(v) => set("businessEmail", v)} onBlur={() => save("businessEmail")} type="email" error={errorFor("businessEmail")} />
+          <LabeledInput id="businessEmail" label="Business email" value={values.businessEmail} onChange={(v) => set("businessEmail", v)} onBlur={() => save("businessEmail")} error={errorFor("businessEmail")} />
           <LabeledInput id="contactInfo" label="Other contact info" value={values.contactInfo} onChange={(v) => set("contactInfo", v)} onBlur={() => save("contactInfo")} className="sm:col-span-2" error={errorFor("contactInfo")} />
         </CardContent>
       </Card>

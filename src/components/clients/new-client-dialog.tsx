@@ -181,7 +181,7 @@ export function NewClientDialog({
               <Field id="businessName" label="Legal business name" />
               <Field id="address" label="Address" />
               <Field id="businessPhone" label="Business phone" type="tel" />
-              <Field id="businessEmail" label="Business email" type="email" required />
+              <Field id="businessEmail" label="Business email" required />
               <Field id="contactInfo" label="Other contact info" className="sm:col-span-2" />
             </div>
           </div>
