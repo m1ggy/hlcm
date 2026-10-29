@@ -17,7 +17,7 @@ import {
 import { updateBreakEntry } from "@/lib/actions/time-entries";
 import { unexpectedErrorMessage } from "@/lib/action-result";
 import { effectiveTimezone, formatDuration, hoursBetween } from "@/lib/time-entries";
-import { DateInput, TimeInput, TimezoneNote, resolveRange, splitInstant, zonedInstant } from "@/components/time-clock/time-fields";
+import { DateInput, TimeInput, TimezoneNote, dayOf, resolveRange, splitInstant, zonedInstant } from "@/components/time-clock/time-fields";
 
 // Admin-only correction for an existing break. The server moves the edges
 // of the work sessions on either side along with it, so paid hours follow.
@@ -95,8 +95,8 @@ export function EditBreakEntryDialog({
         <div className="space-y-4">
           <DateInput id="break-date" value={date} onChange={setDate} />
           <div className="flex gap-3">
-            <TimeInput id="break-start" label="Break start" value={start} onChange={setStart} />
-            <TimeInput id="break-end" label="Break end" value={end} onChange={setEnd} disabled={stillOpen} />
+            <TimeInput id="break-start" label="Break start" value={start} onChange={setStart} day={dayOf(date, date && start ? zonedInstant(date, start, timezone) : null, timezone)} />
+            <TimeInput id="break-end" label="Break end" value={end} onChange={setEnd} disabled={stillOpen} day={dayOf(date, range?.to, timezone)} />
           </div>
           <label className="flex items-center gap-2 text-sm">
             <Checkbox checked={stillOpen} onCheckedChange={(c) => setStillOpen(c === true)} />

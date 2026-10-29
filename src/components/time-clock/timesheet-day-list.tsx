@@ -5,7 +5,7 @@ import { AlertTriangle, Coffee, MapPin, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatDuration, hoursBetween, toDateInputValue, REQUIRED_BREAK_MINUTES } from "@/lib/time-entries";
 import { mapsLinkForCoordinates, haversineMeters, formatDistance, NEAR_THRESHOLD_METERS } from "@/lib/geolocation";
-import { formatClock } from "@/components/time-clock/time-fields";
+import { formatClock, formatDay, splitInstant } from "@/components/time-clock/time-fields";
 import { EditTimeEntryDialog } from "@/components/time-clock/edit-time-entry-dialog";
 import { EditBreakEntryDialog } from "@/components/time-clock/edit-break-entry-dialog";
 import { AddBreakDialog } from "@/components/time-clock/add-break-dialog";
@@ -191,11 +191,16 @@ export function TimesheetDayList({
               const distance = !isBreak ? distanceFromVisit(item.entry) : null;
               return (
                 <li key={id} className={cn("flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5 text-sm", isBreak && "bg-amber-500/5")}>
-                  <span className="w-40 shrink-0 tabular-nums">
+                  <span className="w-48 shrink-0 tabular-nums">
                     {formatClock(item.start, timeZone)}
                     {!isBreak && <LocationPin latitude={item.entry.clockInLatitude} longitude={item.entry.clockInLongitude} />}
                     {" – "}
                     {item.end ? formatClock(item.end, timeZone) : <span className="text-muted-foreground">now</span>}
+                    {item.end && splitInstant(item.end, timeZone).date !== splitInstant(item.start, timeZone).date && (
+                      <span className="ml-1 text-xs font-medium text-amber-700 dark:text-amber-400" title={`Ends ${formatDay(item.end, timeZone)}`}>
+                        +1 day
+                      </span>
+                    )}
                     {!isBreak && <LocationPin latitude={item.entry.clockOutLatitude} longitude={item.entry.clockOutLongitude} />}
                   </span>
                   <span className="min-w-0 flex-1 break-words">

@@ -16,7 +16,7 @@ import {
 import { addBreakToEntry } from "@/lib/actions/time-entries";
 import { unexpectedErrorMessage } from "@/lib/action-result";
 import { effectiveTimezone, formatDuration, hoursBetween } from "@/lib/time-entries";
-import { TimeInput, TimezoneNote, formatClock, instantAtOrAfter, splitInstant } from "@/components/time-clock/time-fields";
+import { TimeInput, TimezoneNote, formatClock, instantAtOrAfter, dayOf, splitInstant } from "@/components/time-clock/time-fields";
 
 const QUARTER_HOUR = 15 * 60_000;
 
@@ -95,8 +95,8 @@ export function AddBreakDialog({
         </DialogHeader>
         <div className="space-y-4">
           <div className="flex gap-3">
-            <TimeInput id="new-break-start" label="Break start" value={start} onChange={setStart} />
-            <TimeInput id="new-break-end" label="Break end" value={end} onChange={setEnd} />
+            <TimeInput id="new-break-start" label="Break start" value={start} onChange={setStart} day={dayOf(day, from, timezone)} />
+            <TimeInput id="new-break-end" label="Break end" value={end} onChange={setEnd} day={dayOf(day, to, timezone)} />
           </div>
           {from && to && (
             <p className={`text-sm ${inside ? "" : "text-destructive"}`}>

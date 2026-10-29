@@ -18,6 +18,7 @@ import {
   hoursByDay,
   type DaySegments,
 } from "@/lib/time-entries";
+import { formatDay, splitInstant } from "@/components/time-clock/time-fields";
 import { DailyTimelineChart } from "@/components/time-clock/daily-timeline-chart";
 import { WeekDayTotals, type DayTotal } from "@/components/time-clock/daily-totals";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
@@ -74,6 +75,11 @@ function ShiftsTable({ rows, timeZone }: { rows: ShiftRow[]; timeZone: string })
               {entry.clockOut
                 ? entry.clockOut.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZone })
                 : "In progress"}
+              {entry.clockOut && splitInstant(entry.clockOut, timeZone).date !== splitInstant(entry.clockIn, timeZone).date && (
+                <span className="ml-1 text-xs font-medium text-amber-700 dark:text-amber-400" title={`Ends ${formatDay(entry.clockOut, timeZone)}`}>
+                  +1 day
+                </span>
+              )}
             </TableCell>
             <TableCell>{entry.clockOut ? formatDuration(hoursBetween(entry.clockIn, entry.clockOut)) : "—"}</TableCell>
           </TableRow>

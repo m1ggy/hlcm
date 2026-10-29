@@ -19,7 +19,7 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { updateTimeEntry } from "@/lib/actions/time-entries";
 import { unexpectedErrorMessage } from "@/lib/action-result";
 import { effectiveTimezone, formatDuration, hoursBetween } from "@/lib/time-entries";
-import { DateInput, TimeInput, TimezoneNote, resolveRange, splitInstant, zonedInstant } from "@/components/time-clock/time-fields";
+import { DateInput, TimeInput, TimezoneNote, dayOf, resolveRange, splitInstant, zonedInstant } from "@/components/time-clock/time-fields";
 
 const NO_VISIT = "__none__";
 
@@ -133,8 +133,8 @@ export function EditTimeEntryDialog({
           )}
           <DateInput id="edit-date" value={date} onChange={setDate} />
           <div className="flex gap-3">
-            <TimeInput id="edit-start" label="Start" value={start} onChange={setStart} />
-            <TimeInput id="edit-end" label="End" value={end} onChange={setEnd} disabled={stillOpen} />
+            <TimeInput id="edit-start" label="Start" value={start} onChange={setStart} day={dayOf(date, date && start ? zonedInstant(date, start, timezone) : null, timezone)} />
+            <TimeInput id="edit-end" label="End" value={end} onChange={setEnd} disabled={stillOpen} day={dayOf(date, range?.to, timezone)} />
           </div>
           <label className="flex items-center gap-2 text-sm">
             <Checkbox checked={stillOpen} onCheckedChange={(c) => setStillOpen(c === true)} />

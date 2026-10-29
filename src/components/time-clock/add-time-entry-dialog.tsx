@@ -19,7 +19,7 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { createManualTimeEntry } from "@/lib/actions/time-entries";
 import { unexpectedErrorMessage } from "@/lib/action-result";
 import { effectiveTimezone, formatDuration, hoursBetween, zonedNowParts } from "@/lib/time-entries";
-import { DateInput, TimeInput, TimezoneNote, instantAtOrAfter, resolveRange } from "@/components/time-clock/time-fields";
+import { DateInput, TimeInput, TimezoneNote, instantAtOrAfter, dayOf, resolveRange } from "@/components/time-clock/time-fields";
 
 const NO_VISIT = "__none__";
 
@@ -150,8 +150,8 @@ export function AddTimeEntryDialog({
           )}
           <DateInput id="add-date" value={date} onChange={setDate} />
           <div className="flex gap-3">
-            <TimeInput id="add-start" label="Start" value={start} onChange={setStart} />
-            <TimeInput id="add-end" label="End" value={end} onChange={setEnd} />
+            <TimeInput id="add-start" label="Start" value={start} onChange={setStart} day={dayOf(date, shift?.from, timezone)} />
+            <TimeInput id="add-end" label="End" value={end} onChange={setEnd} day={dayOf(date, shift?.to, timezone)} />
           </div>
 
           <label className="flex items-center gap-2 text-sm">
@@ -160,8 +160,8 @@ export function AddTimeEntryDialog({
           </label>
           {withBreak && (
             <div className="flex gap-3 rounded-lg bg-muted/40 p-3">
-              <TimeInput id="add-break-start" label="Break start" value={breakStart} onChange={setBreakStart} />
-              <TimeInput id="add-break-end" label="Break end" value={breakEnd} onChange={setBreakEnd} />
+              <TimeInput id="add-break-start" label="Break start" value={breakStart} onChange={setBreakStart} day={dayOf(date, brk?.from, timezone)} />
+              <TimeInput id="add-break-end" label="Break end" value={breakEnd} onChange={setBreakEnd} day={dayOf(date, brk?.to, timezone)} />
             </div>
           )}
 

@@ -39,6 +39,18 @@ export function splitInstant(value: Date, timeZone: string) {
   return { date, time };
 }
 
+/** Short day label, e.g. "Thu, Oct 30". */
+export function formatDay(value: Date, timeZone: string) {
+  return value.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", timeZone });
+}
+
+/** Label bits for a time field: the day `instant` falls on, and whether
+ * that's after `date` (an overnight end rolled to the next day). */
+export function dayOf(date: string, instant: Date | null | undefined, timeZone: string) {
+  if (!date || !instant) return undefined;
+  return { label: formatDay(instant, timeZone), nextDay: splitInstant(instant, timeZone).date > date };
+}
+
 export function formatClock(value: Date, timeZone: string) {
   return value.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", timeZone });
 }
@@ -49,16 +61,27 @@ export function TimeInput({
   value,
   onChange,
   disabled,
+  day,
 }: {
   id: string;
   label: string;
   value: string;
   onChange: (value: string) => void;
   disabled?: boolean;
+  /** The day this time lands on (from dayOf), shown in the label. */
+  day?: { label: string; nextDay: boolean };
 }) {
   return (
     <div className="min-w-0 flex-1 space-y-1">
-      <Label htmlFor={id}>{label}</Label>
+      <Label htmlFor={id} className="flex-wrap gap-x-1">
+        {label}
+        {day && (
+          <span className={day.nextDay ? "font-medium text-amber-700 dark:text-amber-400" : "font-normal text-muted-foreground"}>
+            · {day.label}
+            {day.nextDay && " (next day)"}
+          </span>
+        )}
+      </Label>
       <Input id={id} type="time" value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled} />
     </div>
   );
