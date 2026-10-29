@@ -61,7 +61,11 @@ export function SendInvoicePdfDialog({
         const formData = new FormData();
         formData.set("recipientEmail", recipientEmail);
         files.forEach((file) => formData.append("attachments", file));
-        await sendManualInvoicePdf(invoiceId, formData);
+        const result = await sendManualInvoicePdf(invoiceId, formData);
+        if (!result.ok) {
+          toast.error(result.error);
+          return;
+        }
         toast.success("Invoice PDF sent");
         setOpen(false);
         setFiles([]);

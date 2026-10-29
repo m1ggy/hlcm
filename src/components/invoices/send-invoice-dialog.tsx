@@ -42,7 +42,11 @@ export function SendInvoiceDialog({
   function handleSend() {
     startTransition(async () => {
       try {
-        await sendInvoice(invoiceId, recipientEmail);
+        const result = await sendInvoice(invoiceId, recipientEmail);
+        if (!result.ok) {
+          toast.error(result.error);
+          return;
+        }
         toast.success("Invoice sent");
         setOpen(false);
         router.refresh();
