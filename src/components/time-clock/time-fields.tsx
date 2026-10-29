@@ -136,6 +136,14 @@ export function useStartEnd(timeZone: string, stillOpen: boolean) {
     setEnd(e?.time ?? "");
   }
 
+  /** Same-day start/end on `date`, e.g. a 9–5 default. */
+  function resetTo(date: string, startTime: string, endTime: string) {
+    setStartDateRaw(date);
+    setStart(startTime);
+    setEndDate(date);
+    setEnd(endTime);
+  }
+
   function setStartDate(next: string) {
     if (next && startDate && endDate) setEndDate(shiftDate(endDate, daysBetween(startDate, next)));
     setStartDateRaw(next);
@@ -148,7 +156,7 @@ export function useStartEnd(timeZone: string, stillOpen: boolean) {
 
   return {
     startDate, setStartDate, start, setStart, endDate, setEndDate, end, setEnd,
-    reset, from, range, endBeforeStart, timeZone,
+    reset, resetTo, from, range, endBeforeStart, timeZone,
     /** Fixes the common slip: an overnight end left on the start date. */
     moveEndToNextDay: () => setEndDate(shiftDate(startDate, 1)),
   };

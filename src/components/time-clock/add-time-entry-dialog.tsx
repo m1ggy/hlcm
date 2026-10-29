@@ -19,14 +19,14 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { createManualTimeEntry } from "@/lib/actions/time-entries";
 import { unexpectedErrorMessage } from "@/lib/action-result";
 import { effectiveTimezone, formatDuration, hoursBetween, zonedNowParts } from "@/lib/time-entries";
-import { DateInput, TimeInput, TimezoneNote, instantAtOrAfter, dayOf, resolveRange } from "@/components/time-clock/time-fields";
+import { StartEndFields, TimeInput, TimezoneNote, dayOf, instantAtOrAfter, useStartEnd } from "@/components/time-clock/time-fields";
 
 const NO_VISIT = "__none__";
 
 // Admin-only backfill for a session someone forgot to clock, or a
 // correction for a missed punch — always a completed shift, unlike the
-// clock widget which starts an open entry. One date plus start/end times
-// (an end before the start means overnight), an optional unpaid break
+// clock widget which starts an open entry. Start and end each have a date
+// and time (an overnight shift ends on the next day), an optional unpaid break
 // stored like a real one, and an optional visit so the time counts toward
 // that recipient's billable hours.
 export function AddTimeEntryDialog({
@@ -48,9 +48,8 @@ export function AddTimeEntryDialog({
   const [open, setOpen] = useState(false);
   const [userId, setUserId] = useState("");
   const [visitId, setVisitId] = useState(NO_VISIT);
-  const [date, setDate] = useState("");
-  const [start, setStart] = useState("09:00");
-  const [end, setEnd] = useState("17:00");
+  const fields = useStartEnd(timezone, false);
+  const date = fields.startDate;
   const [withBreak, setWithBreak] = useState(false);
   const [breakStart, setBreakStart] = useState("12:00");
   const [breakEnd, setBreakEnd] = useState("12:30");
@@ -61,12 +60,12 @@ export function AddTimeEntryDialog({
     if (next) {
       setUserId(defaultUserId && defaultUserId !== "all" ? defaultUserId : "");
       setVisitId(NO_VISIT);
-      setDate(zonedNowParts(timezone).date);
+      fields.resetTo(zonedNowParts(timezone).date, "09:00", "17:00");
       setWithBreak(false);
     }
   }
 
-  const shift = resolveRange(date, start, end, timezone);
+  const shift = fields.range;
   const brk =
     shift && withBreak && breakStart && breakEnd
       ? (() => {
@@ -81,7 +80,7 @@ export function AddTimeEntryDialog({
 
   function submit(addAnother: boolean) {
     if (!userId || !shift) {
-      toast.error("Pick a person, a date, and start and end times");
+      toast.error(fields.endBeforeStart ? "The end has to be after the start" : "Pick a person, and start and end dates and times");
       return;
     }
     if (withBreak && (!brk || !breakInside)) {
@@ -124,7 +123,7 @@ export function AddTimeEntryDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Add time</DialogTitle>
-          <DialogDescription>For a shift someone forgot to clock. An end time before the start counts as overnight.</DialogDescription>
+          <DialogDescription>For a shift someone forgot to clock. For an overnight shift, set the end date to the next day.</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-1">
@@ -148,11 +147,7 @@ export function AddTimeEntryDialog({
               />
             </div>
           )}
-          <DateInput id="add-date" value={date} onChange={setDate} />
-          <div className="flex gap-3">
-            <TimeInput id="add-start" label="Start" value={start} onChange={setStart} day={dayOf(date, shift?.from, timezone)} />
-            <TimeInput id="add-end" label="End" value={end} onChange={setEnd} day={dayOf(date, shift?.to, timezone)} />
-          </div>
+          <StartEndFields idPrefix="add" startLabel="Start" endLabel="End" fields={fields} />
 
           <label className="flex items-center gap-2 text-sm">
             <Checkbox checked={withBreak} onCheckedChange={(c) => setWithBreak(c === true)} />

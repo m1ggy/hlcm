@@ -16,10 +16,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  getTimesheetTotals,
-  listTimeEntries,
-  listBreakEntries,
-  listBreakDeductions,
+  getTimesheetReport,
   deleteBreakDeduction,
   deleteTimeEntry,
   deleteBreakEntry,
@@ -28,6 +25,7 @@ import {
   effectiveTimezone,
   currentMonthRange,
   currentPayPeriodRange,
+  currentWeekRange,
   dayRangeToInstants,
   formatDuration,
   formatMoney,
@@ -82,7 +80,9 @@ export function TimesheetReport({
   isAdmin?: boolean;
 }) {
   const timezone = effectiveTimezone(accountTimezone);
-  const [userId, setUserId] = useState("all");
+  // Empty until the admin picks someone (or "All users"), so opening the
+  // page doesn't read everyone's time.
+  const [userId, setUserId] = useState("");
   const [from, setFrom] = useState(() => currentMonthRange(timezone).from);
   const [to, setTo] = useState(() => toDateInputValue(new Date(), timezone));
   const [totals, setTotals] = useState<TimesheetTotal[] | null>(null);
@@ -103,32 +103,37 @@ export function TimesheetReport({
   }
 
   const load = useCallback(() => {
-    if (!from || !to || from > to) return;
+    if (!userId || !from || !to || from > to) return;
     const id = ++requestId.current;
     startTransition(async () => {
       try {
         const instants = dayRangeToInstants(from, to, timezone);
-        const query = { userId: userId === "all" ? undefined : userId, from: instants.from, to: instants.to };
-        const [rows, rawEntries, rawBreakEntries, rawBreaks] = await Promise.all([
-          getTimesheetTotals({ ...query, timeZone: timezone }),
-          listTimeEntries(query),
-          listBreakEntries(query),
-          listBreakDeductions(query),
-        ]);
+        const report = await getTimesheetReport({
+          userId: userId === "all" ? undefined : userId,
+          from: instants.from,
+          to: instants.to,
+          timeZone: timezone,
+        });
         if (id !== requestId.current) return;
-        setTotals(rows);
-        setEntries(rawEntries);
-        setBreakEntries(rawBreakEntries);
-        setBreaks(rawBreaks);
+        setTotals(report.totals);
+        setEntries(report.entries);
+        setBreakEntries(report.breakEntries);
+        setBreaks(report.deductions);
       } catch (error) {
         if (id === requestId.current) toast.error(error instanceof Error ? error.message : "Failed to load time");
       }
     });
   }, [from, to, timezone, userId]);
 
-  // Loads on open and whenever the person or dates change — no Preview click.
+  // Loads on open and whenever the person or dates change — no Preview
+  // click. Waits for the filters to settle so stepping through dates in the
+  // picker doesn't fire a query per click.
+  const firstLoad = useRef(true);
   useEffect(() => {
-    load();
+    const delay = firstLoad.current ? 0 : 400;
+    firstLoad.current = false;
+    const timer = setTimeout(load, delay);
+    return () => clearTimeout(timer);
   }, [load]);
 
   function applyPreset(range: { from: string; to: string }) {
@@ -254,7 +259,8 @@ export function TimesheetReport({
           <Label>Person</Label>
           <SearchableSelect
             items={{ all: "All users", ...Object.fromEntries(users.map((u) => [u.id, u.name])) }}
-            value={userId}
+            value={userId || null}
+            placeholder="Choose a person"
             onValueChange={(v) => setUserId(v ?? "all")}
             searchPlaceholder="Search users..."
             className="flex h-8 w-48 items-center justify-between gap-1.5 rounded-lg border border-input bg-transparent py-2 pr-2 pl-2.5 text-sm whitespace-nowrap transition-colors outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30 dark:hover:bg-input/50"
@@ -269,6 +275,9 @@ export function TimesheetReport({
           <Input id="to" type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-40" />
         </div>
         <div className="flex items-center gap-1.5">
+          <Button variant="ghost" size="sm" onClick={() => applyPreset(currentWeekRange(timezone))}>
+            This week
+          </Button>
           <Button variant="ghost" size="sm" onClick={() => applyPreset(currentPayPeriodRange(timezone))}>
             This pay period
           </Button>
@@ -280,7 +289,7 @@ export function TimesheetReport({
           </Button>
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
-          <Button variant="outline" size="sm" nativeButton={false} render={<a href={pdfUrl()} target="_blank" rel="noopener noreferrer" />}>
+          <Button variant="outline" size="sm" nativeButton={false} disabled={!userId} render={<a href={userId ? pdfUrl() : undefined} target="_blank" rel="noopener noreferrer" />}>
             <FileDown className="size-3.5" /> PDF
           </Button>
           {isAdmin && (
@@ -293,11 +302,12 @@ export function TimesheetReport({
             />
           )}
           {isAdmin && (
-            <BreakDeductionDialog users={users} defaultUserId={userId} defaultFrom={from} defaultTo={to} onAdded={load} />
+            <BreakDeductionDialog users={users} defaultUserId={userId || "all"} defaultFrom={from} defaultTo={to} onAdded={load} />
           )}
         </div>
       </div>
       {from > to && <p className="text-sm text-destructive">The start date is after the end date.</p>}
+      {!userId && <p className="text-sm text-muted-foreground">Choose a person, or All users, to load their time.</p>}
 
       {breaks.length > 0 && (
         <div className="space-y-1.5 rounded-lg border bg-muted/30 p-3">

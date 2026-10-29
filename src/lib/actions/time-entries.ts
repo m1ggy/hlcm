@@ -365,6 +365,28 @@ export async function getTimesheetTotals(input: TimeEntryRangeInput & { timeZone
   return summarizeByUser(entries, rules, input.timeZone || DEFAULT_TIMEZONE);
 }
 
+/**
+ * Everything the Time page's report needs in one round trip: entries,
+ * breaks and deductions are each read once, and the totals are worked out
+ * from those same rows (calling getTimesheetTotals alongside listTimeEntries
+ * read every entry twice).
+ */
+export async function getTimesheetReport(input: TimeEntryRangeInput & { timeZone?: string }) {
+  const [entries, breakEntries, deductions] = await Promise.all([
+    listTimeEntries(input),
+    listBreakEntries(input),
+    listBreakDeductions(input),
+  ]);
+  const rules: BreakDeductionRule[] = deductions.map((d) => ({
+    userId: d.userId,
+    fromDate: d.fromDate,
+    toDate: d.toDate,
+    minutesPerDay: d.minutesPerDay,
+  }));
+  const totals = summarizeByUser(entries, rules, input.timeZone || DEFAULT_TIMEZONE);
+  return { totals, entries, breakEntries, deductions };
+}
+
 const breakDeductionSchema = z
   .object({
     userId: z.string().optional(),
