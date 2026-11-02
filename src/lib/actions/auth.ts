@@ -1,12 +1,13 @@
 "use server";
 
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import bcrypt from "bcryptjs";
-import { AuthError } from "next-auth";
+import { AuthError, CredentialsSignin } from "next-auth";
 import { signIn } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { createMfaChallenge } from "@/lib/mfa-challenge";
+import { MOBILE_BLOCKED_MESSAGE, parseLoginDevice, refuseIfMobileBlocked } from "@/lib/login-device";
 import { z } from "zod";
 import { recordAudit } from "@/lib/audit";
 import { getAppUrl, renderEmailLayout, sendEmail } from "@/lib/email";
@@ -17,6 +18,10 @@ import {
 } from "@/lib/password-reset";
 
 const CHALLENGE_COOKIE = "mfa_challenge";
+
+function isMobileBlocked(error: unknown) {
+  return error instanceof CredentialsSignin && error.code === "mobile_blocked";
+}
 
 export async function loginAction(
   _prevState: { error?: string } | undefined,
@@ -31,6 +36,13 @@ export async function loginAction(
 
   const passwordValid = await bcrypt.compare(password, user.passwordHash);
   if (!passwordValid) return { error: "Invalid email or password." };
+
+  // Checked here too (not only in authorize) so a blocked MFA user is told
+  // before being sent to the code step. Only after the password is proven,
+  // so this can't be used to learn anything about an account.
+  if (await refuseIfMobileBlocked(user, parseLoginDevice(await headers()), user.mfaEnabled ? "password+mfa" : "password")) {
+    return { error: MOBILE_BLOCKED_MESSAGE };
+  }
 
   if (user.mfaEnabled) {
     const token = await createMfaChallenge(user.id);
@@ -48,6 +60,7 @@ export async function loginAction(
   try {
     await signIn("credentials", { email, password, redirectTo: "/" });
   } catch (error) {
+    if (isMobileBlocked(error)) return { error: MOBILE_BLOCKED_MESSAGE };
     if (error instanceof AuthError) return { error: "Invalid email or password." };
     throw error;
   }
@@ -169,6 +182,7 @@ export async function verifyMfaAction(
   try {
     await signIn("credentials", { challenge, otp, redirectTo: "/" });
   } catch (error) {
+    if (isMobileBlocked(error)) return { error: MOBILE_BLOCKED_MESSAGE };
     if (error instanceof AuthError) return { error: "Invalid MFA code." };
     throw error;
   }

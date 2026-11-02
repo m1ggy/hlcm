@@ -11,6 +11,11 @@ export function isSuperuser(role: string | null | undefined): boolean {
   return role === "OWNER" || role === "DEVELOPER";
 }
 
+/** DEVELOPER only — not OWNER. For tools meant just for the people running the app (e.g. login activity). */
+export function isDeveloper(role: string | null | undefined): boolean {
+  return role === "DEVELOPER";
+}
+
 /**
  * OWNER/DEVELOPER inherit every ADMIN permission; ACCOUNTANT also carries
  * full ADMIN permissions everywhere (on top of the Invoices exclusivity
@@ -84,6 +89,13 @@ export async function requireRole(allowed: AppRole[]) {
   if (isSuperuser(role)) return session;
   const permitted = allowed.includes(role) || (role === "ACCOUNTANT" && allowed.includes("ADMIN"));
   if (!permitted) throw new ForbiddenError();
+  return session;
+}
+
+/** Throws unless the current user is a DEVELOPER (OWNER doesn't pass). */
+export async function requireDeveloper() {
+  const session = await requireSession();
+  if (!isDeveloper(session.user.role)) throw new ForbiddenError();
   return session;
 }
 

@@ -10,5 +10,7 @@ declare module "next-auth" {
 
   interface User {
     role: string;
+    /** Set by authorize — see src/lib/login-device.ts. */
+    deviceType?: string;
   }
 }

@@ -164,6 +164,10 @@ model User {
   // upcoming meeting"), not a per-user preference everyone starts with.
   phone                     String?
   smsRemindersEnabled       Boolean  @default(false)
+  // Developer-only switch (Admin > Users > Logins): when on, sign-in from a
+  // phone or tablet browser is refused and any open phone/tablet session is
+  // ended at its next check (see src/lib/login-device.ts).
+  mobileLoginBlocked        Boolean  @default(false)
   createdAt                 DateTime @default(now())
   updatedAt                 DateTime @updatedAt
 
@@ -228,8 +232,39 @@ model User {
   clientServicesCreated         ClientService[]           @relation("ClientServiceCreatedBy")
   clientServiceAssignments      ClientServiceAssignee[]
   serviceAdjustmentsCreated     ServiceAdjustment[]       @relation("ServiceAdjustmentCreatedBy")
+  loginEvents                   LoginEvent[]
 
   @@map("users")
+}
+
+enum LoginDeviceType {
+  DESKTOP
+  MOBILE
+  TABLET
+}
+
+// One row per web sign-in (successful, or refused because mobile login is
+// blocked) — what device/browser/OS it came from. Shown to DEVELOPER only on
+// Admin > Users. Parsed from the User-Agent, so it's a best guess: a phone
+// set to "Request desktop site" reports itself as DESKTOP.
+model LoginEvent {
+  id         String          @id @default(cuid())
+  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  success    Boolean
+  // "password" or "password+mfa"
+  method     String
+  // Set when success is false, e.g. "mobile_blocked"
+  reason     String?
+  deviceType LoginDeviceType
+  browser    String?
+  os         String?
+  userAgent  String?
+  ipAddress  String?
+  createdAt  DateTime        @default(now())
+
+  @@index([userId, createdAt])
+  @@map("login_events")
 }
 
 // A user's saved Wise payout account. `fields` holds whatever Wise's

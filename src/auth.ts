@@ -1,10 +1,21 @@
-import NextAuth from "next-auth";
+import NextAuth, { CredentialsSignin } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { verifyTotpToken } from "@/lib/totp";
 import { verifyMfaChallenge } from "@/lib/mfa-challenge";
 import { authConfig } from "@/auth.config";
+import { isMobileDevice, parseLoginDevice, recordLoginEvent, refuseIfMobileBlocked } from "@/lib/login-device";
+
+/** Thrown from authorize so the login actions can show the right message. */
+export class MobileLoginBlockedError extends CredentialsSignin {
+  code = "mobile_blocked";
+}
+
+// How often an open phone/tablet session re-checks mobileLoginBlocked, so
+// a developer turning it on ends that session within a minute instead of
+// waiting for the idle timeout. Desktop sessions never pay for this check.
+const MOBILE_RECHECK_MS = 60 * 1000;
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
@@ -19,7 +30,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         otp: { label: "MFA code", type: "text" },
         challenge: { label: "Challenge", type: "text" },
       },
-      async authorize(credentials) {
+      async authorize(credentials, request) {
+        const device = parseLoginDevice(request.headers);
         const challenge = credentials?.challenge as string | undefined;
         const otp = credentials?.otp as string | undefined;
 
@@ -32,8 +44,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           const user = await prisma.user.findUnique({ where: { id: userId } });
           if (!user || !user.active || !user.mfaEnabled || !user.mfaSecret) return null;
           if (!otp || !verifyTotpToken(otp, user.mfaSecret)) return null;
+          if (await refuseIfMobileBlocked(user, device, "password+mfa")) throw new MobileLoginBlockedError();
 
-          return { id: user.id, name: user.name, email: user.email, role: user.role };
+          await recordLoginEvent({ userId: user.id, device, success: true, method: "password+mfa" });
+          return { id: user.id, name: user.name, email: user.email, role: user.role, deviceType: device.deviceType };
         }
 
         const email = credentials?.email as string | undefined;
@@ -49,12 +63,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // MFA-enabled users must complete the challenge step above — password
         // alone is never enough for them.
         if (user.mfaEnabled) return null;
+        if (await refuseIfMobileBlocked(user, device, "password")) throw new MobileLoginBlockedError();
 
+        await recordLoginEvent({ userId: user.id, device, success: true, method: "password" });
         return {
           id: user.id,
           name: user.name,
           email: user.email,
           role: user.role,
+          deviceType: device.deviceType,
         };
       },
     }),
@@ -65,6 +82,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (user) {
         token.id = user.id;
         token.role = (user as { role: string }).role;
+        token.mobile = isMobileDevice(user.deviceType);
+        token.mobileCheckedAt = Date.now();
+        return token;
+      }
+      if (token.mobile && Date.now() - ((token.mobileCheckedAt as number | undefined) ?? 0) > MOBILE_RECHECK_MS) {
+        const row = await prisma.user.findUnique({
+          where: { id: token.id as string },
+          select: { mobileLoginBlocked: true, active: true },
+        });
+        // Returning null ends the session — the next page load lands on /login.
+        if (!row || !row.active || row.mobileLoginBlocked) return null;
+        token.mobileCheckedAt = Date.now();
       }
       return token;
     },
