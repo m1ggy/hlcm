@@ -12,18 +12,17 @@ import { uploadPayrollAttachment, deletePayrollAttachment } from "@/lib/actions/
 import type { PayrollFile } from "@/lib/actions/payroll";
 
 /**
- * A list of payroll files with download, plus upload/delete when `canEdit`.
- * Used for a period's own files and for one person's files alike — `target`
- * says which one an upload goes to.
+ * One person's payroll files with download, plus upload/delete when
+ * `canEdit`. Without `paymentId` (old period-wide files) there's no upload.
  */
 export function PayrollFiles({
-  target,
+  paymentId,
   files,
   canEdit,
   emptyText = "No files yet",
   compact = false,
 }: {
-  target: { periodStart: string } | { paymentId: string };
+  paymentId?: string;
   files: PayrollFile[];
   canEdit: boolean;
   emptyText?: string;
@@ -43,7 +42,8 @@ export function PayrollFiles({
     setUploading(true);
     startTransition(async () => {
       try {
-        const result = await uploadPayrollAttachment(target, formData);
+        if (!paymentId) return;
+        const result = await uploadPayrollAttachment(paymentId, formData);
         if (!result.ok) return void toast.error(result.error);
         formRef.current?.reset();
         toast.success("File added");
@@ -74,7 +74,7 @@ export function PayrollFiles({
 
   return (
     <div className="space-y-2">
-      {canEdit && (
+      {canEdit && paymentId && (
         <form ref={formRef} onSubmit={handleSubmit} className="flex items-center gap-2">
           <input
             type="file"

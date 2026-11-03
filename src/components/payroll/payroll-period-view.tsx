@@ -28,7 +28,7 @@ type Detail = {
   end: string;
   label: string;
   rows: PayrollRow[];
-  files: PayrollFile[];
+  olderPeriodFiles: PayrollFile[];
 };
 
 function periodBadge(p: PeriodSummary) {
@@ -228,7 +228,7 @@ export function PayrollPeriodView({
                                 title="Show files"
                               >
                                 {isOpen ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
-                                <Paperclip className="size-3.5" /> {p.files.length}
+                                <Paperclip className="size-3.5" /> {p.files.length > 0 ? p.files.length : canManage ? "Add" : 0}
                               </Button>
                             ) : (
                               <span className="text-muted-foreground">—</span>
@@ -297,7 +297,7 @@ export function PayrollPeriodView({
                                 {row.userName}&apos;s files — they can see and download these. Paid by {p.markedBy}
                                 {p.note && ` · ${p.note}`}
                               </p>
-                              <PayrollFiles target={{ paymentId: p.id }} files={p.files} canEdit={canManage} emptyText="No files for this person yet" compact />
+                              <PayrollFiles paymentId={p.id} files={p.files} canEdit={canManage} emptyText="No files for this person yet" compact />
                             </TableCell>
                           </TableRow>
                         )}
@@ -311,15 +311,20 @@ export function PayrollPeriodView({
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Period files</CardTitle>
-          <CardDescription>Payroll register, bank confirmation and the like. Only payroll managers see these — not the people paid.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <PayrollFiles target={{ periodStart: detail.start }} files={detail.files} canEdit={canManage} emptyText="No period files yet" />
-        </CardContent>
-      </Card>
+      {detail.olderPeriodFiles.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Older period files</CardTitle>
+            <CardDescription>
+              Added for the whole period before files moved onto each person. Only payroll managers see these. Add new files to a
+              person&apos;s row instead.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <PayrollFiles files={detail.olderPeriodFiles} canEdit={canManage} />
+          </CardContent>
+        </Card>
+      )}
 
       {markPeople && (
         <MarkPaidDialog

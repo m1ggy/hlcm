@@ -14,6 +14,7 @@ import { unexpectedErrorMessage } from "@/lib/action-result";
 import { formatDuration, formatMoney, toDateInputValue } from "@/lib/time-entries";
 import { PAYROLL_METHODS, PAYROLL_METHOD_LABELS, PAYROLL_TIMEZONE, type PayrollMethodValue } from "@/lib/payroll";
 import { markPaid, updatePayment } from "@/lib/actions/payroll";
+import { uploadPayrollAttachment } from "@/lib/actions/payroll-attachments";
 
 type Details = { paidOn: string; method: PayrollMethodValue; reference: string; note: string };
 
@@ -118,6 +119,9 @@ export function MarkPaidDialog({
     });
   }
 
+  // Files picked per person, uploaded onto their payment once it's saved.
+  const [files, setFiles] = useState<Record<string, File[]>>({});
+
   const included = people.filter((p) => amounts[p.userId]?.include);
   const single = people.length === 1;
 
@@ -148,7 +152,25 @@ export function MarkPaidDialog({
           people: payload,
         });
         if (!result.ok) return void toast.error(result.error);
+        const failed: string[] = [];
+        for (const p of included) {
+          const paymentId = result.data.ids[p.userId];
+          for (const file of files[p.userId] ?? []) {
+            const form = new FormData();
+            form.set("file", file);
+            try {
+              const upload = paymentId ? await uploadPayrollAttachment(paymentId, form) : { ok: false as const, error: "" };
+              if (!upload.ok) failed.push(`${file.name} (${p.userName})${upload.error ? `: ${upload.error}` : ""}`);
+            } catch {
+              // The payment is saved either way — only this file is missing.
+              failed.push(`${file.name} (${p.userName})`);
+            }
+          }
+        }
         toast.success(result.data.count === 1 ? "Marked paid" : `${result.data.count} people marked paid`);
+        if (failed.length > 0) {
+          toast.error("Some files didn't upload — add them from the person's row", { description: failed.join("; ") });
+        }
         onOpenChange(false);
         router.refresh();
       } catch (error) {
@@ -229,6 +251,20 @@ export function MarkPaidDialog({
                       disabled={!a.include}
                       onChange={(e) => setAmount(p.userId, { net: e.target.value })}
                       placeholder="0.00"
+                    />
+                  </div>
+                  <div className="space-y-0.5 sm:col-span-3">
+                    <Label htmlFor={`files-${p.userId}`} className="text-xs text-muted-foreground">
+                      Files for {p.userName} (optional — pay stub, deposit slip; only they and payroll managers see them)
+                    </Label>
+                    <input
+                      id={`files-${p.userId}`}
+                      type="file"
+                      multiple
+                      disabled={!a.include}
+                      accept="image/*,.pdf,.csv,.xlsx,.docx"
+                      onChange={(e) => setFiles((prev) => ({ ...prev, [p.userId]: Array.from(e.target.files ?? []) }))}
+                      className="h-8 w-full min-w-0 rounded-lg border border-input bg-transparent text-sm file:mr-2 file:h-8 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground"
                     />
                   </div>
                 </div>

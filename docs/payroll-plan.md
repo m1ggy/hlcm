@@ -14,6 +14,14 @@ time lock, report problem, confirm, resolve, undo, admin view-only).
 **Not tested locally: file upload/download** — no `GCS_BUCKET` in local
 `.env`; try it on dev before prod.
 
+2026-11-04 later: merged to main and deployed. Then, per the user,
+**files are per person only** — no more period-wide files. The table
+wasn't changed (the migration had already run in production):
+`payroll_attachments.payrollPaymentId` stays nullable, new uploads always
+set it, and any period-wide file already uploaded shows on /payroll as
+"Older period files" (managers only) so nothing is lost. Files can be
+picked per person inside the Mark paid / Mark all paid dialog.
+
 Built differently from the plan below:
 - No `wiseTransactionId` column and no `PayPeriod.note` (not needed yet).
 - `amountPaid` became `grossAmount` + `netAmount`; paid date is `paidOn`.

@@ -40,8 +40,8 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
                 <strong>Undo paid</strong> from the row&apos;s menu to unlock it.
               </p>
               <p>
-                <strong>Period files</strong> are for you and other managers only. Files added to a person&apos;s row (a pay stub)
-                are also visible to that person.
+                Files go on each person: pick them when you mark someone paid, or use the paperclip on their row later. That
+                person sees and can download their own files — nobody else&apos;s.
               </p>
               <p>If someone reports a problem, you&apos;re notified; fix it, then use Mark problem resolved so they can confirm.</p>
             </>

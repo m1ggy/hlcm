@@ -7,14 +7,13 @@ import { recordAudit } from "@/lib/audit";
 import { toActionResult } from "@/lib/action-result";
 import { UserFacingError } from "@/lib/user-facing-error";
 import { saveUploadedFile, deleteStoredFile } from "@/lib/storage";
-import { dayToDate, isValidPeriod, periodForDay } from "@/lib/payroll";
 
-// Two kinds of payroll file (docs/payroll-plan.md):
-// - period file (payrollPaymentId null): payroll register, bank
-//   confirmation — management only, never shown to the people paid;
-// - person file (payrollPaymentId set): a pay stub — also visible to that
-//   one person on their My Pay card.
-// Only the accountant (+ OWNER/DEVELOPER) adds or removes them.
+// Payroll files belong to one person's payment (pay stub, deposit slip):
+// visible to payroll managers and to that person only. There are no
+// period-wide files (user's call, 2026-11-04) — the table still allows a
+// null payrollPaymentId because the first release had them; any such row
+// shows on /payroll as an "Older period files" list until it's deleted.
+// Only the accountant (+ OWNER/DEVELOPER) adds or removes files.
 
 const MAX_FILE_BYTES = 20 * 1024 * 1024;
 
@@ -44,34 +43,18 @@ function checkFile(file: FormDataEntryValue | null): File {
   return file;
 }
 
-/** `target` is either a period (by its start day) or one person's payment. */
-async function uploadImpl(target: { periodStart: string } | { paymentId: string }, formData: FormData) {
+async function uploadImpl(paymentId: string, formData: FormData) {
   const session = await requireRole(["ACCOUNTANT"]);
   const file = checkFile(formData.get("file"));
 
-  let payPeriodId: string;
-  let payrollPaymentId: string | null = null;
-  if ("paymentId" in target) {
-    const payment = await prisma.payrollPayment.findUnique({ where: { id: target.paymentId }, select: { id: true, payPeriodId: true } });
-    if (!payment) throw new PayrollFileError("That payment was undone — refresh the page");
-    payPeriodId = payment.payPeriodId;
-    payrollPaymentId = payment.id;
-  } else {
-    const range = periodForDay(target.periodStart);
-    if (!isValidPeriod({ start: target.periodStart, end: range.end })) throw new PayrollFileError("That isn't a pay period");
-    const period = await prisma.payPeriod.upsert({
-      where: { startDate_endDate: { startDate: dayToDate(range.start), endDate: dayToDate(range.end) } },
-      create: { startDate: dayToDate(range.start), endDate: dayToDate(range.end) },
-      update: {},
-    });
-    payPeriodId = period.id;
-  }
+  const payment = await prisma.payrollPayment.findUnique({ where: { id: paymentId }, select: { id: true, payPeriodId: true } });
+  if (!payment) throw new PayrollFileError("That payment was undone — refresh the page");
 
   const { storageKey, sizeBytes } = await saveUploadedFile(file);
   const attachment = await prisma.payrollAttachment.create({
     data: {
-      payPeriodId,
-      payrollPaymentId,
+      payPeriodId: payment.payPeriodId,
+      payrollPaymentId: payment.id,
       fileName: file.name,
       storageKey,
       mimeType: file.type || "application/octet-stream",
@@ -81,8 +64,8 @@ async function uploadImpl(target: { periodStart: string } | { paymentId: string 
   });
 
   await recordAudit({
-    entityType: payrollPaymentId ? "PayrollPayment" : "PayPeriod",
-    entityId: payrollPaymentId ?? payPeriodId,
+    entityType: "PayrollPayment",
+    entityId: payment.id,
     action: "upload_attachment",
     actorId: session.user.id,
     field: "attachment",
@@ -90,15 +73,13 @@ async function uploadImpl(target: { periodStart: string } | { paymentId: string 
   });
 
   revalidatePath("/payroll");
-  if (payrollPaymentId) {
-    revalidatePath("/time");
-    revalidatePath("/hours");
-  }
+  revalidatePath("/time");
+  revalidatePath("/hours");
   return { id: attachment.id };
 }
 
-export async function uploadPayrollAttachment(target: { periodStart: string } | { paymentId: string }, formData: FormData) {
-  return toActionResult(() => uploadImpl(target, formData));
+export async function uploadPayrollAttachment(paymentId: string, formData: FormData) {
+  return toActionResult(() => uploadImpl(paymentId, formData));
 }
 
 async function deleteImpl(id: string) {
@@ -119,10 +100,8 @@ async function deleteImpl(id: string) {
   });
 
   revalidatePath("/payroll");
-  if (attachment.payrollPaymentId) {
-    revalidatePath("/time");
-    revalidatePath("/hours");
-  }
+  revalidatePath("/time");
+  revalidatePath("/hours");
 }
 
 export async function deletePayrollAttachment(id: string) {
@@ -130,7 +109,7 @@ export async function deletePayrollAttachment(id: string) {
 }
 
 /** For the download route: management sees every payroll file; anyone else
- * only their own person files. */
+ * only files on their own payments. */
 export async function getPayrollAttachment(id: string) {
   const session = await requireSession();
   const attachment = await prisma.payrollAttachment.findUniqueOrThrow({

@@ -191,7 +191,7 @@ const fileSelect = {
 } as const;
 
 /** Everything /payroll shows for one period: one row per person with time
- * or a payment, plus the period's own files. */
+ * or a payment, with each payment's files. */
 export async function getPayrollPeriod(start: string) {
   await requireRole([...VIEW]);
   const range = parsePeriod(start);
@@ -208,6 +208,7 @@ export async function getPayrollPeriod(start: string) {
             attachments: { select: fileSelect, orderBy: { createdAt: "desc" } },
           },
         },
+        // Period-wide files from the first release (no longer created).
         attachments: { where: { payrollPaymentId: null }, select: fileSelect, orderBy: { createdAt: "desc" } },
       },
     }),
@@ -266,7 +267,7 @@ export async function getPayrollPeriod(start: string) {
       // payment (e.g. only an open shift) still shows, since it's a warning.
       .filter((r) => r.hours > 0 || r.payment || r.onTheClock)
       .sort((a, b) => a.userName.localeCompare(b.userName)),
-    files: period?.attachments ?? [],
+    olderPeriodFiles: period?.attachments ?? [],
   };
 }
 
@@ -374,7 +375,8 @@ async function markPaidImpl(input: z.input<typeof markPaidSchema>) {
   }
 
   revalidatePayroll();
-  return { count: created.length };
+  // ids let the single "Mark paid" dialog attach files right after.
+  return { count: created.length, ids: Object.fromEntries(created.map((c) => [c.userId, c.id])) as Record<string, string> };
 }
 
 export async function markPaid(input: z.input<typeof markPaidSchema>) {
@@ -511,9 +513,8 @@ export type MyPayment = {
   files: PayrollFile[];
 };
 
-/** The signed-in person's own payments, newest period first. Only their
- * per-person files — period files (the whole payroll register) never
- * reach this side. */
+/** The signed-in person's own payments, newest period first, with the
+ * files on each. */
 export async function listMyPayments(limit = 24): Promise<MyPayment[]> {
   const session = await requireSession();
   const rows = await prisma.payrollPayment.findMany({
