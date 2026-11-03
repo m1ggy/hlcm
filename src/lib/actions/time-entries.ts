@@ -7,6 +7,7 @@ import { requireSession, requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
 import { toActionResult } from "@/lib/action-result";
+import { assertTimeNotLocked, assertRangeNotLocked, lockedIds } from "@/lib/payroll-lock";
 import { TimeClockError, summarizeByUser, DEFAULT_TIMEZONE, type TimeEntryRangeInput, type BreakDeductionRule } from "@/lib/time-entries";
 
 export async function getMyActiveEntry() {
@@ -384,7 +385,17 @@ export async function getTimesheetReport(input: TimeEntryRangeInput & { timeZone
     minutesPerDay: d.minutesPerDay,
   }));
   const totals = summarizeByUser(entries, rules, input.timeZone || DEFAULT_TIMEZONE);
-  return { totals, entries, breakEntries, deductions };
+  // Shifts/breaks inside a paid pay period — the timesheet hides their
+  // edit/delete buttons (see src/lib/payroll-lock.ts).
+  const locked = new Set(
+    await lockedIds([
+      ...entries.map((e) => ({ id: e.id, userId: e.userId, start: e.clockIn })),
+      ...breakEntries.map((b) => ({ id: b.id, userId: b.userId, start: b.breakStart })),
+    ])
+  );
+  const lockedEntryIds = entries.filter((e) => locked.has(e.id)).map((e) => e.id);
+  const lockedBreakIds = breakEntries.filter((b) => locked.has(b.id)).map((b) => b.id);
+  return { totals, entries, breakEntries, deductions, lockedEntryIds, lockedBreakIds };
 }
 
 const breakDeductionSchema = z
@@ -404,7 +415,7 @@ const breakDeductionSchema = z
  * underlying TimeEntry rows, so it can be corrected or removed without
  * losing the original clock times.
  */
-export async function createBreakDeduction(input: {
+async function createBreakDeductionImpl(input: {
   userId?: string;
   fromDate: string;
   toDate: string;
@@ -412,7 +423,8 @@ export async function createBreakDeduction(input: {
   note?: string;
 }) {
   const session = await requireRole(["ADMIN"]);
-  const parsed = breakDeductionSchema.parse(input);
+  const parsed = parseInput(breakDeductionSchema, input);
+  await assertRangeNotLocked(parsed.userId || null, parsed.fromDate.toISOString().slice(0, 10), parsed.toDate.toISOString().slice(0, 10));
 
   const deduction = await prisma.timesheetBreakDeduction.create({
     data: {
@@ -437,9 +449,18 @@ export async function createBreakDeduction(input: {
   return deduction;
 }
 
-export async function deleteBreakDeduction(id: string) {
+export async function createBreakDeduction(input: Parameters<typeof createBreakDeductionImpl>[0]) {
+  return toActionResult(() => createBreakDeductionImpl(input));
+}
+
+async function deleteBreakDeductionImpl(id: string) {
   const session = await requireRole(["ADMIN"]);
   const deduction = await prisma.timesheetBreakDeduction.findUniqueOrThrow({ where: { id } });
+  await assertRangeNotLocked(
+    deduction.userId,
+    deduction.fromDate.toISOString().slice(0, 10),
+    deduction.toDate.toISOString().slice(0, 10)
+  );
 
   await prisma.timesheetBreakDeduction
     .delete({ where: { id } })
@@ -454,6 +475,10 @@ export async function deleteBreakDeduction(id: string) {
   });
 
   revalidatePath("/time");
+}
+
+export async function deleteBreakDeduction(id: string) {
+  return toActionResult(() => deleteBreakDeductionImpl(id));
 }
 
 // --- Admin corrections: shared guards --------------------------------------
@@ -612,6 +637,7 @@ async function createManualTimeEntryImpl(input: {
 }) {
   const session = await requireRole(["ADMIN"]);
   const parsed = parseInput(manualEntrySchema, input);
+  await assertTimeNotLocked(parsed.userId, [parsed.clockIn, ...(parsed.breakStart ? [parsed.breakStart] : [])]);
   await assertNoOverlap(parsed.userId, parsed.clockIn, parsed.clockOut);
 
   const careRecipientId = parsed.careRecipientId || null;
@@ -673,6 +699,7 @@ async function updateTimeEntryImpl(
   const session = await requireRole(["ADMIN"]);
   const existing = await prisma.timeEntry.findUniqueOrThrow({ where: { id } });
   const parsed = parseInput(updateEntrySchema, input);
+  await assertTimeNotLocked(existing.userId, [existing.clockIn, parsed.clockIn]);
 
   if (!parsed.clockOut) {
     const otherOpen = await prisma.timeEntry.findFirst({
@@ -744,6 +771,7 @@ async function addBreakToEntryImpl(entryId: string, input: { breakStart: string;
   const session = await requireRole(["ADMIN"]);
   const entry = await prisma.timeEntry.findUniqueOrThrow({ where: { id: entryId } });
   const { breakStart, breakEnd } = parseInput(addBreakSchema, input);
+  await assertTimeNotLocked(entry.userId, [entry.clockIn, breakStart]);
 
   if (!entry.clockOut) throw new TimeClockError("This session is still open — add the break once it's clocked out");
   if (breakStart <= entry.clockIn || breakEnd >= entry.clockOut) {
@@ -787,6 +815,7 @@ async function addBreakToEntryImpl(entryId: string, input: { breakStart: string;
 async function deleteTimeEntryImpl(id: string) {
   const session = await requireRole(["ADMIN"]);
   const entry = await prisma.timeEntry.findUniqueOrThrow({ where: { id } });
+  await assertTimeNotLocked(entry.userId, [entry.clockIn]);
 
   await prisma.timeEntry
     .delete({ where: { id } })
@@ -832,6 +861,11 @@ async function updateBreakEntryImpl(id: string, input: { breakStart: string; bre
   // Moving a break moves the edges of the sessions around it too — before,
   // only the break row changed, so the break and paid hours drifted apart.
   const { before, after } = await sessionsAroundBreak(existing);
+  await assertTimeNotLocked(existing.userId, [
+    existing.breakStart,
+    parsed.breakStart,
+    ...[before?.clockIn, after?.clockIn].filter((d): d is Date => Boolean(d)),
+  ]);
   if (after && !parsed.breakEnd) {
     throw new TimeClockError("Work resumed after this break, so it needs an end time");
   }
@@ -888,6 +922,7 @@ async function deleteBreakEntryImpl(id: string): Promise<{ merged: boolean; reas
   const session = await requireRole(["ADMIN"]);
   const brk = await prisma.breakEntry.findUniqueOrThrow({ where: { id } });
   const { before, after } = await sessionsAroundBreak(brk);
+  await assertTimeNotLocked(brk.userId, [brk.breakStart, ...[before?.clockIn, after?.clockIn].filter((d): d is Date => Boolean(d))]);
 
   let reason: string | undefined;
   if (!before || !after) reason = "there's no session on both sides of it";

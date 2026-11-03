@@ -127,6 +127,8 @@ enum NotificationType {
   ENVELOPE_DECLINED
   CARE_RECIPIENT_ASSIGNED
   CARE_INCIDENT_REPORTED
+  PAYROLL_PAID
+  PAYROLL_PROBLEM_REPORTED
 }
 
 enum InvoiceStatus {
@@ -233,6 +235,10 @@ model User {
   clientServiceAssignments      ClientServiceAssignee[]
   serviceAdjustmentsCreated     ServiceAdjustment[]       @relation("ServiceAdjustmentCreatedBy")
   loginEvents                   LoginEvent[]
+  payrollPayments               PayrollPayment[]          @relation("PayrollPaymentPayee")
+  payrollPaymentsMarked         PayrollPayment[]          @relation("PayrollPaymentMarkedBy")
+  payrollProblemsResolved       PayrollPayment[]          @relation("PayrollPaymentProblemResolvedBy")
+  payrollAttachmentsUploaded    PayrollAttachment[]       @relation("PayrollAttachmentUploadedBy")
 
   @@map("users")
 }
@@ -421,6 +427,97 @@ model TimesheetBreakDeduction {
 
   @@index([userId])
   @@map("timesheet_break_deductions")
+}
+
+// One semi-monthly pay period (1st–15th / 16th–end, see
+// currentPayPeriodRange in src/lib/time-entries.ts). Created on first use
+// — when someone is marked paid or a file is added. Date-only columns: a
+// period is calendar days in PAYROLL_TIMEZONE (src/lib/payroll.ts), not
+// instants. See docs/payroll-plan.md.
+model PayPeriod {
+  id        String   @id @default(cuid())
+  startDate DateTime @db.Date
+  endDate   DateTime @db.Date
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  payments    PayrollPayment[]
+  attachments PayrollAttachment[]
+
+  @@unique([startDate, endDate])
+  @@map("pay_periods")
+}
+
+enum PayrollMethod {
+  DIRECT_DEPOSIT
+  CHECK
+  WISE
+  CASH
+  OTHER
+}
+
+// One person's pay for one period — exists only once they're marked paid
+// (unpaid people are computed live from their time). Hours/rate/gross are
+// a snapshot from mark-paid, and while this row exists that person's time
+// in the period is locked (assertTimeNotLocked in src/lib/payroll-lock.ts).
+model PayrollPayment {
+  id          String    @id @default(cuid())
+  payPeriod   PayPeriod @relation(fields: [payPeriodId], references: [id], onDelete: Cascade)
+  payPeriodId String
+  user        User      @relation("PayrollPaymentPayee", fields: [userId], references: [id])
+  userId      String
+
+  hours       Float
+  breakHours  Float
+  hourlyRate  Float?
+  // Hours × rate at mark-paid; the accountant can adjust it (bonus, no rate set).
+  grossAmount Float
+  // Take-home actually sent, entered by the accountant.
+  netAmount   Float
+  method      PayrollMethod
+  reference   String?
+  note        String?
+
+  // The day the money went out (date-only, picked by the accountant).
+  paidOn     DateTime @db.Date
+  markedBy   User     @relation("PayrollPaymentMarkedBy", fields: [markedById], references: [id])
+  markedById String
+
+  acknowledgedAt      DateTime?
+  problemReportedAt   DateTime?
+  problemNote         String?
+  problemResolvedAt   DateTime?
+  problemResolvedBy   User?     @relation("PayrollPaymentProblemResolvedBy", fields: [problemResolvedById], references: [id])
+  problemResolvedById String?
+
+  attachments PayrollAttachment[]
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  @@unique([payPeriodId, userId])
+  @@index([userId])
+  @@map("payroll_payments")
+}
+
+// payrollPaymentId null = a period file (payroll managers only);
+// set = that person's file (managers + that person).
+model PayrollAttachment {
+  id               String          @id @default(cuid())
+  payPeriod        PayPeriod       @relation(fields: [payPeriodId], references: [id], onDelete: Cascade)
+  payPeriodId      String
+  payrollPayment   PayrollPayment? @relation(fields: [payrollPaymentId], references: [id], onDelete: Cascade)
+  payrollPaymentId String?
+  fileName         String
+  storageKey       String
+  mimeType         String
+  sizeBytes        Int
+  uploadedBy       User            @relation("PayrollAttachmentUploadedBy", fields: [uploadedById], references: [id])
+  uploadedById     String
+  createdAt        DateTime        @default(now())
+
+  @@index([payPeriodId])
+  @@index([payrollPaymentId])
+  @@map("payroll_attachments")
 }
 
 // A Project is an internal engagement/case grouping — independent of which

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { getAccount } from "@/lib/actions/account";
 import { MyTimeLog } from "@/components/time-clock/my-time-log";
+import { MyPayCard } from "@/components/payroll/my-pay-card";
 import { PageInfoButton } from "@/components/shared/page-info-button";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -30,6 +31,7 @@ export default async function HoursPage() {
           <MyTimeLog accountTimezone={account.timezone} />
         </CardContent>
       </Card>
+      <MyPayCard />
     </div>
   );
 }

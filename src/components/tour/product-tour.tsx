@@ -109,6 +109,17 @@ function buildStaffSteps(role: string | undefined): TourStep[] {
       : []),
     {
       data: { path: "/applications" },
+      element: '[data-tour="nav-payroll"]',
+      popover: {
+        title: "Payroll",
+        description: "Each pay period's hours and pay per person. The accountant marks people paid and adds pay files; everyone paid confirms receipt from their own Time page. Visible to admins and managers.",
+        side: "right",
+      },
+      skipMissingElement: true,
+      waitForElement: 0,
+    } satisfies TourStep,
+    {
+      data: { path: "/applications" },
       element: '[data-tour="nav-admin"]',
       popover: {
         title: "Admin",

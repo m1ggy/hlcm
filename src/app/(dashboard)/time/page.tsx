@@ -5,6 +5,7 @@ import { getAccount } from "@/lib/actions/account";
 import { listCareRecipients } from "@/lib/actions/care-recipients";
 import { MyTimeLog } from "@/components/time-clock/my-time-log";
 import { TimesheetReport } from "@/components/time-clock/timesheet-report";
+import { MyPayCard } from "@/components/payroll/my-pay-card";
 import { PageInfoButton } from "@/components/shared/page-info-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -55,6 +56,8 @@ export default async function TimePage() {
           <MyTimeLog accountTimezone={account.timezone} />
         </CardContent>
       </Card>
+
+      <MyPayCard />
 
       {canSeeAllUsers && (
         <Card data-tour="all-users-time">
