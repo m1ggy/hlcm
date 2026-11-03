@@ -42,6 +42,15 @@ export function canAccessInvoices(role: string | null | undefined): boolean {
   return role === "ACCOUNTANT" || isSuperuser(role);
 }
 
+/**
+ * Payroll changes (mark paid, payroll files) are ACCOUNTANT-exclusive like
+ * Invoices; the rest of management can view /payroll read-only. See
+ * docs/payroll-plan.md.
+ */
+export function canManagePayroll(role: string | null | undefined): boolean {
+  return role === "ACCOUNTANT" || isSuperuser(role);
+}
+
 export class UnauthorizedError extends UserFacingError {
   constructor(message = "Not authenticated") {
     super(message);

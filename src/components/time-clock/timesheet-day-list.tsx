@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { AlertTriangle, Coffee, MapPin, Trash2 } from "lucide-react";
+import { AlertTriangle, Coffee, Lock, MapPin, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatDuration, hoursBetween, toDateInputValue, REQUIRED_BREAK_MINUTES } from "@/lib/time-entries";
 import { mapsLinkForCoordinates, haversineMeters, formatDistance, NEAR_THRESHOLD_METERS } from "@/lib/geolocation";
@@ -142,6 +142,7 @@ export function TimesheetDayList({
   onChanged,
   onDeleteEntry,
   onDeleteBreak,
+  lockedIds,
 }: {
   entries: DayListEntry[];
   breaks: DayListBreak[];
@@ -155,6 +156,8 @@ export function TimesheetDayList({
   onChanged: () => void;
   onDeleteEntry: (id: string) => void;
   onDeleteBreak: (id: string) => void;
+  /** Shifts/breaks in a paid pay period — shown with a lock, no edit/delete. */
+  lockedIds?: Set<string>;
 }) {
   const days = useMemo(() => buildDays(entries, breaks, timeZone, from, to), [entries, breaks, timeZone, from, to]);
 
@@ -229,7 +232,15 @@ export function TimesheetDayList({
                   <span className="w-16 shrink-0 text-right tabular-nums text-muted-foreground">
                     {item.end ? formatDuration(hoursBetween(item.start, item.end)) : "—"}
                   </span>
-                  {isAdmin && (
+                  {isAdmin && lockedIds?.has(id) && (
+                    <span
+                      className="flex w-24 shrink-0 items-center justify-end gap-1 text-xs text-muted-foreground"
+                      title="This pay period is already paid for this person — undo the payment on Payroll to change it"
+                    >
+                      <Lock className="size-3.5" /> Paid
+                    </span>
+                  )}
+                  {isAdmin && !lockedIds?.has(id) && (
                     <span className="flex w-24 shrink-0 justify-end gap-0.5">
                       {isBreak ? (
                         <EditBreakEntryDialog entry={item.brk} accountTimezone={accountTimezone} onUpdated={onChanged} />

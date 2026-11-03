@@ -89,6 +89,8 @@ export function TimesheetReport({
   const [entries, setEntries] = useState<TimeEntryRow[] | null>(null);
   const [breakEntries, setBreakEntries] = useState<DayListBreak[]>([]);
   const [breaks, setBreaks] = useState<BreakDeductionRow[]>([]);
+  // Shifts/breaks in a period someone's already been paid for — read-only.
+  const [lockedIds, setLockedIds] = useState<Set<string>>(new Set());
   const [isPending, startTransition] = useTransition();
   // One id at a time is enough — only one delete runs at once.
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -119,6 +121,7 @@ export function TimesheetReport({
         setEntries(report.entries);
         setBreakEntries(report.breakEntries);
         setBreaks(report.deductions);
+        setLockedIds(new Set([...report.lockedEntryIds, ...report.lockedBreakIds]));
       } catch (error) {
         if (id === requestId.current) toast.error(error instanceof Error ? error.message : "Failed to load time");
       }
@@ -177,7 +180,8 @@ export function TimesheetReport({
   function handleDeleteBreakDeduction(id: string) {
     if (!confirm("Remove this break deduction? Hours/pay for this range will recalculate without it.")) return;
     runDelete(id, async () => {
-      await deleteBreakDeduction(id);
+      const result = await deleteBreakDeduction(id);
+      if (!result.ok) return void toast.error(result.error);
       toast.success("Break deduction removed");
     });
   }
@@ -452,6 +456,7 @@ export function TimesheetReport({
             onChanged={load}
             onDeleteEntry={handleDeleteEntry}
             onDeleteBreak={handleDeleteBreak}
+            lockedIds={lockedIds}
           />
         </div>
       )}

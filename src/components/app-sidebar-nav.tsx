@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FolderKanban, Users, ClipboardList, UserCog, CheckSquare, Clock, Receipt, Settings, Inbox, MapPin, CalendarCheck, BarChart3, Sun } from "lucide-react";
+import { FolderKanban, Users, ClipboardList, UserCog, CheckSquare, Clock, Receipt, Settings, Inbox, MapPin, CalendarCheck, BarChart3, Sun, Wallet } from "lucide-react";
 import {
   SidebarMenu,
   SidebarMenuButton,
@@ -37,11 +37,13 @@ const CAREGIVER_LINKS = [
 export function AppSidebarNav({
   isAdmin,
   canManageInvoices,
+  canViewPayroll = false,
   isCaregiver,
   showCaregiverClients = true,
 }: {
   isAdmin: boolean;
   canManageInvoices: boolean;
+  canViewPayroll?: boolean;
   isCaregiver: boolean;
   showCaregiverClients?: boolean;
 }) {
@@ -54,6 +56,7 @@ export function AppSidebarNav({
     links = canManageInvoices
       ? [...LINKS, { href: "/invoices", label: "Invoices", icon: Receipt, tour: "nav-invoices" }]
       : LINKS;
+    if (canViewPayroll) links = [...links, { href: "/payroll", label: "Payroll", icon: Wallet, tour: "nav-payroll" }];
     links = [...links, { href: "/account", label: "Settings", icon: Settings, tour: "nav-settings" }];
     if (isAdmin) links = [...links, { href: "/admin", label: "Admin", icon: UserCog, tour: "nav-admin" }];
   }

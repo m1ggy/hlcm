@@ -25,6 +25,11 @@ export const ENTITY_LINKS: Record<EntityLinkVariant, Record<string, (id: string)
     ClientCareRecipients: (id) => `/clients/${id}#care-recipients`,
     // A concern on a recipient with no agency: the dashboard's Care visits card.
     Dashboard: () => "/",
+    // A pay period on /payroll (accountant side).
+    PayPeriod: (id) => `/payroll?period=${id}`,
+    // Someone's own pay — the My Pay card (caregivers have it on /hours).
+    MyPay: () => "/time#my-pay",
+    MyPayCaregiver: () => "/hours#my-pay",
   },
   portal: {
     Application: (id) => `/portal/applications/${id}`,
