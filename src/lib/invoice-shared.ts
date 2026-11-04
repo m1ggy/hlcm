@@ -90,6 +90,11 @@ export const lineItemSchema = z.object({
 // unrecognized keys by default), permanently downgrading a Care Recipient
 // invoice's structured hourly/day-rate lines to plain MANUAL ones the
 // first time anyone edited it after creation.
+/** Treats null like a missing value before `schema` sees it. */
+function nullFree<T extends z.ZodType>(schema: T) {
+  return z.preprocess((v) => (v === null ? undefined : v), schema);
+}
+
 export const structuredLineItemSchema = lineItemSchema.extend({
   // An existing line's id, round-tripped by ManualInvoiceEditor so
   // updateManualInvoiceDraft can update it in place — keeping any
@@ -104,10 +109,14 @@ export const structuredLineItemSchema = lineItemSchema.extend({
   // (ManualInvoiceEditor) round-trips an *existing* invoice's line items
   // untouched when only quantity/price/description changed, and those
   // arrive as real Date objects straight from Prisma, not strings.
-  visitDate: z.coerce.date().optional(),
-  visitStart: z.coerce.date().optional(),
-  visitEnd: z.coerce.date().optional(),
-  workerName: z.string().optional(),
+  // Existing lines also come back with null for fields they don't use (a
+  // plain extra charge has no visit date or worker). null means "not set":
+  // without nullFree, workerName: null failed the whole save, and
+  // z.coerce.date() turned a null date into Jan 1, 1970.
+  visitDate: nullFree(z.coerce.date().optional()),
+  visitStart: nullFree(z.coerce.date().optional()),
+  visitEnd: nullFree(z.coerce.date().optional()),
+  workerName: nullFree(z.string().optional()),
 });
 
 // The DB-ready shape structuredLineItemSchema's dates need — shared by both

@@ -6,6 +6,8 @@ import { db, currentWorkspaceTimezone } from "@/lib/db";
 import { requireSession, requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
+import { toActionResult } from "@/lib/action-result";
+import { assertTimeNotLocked, assertRangeNotLocked, lockedIds } from "@/lib/payroll-lock";
 import { TimeClockError, summarizeByUser, type TimeEntryRangeInput, type BreakDeductionRule } from "@/lib/time-entries";
 
 export async function getMyActiveEntry() {
@@ -37,12 +39,34 @@ type LocationInput = {
   locationError?: string;
 };
 
+// Written at clock-out of a visit — trimmed, blank treated as "no note".
+// Capped so a pasted wall of text can't bloat every visit-history fetch.
+const visitNoteSchema = z.string().trim().max(4000).optional();
+
+/** Stores the note on the visit's first segment — see TimeEntry.visitStartId. */
+async function saveVisitNote(entry: { id: string; visitStartId: string | null; careRecipientId: string | null }, note: string | undefined) {
+  const visitNote = visitNoteSchema.parse(note);
+  if (!entry.careRecipientId || !visitNote) return;
+  await db.timeEntry.update({ where: { id: entry.visitStartId ?? entry.id }, data: { visitNote } });
+}
+
 export async function clockIn(input: { careRecipientId?: string } & LocationInput = {}) {
   const session = await requireSession();
   const open = await db.timeEntry.findFirst({
     where: { userId: session.user.id, clockOut: null },
   });
   if (open) throw new TimeClockError("Already clocked in");
+
+  // A visit can only be for someone this Caregiver is actually assigned to
+  // — otherwise a crafted request could log (and later bill) time against
+  // any recipient by id.
+  if (input.careRecipientId) {
+    const assigned = await db.careRecipientAssignment.findUnique({
+      where: { careRecipientId_caregiverId: { careRecipientId: input.careRecipientId, caregiverId: session.user.id } },
+      select: { careRecipient: { select: { active: true } } },
+    });
+    if (!assigned?.careRecipient.active) throw new TimeClockError("You're not assigned to that recipient");
+  }
 
   const entry = await db.timeEntry.create({
     data: {
@@ -67,7 +91,7 @@ export async function clockIn(input: { careRecipientId?: string } & LocationInpu
   return entry;
 }
 
-export async function clockOut(input: LocationInput = {}) {
+export async function clockOut(input: LocationInput & { visitNote?: string } = {}) {
   const session = await requireSession();
   const open = await db.timeEntry.findFirst({
     where: { userId: session.user.id, clockOut: null },
@@ -85,6 +109,7 @@ export async function clockOut(input: LocationInput = {}) {
       clockOutLocationError: input.locationError,
     },
   });
+  await saveVisitNote(entry, input.visitNote);
 
   await recordAudit({
     entityType: "TimeEntry",
@@ -95,6 +120,16 @@ export async function clockOut(input: LocationInput = {}) {
 
   revalidatePath("/", "layout");
   return entry;
+}
+
+/** The session a break interrupted — startBreak closes it at exactly
+ * breakStart, so it's the latest entry that ended by then. */
+async function entryBeforeBreak(userId: string, breakStart: Date) {
+  return db.timeEntry.findFirst({
+    where: { userId, clockOut: { lte: breakStart } },
+    orderBy: { clockOut: "desc" },
+    select: { id: true, careRecipientId: true, visitStartId: true },
+  });
 }
 
 /**
@@ -113,10 +148,10 @@ export async function startBreak() {
   if (openBreak) throw new TimeClockError("Already on a break");
 
   const now = new Date();
-  const [, breakEntry] = await db.$transaction(async (tx) => [
-    await tx.timeEntry.update({ where: { id: openEntry.id }, data: { clockOut: now } }),
-    await tx.breakEntry.create({ data: { userId: session.user.id, breakStart: now } }),
-  ] as const);
+  const breakEntry = await db.$transaction(async (tx) => {
+    await tx.timeEntry.update({ where: { id: openEntry.id }, data: { clockOut: now } });
+    return tx.breakEntry.create({ data: { userId: session.user.id, breakStart: now } });
+  });
 
   await recordAudit({
     entityType: "BreakEntry",
@@ -140,11 +175,23 @@ export async function endBreak() {
   });
   if (!openBreak) throw new TimeClockError("Not on a break");
 
+  // Resuming after a break mid-visit is still the same visit — carry the
+  // recipient over and link back to the visit's first segment, otherwise
+  // the rest of the visit would bill to nobody and lose its checklist.
+  const beforeBreak = await entryBeforeBreak(session.user.id, openBreak.breakStart);
+
   const now = new Date();
-  const [, entry] = await db.$transaction(async (tx) => [
-    await tx.breakEntry.update({ where: { id: openBreak.id }, data: { breakEnd: now } }),
-    await tx.timeEntry.create({ data: { userId: session.user.id, clockIn: now } }),
-  ] as const);
+  const entry = await db.$transaction(async (tx) => {
+    await tx.breakEntry.update({ where: { id: openBreak.id }, data: { breakEnd: now } });
+    return tx.timeEntry.create({
+      data: {
+        userId: session.user.id,
+        clockIn: now,
+        careRecipientId: beforeBreak?.careRecipientId ?? null,
+        visitStartId: beforeBreak?.careRecipientId ? (beforeBreak.visitStartId ?? beforeBreak.id) : null,
+      },
+    });
+  });
 
   await recordAudit({
     entityType: "BreakEntry",
@@ -160,7 +207,7 @@ export async function endBreak() {
 /** Ends a break without resuming work — the break turned into being done
  * for the day. Just closes the BreakEntry; the TimeEntry it started from
  * stays closed, so no new session opens (unlike endBreak). */
-export async function endBreakForDay() {
+export async function endBreakForDay(input: { visitNote?: string } = {}) {
   const session = await requireSession();
   const openBreak = await db.breakEntry.findFirst({
     where: { userId: session.user.id, breakEnd: null },
@@ -169,6 +216,11 @@ export async function endBreakForDay() {
   if (!openBreak) throw new TimeClockError("Not on a break");
 
   const entry = await db.breakEntry.update({ where: { id: openBreak.id }, data: { breakEnd: new Date() } });
+
+  // Ending the day from a break ends the visit too — same note prompt as
+  // a normal clock-out.
+  const beforeBreak = await entryBeforeBreak(session.user.id, openBreak.breakStart);
+  if (beforeBreak) await saveVisitNote(beforeBreak, input.visitNote);
 
   await recordAudit({
     entityType: "BreakEntry",
@@ -314,6 +366,38 @@ export async function getTimesheetTotals(input: TimeEntryRangeInput & { timeZone
   return summarizeByUser(entries, rules, input.timeZone || (await currentWorkspaceTimezone()));
 }
 
+/**
+ * Everything the Time page's report needs in one round trip: entries,
+ * breaks and deductions are each read once, and the totals are worked out
+ * from those same rows (calling getTimesheetTotals alongside listTimeEntries
+ * read every entry twice).
+ */
+export async function getTimesheetReport(input: TimeEntryRangeInput & { timeZone?: string }) {
+  const [entries, breakEntries, deductions] = await Promise.all([
+    listTimeEntries(input),
+    listBreakEntries(input),
+    listBreakDeductions(input),
+  ]);
+  const rules: BreakDeductionRule[] = deductions.map((d) => ({
+    userId: d.userId,
+    fromDate: d.fromDate,
+    toDate: d.toDate,
+    minutesPerDay: d.minutesPerDay,
+  }));
+  const totals = summarizeByUser(entries, rules, input.timeZone || (await currentWorkspaceTimezone()));
+  // Shifts/breaks inside a paid pay period — the timesheet hides their
+  // edit/delete buttons (see src/lib/payroll-lock.ts).
+  const locked = new Set(
+    await lockedIds([
+      ...entries.map((e) => ({ id: e.id, userId: e.userId, start: e.clockIn })),
+      ...breakEntries.map((b) => ({ id: b.id, userId: b.userId, start: b.breakStart })),
+    ])
+  );
+  const lockedEntryIds = entries.filter((e) => locked.has(e.id)).map((e) => e.id);
+  const lockedBreakIds = breakEntries.filter((b) => locked.has(b.id)).map((b) => b.id);
+  return { totals, entries, breakEntries, deductions, lockedEntryIds, lockedBreakIds };
+}
+
 const breakDeductionSchema = z
   .object({
     userId: z.string().optional(),
@@ -331,7 +415,7 @@ const breakDeductionSchema = z
  * underlying TimeEntry rows, so it can be corrected or removed without
  * losing the original clock times.
  */
-export async function createBreakDeduction(input: {
+async function createBreakDeductionImpl(input: {
   userId?: string;
   fromDate: string;
   toDate: string;
@@ -339,7 +423,8 @@ export async function createBreakDeduction(input: {
   note?: string;
 }) {
   const session = await requireRole(["ADMIN"]);
-  const parsed = breakDeductionSchema.parse(input);
+  const parsed = parseInput(breakDeductionSchema, input);
+  await assertRangeNotLocked(parsed.userId || null, parsed.fromDate.toISOString().slice(0, 10), parsed.toDate.toISOString().slice(0, 10));
 
   const deduction = await db.timesheetBreakDeduction.create({
     data: {
@@ -364,9 +449,18 @@ export async function createBreakDeduction(input: {
   return deduction;
 }
 
-export async function deleteBreakDeduction(id: string) {
+export async function createBreakDeduction(input: Parameters<typeof createBreakDeductionImpl>[0]) {
+  return toActionResult(() => createBreakDeductionImpl(input));
+}
+
+async function deleteBreakDeductionImpl(id: string) {
   const session = await requireRole(["ADMIN"]);
   const deduction = await db.timesheetBreakDeduction.findUniqueOrThrow({ where: { id } });
+  await assertRangeNotLocked(
+    deduction.userId,
+    deduction.fromDate.toISOString().slice(0, 10),
+    deduction.toDate.toISOString().slice(0, 10)
+  );
 
   await db.timesheetBreakDeduction
     .delete({ where: { id } })
@@ -383,6 +477,126 @@ export async function deleteBreakDeduction(id: string) {
   revalidatePath("/time");
 }
 
+export async function deleteBreakDeduction(id: string) {
+  return toActionResult(() => deleteBreakDeductionImpl(id));
+}
+
+// --- Admin corrections: shared guards --------------------------------------
+
+// Stands in for "still open" when checking an open session for overlaps.
+const FAR_FUTURE = new Date(8.64e15);
+
+/**
+ * Refuses a change that would put two pieces of time on top of each other
+ * for the same person — otherwise a backfilled shift can silently double
+ * someone's hours. `ignore` lists the rows being changed by this same edit.
+ */
+async function assertNoOverlap(
+  userId: string,
+  start: Date,
+  end: Date,
+  ignore: { entryIds?: string[]; breakIds?: string[] } = {}
+) {
+  const [entry, brk] = await Promise.all([
+    db.timeEntry.findFirst({
+      where: {
+        userId,
+        id: { notIn: ignore.entryIds ?? [] },
+        clockIn: { lt: end },
+        OR: [{ clockOut: null }, { clockOut: { gt: start } }],
+      },
+      select: { id: true },
+    }),
+    db.breakEntry.findFirst({
+      where: {
+        userId,
+        id: { notIn: ignore.breakIds ?? [] },
+        breakStart: { lt: end },
+        OR: [{ breakEnd: null }, { breakEnd: { gt: start } }],
+      },
+      select: { id: true },
+    }),
+  ]);
+  if (entry) throw new TimeClockError("This overlaps time already logged for this person");
+  if (brk) throw new TimeClockError("This overlaps a break already logged for this person");
+}
+
+// How far a session's edge may sit from its break's edge and still count as
+// "the session around this break". Punched breaks line up exactly, but
+// breaks edited before 2026-10-28 only moved the break row, leaving the
+// sessions around it a few minutes off (or overlapping it).
+const BREAK_EDGE_TOLERANCE_MS = 15 * 60_000;
+
+/** The work sessions on either side of a break. A break is the gap between
+ * them: the session before ends when it starts, the one after starts when
+ * it ends (see startBreak / endBreak). Exact matches first; otherwise the
+ * nearest session within BREAK_EDGE_TOLERANCE_MS of each edge, including
+ * one that overlaps the break, so editing an older break snaps them back. */
+async function sessionsAroundBreak(brk: { userId: string; breakStart: Date; breakEnd: Date | null }) {
+  const { userId, breakStart, breakEnd } = brk;
+  const startMs = breakStart.getTime();
+  const [exactBefore, exactAfter] = await Promise.all([
+    db.timeEntry.findFirst({ where: { userId, clockOut: breakStart } }),
+    breakEnd ? db.timeEntry.findFirst({ where: { userId, clockIn: breakEnd } }) : null,
+  ]);
+  const before =
+    exactBefore ??
+    (await db.timeEntry.findFirst({
+      where: {
+        userId,
+        clockIn: { lt: breakStart },
+        clockOut: {
+          gte: new Date(startMs - BREAK_EDGE_TOLERANCE_MS),
+          lte: breakEnd ?? new Date(startMs + BREAK_EDGE_TOLERANCE_MS),
+        },
+      },
+      orderBy: { clockOut: "desc" },
+    }));
+  const after = !breakEnd
+    ? null
+    : (exactAfter ??
+      (await db.timeEntry.findFirst({
+        where: {
+          userId,
+          ...(before ? { id: { not: before.id } } : {}),
+          clockIn: { gt: breakStart, lte: new Date(breakEnd.getTime() + BREAK_EDGE_TOLERANCE_MS) },
+        },
+        orderBy: { clockIn: "asc" },
+      })));
+  return { before, after };
+}
+
+/** Schema parse whose failure message is safe to show (zod's own error is
+ * redacted in production like any other throw). */
+function parseInput<T extends z.ZodTypeAny>(schema: T, input: unknown): z.output<T> {
+  const result = schema.safeParse(input);
+  if (!result.success) throw new TimeClockError(result.error.issues[0]?.message ?? "Check the times and try again");
+  return result.data;
+}
+
+const CLEARED_CLOCK_OUT_LOCATION = {
+  clockOutLatitude: null,
+  clockOutLongitude: null,
+  clockOutLocationAccuracy: null,
+  clockOutLocationError: null,
+};
+
+function clockOutLocationOf(entry: {
+  clockOutLatitude: number | null;
+  clockOutLongitude: number | null;
+  clockOutLocationAccuracy: number | null;
+  clockOutLocationError: string | null;
+}) {
+  return {
+    clockOutLatitude: entry.clockOutLatitude,
+    clockOutLongitude: entry.clockOutLongitude,
+    clockOutLocationAccuracy: entry.clockOutLocationAccuracy,
+    clockOutLocationError: entry.clockOutLocationError,
+  };
+}
+
+const ALREADY_INVOICED = "This visit is already on an invoice — remove it from the invoice first";
+
 const manualEntrySchema = z
   .object({
     userId: z.string().min(1),
@@ -393,8 +607,17 @@ const manualEntrySchema = z
     // listUnbilledVisits in src/lib/actions/care-recipients.ts). Omitted
     // for a plain office-work backfill, same as a real clockIn does.
     careRecipientId: z.string().optional(),
+    // Optional unpaid break inside the shift — stored the same way a real
+    // break is: two sessions with a BreakEntry in the gap.
+    breakStart: z.coerce.date().optional(),
+    breakEnd: z.coerce.date().optional(),
   })
-  .refine((v) => v.clockOut > v.clockIn, { message: "Clock out must be after clock in" });
+  .refine((v) => v.clockOut > v.clockIn, { message: "Clock out must be after clock in" })
+  .refine((v) => Boolean(v.breakStart) === Boolean(v.breakEnd), { message: "Give the break both a start and an end" })
+  .refine((v) => !v.breakStart || !v.breakEnd || v.breakEnd > v.breakStart, { message: "Break end must be after break start" })
+  .refine((v) => !v.breakStart || !v.breakEnd || (v.breakStart > v.clockIn && v.breakEnd < v.clockOut), {
+    message: "The break has to fall inside the shift",
+  });
 
 /**
  * Admin-only: backfills a session someone forgot to clock, or corrects a
@@ -404,22 +627,39 @@ const manualEntrySchema = z
  * the same way — and, with careRecipientId set, into that recipient's
  * billable visits too.
  */
-export async function createManualTimeEntry(input: {
+async function createManualTimeEntryImpl(input: {
   userId: string;
   clockIn: string;
   clockOut: string;
   careRecipientId?: string;
+  breakStart?: string;
+  breakEnd?: string;
 }) {
   const session = await requireRole(["ADMIN"]);
-  const parsed = manualEntrySchema.parse(input);
+  const parsed = parseInput(manualEntrySchema, input);
+  await assertTimeNotLocked(parsed.userId, [parsed.clockIn, ...(parsed.breakStart ? [parsed.breakStart] : [])]);
+  await assertNoOverlap(parsed.userId, parsed.clockIn, parsed.clockOut);
 
-  const entry = await db.timeEntry.create({
-    data: {
-      userId: parsed.userId,
-      clockIn: parsed.clockIn,
-      clockOut: parsed.clockOut,
-      careRecipientId: parsed.careRecipientId || undefined,
-    },
+  const careRecipientId = parsed.careRecipientId || null;
+  const { breakStart, breakEnd } = parsed;
+  const entry = await db.$transaction(async (tx) => {
+    const first = await tx.timeEntry.create({
+      data: { userId: parsed.userId, clockIn: parsed.clockIn, clockOut: breakStart ?? parsed.clockOut, careRecipientId },
+    });
+    if (breakStart && breakEnd) {
+      await tx.breakEntry.create({ data: { userId: parsed.userId, breakStart, breakEnd } });
+      await tx.timeEntry.create({
+        data: {
+          userId: parsed.userId,
+          clockIn: breakEnd,
+          clockOut: parsed.clockOut,
+          careRecipientId,
+          // Same visit on both sides of the break — see TimeEntry.visitStartId.
+          visitStartId: careRecipientId ? first.id : null,
+        },
+      });
+    }
+    return first;
   });
 
   await recordAudit({
@@ -427,7 +667,9 @@ export async function createManualTimeEntry(input: {
     entityId: entry.id,
     action: "manual_add",
     actorId: session.user.id,
-    newValue: `${parsed.clockIn.toISOString()} – ${parsed.clockOut.toISOString()}`,
+    newValue:
+      `${parsed.clockIn.toISOString()} – ${parsed.clockOut.toISOString()}` +
+      (breakStart && breakEnd ? ` (break ${breakStart.toISOString()} – ${breakEnd.toISOString()})` : ""),
   });
 
   revalidatePath("/time");
@@ -439,6 +681,8 @@ const updateEntrySchema = z
   .object({
     clockIn: z.coerce.date(),
     clockOut: z.coerce.date().nullable(),
+    // undefined = leave the visit as it is; null = not a visit.
+    careRecipientId: z.string().nullable().optional(),
   })
   .refine((v) => !v.clockOut || v.clockOut > v.clockIn, { message: "Clock out must be after clock in" });
 
@@ -448,10 +692,14 @@ const updateEntrySchema = z
  * but lets an admin undo an accidental clock-out) — checked against other
  * open entries for that user so it can't create a second one.
  */
-export async function updateTimeEntry(id: string, input: { clockIn: string; clockOut: string | null }) {
+async function updateTimeEntryImpl(
+  id: string,
+  input: { clockIn: string; clockOut: string | null; careRecipientId?: string | null }
+) {
   const session = await requireRole(["ADMIN"]);
   const existing = await db.timeEntry.findUniqueOrThrow({ where: { id } });
-  const parsed = updateEntrySchema.parse(input);
+  const parsed = parseInput(updateEntrySchema, input);
+  await assertTimeNotLocked(existing.userId, [existing.clockIn, parsed.clockIn]);
 
   if (!parsed.clockOut) {
     const otherOpen = await db.timeEntry.findFirst({
@@ -459,10 +707,38 @@ export async function updateTimeEntry(id: string, input: { clockIn: string; cloc
     });
     if (otherOpen) throw new TimeClockError("This user already has an open entry");
   }
+  const timesChanged =
+    existing.clockIn.getTime() !== parsed.clockIn.getTime() ||
+    (existing.clockOut?.getTime() ?? null) !== (parsed.clockOut?.getTime() ?? null);
+  if (timesChanged) {
+    if (existing.billedInvoiceId) throw new TimeClockError(ALREADY_INVOICED);
+    await assertNoOverlap(existing.userId, parsed.clockIn, parsed.clockOut ?? FAR_FUTURE, { entryIds: [id] });
+  }
 
-  const entry = await db.timeEntry.update({
-    where: { id },
-    data: { clockIn: parsed.clockIn, clockOut: parsed.clockOut },
+  // A visit split by breaks is several segments (TimeEntry.visitStartId);
+  // changing who it was for applies to every segment so they stay one visit.
+  const nextRecipient = parsed.careRecipientId === undefined ? existing.careRecipientId : parsed.careRecipientId || null;
+  const recipientChanged = nextRecipient !== existing.careRecipientId;
+  const rootId = existing.visitStartId ?? existing.id;
+  const chain = recipientChanged
+    ? await db.timeEntry.findMany({
+        where: existing.careRecipientId ? { OR: [{ id: rootId }, { visitStartId: rootId }] } : { id },
+        select: { id: true, billedInvoiceId: true },
+      })
+    : [];
+  if (chain.some((e) => e.billedInvoiceId)) throw new TimeClockError(ALREADY_INVOICED);
+
+  const entry = await db.$transaction(async (tx) => {
+    if (recipientChanged) {
+      await tx.timeEntry.updateMany({
+        where: { id: { in: chain.map((e) => e.id) } },
+        data: nextRecipient ? { careRecipientId: nextRecipient } : { careRecipientId: null, visitStartId: null },
+      });
+    }
+    return tx.timeEntry.update({
+      where: { id },
+      data: { clockIn: parsed.clockIn, clockOut: parsed.clockOut },
+    });
   });
 
   await recordAudit({
@@ -470,18 +746,77 @@ export async function updateTimeEntry(id: string, input: { clockIn: string; cloc
     entityId: id,
     action: "edit_time_entry",
     actorId: session.user.id,
-    oldValue: `${existing.clockIn.toISOString()} – ${existing.clockOut?.toISOString() ?? "open"}`,
-    newValue: `${parsed.clockIn.toISOString()} – ${parsed.clockOut?.toISOString() ?? "open"}`,
+    oldValue: `${existing.clockIn.toISOString()} – ${existing.clockOut?.toISOString() ?? "open"}${recipientChanged ? ` (visit ${existing.careRecipientId ?? "none"})` : ""}`,
+    newValue: `${parsed.clockIn.toISOString()} – ${parsed.clockOut?.toISOString() ?? "open"}${recipientChanged ? ` (visit ${nextRecipient ?? "none"})` : ""}`,
   });
 
   revalidatePath("/time");
+  if (recipientChanged) revalidatePath("/clients");
   return entry;
 }
 
+const addBreakSchema = z
+  .object({ breakStart: z.coerce.date(), breakEnd: z.coerce.date() })
+  .refine((v) => v.breakEnd > v.breakStart, { message: "Break end must be after break start" });
+
+/**
+ * Admin-only: puts an unpaid break inside an existing session. Stored the
+ * same way a real break is — the session ends at the break start, a
+ * BreakEntry covers the gap, and a new session runs from the break end to
+ * the original clock-out — so paid hours drop by the break's length and
+ * everything downstream (totals, PDFs, payouts, the break-policy check)
+ * treats it like a punched break. A visit stays one visit across the gap.
+ */
+async function addBreakToEntryImpl(entryId: string, input: { breakStart: string; breakEnd: string }) {
+  const session = await requireRole(["ADMIN"]);
+  const entry = await db.timeEntry.findUniqueOrThrow({ where: { id: entryId } });
+  const { breakStart, breakEnd } = parseInput(addBreakSchema, input);
+  await assertTimeNotLocked(entry.userId, [entry.clockIn, breakStart]);
+
+  if (!entry.clockOut) throw new TimeClockError("This session is still open — add the break once it's clocked out");
+  if (breakStart <= entry.clockIn || breakEnd >= entry.clockOut) {
+    throw new TimeClockError("The break has to fall inside the session");
+  }
+  if (entry.billedInvoiceId) throw new TimeClockError(ALREADY_INVOICED);
+  await assertNoOverlap(entry.userId, breakStart, breakEnd, { entryIds: [entry.id] });
+
+  const clockOut = entry.clockOut;
+  const brk = await db.$transaction(async (tx) => {
+    await tx.timeEntry.update({ where: { id: entry.id }, data: { clockOut: breakStart, ...CLEARED_CLOCK_OUT_LOCATION } });
+    const created = await tx.breakEntry.create({ data: { userId: entry.userId, breakStart, breakEnd } });
+    await tx.timeEntry.create({
+      data: {
+        userId: entry.userId,
+        clockIn: breakEnd,
+        clockOut,
+        careRecipientId: entry.careRecipientId,
+        visitStartId: entry.careRecipientId ? (entry.visitStartId ?? entry.id) : null,
+        // The real clock-out (and where it happened) now belongs to the
+        // second half.
+        ...clockOutLocationOf(entry),
+      },
+    });
+    return created;
+  });
+
+  await recordAudit({
+    entityType: "BreakEntry",
+    entityId: brk.id,
+    action: "manual_add_break",
+    actorId: session.user.id,
+    newValue: `${breakStart.toISOString()} – ${breakEnd.toISOString()} (inside session ${entry.id})`,
+  });
+
+  revalidatePath("/time");
+  if (entry.careRecipientId) revalidatePath("/clients");
+  return brk;
+}
+
 /** Admin-only: removes a mistaken or duplicate entry (e.g. a double clock-in left dangling open). */
-export async function deleteTimeEntry(id: string) {
+async function deleteTimeEntryImpl(id: string) {
   const session = await requireRole(["ADMIN"]);
   const entry = await db.timeEntry.findUniqueOrThrow({ where: { id } });
+  await assertTimeNotLocked(entry.userId, [entry.clockIn]);
 
   await db.timeEntry
     .delete({ where: { id } })
@@ -512,10 +847,10 @@ const updateBreakEntrySchema = z
  * clock-out), checked against other open breaks for that user so it can't
  * create a second one.
  */
-export async function updateBreakEntry(id: string, input: { breakStart: string; breakEnd: string | null }) {
+async function updateBreakEntryImpl(id: string, input: { breakStart: string; breakEnd: string | null }) {
   const session = await requireRole(["ADMIN"]);
   const existing = await db.breakEntry.findUniqueOrThrow({ where: { id } });
-  const parsed = updateBreakEntrySchema.parse(input);
+  const parsed = parseInput(updateBreakEntrySchema, input);
 
   if (!parsed.breakEnd) {
     const otherOpen = await db.breakEntry.findFirst({
@@ -524,9 +859,43 @@ export async function updateBreakEntry(id: string, input: { breakStart: string; 
     if (otherOpen) throw new TimeClockError("This user already has an open break");
   }
 
-  const entry = await db.breakEntry.update({
-    where: { id },
-    data: { breakStart: parsed.breakStart, breakEnd: parsed.breakEnd },
+  // Moving a break moves the edges of the sessions around it too — before,
+  // only the break row changed, so the break and paid hours drifted apart.
+  const { before, after } = await sessionsAroundBreak(existing);
+  await assertTimeNotLocked(existing.userId, [
+    existing.breakStart,
+    parsed.breakStart,
+    ...[before?.clockIn, after?.clockIn].filter((d): d is Date => Boolean(d)),
+  ]);
+  if (after && !parsed.breakEnd) {
+    throw new TimeClockError("Work resumed after this break, so it needs an end time");
+  }
+  if (before && parsed.breakStart <= before.clockIn) {
+    throw new TimeClockError("The break would start before the session it follows began");
+  }
+  if (after && parsed.breakEnd && after.clockOut && parsed.breakEnd >= after.clockOut) {
+    throw new TimeClockError("The break would end after the session it leads into ended");
+  }
+  const moveBefore = Boolean(before && before.clockOut?.getTime() !== parsed.breakStart.getTime());
+  const moveAfter = Boolean(after && parsed.breakEnd && after.clockIn.getTime() !== parsed.breakEnd.getTime());
+  if ((moveBefore && before?.billedInvoiceId) || (moveAfter && after?.billedInvoiceId)) {
+    throw new TimeClockError(ALREADY_INVOICED);
+  }
+  await assertNoOverlap(
+    existing.userId,
+    before?.clockIn ?? parsed.breakStart,
+    after ? (after.clockOut ?? FAR_FUTURE) : (parsed.breakEnd ?? FAR_FUTURE),
+    { entryIds: [before?.id, after?.id].filter((x): x is string => Boolean(x)), breakIds: [id] }
+  );
+
+  const entry = await db.$transaction(async (tx) => {
+    const updated = await tx.breakEntry.update({
+      where: { id },
+      data: { breakStart: parsed.breakStart, breakEnd: parsed.breakEnd },
+    });
+    if (before && moveBefore) await tx.timeEntry.update({ where: { id: before.id }, data: { clockOut: parsed.breakStart } });
+    if (after && moveAfter && parsed.breakEnd) await tx.timeEntry.update({ where: { id: after.id }, data: { clockIn: parsed.breakEnd } });
+    return updated;
   });
 
   await recordAudit({
@@ -542,22 +911,90 @@ export async function updateBreakEntry(id: string, input: { breakStart: string; 
   return entry;
 }
 
-/** Admin-only: removes a mistaken or duplicate break (e.g. a double break-start left dangling open). */
-export async function deleteBreakEntry(id: string) {
+/**
+ * Admin-only: removes a break and joins the sessions on either side back
+ * into one, so the break's time becomes paid again (user's call,
+ * 2026-10-28: always merge). Falls back to removing just the break when
+ * there's nothing to join — no session on one side, the two sides are
+ * different visits, or the later one is already invoiced — and says why.
+ */
+async function deleteBreakEntryImpl(id: string): Promise<{ merged: boolean; reason?: string }> {
   const session = await requireRole(["ADMIN"]);
-  const entry = await db.breakEntry.findUniqueOrThrow({ where: { id } });
+  const brk = await db.breakEntry.findUniqueOrThrow({ where: { id } });
+  const { before, after } = await sessionsAroundBreak(brk);
+  await assertTimeNotLocked(brk.userId, [brk.breakStart, ...[before?.clockIn, after?.clockIn].filter((d): d is Date => Boolean(d))]);
 
-  await db.breakEntry
-    .delete({ where: { id } })
-    .catch((e) => friendlyPrismaError(e, { notFoundMessage: "That break is already gone — someone else may have just removed it" }));
+  let reason: string | undefined;
+  if (!before || !after) reason = "there's no session on both sides of it";
+  else if (before.careRecipientId !== after.careRecipientId) reason = "the sessions on either side are different visits";
+  else if (before.billedInvoiceId || after.billedInvoiceId) reason = "part of that visit is already on an invoice";
+
+  if (before && after && !reason) {
+    const visitId = before.careRecipientId ? (before.visitStartId ?? before.id) : null;
+    await db
+      .$transaction(async (tx) => {
+        await tx.timeEntry.update({
+          where: { id: before.id },
+          data: { clockOut: after.clockOut, ...clockOutLocationOf(after) },
+        });
+        // Later segments of the same visit that pointed at `after` follow
+        // it into the merged session; concerns logged against it move too.
+        if (visitId) {
+          await tx.timeEntry.updateMany({ where: { visitStartId: after.id }, data: { visitStartId: visitId } });
+          await tx.careIncident.updateMany({ where: { timeEntryId: after.id }, data: { timeEntryId: visitId } });
+          if (after.visitNote) {
+            await tx.timeEntry.updateMany({ where: { id: visitId, visitNote: null }, data: { visitNote: after.visitNote } });
+          }
+        }
+        await tx.timeEntry.delete({ where: { id: after.id } });
+        await tx.breakEntry.delete({ where: { id } });
+      })
+      .catch((e) => friendlyPrismaError(e, { notFoundMessage: "That break is already gone — someone else may have just removed it" }));
+  } else {
+    await db.breakEntry
+      .delete({ where: { id } })
+      .catch((e) => friendlyPrismaError(e, { notFoundMessage: "That break is already gone — someone else may have just removed it" }));
+  }
 
   await recordAudit({
     entityType: "BreakEntry",
     entityId: id,
-    action: "delete",
+    action: reason ? "delete" : "delete_and_merge",
     actorId: session.user.id,
-    oldValue: `${entry.breakStart.toISOString()} – ${entry.breakEnd?.toISOString() ?? "open"}`,
+    oldValue: `${brk.breakStart.toISOString()} – ${brk.breakEnd?.toISOString() ?? "open"}`,
+    newValue: reason ? undefined : `merged sessions ${before!.id} + ${after!.id}`,
   });
 
   revalidatePath("/time");
+  if (before?.careRecipientId) revalidatePath("/clients");
+  return reason ? { merged: false, reason } : { merged: true };
+}
+
+// --- Exported admin corrections ---------------------------------------------
+// Wrapped in toActionResult: in production a thrown message is redacted, so
+// "This overlaps…", "already on an invoice" and validation errors come back
+// as { ok: false, error } for the dialog to show (see UserFacingError).
+
+export async function createManualTimeEntry(input: Parameters<typeof createManualTimeEntryImpl>[0]) {
+  return toActionResult(() => createManualTimeEntryImpl(input));
+}
+
+export async function updateTimeEntry(id: string, input: Parameters<typeof updateTimeEntryImpl>[1]) {
+  return toActionResult(() => updateTimeEntryImpl(id, input));
+}
+
+export async function addBreakToEntry(entryId: string, input: Parameters<typeof addBreakToEntryImpl>[1]) {
+  return toActionResult(() => addBreakToEntryImpl(entryId, input));
+}
+
+export async function deleteTimeEntry(id: string) {
+  return toActionResult(() => deleteTimeEntryImpl(id));
+}
+
+export async function updateBreakEntry(id: string, input: Parameters<typeof updateBreakEntryImpl>[1]) {
+  return toActionResult(() => updateBreakEntryImpl(id, input));
+}
+
+export async function deleteBreakEntry(id: string) {
+  return toActionResult(() => deleteBreakEntryImpl(id));
 }

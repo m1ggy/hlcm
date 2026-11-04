@@ -26,8 +26,9 @@
 export const PLATFORM_SLUG = "platform";
 
 /**
- * The platform superadmin: a DEVELOPER of the platform organization — the
- * only org a DEVELOPER can exist in (a DB check enforces it).
+ * The platform superadmin: a DEVELOPER of the platform organization (every
+ * platform-org account is one — a DB check enforces it). DEVELOPERs inside a
+ * workspace have full power there but no console.
  */
 export function isPlatformAdmin(user: { orgSlug?: string | null; role?: string | null } | null | undefined): boolean {
   return user?.orgSlug === PLATFORM_SLUG && user.role === "DEVELOPER";

@@ -24,9 +24,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-// DEVELOPER is in the Role enum (the platform superadmin — only ever in the
-// platform org, see prisma/schema.prisma), so it has to be in this type for
-// the data to type-check. It's never assignable here, and a DEVELOPER row
+// DEVELOPER is a real Role a user row can have (the superadmin, see
+// prisma/schema.prisma), so it has to be in this type for real data to
+// type-check. It's never assignable here, and a DEVELOPER row
 // is always fully protected.
 const ROLES = ["DEVELOPER", "OWNER", "ADMIN", "ACCOUNTANT", "MANAGER", "STAFF", "CLIENT", "CAREGIVER"] as const;
 const ASSIGNABLE_ROLES = ROLES.filter((r) => r !== "DEVELOPER");

@@ -7,9 +7,21 @@ import { UserFacingError } from "@/lib/user-facing-error";
 export const ROLES = ["DEVELOPER", "OWNER", "ADMIN", "ACCOUNTANT", "MANAGER", "STAFF", "CLIENT", "CAREGIVER"] as const;
 export type AppRole = (typeof ROLES)[number];
 
-/** OWNER — the top role inside a workspace; see requireRole(). */
+/**
+ * OWNER and DEVELOPER — full power inside a workspace; see requireRole().
+ * DEVELOPER is the superadmin: the platform org's DEVELOPERs run the console
+ * and enter any workspace as a hidden DEVELOPER account there
+ * (src/lib/support-access.ts); a workspace can also have its own DEVELOPER
+ * accounts. A few things are DEVELOPER-only on top (sign-in history and the
+ * mobile-login switch, src/lib/actions/login-activity.ts).
+ */
 export function isSuperuser(role: string | null | undefined): boolean {
-  return role === "OWNER";
+  return role === "OWNER" || role === "DEVELOPER";
+}
+
+/** DEVELOPER only — not OWNER. For tools meant just for the people running the app (e.g. login activity). */
+export function isDeveloper(role: string | null | undefined): boolean {
+  return role === "DEVELOPER";
 }
 
 /**
@@ -35,6 +47,15 @@ export function isManagement(role: string | null | undefined): boolean {
  * invoice-attachments.ts.
  */
 export function canAccessInvoices(role: string | null | undefined): boolean {
+  return role === "ACCOUNTANT" || isSuperuser(role);
+}
+
+/**
+ * Payroll changes (mark paid, payroll files) are ACCOUNTANT-exclusive like
+ * Invoices; the rest of management can view /payroll read-only. See
+ * docs/payroll-plan.md.
+ */
+export function canManagePayroll(role: string | null | undefined): boolean {
   return role === "ACCOUNTANT" || isSuperuser(role);
 }
 
@@ -66,12 +87,13 @@ export async function requireSession() {
 }
 
 /**
- * A Caregiver's dashboard is just My Tasks + Clients (see AppSidebarNav) —
- * every other top-level page (Projects, Applications, Time, Invoices,
- * Admin) calls this first so a typed-in URL redirects cleanly instead of
- * crashing into a ForbiddenError from whatever data call comes next.
+ * A Caregiver's app is Today/My Recipients/My Hours/My Tasks/Clients (see
+ * AppSidebarNav) — every other top-level page (Projects, Applications,
+ * Time, Invoices, Admin) calls this first so a typed-in URL redirects
+ * cleanly to their Today page instead of crashing into a ForbiddenError
+ * from whatever data call comes next.
  */
-export async function blockCaregiverRoute(fallback = "/tasks") {
+export async function blockCaregiverRoute(fallback = "/today") {
   const session = await auth();
   if (session?.user?.role === "CAREGIVER") redirect(fallback);
 }
@@ -90,6 +112,13 @@ export async function requireRole(allowed: AppRole[]) {
   if (isSuperuser(role)) return session;
   const permitted = allowed.includes(role) || (role === "ACCOUNTANT" && allowed.includes("ADMIN"));
   if (!permitted) throw new ForbiddenError();
+  return session;
+}
+
+/** Throws unless the current user is a DEVELOPER (OWNER doesn't pass). */
+export async function requireDeveloper() {
+  const session = await requireSession();
+  if (!isDeveloper(session.user.role)) throw new ForbiddenError();
   return session;
 }
 

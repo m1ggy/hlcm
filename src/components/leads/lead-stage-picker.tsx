@@ -41,7 +41,7 @@ export function LeadStagePicker({ leadId, stage }: { leadId: string; stage: $Enu
   }
 
   return (
-    <Select value={stage} onValueChange={handleChange} disabled={isPending}>
+    <Select items={LEAD_STAGE_LABELS} value={stage} onValueChange={handleChange} disabled={isPending}>
       <SelectTrigger size="sm" className="w-[10rem]">
         <SelectValue />
       </SelectTrigger>

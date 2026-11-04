@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { auth, signOut } from "@/auth";
-import { isAdmin, canAccessInvoices } from "@/lib/rbac";
+import { isAdmin, isManagement, canAccessInvoices } from "@/lib/rbac";
 import {
   Sidebar,
   SidebarContent,
@@ -8,6 +8,7 @@ import {
   SidebarHeader,
 } from "@/components/ui/sidebar";
 import { AppSidebarNav } from "@/components/app-sidebar-nav";
+import { caregiverHasClients } from "@/lib/actions/visits";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { getHostOrg } from "@/lib/tenant";
@@ -17,6 +18,8 @@ export async function AppSidebar() {
   const session = await auth();
   if (!session?.user) return null;
   const org = await getHostOrg();
+  const isCaregiver = session.user.role === "CAREGIVER";
+  const showCaregiverClients = isCaregiver ? await caregiverHasClients() : true;
 
   return (
     <Sidebar>
@@ -29,7 +32,9 @@ export async function AppSidebar() {
         <AppSidebarNav
           isAdmin={isAdmin(session.user.role)}
           canManageInvoices={canAccessInvoices(session.user.role)}
-          isCaregiver={session.user.role === "CAREGIVER"}
+          canViewPayroll={isManagement(session.user.role)}
+          isCaregiver={isCaregiver}
+          showCaregiverClients={showCaregiverClients}
         />
       </SidebarContent>
       <SidebarFooter className="gap-2 border-t px-3 py-3">

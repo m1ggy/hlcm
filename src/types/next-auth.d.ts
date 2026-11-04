@@ -19,5 +19,7 @@ declare module "next-auth" {
     organizationId: string;
     orgSlug: string;
     isSupport?: boolean;
+    /** Set by authorize — see src/lib/login-device.ts. */
+    deviceType?: string;
   }
 }

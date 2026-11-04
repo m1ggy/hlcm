@@ -41,9 +41,12 @@ import {
 } from "@/lib/stripe";
 import type { $Enums, Prisma } from "@/generated/prisma/client";
 import { summarizeByService, type ServiceMoney } from "@/lib/service-financials";
+import { NO_PROFILE, type ClientMoney } from "@/lib/client-list-filters";
 import { resolveClientServiceId } from "@/lib/client-services";
 import { toActionResult } from "@/lib/action-result";
 import { formatMoney } from "@/lib/money";
+import { UserFacingError } from "@/lib/user-facing-error";
+import { findInvalidEmail, invalidEmailMessage, splitEmailList } from "@/lib/email-list";
 
 export async function listInvoices(filters?: {
   status?: $Enums.InvoiceStatus;
@@ -67,27 +70,35 @@ export async function listInvoices(filters?: {
 
 // Invoiced / received / outstanding per client id for the Clients list —
 // the same math as the client page's totals (summarizeByService in
-// src/lib/service-financials.ts), including service adjustments.
-export async function listMoneyByClient(): Promise<Record<string, ServiceMoney>> {
+// src/lib/service-financials.ts), including service adjustments — plus the
+// invoices split by invoice profile, behind the list's profile filter.
+export async function listMoneyByClient(): Promise<Record<string, ClientMoney>> {
   await requireRole(MANAGE_ROLES);
   const [invoices, adjustments] = await Promise.all([
     db.invoice.findMany({
       where: { status: { in: ["SENT", "PARTIALLY_PAID", "PAID", "OVERDUE"] } },
-      select: { clientId: true, clientServiceId: true, status: true, total: true, amountPaid: true },
+      select: { clientId: true, clientServiceId: true, invoiceProfileId: true, status: true, total: true, amountPaid: true },
     }),
     db.serviceAdjustment.findMany({
       select: { amount: true, clientServiceId: true, clientService: { select: { clientId: true } } },
     }),
   ]);
   const clientIds = new Set([...invoices.map((i) => i.clientId), ...adjustments.map((a) => a.clientService.clientId)]);
-  const byClient: Record<string, ServiceMoney> = {};
+  const byClient: Record<string, ClientMoney> = {};
   for (const clientId of clientIds) {
+    const ownInvoices = invoices.filter((i) => i.clientId === clientId);
     const own = adjustments.filter((a) => a.clientService.clientId === clientId);
-    byClient[clientId] = summarizeByService(
-      invoices.filter((i) => i.clientId === clientId),
-      [...new Set(own.map((a) => a.clientServiceId))],
-      own
-    ).total;
+    const byProfile: Record<string, ServiceMoney> = {};
+    for (const profileId of new Set(ownInvoices.map((i) => i.invoiceProfileId ?? NO_PROFILE))) {
+      byProfile[profileId] = summarizeByService(
+        ownInvoices.filter((i) => (i.invoiceProfileId ?? NO_PROFILE) === profileId),
+        []
+      ).total;
+    }
+    byClient[clientId] = {
+      total: summarizeByService(ownInvoices, [...new Set(own.map((a) => a.clientServiceId))], own).total,
+      byProfile,
+    };
   }
   return byClient;
 }
@@ -796,13 +807,23 @@ function resolveRecipientEmail(
   careRecipient?: { billingContactEmail: string | null; email: string | null } | null
 ) {
   const trimmed = override?.trim() || undefined;
-  const email = trimmed ? z.string().email("Enter a valid email address").parse(trimmed) : undefined;
-  const recipientEmail =
-    email ?? careRecipient?.billingContactEmail ?? careRecipient?.email ?? client.businessEmail ?? client.owners[0]?.email;
-  if (!recipientEmail) {
-    throw new Error("Client has no email on file — add one before sending, or type a different email for this send");
+  const raw =
+    trimmed ?? careRecipient?.billingContactEmail ?? careRecipient?.email ?? client.businessEmail ?? client.owners[0]?.email;
+  if (!raw?.trim()) {
+    throw new UserFacingError("Client has no email on file — add one before sending, or type a different email for this send");
   }
-  return recipientEmail;
+  return parseEmailList(raw);
+}
+
+// A saved or typed "Send to" can hold more than one address, e.g.
+// "a@x.com; b@y.com" — split on ; , or spaces and check each one, so a
+// bad address names itself instead of failing the whole send blindly.
+function parseEmailList(raw: string): string[] {
+  const emails = splitEmailList(raw);
+  const bad = findInvalidEmail(raw);
+  if (bad) throw new UserFacingError(invalidEmailMessage(bad));
+  if (emails.length === 0) throw new UserFacingError("Enter an email address to send to");
+  return emails;
 }
 
 const sendReceiptEmailInputSchema = z.string().min(1);
@@ -841,6 +862,10 @@ async function loadInvoiceAttachments(invoiceId: string) {
 }
 
 export async function sendReceiptEmail(receiptId: string, recipientEmailOverride?: string) {
+  return toActionResult(() => sendReceiptEmailImpl(receiptId, recipientEmailOverride));
+}
+
+async function sendReceiptEmailImpl(receiptId: string, recipientEmailOverride?: string) {
   const session = await requireRole(MANAGE_ROLES);
   const id = sendReceiptEmailInputSchema.parse(receiptId);
 
@@ -851,9 +876,10 @@ export async function sendReceiptEmail(receiptId: string, recipientEmailOverride
   const { invoice, payment } = receipt;
   // storageKey stays "" if the PDF failed to generate/upload when the
   // payment was recorded (see addManualPayment) — nothing to send yet.
-  if (!receipt.storageKey) throw new Error("This receipt's PDF failed to generate — try recording the payment again");
+  if (!receipt.storageKey) throw new UserFacingError("This receipt's PDF failed to generate — try recording the payment again");
 
-  const recipientEmail = resolveRecipientEmail(recipientEmailOverride, invoice.client, invoice.careRecipient);
+  const recipients = resolveRecipientEmail(recipientEmailOverride, invoice.client, invoice.careRecipient);
+  const recipientEmail = recipients.join(", ");
 
   const number = displayInvoiceNumber(invoice);
   const receiptNumber = displayReceiptNumber(receipt);
@@ -868,7 +894,7 @@ export async function sendReceiptEmail(receiptId: string, recipientEmailOverride
   const { appUrl, brand } = await getEmailBranding();
 
   await sendEmail({
-    to: recipientEmail,
+    to: recipients,
     cc: parseCcEmails(profile?.ccEmails ?? null),
     subject: `Receipt ${receiptNumber} — payment for Invoice ${number}`,
     html: renderEmailLayout({
@@ -913,10 +939,10 @@ async function readExtraAttachments(formData: FormData | undefined) {
   const attachments: { filename: string; content: Uint8Array }[] = [];
   for (const file of files) {
     if (!ALLOWED_ATTACHMENT_TYPES[file.type]) {
-      throw new Error(`"${file.name}" isn't a supported attachment type — only PDF, XLSX, and DOCX are allowed`);
+      throw new UserFacingError(`"${file.name}" isn't a supported attachment type — only PDF, XLSX, and DOCX are allowed`);
     }
     if (file.size > MAX_ATTACHMENT_BYTES) {
-      throw new Error(`"${file.name}" is too large — attachments are limited to 20MB`);
+      throw new UserFacingError(`"${file.name}" is too large — attachments are limited to 20MB`);
     }
     attachments.push({ filename: file.name, content: new Uint8Array(await file.arrayBuffer()) });
   }
@@ -933,15 +959,20 @@ async function readExtraAttachments(formData: FormData | undefined) {
 // "attachments" field (see readExtraAttachments above) that are never
 // persisted — picked fresh for this one send only.
 export async function sendManualInvoicePdf(id: string, formData?: FormData) {
+  return toActionResult(() => sendManualInvoicePdfImpl(id, formData));
+}
+
+async function sendManualInvoicePdfImpl(id: string, formData?: FormData) {
   const session = await requireRole(MANAGE_ROLES);
   const invoice = await db.invoice.findUniqueOrThrow({ where: { id }, include: invoiceInclude });
 
-  if (!isManual(invoice)) throw new Error("This invoice isn't a manually-recorded one");
+  if (!isManual(invoice)) throw new UserFacingError("This invoice isn't a manually-recorded one");
   if (invoice.status === "PAID" || invoice.status === "VOID") {
-    throw new Error("This invoice is no longer awaiting payment");
+    throw new UserFacingError("This invoice is no longer awaiting payment");
   }
 
-  const recipientEmail = resolveRecipientEmail(formData?.get("recipientEmail") as string | null, invoice.client, invoice.careRecipient);
+  const recipients = resolveRecipientEmail(formData?.get("recipientEmail") as string | null, invoice.client, invoice.careRecipient);
+  const recipientEmail = recipients.join(", ");
 
   const [extraAttachments, invoiceAttachments] = await Promise.all([
     readExtraAttachments(formData),
@@ -970,7 +1001,7 @@ export async function sendManualInvoicePdf(id: string, formData?: FormData) {
   const { appUrl, brand } = await getEmailBranding();
 
   await sendEmail({
-    to: recipientEmail,
+    to: recipients,
     cc: parseCcEmails(profile?.ccEmails ?? null),
     subject: `Invoice ${number} from ${profile?.name ?? brand}`,
     html: renderEmailLayout({
@@ -1007,10 +1038,19 @@ export async function sendManualInvoicePdf(id: string, formData?: FormData) {
 // here), and stores everything back onto our row. Resend: the Stripe
 // invoice already exists — just re-trigger the email.
 export async function sendInvoice(id: string, recipientEmailOverride?: string) {
+  return toActionResult(() => sendInvoiceImpl(id, recipientEmailOverride));
+}
+
+async function sendInvoiceImpl(id: string, recipientEmailOverride?: string) {
   const session = await requireRole(MANAGE_ROLES);
   const invoice = await db.invoice.findUniqueOrThrow({ where: { id }, include: invoiceInclude });
 
-  const recipientEmail = resolveRecipientEmail(recipientEmailOverride, invoice.client);
+  const recipients = resolveRecipientEmail(recipientEmailOverride, invoice.client);
+  // Stripe emails one address per customer.
+  if (recipients.length > 1) {
+    throw new UserFacingError("Online (Stripe) invoices go to one email address — pick Different email and enter just one");
+  }
+  const recipientEmail = recipients[0];
 
   // Stripe emails go to the Customer object's email, not a per-invoice
   // address — a cached Customer (from an earlier send, to either this
@@ -1041,7 +1081,7 @@ export async function sendInvoice(id: string, recipientEmailOverride?: string) {
 
   const { billingAddressLine1, billingCity, billingState, billingPostalCode, billingCountry } = invoice.client;
   if (!billingState || !billingPostalCode) {
-    throw new Error(
+    throw new UserFacingError(
       "This client is missing a billing address (state + ZIP) — Stripe Tax needs it to calculate tax. Add one on the client's page first."
     );
   }

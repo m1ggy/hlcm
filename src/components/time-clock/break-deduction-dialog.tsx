@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { createBreakDeduction } from "@/lib/actions/time-entries";
+import { unexpectedErrorMessage } from "@/lib/action-result";
 
 // Admin-only: adds a retroactive unpaid-break deduction for a date range
 // (usually "this pay period") — subtracted per calendar day at report/PDF/
@@ -64,19 +65,20 @@ export function BreakDeductionDialog({
     }
     startTransition(async () => {
       try {
-        await createBreakDeduction({
+        const result = await createBreakDeduction({
           userId: userId === "all" ? undefined : userId,
           fromDate,
           toDate,
           minutesPerDay: parsedMinutes,
           note: note || undefined,
         });
+        if (!result.ok) return void toast.error(result.error);
         toast.success("Break deduction added");
         setOpen(false);
         reset();
         onAdded?.();
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Failed to add break deduction");
+        toast.error(unexpectedErrorMessage(error, "Failed to add break deduction"));
       }
     });
   }

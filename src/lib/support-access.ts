@@ -7,7 +7,7 @@ import { orgAppUrl } from "@/lib/tenant-host";
 
 // Platform admins entering a workspace. A platform admin (superadmin) can
 // open any active workspace from the console — no grant from its owner
-// needed — as their own hidden account in it: an OWNER (User.isSupport,
+// needed — as their own hidden account in it: a DEVELOPER (User.isSupport,
 // User.platformAdminId) that can't sign in with a password, is left out of
 // user lists and counts (see hideSupportUser in src/lib/db.ts), and is
 // named after them, so everything they do is in the workspace's own audit
@@ -20,9 +20,12 @@ type PlatformAdmin = { id: string; name: string; email: string };
 /** `admin`'s hidden account in the current workspace, created on first use. */
 export async function ensureSupportUser(admin: PlatformAdmin) {
   const name = `${admin.name} (Platform)`;
-  const existing = await db.user.findFirst({ where: { isSupport: true, platformAdminId: admin.id }, select: { id: true, name: true, active: true } });
+  const existing = await db.user.findFirst({ where: { isSupport: true, platformAdminId: admin.id }, select: { id: true, name: true, active: true, role: true } });
   if (existing) {
-    if (existing.name !== name || !existing.active) await db.user.update({ where: { id: existing.id }, data: { name, active: true } });
+    // Accounts made before 2026-11-04 were OWNERs; bring them up to DEVELOPER.
+    if (existing.name !== name || !existing.active || existing.role !== "DEVELOPER") {
+      await db.user.update({ where: { id: existing.id }, data: { name, active: true, role: "DEVELOPER" } });
+    }
     return { id: existing.id };
   }
   return db.user.create({
@@ -30,7 +33,7 @@ export async function ensureSupportUser(admin: PlatformAdmin) {
       name,
       // Never emailed; just unique within the workspace.
       email: `platform-${admin.id}@platform.invalid`,
-      role: "OWNER",
+      role: "DEVELOPER",
       isSupport: true,
       platformAdminId: admin.id,
       emailNotificationsEnabled: false,

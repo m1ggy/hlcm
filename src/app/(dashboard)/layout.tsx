@@ -13,13 +13,14 @@ import { SessionExpiredDialog } from "@/components/auth/session-expired-dialog";
 import { ProductTour } from "@/components/tour/product-tour";
 import { TimeClockWidget } from "@/components/time-clock/time-clock-widget";
 import { TaskTimerWidget } from "@/components/time-clock/task-timer-widget";
+import { CaregiverBottomNav } from "@/components/caregiver-bottom-nav";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { BookOpen } from "lucide-react";
 import { getMyActiveEntry, getMyActiveBreak } from "@/lib/actions/time-entries";
 import { getMyOpenTaskTimer, listMyRecentTimerTasks } from "@/lib/actions/task-time-entries";
-import { listMyCareRecipients } from "@/lib/actions/care-recipients";
 import { listMyTaskOptions } from "@/lib/actions/tasks";
+import { listMyStartableRecipients, getMyCurrentVisitRecipientId } from "@/lib/actions/visits";
 
 export default async function DashboardLayout({
   children,
@@ -35,10 +36,11 @@ export default async function DashboardLayout({
   // workspace can't be used — except by support, who may be there to help.
   if (!session?.user?.isSupport && needsTermsAcceptance(org)) redirect("/accept-terms");
   const isCaregiver = session?.user?.role === "CAREGIVER";
-  const [activeEntry, activeBreak, careRecipients, openTimer, myTasks, recentTimerTasks] = await Promise.all([
+  const [activeEntry, activeBreak, careRecipients, visitRecipientId, openTimer, myTasks, recentTimerTasks] = await Promise.all([
     getMyActiveEntry(),
     getMyActiveBreak(),
-    isCaregiver ? listMyCareRecipients() : Promise.resolve([]),
+    isCaregiver ? listMyStartableRecipients() : Promise.resolve([]),
+    isCaregiver ? getMyCurrentVisitRecipientId() : Promise.resolve(null),
     getMyOpenTaskTimer(),
     listMyTaskOptions(),
     listMyRecentTimerTasks(5),
@@ -63,9 +65,14 @@ export default async function DashboardLayout({
           </div>
           <div className="flex flex-wrap items-center justify-end gap-1">
             <TimeClockWidget
+              // Remount whenever the server-side clock state changes — the
+              // widget seeds its state from these props once, so without
+              // this a clock-in from the Today page would leave the header
+              // showing "Clock in".
+              key={`${activeEntry?.id ?? "-"}:${activeBreak?.id ?? "-"}`}
               initialClockIn={activeEntry ? activeEntry.clockIn.toISOString() : null}
               initialBreakStart={activeBreak ? activeBreak.breakStart.toISOString() : null}
-              initialCareRecipientId={activeEntry?.careRecipientId ?? null}
+              initialCareRecipientId={visitRecipientId}
               isCaregiver={isCaregiver}
               careRecipients={careRecipients}
             />
@@ -95,7 +102,9 @@ export default async function DashboardLayout({
             <NotificationBell />
           </div>
         </header>
-        <main className="w-full min-w-0 flex-1 px-4 py-6 md:px-6">{children}</main>
+        {/* Extra bottom padding on phones keeps content clear of the caregiver tab bar. */}
+        <main className={`w-full min-w-0 flex-1 px-4 py-6 md:px-6 ${isCaregiver ? "pb-24 md:pb-6" : ""}`}>{children}</main>
+        {isCaregiver && <CaregiverBottomNav />}
       </SidebarInset>
       <CommandPalette isAdmin={isAdmin(session?.user?.role)} />
       <GlobalShortcuts />

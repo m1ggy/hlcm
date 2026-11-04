@@ -110,6 +110,13 @@ model Organization {
   leads                    Lead[]
   formSubmissions          FormSubmission[]
   formSubmissionFiles      FormSubmissionFile[]
+  loginEvents              LoginEvent[]
+  payPeriods               PayPeriod[]
+  payrollPayments          PayrollPayment[]
+  payrollAttachments       PayrollAttachment[]
+  visitShifts              VisitShift[]
+  visitInstructionChecks   VisitInstructionCheck[]
+  careIncidents            CareIncident[]
 
   @@map("organizations")
 }
@@ -213,11 +220,12 @@ model AuthToken {
   @@map("auth_tokens")
 }
 
-// DEVELOPER is the platform superadmin: it exists only in the platform
-// organization (a CHECK constraint ties DEVELOPER <-> org_platform), runs
-// the console at admin.<ROOT_DOMAIN>, and reaches workspaces by entering
-// them (src/lib/support-access.ts). It has no power inside a workspace and
-// is never assignable through a workspace's Users screen.
+// DEVELOPER is the superadmin: full power inside a workspace (same reach
+// as OWNER, plus a few DEVELOPER-only tools such as sign-in history). The
+// platform org's accounts are all DEVELOPERs (CHECK constraint): they run
+// the console at admin.<ROOT_DOMAIN> and enter any workspace as a hidden
+// DEVELOPER account there (src/lib/support-access.ts). Never assignable
+// through a workspace's Users screen.
 //
 // OWNER sits above ADMIN — same access everywhere ADMIN has it, plus
 // exclusive rights to create/edit/demote other ADMIN/ACCOUNTANT/OWNER
@@ -322,6 +330,10 @@ enum NotificationType {
   MEETING_REMINDER
   ENVELOPE_COMPLETED
   ENVELOPE_DECLINED
+  CARE_RECIPIENT_ASSIGNED
+  CARE_INCIDENT_REPORTED
+  PAYROLL_PAID
+  PAYROLL_PROBLEM_REPORTED
 }
 
 enum InvoiceStatus {
@@ -368,6 +380,10 @@ model User {
   // upcoming meeting"), not a per-user preference everyone starts with.
   phone                     String?
   smsRemindersEnabled       Boolean      @default(false)
+  // Developer-only switch (Admin > Users > Logins): when on, sign-in from a
+  // phone or tablet browser is refused and any open phone/tablet session is
+  // ended at its next check (see src/lib/login-device.ts).
+  mobileLoginBlocked        Boolean      @default(false)
   createdAt                 DateTime     @default(now())
   updatedAt                 DateTime     @updatedAt
 
@@ -421,6 +437,11 @@ model User {
   careRecipientAssignments      CareRecipientAssignment[] @relation("CareRecipientAssignmentCaregiver")
   careRecipientAssignmentsGiven CareRecipientAssignment[] @relation("CareRecipientAssignmentAssignedBy")
   careInstructionsCreated       CareInstruction[]         @relation("CareInstructionCreatedBy")
+  visitInstructionChecks        VisitInstructionCheck[]   @relation("VisitInstructionCheckedBy")
+  visitShifts                   VisitShift[]              @relation("VisitShiftCaregiver")
+  visitShiftsCreated            VisitShift[]              @relation("VisitShiftCreatedBy")
+  careIncidentsReported         CareIncident[]            @relation("CareIncidentReportedBy")
+  careIncidentsResolved         CareIncident[]            @relation("CareIncidentResolvedBy")
   clientContactsCreated         ClientContact[]           @relation("ClientContactCreatedBy")
   clientOwnersCreated           ClientOwner[]             @relation("ClientOwnerCreatedBy")
   clientAgreementsCreated       ClientAgreement[]         @relation("ClientAgreementCreatedBy")
@@ -429,11 +450,49 @@ model User {
   clientServicesCreated         ClientService[]           @relation("ClientServiceCreatedBy")
   clientServiceAssignments      ClientServiceAssignee[]
   serviceAdjustmentsCreated     ServiceAdjustment[]       @relation("ServiceAdjustmentCreatedBy")
+  loginEvents                   LoginEvent[]
+  payrollPayments               PayrollPayment[]          @relation("PayrollPaymentPayee")
+  payrollPaymentsMarked         PayrollPayment[]          @relation("PayrollPaymentMarkedBy")
+  payrollProblemsResolved       PayrollPayment[]          @relation("PayrollPaymentProblemResolvedBy")
+  payrollAttachmentsUploaded    PayrollAttachment[]       @relation("PayrollAttachmentUploadedBy")
 
   @@unique([organizationId, email])
   @@unique([organizationId, platformAdminId])
   @@index([organizationId])
   @@map("users")
+}
+
+enum LoginDeviceType {
+  DESKTOP
+  MOBILE
+  TABLET
+}
+
+// One row per web sign-in (successful, or refused because mobile login is
+// blocked) — what device/browser/OS it came from. Shown to DEVELOPER only on
+// Admin > Users. Parsed from the User-Agent, so it's a best guess: a phone
+// set to "Request desktop site" reports itself as DESKTOP.
+model LoginEvent {
+  id             String          @id @default(cuid())
+  organizationId String          @default(dbgenerated("current_org_id()"))
+  organization   Organization    @relation(fields: [organizationId], references: [id])
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         String
+  success        Boolean
+  // "password" or "password+mfa"
+  method         String
+  // Set when success is false, e.g. "mobile_blocked"
+  reason         String?
+  deviceType     LoginDeviceType
+  browser        String?
+  os             String?
+  userAgent      String?
+  ipAddress      String?
+  createdAt      DateTime        @default(now())
+
+  @@index([userId, createdAt])
+  @@index([organizationId])
+  @@map("login_events")
 }
 
 // A user's saved Wise payout account. `fields` holds whatever Wise's
@@ -533,7 +592,25 @@ model TimeEntry {
   billedInvoice   Invoice? @relation(fields: [billedInvoiceId], references: [id], onDelete: SetNull)
   billedInvoiceId String?
 
+  // A break closes the open entry and endBreak opens a fresh one (see
+  // src/lib/actions/time-entries.ts), so one visit can span several rows.
+  // The first segment leaves this null and *is* the visit; every
+  // continuation segment points back at it. Everything visit-level —
+  // checklist ticks, the visit note, incidents — hangs off that first
+  // segment, so `visitStartId ?? id` is "which visit is this".
+  visitStart    TimeEntry?  @relation("VisitSegments", fields: [visitStartId], references: [id], onDelete: SetNull)
+  visitStartId  String?
+  visitSegments TimeEntry[] @relation("VisitSegments")
+
+  // What happened on the visit, written by the Caregiver at clock-out.
+  // Only ever set on a visit's first segment (see visitStartId above).
+  visitNote String?
+
+  visitChecks VisitInstructionCheck[]
+  incidents   CareIncident[]
+
   @@index([userId, clockIn])
+  @@index([visitStartId])
   @@index([careRecipientId])
   @@index([organizationId])
   @@map("time_entries")
@@ -587,6 +664,106 @@ model TimesheetBreakDeduction {
   @@index([userId])
   @@index([organizationId])
   @@map("timesheet_break_deductions")
+}
+
+// One semi-monthly pay period (1st–15th / 16th–end, see
+// currentPayPeriodRange in src/lib/time-entries.ts). Created on first use
+// — when someone is marked paid or a file is added. Date-only columns: a
+// period is calendar days in PAYROLL_TIMEZONE (src/lib/payroll.ts), not
+// instants. See docs/payroll-plan.md.
+model PayPeriod {
+  id             String       @id @default(cuid())
+  organizationId String       @default(dbgenerated("current_org_id()"))
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  startDate      DateTime     @db.Date
+  endDate        DateTime     @db.Date
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  payments    PayrollPayment[]
+  attachments PayrollAttachment[]
+
+  @@unique([organizationId, startDate, endDate])
+  @@index([organizationId])
+  @@map("pay_periods")
+}
+
+enum PayrollMethod {
+  DIRECT_DEPOSIT
+  CHECK
+  WISE
+  CASH
+  OTHER
+}
+
+// One person's pay for one period — exists only once they're marked paid
+// (unpaid people are computed live from their time). Hours/rate/gross are
+// a snapshot from mark-paid, and while this row exists that person's time
+// in the period is locked (assertTimeNotLocked in src/lib/payroll-lock.ts).
+model PayrollPayment {
+  id             String       @id @default(cuid())
+  organizationId String       @default(dbgenerated("current_org_id()"))
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  payPeriod      PayPeriod    @relation(fields: [payPeriodId], references: [id], onDelete: Cascade)
+  payPeriodId    String
+  user           User         @relation("PayrollPaymentPayee", fields: [userId], references: [id])
+  userId         String
+
+  hours       Float
+  breakHours  Float
+  hourlyRate  Float?
+  // Hours × rate at mark-paid; the accountant can adjust it (bonus, no rate set).
+  grossAmount Float
+  // Take-home actually sent, entered by the accountant.
+  netAmount   Float
+  method      PayrollMethod
+  reference   String?
+  note        String?
+
+  // The day the money went out (date-only, picked by the accountant).
+  paidOn     DateTime @db.Date
+  markedBy   User     @relation("PayrollPaymentMarkedBy", fields: [markedById], references: [id])
+  markedById String
+
+  acknowledgedAt      DateTime?
+  problemReportedAt   DateTime?
+  problemNote         String?
+  problemResolvedAt   DateTime?
+  problemResolvedBy   User?     @relation("PayrollPaymentProblemResolvedBy", fields: [problemResolvedById], references: [id])
+  problemResolvedById String?
+
+  attachments PayrollAttachment[]
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  @@unique([payPeriodId, userId])
+  @@index([userId])
+  @@index([organizationId])
+  @@map("payroll_payments")
+}
+
+// payrollPaymentId null = a period file (payroll managers only);
+// set = that person's file (managers + that person).
+model PayrollAttachment {
+  id               String          @id @default(cuid())
+  organizationId   String          @default(dbgenerated("current_org_id()"))
+  organization     Organization    @relation(fields: [organizationId], references: [id])
+  payPeriod        PayPeriod       @relation(fields: [payPeriodId], references: [id], onDelete: Cascade)
+  payPeriodId      String
+  payrollPayment   PayrollPayment? @relation(fields: [payrollPaymentId], references: [id], onDelete: Cascade)
+  payrollPaymentId String?
+  fileName         String
+  storageKey       String
+  mimeType         String
+  sizeBytes        Int
+  uploadedBy       User            @relation("PayrollAttachmentUploadedBy", fields: [uploadedById], references: [id])
+  uploadedById     String
+  createdAt        DateTime        @default(now())
+
+  @@index([payPeriodId])
+  @@index([payrollPaymentId])
+  @@index([organizationId])
+  @@map("payroll_attachments")
 }
 
 // A Project is an internal engagement/case grouping — independent of which
@@ -965,8 +1142,9 @@ model CareRecipient {
   // to-dos they check off.
   careNotes String?
 
-  // Freeform, informational only — "Mon/Wed/Fri mornings" — not tied to any
-  // actual scheduling/calendar logic.
+  // Freeform, informational only — "Mon/Wed/Fri mornings". The structured
+  // schedule that drives the Caregiver's Today page and late/missed visit
+  // flags is VisitShift below; this stays as a free-text supplement.
   visitSchedule String?
 
   // Private-pay hourly rate for this recipient's care — used to auto-price
@@ -1013,6 +1191,8 @@ model CareRecipient {
   assignments  CareRecipientAssignment[]
   timeEntries  TimeEntry[]
   instructions CareInstruction[]
+  shifts       VisitShift[]
+  incidents    CareIncident[]
   // Manual invoices billed for this recipient's care — see
   // Invoice.careRecipientId. Always billed through their own `client`
   // above (Invoice.clientId is a hard requirement, unrelated to this).
@@ -1026,22 +1206,22 @@ model CareRecipient {
 // A specific request for whoever visits this recipient — "Give medication
 // at 2pm", "Help with laundry on Fridays" — distinct from careNotes above
 // (background to read once) and from the licensing Task model (tied to
-// Applications/checklists, nothing to do with a care visit). Plain
-// standing checklist, not per-visit: `completed` isn't reset on a new
-// clock-in — an admin/staff or the assigned Caregiver toggles it directly.
+// Applications/checklists, nothing to do with a care visit). The standing
+// list itself; whether it was done is recorded per visit in
+// VisitInstructionCheck, so every visit starts with a fresh checklist.
 model CareInstruction {
-  id              String        @id @default(cuid())
-  organizationId  String        @default(dbgenerated("current_org_id()"))
-  organization    Organization  @relation(fields: [organizationId], references: [id])
-  careRecipient   CareRecipient @relation(fields: [careRecipientId], references: [id], onDelete: Cascade)
+  id              String                  @id @default(cuid())
+  organizationId  String                  @default(dbgenerated("current_org_id()"))
+  organization    Organization            @relation(fields: [organizationId], references: [id])
+  careRecipient   CareRecipient           @relation(fields: [careRecipientId], references: [id], onDelete: Cascade)
   careRecipientId String
   label           String
-  completed       Boolean       @default(false)
-  sortOrder       Int           @default(0)
-  createdBy       User          @relation("CareInstructionCreatedBy", fields: [createdById], references: [id])
+  sortOrder       Int                     @default(0)
+  checks          VisitInstructionCheck[]
+  createdBy       User                    @relation("CareInstructionCreatedBy", fields: [createdById], references: [id])
   createdById     String
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
 
   @@index([careRecipientId])
   @@index([organizationId])
@@ -1067,6 +1247,92 @@ model CareRecipientAssignment {
   @@index([caregiverId])
   @@index([organizationId])
   @@map("care_recipient_assignments")
+}
+
+// One CareInstruction ticked off on one visit. timeEntryId is always the
+// visit's first segment (TimeEntry.visitStartId ?? id) so a break mid-visit
+// doesn't lose what was already checked. No row = not done on that visit.
+model VisitInstructionCheck {
+  id             String          @id @default(cuid())
+  organizationId String          @default(dbgenerated("current_org_id()"))
+  organization   Organization    @relation(fields: [organizationId], references: [id])
+  timeEntry      TimeEntry       @relation(fields: [timeEntryId], references: [id], onDelete: Cascade)
+  timeEntryId    String
+  instruction    CareInstruction @relation(fields: [instructionId], references: [id], onDelete: Cascade)
+  instructionId  String
+  checkedBy      User            @relation("VisitInstructionCheckedBy", fields: [checkedById], references: [id])
+  checkedById    String
+  checkedAt      DateTime        @default(now())
+
+  @@unique([timeEntryId, instructionId])
+  @@index([instructionId])
+  @@index([organizationId])
+  @@map("visit_instruction_checks")
+}
+
+// A recurring weekly slot: "Maria visits Mrs. Lee Mondays 9:00–13:00".
+// Wall-clock times, read in the Caregiver's own effective timezone (see
+// effectiveTimezone in src/lib/time-entries.ts) — that's where the visit
+// happens. A slot never crosses midnight; a live-in day is 0–1440.
+model VisitShift {
+  id              String        @id @default(cuid())
+  organizationId  String        @default(dbgenerated("current_org_id()"))
+  organization    Organization  @relation(fields: [organizationId], references: [id])
+  careRecipient   CareRecipient @relation(fields: [careRecipientId], references: [id], onDelete: Cascade)
+  careRecipientId String
+  caregiver       User          @relation("VisitShiftCaregiver", fields: [caregiverId], references: [id], onDelete: Cascade)
+  caregiverId     String
+  // 0 = Sunday … 6 = Saturday, matching Date#getDay().
+  weekday         Int
+  // Minutes since local midnight.
+  startMinute     Int
+  endMinute       Int
+  createdBy       User          @relation("VisitShiftCreatedBy", fields: [createdById], references: [id])
+  createdById     String
+  createdAt       DateTime      @default(now())
+
+  @@index([careRecipientId])
+  @@index([caregiverId, weekday])
+  @@index([organizationId])
+  @@map("visit_shifts")
+}
+
+enum CareIncidentCategory {
+  FALL_OR_INJURY
+  HEALTH_CHANGE
+  MEDICATION
+  BEHAVIOR
+  HOME_SAFETY
+  OTHER
+}
+
+// Something a Caregiver flags for the office to follow up on — a fall, a
+// medication problem, a change in condition. Notifies managers on create;
+// stays open on the recipient until someone resolves it.
+model CareIncident {
+  id              String               @id @default(cuid())
+  organizationId  String               @default(dbgenerated("current_org_id()"))
+  organization    Organization         @relation(fields: [organizationId], references: [id])
+  careRecipient   CareRecipient        @relation(fields: [careRecipientId], references: [id], onDelete: Cascade)
+  careRecipientId String
+  // The visit it was reported during, if any (first segment, same as
+  // VisitInstructionCheck). SetNull: deleting a time entry keeps the report.
+  timeEntry       TimeEntry?           @relation(fields: [timeEntryId], references: [id], onDelete: SetNull)
+  timeEntryId     String?
+  category        CareIncidentCategory
+  urgent          Boolean              @default(false)
+  description     String
+  reportedBy      User                 @relation("CareIncidentReportedBy", fields: [reportedById], references: [id])
+  reportedById    String
+  createdAt       DateTime             @default(now())
+  resolvedAt      DateTime?
+  resolvedBy      User?                @relation("CareIncidentResolvedBy", fields: [resolvedById], references: [id])
+  resolvedById    String?
+  resolutionNote  String?
+
+  @@index([careRecipientId, resolvedAt])
+  @@index([organizationId])
+  @@map("care_incidents")
 }
 
 // A named bundle of Clients that should be treated as one section on the

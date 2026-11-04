@@ -8,7 +8,7 @@ import { listOrganizations } from "@/lib/platform";
 
 // A platform admin entering a workspace: no owner grant needed, through a
 // one-time link that can't double as a password link, as the admin's own
-// hidden OWNER account that stays out of the workspace's user lists — and
+// hidden DEVELOPER account that stays out of the workspace's user lists — and
 // every entry is in the workspace's audit log under the admin's name.
 
 const ORG = { id: "org_support", slug: "support-co", name: "Support Co" };
@@ -33,7 +33,7 @@ afterAll(async () => {
 });
 
 describe("platform admin entering a workspace", () => {
-  it("issues a one-time link to the admin's own hidden OWNER account, logs it, and keeps it out of user lists", async () => {
+  it("issues a one-time link to the admin's own hidden DEVELOPER account, logs it, and keeps it out of user lists", async () => {
     const url = await startSupportSession(ORG, admin);
     const token = new URL(url).searchParams.get("token")!;
     expect(new URL(url).pathname).toBe("/support/enter");
@@ -47,7 +47,7 @@ describe("platform admin entering a workspace", () => {
       expect(await consumeAuthToken(token, ["SUPPORT_LOGIN"])).toBeNull();
 
       const support = await db.user.findUniqueOrThrow({ where: { id: used!.userId } });
-      expect(support).toMatchObject({ isSupport: true, role: "OWNER", platformAdminId: admin.id, name: "Pat (Platform)" });
+      expect(support).toMatchObject({ isSupport: true, role: "DEVELOPER", platformAdminId: admin.id, name: "Pat (Platform)" });
 
       expect((await db.user.findMany({ select: { email: true } })).map((u) => u.email)).toEqual(["owner@support.test"]);
       expect(await db.user.count()).toBe(1);

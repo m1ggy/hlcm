@@ -1,7 +1,7 @@
-import NextAuth from "next-auth";
+import NextAuth, { CredentialsSignin } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
-import { getDb } from "@/lib/db";
+import { getDb, tenantDb } from "@/lib/db";
 import { getHostOrg, getOrgBySlug, isActivePlatformAdmin } from "@/lib/tenant";
 import { consumeAuthToken } from "@/lib/auth-tokens";
 import { verifyTotpToken } from "@/lib/totp";
@@ -9,6 +9,17 @@ import { verifyMfaChallenge } from "@/lib/mfa-challenge";
 import { authConfig, isPublicPath } from "@/auth.config";
 import { getClientIp } from "@/lib/rate-limit";
 import { clearLoginFailures, isLoginThrottled, recordLoginFailure } from "@/lib/login-throttle";
+import { isMobileDevice, parseLoginDevice, recordLoginEvent, refuseIfMobileBlocked } from "@/lib/login-device";
+
+/** Thrown from authorize so the login actions can show the right message. */
+export class MobileLoginBlockedError extends CredentialsSignin {
+  code = "mobile_blocked";
+}
+
+// How often an open phone/tablet session re-checks mobileLoginBlocked, so
+// a developer turning it on ends that session within a minute instead of
+// waiting for the idle timeout. Desktop sessions never pay for this check.
+const MOBILE_RECHECK_MS = 60 * 1000;
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
@@ -28,16 +39,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // tenant client adds organizationId to every lookup) — the same email
       // can exist in two orgs, and signing in on one org's host can never
       // produce a session for the other.
-      async authorize(credentials) {
+      async authorize(credentials, request) {
         const org = await getHostOrg();
         if (!org || org.status !== "ACTIVE") return null;
         const db = await getDb();
+        const device = parseLoginDevice(request.headers);
         // Throttled per IP and per account on failures (src/lib/login-throttle.ts)
         // — this is also what guards a direct POST to the credentials endpoint.
         const ip = await getClientIp().catch(() => null);
 
         // A platform admin entering the workspace (src/lib/support-access.ts):
         // a one-time link from the console, as their own hidden account here.
+        // Not subject to the mobile block (a switch for the workspace's own
+        // staff), but logged like any other sign-in.
         const supportToken = credentials?.supportToken as string | undefined;
         if (supportToken) {
           const used = await consumeAuthToken(supportToken, ["SUPPORT_LOGIN"]);
@@ -45,7 +59,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           const user = await db.user.findUnique({ where: { id: used.userId } });
           if (!user || !user.active || !user.isSupport) return null;
           if (!(await isActivePlatformAdmin(user.platformAdminId))) return null;
-          return { id: user.id, name: user.name, email: user.email, role: user.role, organizationId: org.id, orgSlug: org.slug, isSupport: true };
+          await recordLoginEvent({ userId: user.id, device, success: true, method: "support" });
+          return {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            organizationId: org.id,
+            orgSlug: org.slug,
+            isSupport: true,
+            deviceType: device.deviceType,
+          };
         }
 
         const challenge = credentials?.challenge as string | undefined;
@@ -64,9 +88,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             recordLoginFailure(ip, org.id, user.email);
             return null;
           }
+          if (await refuseIfMobileBlocked(user, device, "password+mfa")) throw new MobileLoginBlockedError();
 
           clearLoginFailures(org.id, user.email);
-          return { id: user.id, name: user.name, email: user.email, role: user.role, organizationId: org.id, orgSlug: org.slug };
+          await recordLoginEvent({ userId: user.id, device, success: true, method: "password+mfa" });
+          return {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            organizationId: org.id,
+            orgSlug: org.slug,
+            deviceType: device.deviceType,
+          };
         }
 
         const email = credentials?.email as string | undefined;
@@ -84,8 +118,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // MFA-enabled users must complete the challenge step above — password
         // alone is never enough for them.
         if (user.mfaEnabled) return null;
+        if (await refuseIfMobileBlocked(user, device, "password")) throw new MobileLoginBlockedError();
 
         clearLoginFailures(org.id, email);
+        await recordLoginEvent({ userId: user.id, device, success: true, method: "password" });
         return {
           id: user.id,
           name: user.name,
@@ -93,6 +129,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           role: user.role,
           organizationId: org.id,
           orgSlug: org.slug,
+          deviceType: device.deviceType,
         };
       },
     }),
@@ -116,6 +153,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.organizationId = user.organizationId;
         token.orgSlug = user.orgSlug;
         token.isSupport = user.isSupport ?? false;
+        token.mobile = isMobileDevice(user.deviceType);
+        token.mobileCheckedAt = Date.now();
+        return token;
+      }
+      if (token.mobile && Date.now() - ((token.mobileCheckedAt as number | undefined) ?? 0) > MOBILE_RECHECK_MS) {
+        const row = await tenantDb(token.organizationId as string).user.findUnique({
+          where: { id: token.id as string },
+          select: { mobileLoginBlocked: true, active: true },
+        });
+        // Returning null ends the session — the next page load lands on /login.
+        if (!row || !row.active || row.mobileLoginBlocked) return null;
+        token.mobileCheckedAt = Date.now();
       }
       return token;
     },

@@ -29,7 +29,9 @@ export function LeadAssigneePicker({
   // — if this lead's assignee was deactivated (or otherwise dropped out of
   // that pool) after being assigned, they'd have no matching SelectItem, and
   // base-ui's Select falls back to rendering the raw value — the user's id
-  // — since it has no label to resolve it to. Folding the current assignee
+  // — since it has no label to resolve it to. (`items` on <Select> below
+  // covers the closed-trigger case: without it the label is unknown until
+  // the popup has mounted once.) Folding the current assignee
   // in here (using the name Leads' own query already returned, not a
   // lookup against `users`) keeps that case showing a real name.
   const options = assignedTo && !users.some((u) => u.id === assignedTo.id) ? [...users, assignedTo] : users;
@@ -50,7 +52,12 @@ export function LeadAssigneePicker({
   }
 
   return (
-    <Select value={assignedToId ?? NONE} onValueChange={handleChange} disabled={isPending}>
+    <Select
+      items={{ [NONE]: "Unassigned", ...Object.fromEntries(options.map((u) => [u.id, u.name])) }}
+      value={assignedToId ?? NONE}
+      onValueChange={handleChange}
+      disabled={isPending}
+    >
       <SelectTrigger size="sm" className="w-[11rem]">
         <SelectValue />
       </SelectTrigger>

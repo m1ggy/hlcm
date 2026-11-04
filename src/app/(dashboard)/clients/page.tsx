@@ -4,6 +4,7 @@ import { canAccessInvoices, isManagement } from "@/lib/rbac";
 import { listClients, listCaregiverClients, archiveClient, restoreClient } from "@/lib/actions/clients";
 import { listProjects } from "@/lib/actions/projects";
 import { listMoneyByClient } from "@/lib/actions/invoices";
+import { listInvoiceProfiles } from "@/lib/invoice-profiles";
 import { PageInfoButton } from "@/components/shared/page-info-button";
 import { ClientsTable } from "@/components/clients/clients-table";
 import { CaregiverClientsTable } from "@/components/clients/caregiver-clients-table";
@@ -38,16 +39,18 @@ export default async function ClientsPage({
   }
 
   // Gated on the fetch itself, not just the columns — listMoneyByClient is
-  // invoice-role only.
-  const [clients, projects, moneyByClient] = await Promise.all([
+  // invoice-role only, and the profile filter is built from it.
+  const showMoney = canAccessInvoices(session?.user?.role);
+  const [clients, projects, moneyByClient, invoiceProfiles] = await Promise.all([
     listClients({ filter: showArchived ? "archived" : "active" }),
     listProjects(),
-    canAccessInvoices(session?.user?.role) ? listMoneyByClient() : Promise.resolve(null),
+    showMoney ? listMoneyByClient() : Promise.resolve(null),
+    showMoney ? listInvoiceProfiles() : Promise.resolve([]),
   ]);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+    <ClientsTable
+      header={
         <div>
           <div className="flex items-center gap-1.5">
             <h1 className="text-2xl font-semibold">{showArchived ? "Archived Clients" : "Clients"}</h1>
@@ -70,16 +73,15 @@ export default async function ClientsPage({
             {showArchived ? "← Back to active clients" : "View archived clients"}
           </Link>
         </div>
-        {!showArchived && <NewClientDialog projects={projects.map((p) => ({ id: p.id, name: p.name }))} />}
-      </div>
-      <ClientsTable
-        clients={clients}
-        canArchive={canArchive}
-        showArchived={showArchived}
-        archiveAction={archiveClient}
-        restoreAction={restoreClient}
-        moneyByClient={moneyByClient}
-      />
-    </div>
+      }
+      actions={!showArchived && <NewClientDialog projects={projects.map((p) => ({ id: p.id, name: p.name }))} />}
+      clients={clients}
+      canArchive={canArchive}
+      showArchived={showArchived}
+      archiveAction={archiveClient}
+      restoreAction={restoreClient}
+      moneyByClient={moneyByClient}
+      invoiceProfiles={invoiceProfiles.map((p) => ({ id: p.id, name: p.name }))}
+    />
   );
 }

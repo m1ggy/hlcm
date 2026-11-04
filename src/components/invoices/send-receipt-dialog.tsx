@@ -41,7 +41,11 @@ export function SendReceiptDialog({
   function handleSend() {
     startTransition(async () => {
       try {
-        await sendReceiptEmail(receiptId, recipientEmail);
+        const result = await sendReceiptEmail(receiptId, recipientEmail);
+        if (!result.ok) {
+          toast.error(result.error);
+          return;
+        }
         toast.success("Receipt sent");
         setOpen(false);
         router.refresh();

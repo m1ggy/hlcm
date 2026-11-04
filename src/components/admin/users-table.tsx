@@ -4,6 +4,8 @@ import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { EditUserDialog } from "@/components/admin/edit-user-dialog";
 import { RateCell } from "@/components/admin/rate-cell";
+import { LoginActivityCell } from "@/components/admin/login-activity-cell";
+import type { LoginSummary } from "@/lib/actions/login-activity";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
@@ -30,11 +32,17 @@ export function UsersTable({
   users,
   currentUserId,
   canManageAdmins,
+  loginSummaries,
+  viewerTimezone = null,
 }: {
   users: ListedUser[];
   currentUserId: string | undefined;
   canManageAdmins: boolean;
+  /** Only passed for a DEVELOPER viewer — adds the "Last sign-in" column. */
+  loginSummaries?: Record<string, LoginSummary>;
+  viewerTimezone?: string | null;
 }) {
+  const showLogins = !!loginSummaries;
   const [query, setQuery] = useState("");
 
   const filtered = useMemo(() => {
@@ -67,6 +75,7 @@ export function UsersTable({
             <TableHead>Role</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Rate</TableHead>
+            {showLogins && <TableHead>Last sign-in</TableHead>}
             <TableHead />
           </TableRow>
         </TableHeader>
@@ -84,6 +93,16 @@ export function UsersTable({
               <TableCell>
                 <RateCell userId={user.id} initialRate={user.hourlyRate} />
               </TableCell>
+              {showLogins && (
+                <TableCell>
+                  <LoginActivityCell
+                    userId={user.id}
+                    userName={user.name}
+                    summary={loginSummaries[user.id]}
+                    viewerTimezone={viewerTimezone}
+                  />
+                </TableCell>
+              )}
               <TableCell>
                 <EditUserDialog
                   user={user}
@@ -95,7 +114,7 @@ export function UsersTable({
           ))}
           {filtered.length === 0 && (
             <TableRow>
-              <TableCell colSpan={6} className="text-center text-sm text-muted-foreground">
+              <TableCell colSpan={showLogins ? 7 : 6} className="text-center text-sm text-muted-foreground">
                 No users match &quot;{query}&quot;.
               </TableCell>
             </TableRow>

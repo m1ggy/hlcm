@@ -6,7 +6,7 @@ import { CLIENT_STATUS_LABELS, type ClientStatus } from "@/lib/client-status";
 import { TASK_STATUS_LABELS, TASK_PRIORITY_LABELS, type TaskStatusValue, type TaskPriorityValue } from "@/lib/task-status";
 import { displayInvoiceNumber } from "@/lib/invoice-format";
 import { formatMoney } from "@/lib/time-entries";
-import type { getClientStatement, getServiceStatement, runServiceReport } from "@/lib/actions/reports";
+import type { getClientStatement, getClientsInvoiceSummary, getServiceStatement, runServiceReport } from "@/lib/actions/reports";
 
 // Turns report data (src/lib/actions/reports.ts) into the ExportDoc every
 // export format renders from. Money columns are left out entirely when the
@@ -64,6 +64,119 @@ function taskSection(
       TASK_STATUS_LABELS[t.status as TaskStatusValue] ?? t.status,
       t.priority ? TASK_PRIORITY_LABELS[t.priority as TaskPriorityValue] : "",
     ]),
+  };
+}
+
+const INVOICE_STATUS_LABELS: Record<string, string> = {
+  SENT: "Sent",
+  PARTIALLY_PAID: "Partially paid",
+  PAID: "Paid",
+  OVERDUE: "Overdue",
+};
+
+type InvoiceForListing = {
+  seq: number;
+  stripeInvoiceNumber: string | null;
+  invoiceNumber: string | null;
+  status: string;
+  total: number | null;
+  amountPaid: number | null;
+  issueDate: Date | null;
+  dueDate: Date | null;
+  clientService: { name: string } | null;
+  invoiceProfile: { name: string } | null;
+  payments: { paidAt: Date; paymentMethod: string; amount: number }[];
+  client?: { name: string };
+};
+
+// Every billed invoice, then every recorded payment against them — the
+// client export (one client) and the Clients list export (many; adds a
+// Client column). Stripe-paid invoices have no Payment rows, so they show
+// as paid in the invoice list but don't appear under Payments.
+function invoiceAndPaymentSections(invoices: InvoiceForListing[], withClient: boolean): ExportSection[] {
+  const clientCol: ExportColumn[] = withClient ? [{ label: "Client", width: 2 }] : [];
+  const clientCell = (i: InvoiceForListing) => (withClient ? [i.client?.name ?? ""] : []);
+  const invoiceTotals = sumMoney(invoices.map((i) => invoiceMoney(i)));
+  const payments = invoices.flatMap((i) => i.payments.map((p) => ({ invoice: i, payment: p })));
+  const paymentTotal = Math.round(payments.reduce((sum, { payment }) => sum + payment.amount, 0) * 100) / 100;
+  const blanks = (n: number) => Array<null>(n).fill(null);
+  return [
+    {
+      title: "Invoices",
+      columns: [
+        ...clientCol,
+        { label: "Invoice #" },
+        { label: "Profile" },
+        { label: "Service", width: 2 },
+        { label: "Issued", kind: "date" },
+        { label: "Due", kind: "date" },
+        { label: "Status" },
+        { label: "Amount", kind: "money" },
+        { label: "Received", kind: "money" },
+        { label: "Outstanding", kind: "money" },
+      ],
+      rows: invoices.map((i) => {
+        const m = invoiceMoney(i);
+        return [
+          ...clientCell(i),
+          displayInvoiceNumber(i),
+          i.invoiceProfile?.name ?? "",
+          i.clientService?.name ?? "General",
+          i.issueDate,
+          i.dueDate,
+          INVOICE_STATUS_LABELS[i.status] ?? i.status,
+          m.invoiced,
+          m.received,
+          m.outstanding,
+        ];
+      }),
+      footer: ["Total", ...blanks(clientCol.length + 5), invoiceTotals.invoiced, invoiceTotals.received, invoiceTotals.outstanding],
+    },
+    {
+      title: "Payments",
+      columns: [...clientCol, { label: "Invoice #" }, { label: "Date", kind: "date" }, { label: "Method" }, { label: "Amount", kind: "money" }],
+      rows: payments.map(({ invoice, payment }) => [
+        ...clientCell(invoice),
+        displayInvoiceNumber(invoice),
+        payment.paidAt,
+        payment.paymentMethod,
+        payment.amount,
+      ]),
+      footer: ["Total", ...blanks(clientCol.length + 2), paymentTotal],
+    },
+  ];
+}
+
+export function buildClientsInvoiceSummaryDoc(
+  data: Awaited<ReturnType<typeof getClientsInvoiceSummary>>,
+  subtitle: string
+): ExportDoc {
+  const { clientRows, invoices } = data;
+  return {
+    title: "Clients — invoices & payments",
+    subtitle,
+    sections: [
+      {
+        title: "Summary",
+        columns: [
+          { label: "Client", width: 3 },
+          { label: "Status" },
+          { label: "Invoices", kind: "number" },
+          ...MONEY_COLUMNS,
+        ],
+        rows: clientRows.map(({ client, money }) => [
+          client.name,
+          CLIENT_STATUS_LABELS[client.status as ClientStatus] ?? client.status,
+          money.invoiceCount,
+          ...moneyCells(money),
+        ]),
+        footer: (() => {
+          const t = sumMoney(clientRows.map((r) => r.money));
+          return ["Total", "", t.invoiceCount, ...moneyCells(t)];
+        })(),
+      },
+      ...invoiceAndPaymentSections(invoices, true),
+    ],
   };
 }
 
@@ -133,7 +246,7 @@ export function buildReportDoc(
 }
 
 export function buildClientStatementDoc(data: Awaited<ReturnType<typeof getClientStatement>>): ExportDoc {
-  const { client, showMoney, summary, outstandingInvoices, tasks } = data;
+  const { client, showMoney, summary, outstandingInvoices, billedInvoices, tasks } = data;
   const sections: ExportSection[] = [
     {
       title: "Client information",
@@ -194,6 +307,7 @@ export function buildClientStatementDoc(data: Awaited<ReturnType<typeof getClien
         invoiceMoney(i).outstanding,
       ]),
     });
+    sections.push(...invoiceAndPaymentSections(billedInvoices, false));
   }
   sections.push(taskSection(tasks, true));
   return { title: `${client.name} — client report`, sections };

@@ -3,16 +3,18 @@ import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import { auth } from "@/auth";
 import { listUsers } from "@/lib/actions/users";
+import { listLoginSummaries } from "@/lib/actions/login-activity";
+import { db } from "@/lib/db";
 import { NewUserDialog } from "@/components/admin/new-user-dialog";
 import { UsersTable } from "@/components/admin/users-table";
 import { PageInfoButton } from "@/components/shared/page-info-button";
-import { ForbiddenError, blockCaregiverRoute, isSuperuser } from "@/lib/rbac";
+import { ForbiddenError, blockCaregiverRoute, isDeveloper, isSuperuser } from "@/lib/rbac";
 
 export default async function UsersPage() {
   await blockCaregiverRoute();
   const session = await auth();
-  // OWNER manages admin-tier accounts and can assign OWNER — see
-  // isSuperuser() in rbac.ts and the
+  // OWNER and DEVELOPER (superadmin) manage admin-tier accounts and can
+  // assign OWNER — see isSuperuser() in rbac.ts and the
   // matching server-side gate in src/lib/actions/users.ts.
   const canManageAdmins = isSuperuser(session?.user?.role);
   let users;
@@ -22,6 +24,15 @@ export default async function UsersPage() {
     if (error instanceof ForbiddenError) notFound();
     throw error;
   }
+
+  // Sign-in history + the mobile-login switch are DEVELOPER-only (not OWNER).
+  const showLogins = isDeveloper(session?.user?.role);
+  const [loginSummaries, viewer] = showLogins
+    ? await Promise.all([
+        listLoginSummaries(),
+        db.user.findUnique({ where: { id: session!.user.id }, select: { timezone: true } }),
+      ])
+    : [undefined, null];
 
   return (
     <div className="space-y-6">
@@ -42,7 +53,13 @@ export default async function UsersPage() {
         </div>
         <NewUserDialog canAssignAdmin={canManageAdmins} />
       </div>
-      <UsersTable users={users} currentUserId={session?.user?.id} canManageAdmins={canManageAdmins} />
+      <UsersTable
+        users={users}
+        currentUserId={session?.user?.id}
+        canManageAdmins={canManageAdmins}
+        loginSummaries={loginSummaries}
+        viewerTimezone={viewer?.timezone ?? null}
+      />
     </div>
   );
 }

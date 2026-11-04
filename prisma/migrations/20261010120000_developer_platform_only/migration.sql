@@ -1,11 +1,13 @@
--- DEVELOPER becomes the platform superadmin role and exists only in the
--- platform organization (org_platform). Inside a workspace it no longer
--- means anything, so a workspace's DEVELOPER (the old break-glass account)
--- becomes an OWNER of that workspace; the platform org's admins, created
--- as OWNERs until now, become DEVELOPERs.
-UPDATE "users" SET "role" = 'OWNER' WHERE "role" = 'DEVELOPER' AND "organizationId" <> 'org_platform';
+-- DEVELOPER is the top role: the superadmin. Inside a workspace it keeps
+-- full power (at least OWNER's — see isSuperuser() in src/lib/rbac.ts), so a
+-- workspace's existing DEVELOPER accounts stay DEVELOPER. The platform
+-- organization's admins, created as OWNERs until now, become DEVELOPERs:
+-- that's who runs the console and can enter any workspace (as a hidden
+-- DEVELOPER account there, src/lib/support-access.ts).
+-- (Edited 2026-11-04 before reaching production: it used to turn workspace
+-- DEVELOPERs into OWNERs and tie DEVELOPER to org_platform only.)
 UPDATE "users" SET "role" = 'DEVELOPER' WHERE "organizationId" = 'org_platform' AND "role" <> 'DEVELOPER';
 
--- From now on: DEVELOPER if and only if the user belongs to the platform org.
+-- Every platform-org account is a DEVELOPER (DEVELOPERs can also exist in workspaces).
 ALTER TABLE "users" ADD CONSTRAINT "users_developer_platform_only"
-  CHECK (("role" = 'DEVELOPER') = ("organizationId" = 'org_platform'));
+  CHECK ("organizationId" <> 'org_platform' OR "role" = 'DEVELOPER');

@@ -15,9 +15,12 @@ import {
   segmentsByDay,
   fillSegmentsRange,
   breakComplianceByDay,
+  hoursByDay,
   type DaySegments,
 } from "@/lib/time-entries";
+import { formatDay, splitInstant } from "@/components/time-clock/time-fields";
 import { DailyTimelineChart } from "@/components/time-clock/daily-timeline-chart";
+import { WeekDayTotals, type DayTotal } from "@/components/time-clock/daily-totals";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -72,6 +75,11 @@ function ShiftsTable({ rows, timeZone }: { rows: ShiftRow[]; timeZone: string })
               {entry.clockOut
                 ? entry.clockOut.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZone })
                 : "In progress"}
+              {entry.clockOut && splitInstant(entry.clockOut, timeZone).date !== splitInstant(entry.clockIn, timeZone).date && (
+                <span className="ml-1 text-xs font-medium text-amber-700 dark:text-amber-400" title={`Ends ${formatDay(entry.clockOut, timeZone)}`}>
+                  +1 day
+                </span>
+              )}
             </TableCell>
             <TableCell>{entry.clockOut ? formatDuration(hoursBetween(entry.clockIn, entry.clockOut)) : "—"}</TableCell>
           </TableRow>
@@ -95,6 +103,7 @@ export function MyTimeLog({ accountTimezone }: { accountTimezone: string | null 
   const [from, setFrom] = useState(defaultRange.from);
   const [to, setTo] = useState(defaultRange.to);
   const [entries, setEntries] = useState<ShiftRow[]>([]);
+  const [breakRows, setBreakRows] = useState<{ breakStart: Date; breakEnd: Date | null }[]>([]);
   const [isPending, startTransition] = useTransition();
   const [hasLoaded, setHasLoaded] = useState(false);
 
@@ -105,8 +114,9 @@ export function MyTimeLog({ accountTimezone }: { accountTimezone: string | null 
     startTransition(async () => {
       try {
         const instants = dayRangeToInstants(range.from, range.to, timeZone);
-        const rows = await getMyEntriesInRange(instants);
+        const [rows, breaks] = await Promise.all([getMyEntriesInRange(instants), getMyBreaksInRange(instants)]);
         setEntries(rows);
+        setBreakRows(breaks);
       } finally {
         setHasLoaded(true);
       }
@@ -170,6 +180,21 @@ export function MyTimeLog({ accountTimezone }: { accountTimezone: string | null 
   const currentWeekGroup = weeks.find((w) => w.weekStart === thisWeek.from);
   const otherWeeks = weeks.filter((w) => w.weekStart !== thisWeek.from);
 
+  // Per-day totals for the week tiles — split at midnight by hoursByDay, so
+  // an overnight shift counts toward both days it touches.
+  const dayHours = useMemo(() => hoursByDay(entries, timeZone), [entries, timeZone]);
+  const dayBreakHours = useMemo(
+    () => hoursByDay(breakRows.map((b) => ({ clockIn: b.breakStart, clockOut: b.breakEnd })), timeZone),
+    [breakRows, timeZone]
+  );
+  const today = toDateInputValue(new Date(), timeZone);
+  const weekDays = (weekStart: string, weekEnd: string): DayTotal[] =>
+    fillSegmentsRange([], weekStart, weekEnd).map(({ day }) => ({
+      day,
+      hours: dayHours.get(day) ?? 0,
+      breakHours: dayBreakHours.get(day) ?? 0,
+    }));
+
   return (
     <div className="space-y-4">
       <div>
@@ -225,7 +250,10 @@ export function MyTimeLog({ accountTimezone }: { accountTimezone: string | null 
             <p className="mb-1.5 text-sm font-medium">
               This week <span className="font-normal text-muted-foreground">({formatCalendarDay(thisWeek.from)} – {formatCalendarDay(thisWeek.to)})</span>
             </p>
-            <ShiftsTable rows={currentWeekGroup?.rows ?? []} timeZone={timeZone} />
+            <div className="space-y-2">
+              <WeekDayTotals days={weekDays(thisWeek.from, thisWeek.to)} today={today} />
+              <ShiftsTable rows={currentWeekGroup?.rows ?? []} timeZone={timeZone} />
+            </div>
           </div>
 
           {otherWeeks.length > 0 && (
@@ -242,7 +270,8 @@ export function MyTimeLog({ accountTimezone }: { accountTimezone: string | null 
                       </span>
                     </span>
                   </AccordionTrigger>
-                  <AccordionContent>
+                  <AccordionContent className="space-y-2">
+                    <WeekDayTotals days={weekDays(week.weekStart, week.weekEnd)} today={today} />
                     <ShiftsTable rows={week.rows} timeZone={timeZone} />
                   </AccordionContent>
                 </AccordionItem>

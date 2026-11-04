@@ -176,11 +176,13 @@ export async function updateUser(input: z.infer<typeof updateSchema>) {
     select: { name: true, email: true, role: true, active: true, phone: true, smsRemindersEnabled: true },
   });
 
-  // DEVELOPER is the platform superadmin role and only exists in the
-  // platform org (DB check), which has no Users screen — ROLE_VALUES keeps
-  // it unassignable, and this keeps such a row untouchable from here anyway.
+  // DEVELOPER (superadmin) is never assignable here — ROLE_VALUES above
+  // keeps parsed.role from ever being DEVELOPER — and an existing DEVELOPER
+  // row is protected from every other field too (name/active/password),
+  // for every actor including an OWNER. Platform admins are managed from
+  // the console; a workspace's own DEVELOPER accounts directly in the database.
   if (before.role === "DEVELOPER") {
-    throw new ForbiddenError("Platform admin accounts are managed from the platform console");
+    throw new ForbiddenError("Developer accounts can only be changed directly in the database");
   }
 
   const isSelfEdit = parsed.userId === session.user.id;

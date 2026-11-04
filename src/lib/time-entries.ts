@@ -1,12 +1,16 @@
 // Pure helpers shared by the clock widget, the admin report, and the PDF
 // export route — kept dependency-free (no prisma/server imports) so they're
 // safe to use from client components too.
+import { UserFacingError } from "@/lib/user-facing-error";
 
 // Lives here rather than in the "use server" actions module — a server
 // action file may only export async functions, and a stray class export
 // there silently drops every export from the module (Turbopack then reports
 // "module has no exports at all" for every named import from it).
-export class TimeClockError extends Error {}
+//
+// Extends UserFacingError so actions wrapped in toActionResult return its
+// message instead of having it redacted in production.
+export class TimeClockError extends UserFacingError {}
 
 export function hoursBetween(clockIn: Date, clockOut: Date) {
   return Math.max(0, clockOut.getTime() - clockIn.getTime()) / 3_600_000;
@@ -321,6 +325,18 @@ export const REQUIRED_BREAK_MINUTES = 30;
  * bars) and the break-policy check (to total up break/worked time). */
 export function sumSegmentHours(segments: DaySegment[]): number {
   return segments.reduce((sum, s) => sum + (s.endHour - s.startHour), 0);
+}
+
+/** Clocked hours per "yyyy-mm-dd" day in `timeZone` — a shift that runs
+ * past midnight counts toward each day it touches (same split as the
+ * chart), and a still-open one counts up to `now`. Days with no time are
+ * simply absent. */
+export function hoursByDay(
+  entries: EntryForSegments[],
+  timeZone: string = DEFAULT_TIMEZONE,
+  now: Date = new Date()
+): Map<string, number> {
+  return new Map(segmentsByDay(entries, timeZone, now).map((d) => [d.day, sumSegmentHours(d.segments)]));
 }
 
 export type DayBreakStatus = { day: string; workedHours: number; breakMinutes: number; meetsBreakPolicy: boolean };

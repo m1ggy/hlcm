@@ -1,22 +1,29 @@
 import { auth } from "@/auth";
 import { blockCaregiverRoute, isAdmin, isManagement } from "@/lib/rbac";
-import { listAssignableUsers } from "@/lib/actions/applications";
+import { listTaskAssignableUsers } from "@/lib/actions/applications";
 import { getAccount } from "@/lib/actions/account";
+import { listCareRecipients } from "@/lib/actions/care-recipients";
 import { MyTimeLog } from "@/components/time-clock/my-time-log";
 import { TimesheetReport } from "@/components/time-clock/timesheet-report";
+import { MyPayCard } from "@/components/payroll/my-pay-card";
 import { PageInfoButton } from "@/components/shared/page-info-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default async function TimePage() {
-  await blockCaregiverRoute();
+  // Caregivers have their own hours page without the team timesheet.
+  await blockCaregiverRoute("/hours");
   const session = await auth();
   const role = session?.user?.role;
   const canSeeAllUsers = isManagement(role);
   const canPay = isAdmin(role);
 
-  const [users, account] = await Promise.all([
-    canSeeAllUsers ? listAssignableUsers() : Promise.resolve([]),
+  const [users, account, recipients] = await Promise.all([
+    // Includes caregivers: they clock visits, so admins need to filter to
+    // them and fix or add their time (the staff-only list left them out).
+    canSeeAllUsers ? listTaskAssignableUsers() : Promise.resolve([]),
     getAccount(),
+    // For the visit picker when an admin adds or edits time.
+    canPay ? listCareRecipients() : Promise.resolve([]),
   ]);
 
   return (
@@ -32,7 +39,11 @@ export default async function TimePage() {
             <p>As an admin or manager, you can also review everyone&apos;s hours from here.</p>
           )}
           {canPay && (
-            <p>As an admin, hit Preview to see individual sessions below the totals — add a missed punch or delete a mistaken one from there.</p>
+            <p>
+              As an admin, use Add time for a missed punch, and the buttons on each row under &quot;Time by day&quot; to edit
+              time, add an unpaid break inside a session, or delete. Deleting a break joins the time around it back into
+              one paid session.
+            </p>
           )}
         </PageInfoButton>
       </div>
@@ -46,6 +57,8 @@ export default async function TimePage() {
         </CardContent>
       </Card>
 
+      <MyPayCard />
+
       {canSeeAllUsers && (
         <Card data-tour="all-users-time">
           <CardHeader>
@@ -54,6 +67,7 @@ export default async function TimePage() {
           <CardContent>
             <TimesheetReport
               users={users.map((u) => ({ id: u.id, name: u.name }))}
+              recipients={recipients.map((r) => ({ id: r.id, name: r.name }))}
               accountTimezone={account.workingTimezone}
               isAdmin={canPay}
             />

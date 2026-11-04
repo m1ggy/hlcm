@@ -3,7 +3,7 @@ import { systemPrisma as prisma } from "@/lib/prisma";
 import { tenantDb } from "@/lib/db";
 import { isPlatformAdmin } from "@/lib/tenant-host";
 
-// DEVELOPER = platform superadmin, and only ever in the platform org.
+// DEVELOPER = superadmin. Every platform-org account is one; workspaces can have their own too.
 
 const EMAILS = ["dev@ctk.role.test", "owner@platform.role.test", "dev@platform.role.test"];
 
@@ -19,10 +19,10 @@ describe("superadmin role", () => {
     expect(isPlatformAdmin(null)).toBe(false);
   });
 
-  it("the database refuses a DEVELOPER in a workspace", async () => {
-    await expect(
-      tenantDb("org_ctk").user.create({ data: { name: "D", email: EMAILS[0], passwordHash: "x", role: "DEVELOPER" } })
-    ).rejects.toThrow(/users_developer_platform_only/);
+  it("a workspace can have its own DEVELOPER (not a platform admin)", async () => {
+    const dev = await tenantDb("org_ctk").user.create({ data: { name: "D", email: EMAILS[0], passwordHash: "x", role: "DEVELOPER" } });
+    expect(dev.role).toBe("DEVELOPER");
+    expect(isPlatformAdmin({ orgSlug: "ctk", role: "DEVELOPER" })).toBe(false);
   });
 
   it("the database refuses any other role in the platform org", async () => {

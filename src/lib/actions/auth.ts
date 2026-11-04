@@ -1,9 +1,9 @@
 "use server";
 
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import bcrypt from "bcryptjs";
-import { AuthError } from "next-auth";
+import { AuthError, CredentialsSignin } from "next-auth";
 import { signIn } from "@/auth";
 import { db } from "@/lib/db";
 import { getHostOrg } from "@/lib/tenant";
@@ -11,8 +11,13 @@ import { PLATFORM_SLUG } from "@/lib/tenant-host";
 import { createMfaChallenge } from "@/lib/mfa-challenge";
 import { getClientIp } from "@/lib/rate-limit";
 import { isLoginThrottled, recordLoginFailure, THROTTLED_MESSAGE } from "@/lib/login-throttle";
+import { MOBILE_BLOCKED_MESSAGE, parseLoginDevice, refuseIfMobileBlocked } from "@/lib/login-device";
 
 const CHALLENGE_COOKIE = "mfa_challenge";
+
+function isMobileBlocked(error: unknown) {
+  return error instanceof CredentialsSignin && error.code === "mobile_blocked";
+}
 
 export async function loginAction(
   _prevState: { error?: string } | undefined,
@@ -39,6 +44,13 @@ export async function loginAction(
     return { error: "Invalid email or password." };
   }
 
+  // Checked here too (not only in authorize) so a blocked MFA user is told
+  // before being sent to the code step. Only after the password is proven,
+  // so this can't be used to learn anything about an account.
+  if (await refuseIfMobileBlocked(user, parseLoginDevice(await headers()), user.mfaEnabled ? "password+mfa" : "password")) {
+    return { error: MOBILE_BLOCKED_MESSAGE };
+  }
+
   if (user.mfaEnabled) {
     const token = await createMfaChallenge(user.id);
     const cookieStore = await cookies();
@@ -55,6 +67,7 @@ export async function loginAction(
   try {
     await signIn("credentials", { email, password, redirectTo: org.slug === PLATFORM_SLUG ? "/platform" : "/" });
   } catch (error) {
+    if (isMobileBlocked(error)) return { error: MOBILE_BLOCKED_MESSAGE };
     if (error instanceof AuthError) return { error: "Invalid email or password." };
     throw error;
   }
@@ -75,6 +88,7 @@ export async function verifyMfaAction(
     const org = await getHostOrg();
     await signIn("credentials", { challenge, otp, redirectTo: org?.slug === PLATFORM_SLUG ? "/platform" : "/" });
   } catch (error) {
+    if (isMobileBlocked(error)) return { error: MOBILE_BLOCKED_MESSAGE };
     if (error instanceof AuthError) return { error: "Invalid MFA code." };
     throw error;
   }
