@@ -7,6 +7,17 @@ Status (2026-09-28): **all phases through 6 implemented** (billing deferred); se
 2. **Decisions pending:** tenant billing — tax registrations + product tax code, an owner/accountant task (pricing, trial, add-on and "collect tax now" decided 2026-10-28, see "Next: tenant billing"); product name + domain; legal (BAA/ToS).
 3. **Onboarding audit (2026-09-28), all fixed on `multitenancy/phase-6`, not pushed (user: don't push yet):** suspended-workspace sessions get the suspended notice instead of crashing; platform admins have an Account page and need MFA for the console; tenant email is sent as the org's name with the org's reply-to (Admin > Organization); Admin > Integrations explains each provider and registers the Calendly/DocuSign webhooks itself (old scripts removed); platform console "Invite owner" (typo'd or locked-out owner); failed sign-ins throttled per IP (30) and per account (8) per 15 min; dashboard "Set up your workspace" checklist for new owners (existing orgs pre-dismissed by migration); time clock default = `Organization.timezone`, fallback America/Chicago; handbook served with `PRODUCT_NAME`, Illinois mention removed. Suite: 112 tests pass normal and `TEST_RLS=1` (sim Postgres at localhost:55432 — the local dev Postgres user can't create roles).
 
+## Merge + rehearsal 2026-11-04 (branch `merge/main-into-phase6`)
+
+User wants phase-6 live on the current domain, CTK moved to its own subdomain. Step 1 done: `origin/main` up to `d9ead91` (caregiver visits, Time page rework, login activity, payroll) merged into phase-6 as `681c1e8`.
+- Main's 7 new tables tenantized (`20261104120000_main_tables_tenant`: organizationId backfilled from the parent, RLS, same-org triggers; pay periods unique per org). `tests/main-tables-tenancy.test.ts`.
+- **DEVELOPER decision changed (user, 2026-11-04): DEVELOPER is NOT turned into OWNER.** It keeps full power inside a workspace (`isSuperuser` = OWNER or DEVELOPER) and existing workspace DEVELOPERs stay DEVELOPER. `20261010120000_developer_platform_only` was edited (never ran on prod) to only make platform-org accounts DEVELOPER; the CHECK now only says platform-org accounts must be DEVELOPER. Platform admins enter a workspace as a hidden **DEVELOPER** account (was OWNER), so DEVELOPER-only tools from main (sign-in history, mobile block) work for them. Supersedes §1 below where it says otherwise.
+- Suite: 138 tests pass with `TEST_RLS=1`.
+- Local rehearsal: scratch DB at main's schema + all seeds + extra DEVELOPER/login/payroll/incident rows → `migrate deploy` from the merge: 23 migrations applied, no row counts changed, every organizationId = `org_ctk`, DEVELOPER kept, `migrate diff` empty.
+- Local dev DB (`hclm`) ran the old version of `20261010120000`: its checksum no longer matches and its CHECK is the strict one — fix by hand before using it with this branch.
+- Next: dry run on the prod server (`rehearse-migration.sh`), then push off-hours with `ROOT_DOMAIN` unset; then the subdomain switch (README, "Same domain as before" needs `DEFAULT_ORG_SLUG=ctk`).
+- Follow-up, not blocking CTK: payroll uses a fixed `PAYROLL_TIMEZONE` (America/Chicago), not the workspace's timezone.
+
 ## Rehearsal 2026-10-12 (local, seeded data)
 
 Scratch Postgres 16 brought to `origin/main`'s schema (`ea3d0a1`, i.e. what prod runs) and filled with the repo seeds plus extra rows for what Phases 2–3 rewrite: 36 invoices in every status, payments with 12 receipts, client services + adjustments, leads, agency / ball-with values on cases and MCO credentials. Then `prisma migrate deploy` from:
