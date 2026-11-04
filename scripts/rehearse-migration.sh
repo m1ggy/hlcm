@@ -30,7 +30,8 @@ pg() { compose exec -T postgres "$@"; }
 PGUSER_="$(pg printenv POSTGRES_USER | tr -d '\r')"
 PGDB_="$(pg printenv POSTGRES_DB | tr -d '\r')"
 
-env_value() { grep "^$1=" .env.production | head -n1 | cut -d= -f2- | tr -d '"'"'"'\r'; }
+# `|| true`: a key that isn't there is an empty value, not a failure (pipefail).
+env_value() { { grep "^$1=" .env.production || true; } | head -n1 | cut -d= -f2- | tr -d '"'"'"'\r'; }
 # Migrations run as the table owner: SYSTEM_DATABASE_URL once the app has its
 # own restricted role (scripts/setup-app-db-role.sh), else DATABASE_URL.
 DATABASE_URL_LIVE="$(env_value SYSTEM_DATABASE_URL)"
