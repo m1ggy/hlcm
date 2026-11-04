@@ -15,7 +15,9 @@ User wants phase-6 live on the current domain, CTK moved to its own subdomain. S
 - Suite: 138 tests pass with `TEST_RLS=1`.
 - Local rehearsal: scratch DB at main's schema + all seeds + extra DEVELOPER/login/payroll/incident rows → `migrate deploy` from the merge: 23 migrations applied, no row counts changed, every organizationId = `org_ctk`, DEVELOPER kept, `migrate diff` empty.
 - Local dev DB (`hclm`) ran the old version of `20261010120000`: its checksum no longer matches and its CHECK is the strict one — fix by hand before using it with this branch.
-- Next: dry run on the prod server (`rehearse-migration.sh`), then push off-hours with `ROOT_DOMAIN` unset; then the subdomain switch (README, "Same domain as before" needs `DEFAULT_ORG_SLUG=ctk`).
+- **Prod-server dry run passed 2026-11-04** (`rehearse-migration.sh` on 64.227.20.129 with a locally built migrator image of `9c2f39f`, loaded via `docker save | ssh docker load`, `SKIP_PULL=1`): 23 migrations applied to a copy of the live DB (15 MB, 75 applied), no rows lost; every row `org_ctk`; users unchanged (1 DEVELOPER, no OWNER — CTK's top account is the DEVELOPER); counters continue at invoice 268 / receipt 113 (= old sequences + 1); every organizationId table has RLS; `migrate diff` empty. Copy dropped. Found + fixed: the script exited when `.env.production` has no `SYSTEM_DATABASE_URL` (`29c6268`); the built image failed on a non-UTF-8 byte in `pipeline-stage-catalog.ts` (`9c2f39f`).
+- Current domain is `tracker.m1ggy.dev` (subdomain of the user's own domain): same-domain switch means `ROOT_DOMAIN=tracker.m1ggy.dev`, CTK at `ctk.tracker.m1ggy.dev`, wildcard DNS `*.tracker.m1ggy.dev`, `DEFAULT_ORG_SLUG=ctk`.
+- Next: push off-hours with `ROOT_DOMAIN` unset; then the subdomain switch (README, "Same domain as before" needs `DEFAULT_ORG_SLUG=ctk`).
 - Follow-up, not blocking CTK: payroll uses a fixed `PAYROLL_TIMEZONE` (America/Chicago), not the workspace's timezone.
 
 ## Rehearsal 2026-10-12 (local, seeded data)
