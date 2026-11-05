@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Bricolage_Grotesque, IBM_Plex_Mono, Public_Sans } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -8,14 +8,22 @@ import { getHostOrg } from "@/lib/tenant";
 import { PRODUCT_NAME } from "@/lib/branding";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Carenela type: Public Sans for the interface, Bricolage Grotesque for
+// headings (font-heading), IBM Plex Mono for numbers in tables.
+const publicSans = Public_Sans({
+  variable: "--font-public-sans",
   subsets: ["latin"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const bricolage = Bricolage_Grotesque({
+  variable: "--font-bricolage",
   subsets: ["latin"],
+});
+
+const plexMono = IBM_Plex_Mono({
+  variable: "--font-plex-mono",
+  subsets: ["latin"],
+  weight: ["400", "500"],
 });
 
 // The workspace's name in the browser tab, the product name outside one.
@@ -23,7 +31,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const org = await getHostOrg();
   return {
     title: org?.status === "ACTIVE" ? `${org.name} · ${PRODUCT_NAME}` : PRODUCT_NAME,
-    description: "Healthcare licensing client management",
+    description: "The back office for care businesses",
   };
 }
 
@@ -35,7 +43,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${publicSans.variable} ${bricolage.variable} ${plexMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col">

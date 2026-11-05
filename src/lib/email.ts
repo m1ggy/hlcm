@@ -65,7 +65,8 @@ export async function getEmailBranding(): Promise<{ appUrl: string; brand: strin
 // (notify()'s per-event emails, the due-date digest). Plain inline styles
 // and a single-column table — email clients strip <style> blocks and don't
 // reliably support flexbox/grid, so nothing here relies on either.
-const ACCENT = "#1d4ed8";
+// Carenela palette: teal for actions and labels, teal-leaning neutrals.
+const ACCENT = "#16696d";
 
 export function renderEmailLayout(opts: {
   /** Short label above the message — "Task assigned", "You were mentioned", etc. */
@@ -88,39 +89,39 @@ export function renderEmailLayout(opts: {
   const button =
     ctaLabel && ctaUrl
       ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:24px 0 4px">
-           <tr><td style="border-radius:6px;background:${ACCENT}">
-             <a href="${ctaUrl}" style="display:inline-block;padding:10px 20px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:6px">${ctaLabel}</a>
+           <tr><td style="border-radius:10px;background:${ACCENT}">
+             <a href="${ctaUrl}" style="display:inline-block;padding:10px 20px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:10px">${ctaLabel}</a>
            </td></tr>
          </table>`
       : "";
 
   return `<!doctype html>
 <html>
-  <body style="margin:0;padding:0;background:#f4f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
+  <body style="margin:0;padding:0;background:#f4f7f6;font-family:'Public Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
     ${preheader ? `<span style="display:none;max-height:0;overflow:hidden;opacity:0">${preheader}</span>` : ""}
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f7;padding:32px 16px">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f7f6;padding:32px 16px">
       <tr>
         <td align="center">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#ffffff;border-radius:8px;overflow:hidden">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#ffffff;border:1px solid #d6e0dd;border-radius:16px;overflow:hidden">
             <tr>
-              <td style="padding:20px 28px;border-bottom:1px solid #e5e7eb">
-                <span style="font-size:15px;font-weight:700;letter-spacing:0.02em;color:#111827">${brand}</span>
+              <td style="padding:20px 28px;border-bottom:1px solid #d6e0dd">
+                <span style="font-size:15px;font-weight:700;letter-spacing:-0.01em;color:#132629">${brand}</span>
               </td>
             </tr>
             <tr>
               <td style="padding:28px">
                 <p style="margin:0 0 12px;font-size:12px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:${ACCENT}">${heading}</p>
-                <div style="font-size:14px;line-height:1.6;color:#1f2937">${bodyHtml}</div>
+                <div style="font-size:14px;line-height:1.6;color:#132629">${bodyHtml}</div>
                 ${button}
               </td>
             </tr>
             <tr>
-              <td style="padding:16px 28px;border-top:1px solid #e5e7eb">
-                <p style="margin:0;font-size:12px;color:#9ca3af">
+              <td style="padding:16px 28px;border-top:1px solid #d6e0dd">
+                <p style="margin:0;font-size:12px;color:#4d6064">
                   ${
                     footerHtml ??
                     `You're getting this because you have email notifications on for ${brand}'s case management system.
-                  <a href="${appUrl}/account" style="color:#9ca3af">Manage notification settings</a>.`
+                  <a href="${appUrl}/account" style="color:#4d6064">Manage notification settings</a>.`
                   }
                 </p>
               </td>

@@ -4,6 +4,7 @@ import { getHostOrg } from "@/lib/tenant";
 import { PRODUCT_NAME } from "@/lib/branding";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SetPasswordForm } from "./set-password-form";
+import { BrandLogo } from "@/components/brand-logo";
 
 // Where invite and password-reset emails land (src/lib/auth-emails.ts).
 // Checks the token up front so an expired link says so before anyone types.
@@ -15,7 +16,8 @@ export default async function SetPasswordPage({ searchParams }: { searchParams: 
 
   if (!valid) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-muted p-4">
+      <div className="flex min-h-screen flex-col items-center justify-center gap-8 bg-background p-4">
+        <BrandLogo />
         <Card className="w-full max-w-sm">
           <CardHeader>
             <CardTitle>{brand}</CardTitle>

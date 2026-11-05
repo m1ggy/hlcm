@@ -3,6 +3,7 @@ import { PRODUCT_NAME } from "@/lib/branding";
 import { enterAsSupport } from "@/lib/actions/support";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { BrandLogo } from "@/components/brand-logo";
 
 // Where the platform console's "Open as support" link lands
 // (src/lib/support-access.ts). A button rather than an automatic sign-in, so
@@ -12,7 +13,8 @@ export default async function SupportEnterPage({ searchParams }: { searchParams:
   const org = await getHostOrg();
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted p-4">
+    <div className="flex min-h-screen flex-col items-center justify-center gap-8 bg-background p-4">
+      <BrandLogo />
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle>Open {org?.name ?? "this workspace"} as support</CardTitle>

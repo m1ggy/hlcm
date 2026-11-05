@@ -6,12 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { BrandLogo } from "@/components/brand-logo";
 
 export function FindWorkspaceForm({ productName }: { productName: string }) {
   const [state, formAction, pending] = useActionState(requestWorkspaceLinks, undefined);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted p-4">
+    <div className="flex min-h-screen flex-col items-center justify-center gap-8 bg-background p-4">
+      <BrandLogo />
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle>{productName} — Find your workspace</CardTitle>

@@ -7,12 +7,14 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { BrandLogo } from "@/components/brand-logo";
 
 export function SetPasswordForm({ token, title, email }: { token: string; title: string; email: string }) {
   const [state, formAction, pending] = useActionState(setPasswordWithToken, undefined);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted p-4">
+    <div className="flex min-h-screen flex-col items-center justify-center gap-8 bg-background p-4">
+      <BrandLogo />
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle>{title}</CardTitle>

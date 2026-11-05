@@ -5,6 +5,7 @@ import { isPlatformAdmin } from "@/lib/tenant-host";
 import { PRODUCT_NAME } from "@/lib/branding";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { BrandLogo } from "@/components/brand-logo";
 
 // The platform console's own chrome — deliberately not the CRM sidebar:
 // platform admins manage workspaces, not cases. Only reachable on the
@@ -17,8 +18,9 @@ export default async function PlatformLayout({ children }: { children: React.Rea
   return (
     <div className="flex min-h-screen flex-col">
       <header className="flex items-center justify-between gap-3 border-b px-4 py-3 md:px-6">
-        <Link href="/platform" className="text-lg font-semibold tracking-tight">
-          {PRODUCT_NAME} · Platform
+        <Link href="/platform" className="flex items-center gap-3" aria-label={`${PRODUCT_NAME} platform`}>
+          <BrandLogo className="h-7" />
+          <span className="font-heading text-lg font-semibold tracking-tight text-muted-foreground">Platform</span>
         </Link>
         <div className="flex items-center gap-3">
           <Link href="/platform/account" className="text-sm hover:underline">

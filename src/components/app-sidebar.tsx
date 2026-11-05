@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { getHostOrg } from "@/lib/tenant";
 import { PRODUCT_NAME } from "@/lib/branding";
+import { BrandLogo } from "@/components/brand-logo";
 
 export async function AppSidebar() {
   const session = await auth();
@@ -24,8 +25,9 @@ export async function AppSidebar() {
   return (
     <Sidebar>
       <SidebarHeader className="px-3 py-3">
-        <Link href="/" className="truncate text-lg font-semibold tracking-tight">
-          {org?.name ?? PRODUCT_NAME}
+        <Link href="/" className="flex min-w-0 items-center gap-2">
+          <BrandLogo iconOnly className="h-7 shrink-0" />
+          <span className="truncate font-heading text-lg font-semibold tracking-tight">{org?.name ?? PRODUCT_NAME}</span>
         </Link>
       </SidebarHeader>
       <SidebarContent className="px-2">

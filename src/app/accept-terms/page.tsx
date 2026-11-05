@@ -6,6 +6,7 @@ import { currentTerms, needsTermsAcceptance } from "@/lib/terms";
 import { acceptTerms } from "@/lib/actions/terms";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { BrandLogo } from "@/components/brand-logo";
 
 // Shown instead of the app until the workspace's owner has accepted the
 // current terms (src/lib/terms.ts). Everyone else is told who has to.
@@ -19,7 +20,8 @@ export default async function AcceptTermsPage({ searchParams }: { searchParams: 
   const updated = org.termsVersion !== null;
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted p-4">
+    <div className="flex min-h-screen flex-col items-center justify-center gap-8 bg-background p-4">
+      <BrandLogo />
       <Card className="w-full max-w-lg">
         <CardHeader>
           <CardTitle>{updated ? `${PRODUCT_NAME}'s terms have changed` : `Before you start using ${PRODUCT_NAME}`}</CardTitle>

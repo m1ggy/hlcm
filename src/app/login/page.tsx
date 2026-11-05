@@ -3,6 +3,7 @@ import { getHostOrg } from "@/lib/tenant";
 import { PRODUCT_NAME } from "@/lib/branding";
 import { LoginForm } from "./login-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { BrandLogo } from "@/components/brand-logo";
 
 // Titled with the workspace being signed in to (the request host's
 // organization), so people can tell which one they're on.
@@ -17,7 +18,8 @@ export default async function LoginPage() {
 
 function WorkspaceSuspended({ name }: { name: string }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted p-4">
+    <div className="flex min-h-screen flex-col items-center justify-center gap-8 bg-background p-4">
+      <BrandLogo />
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle>{name}</CardTitle>

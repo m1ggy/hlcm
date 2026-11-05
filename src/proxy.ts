@@ -4,5 +4,6 @@
 export { auth as proxy } from "@/auth";
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  // Brand files (logo, app icons) are public: the sign-in page shows them.
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png|brand/).*)"],
 };

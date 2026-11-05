@@ -7,9 +7,14 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
+  --font-sans: var(--font-public-sans);
+  --font-mono: var(--font-plex-mono);
+  --font-heading: var(--font-bricolage);
+  --color-brand-deep: var(--brand-deep);
+  --color-marigold: var(--marigold);
+  --color-on-marigold: var(--on-marigold);
+  --color-marigold-tint: var(--marigold-tint);
+  --color-marigold-ink: var(--marigold-ink);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -48,73 +53,87 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* Carenela palette (design system: https://claude.ai/artifact/G7UAKowwB4gXyrSuV8je52).
+   ground/surface/ink neutrals lean teal; brand = Carenela teal; marigold is the
+   warm accent, used once per screen at most. */
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.16 0.014 260);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.16 0.014 260);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.16 0.014 260);
-  --primary: oklch(0.47 0.15 260);
-  --primary-foreground: oklch(0.985 0.005 260);
-  --secondary: oklch(0.97 0.008 260);
-  --secondary-foreground: oklch(0.3 0.03 260);
-  --muted: oklch(0.97 0.008 260);
-  --muted-foreground: oklch(0.52 0.02 260);
-  --accent: oklch(0.94 0.025 260);
-  --accent-foreground: oklch(0.3 0.05 260);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.91 0.013 260);
-  --input: oklch(0.91 0.013 260);
-  --ring: oklch(0.6 0.1 260);
-  --chart-1: oklch(0.6 0.13 260);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  --background: #f4f7f6;
+  --foreground: #132629;
+  --card: #ffffff;
+  --card-foreground: #132629;
+  --popover: #ffffff;
+  --popover-foreground: #132629;
+  --primary: #16696d;
+  --primary-foreground: #ffffff;
+  --secondary: #e8eeec;
+  --secondary-foreground: #132629;
+  --muted: #e8eeec;
+  --muted-foreground: #4d6064;
+  --accent: #d9eeec;
+  --accent-foreground: #16696d;
+  --destructive: #b42318;
+  --border: #d6e0dd;
+  --input: #728786;
+  --ring: #16696d;
+  --chart-1: #16696d;
+  --chart-2: #f0a73a;
+  --chart-3: #1f63ad;
+  --chart-4: #6b4fa8;
+  --chart-5: #4d6064;
   --radius: 0.625rem;
-  --sidebar: oklch(0.98 0.006 260);
-  --sidebar-foreground: oklch(0.16 0.014 260);
-  --sidebar-primary: oklch(0.47 0.15 260);
-  --sidebar-primary-foreground: oklch(0.985 0.005 260);
-  --sidebar-accent: oklch(0.93 0.025 260);
-  --sidebar-accent-foreground: oklch(0.3 0.05 260);
-  --sidebar-border: oklch(0.91 0.013 260);
-  --sidebar-ring: oklch(0.6 0.1 260);
+  --sidebar: #ffffff;
+  --sidebar-foreground: #132629;
+  --sidebar-primary: #16696d;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #d9eeec;
+  --sidebar-accent-foreground: #0f5357;
+  --sidebar-border: #d6e0dd;
+  --sidebar-ring: #16696d;
+  /* Carenela extras */
+  --brand-deep: #0d3b3e;
+  --marigold: #f0a73a;
+  --on-marigold: #2b1a00;
+  --marigold-tint: #fcefd8;
+  --marigold-ink: #865100;
 }
 
 .dark {
-  --background: oklch(0.15 0.012 260);
-  --foreground: oklch(0.985 0.005 260);
-  --card: oklch(0.2 0.015 260);
-  --card-foreground: oklch(0.985 0.005 260);
-  --popover: oklch(0.2 0.015 260);
-  --popover-foreground: oklch(0.985 0.005 260);
-  --primary: oklch(0.62 0.15 260);
-  --primary-foreground: oklch(0.985 0.005 260);
-  --secondary: oklch(0.27 0.02 260);
-  --secondary-foreground: oklch(0.985 0.005 260);
-  --muted: oklch(0.27 0.02 260);
-  --muted-foreground: oklch(0.71 0.02 260);
-  --accent: oklch(0.3 0.045 260);
-  --accent-foreground: oklch(0.985 0.005 260);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.6 0.13 260);
-  --chart-1: oklch(0.6 0.13 260);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.19 0.016 260);
-  --sidebar-foreground: oklch(0.985 0.005 260);
-  --sidebar-primary: oklch(0.62 0.15 260);
-  --sidebar-primary-foreground: oklch(0.985 0.005 260);
-  --sidebar-accent: oklch(0.29 0.04 260);
-  --sidebar-accent-foreground: oklch(0.985 0.005 260);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.6 0.13 260);
+  --background: #0d191b;
+  --foreground: #e4eeec;
+  --card: #142326;
+  --card-foreground: #e4eeec;
+  --popover: #142326;
+  --popover-foreground: #e4eeec;
+  --primary: #52b9b4;
+  --primary-foreground: #06201f;
+  --secondary: #1b2d30;
+  --secondary-foreground: #e4eeec;
+  --muted: #1b2d30;
+  --muted-foreground: #9db1b0;
+  --accent: #13393a;
+  --accent-foreground: #7dd0cb;
+  --destructive: #f2867c;
+  --border: #24383b;
+  --input: #5d7a7d;
+  --ring: #52b9b4;
+  --chart-1: #52b9b4;
+  --chart-2: #f4b65a;
+  --chart-3: #7fb0ec;
+  --chart-4: #b9a3e6;
+  --chart-5: #9db1b0;
+  --sidebar: #142326;
+  --sidebar-foreground: #e4eeec;
+  --sidebar-primary: #52b9b4;
+  --sidebar-primary-foreground: #06201f;
+  --sidebar-accent: #13393a;
+  --sidebar-accent-foreground: #7dd0cb;
+  --sidebar-border: #24383b;
+  --sidebar-ring: #52b9b4;
+  --brand-deep: #1f5f62;
+  --marigold: #f4b65a;
+  --on-marigold: #2b1a00;
+  --marigold-tint: #3a2a10;
+  --marigold-ink: #f5c27a;
 }
 
 @layer base {
