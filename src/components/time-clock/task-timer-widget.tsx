@@ -87,7 +87,7 @@ export function TaskTimerWidget({
         setRunningLabel(entry.task?.label ?? "Internal / no task");
         setStartedAt(new Date(entry.startedAt));
         setNote("");
-        toast.success(`Timer started${entry.task ? ` — ${entry.task.label}` : ""}`);
+        toast.success(`Timer started${entry.task ? ` — ${entry.task.label}` : ""}${entry.clockedIn ? ". You're clocked in." : ""}`);
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to start timer");
       }

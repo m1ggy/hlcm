@@ -47,7 +47,7 @@ export function TaskTimerBar({
     startTransition(async () => {
       try {
         const entry = await startTaskTimer({ taskId });
-        toast.success(`Timer started${entry.task ? ` — ${entry.task.label}` : ""}`);
+        toast.success(`Timer started${entry.task ? ` — ${entry.task.label}` : ""}${entry.clockedIn ? ". You're clocked in." : ""}`);
         router.refresh();
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to start timer");

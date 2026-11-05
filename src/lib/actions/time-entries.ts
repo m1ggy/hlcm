@@ -110,6 +110,7 @@ export async function clockOut(input: LocationInput & { visitNote?: string } = {
     },
   });
   await saveVisitNote(entry, input.visitNote);
+  await stopTaskTimersAtDayEnd(session.user.id, entry.clockOut!);
 
   await recordAudit({
     entityType: "TimeEntry",
@@ -120,6 +121,21 @@ export async function clockOut(input: LocationInput & { visitNote?: string } = {
 
   revalidatePath("/", "layout");
   return entry;
+}
+
+/**
+ * Clocking out ends the day, so it also stops a task timer left running —
+ * otherwise a forgotten timer keeps counting overnight. Closed at the same
+ * moment as the shift. (Starting a timer clocks you in: startTaskTimer.)
+ */
+async function stopTaskTimersAtDayEnd(userId: string, at: Date) {
+  const open = await db.taskTimeEntry.findMany({ where: { userId, endedAt: null }, select: { id: true } });
+  if (open.length === 0) return;
+  await db.taskTimeEntry.updateMany({ where: { id: { in: open.map((e) => e.id) } }, data: { endedAt: at } });
+  for (const e of open) {
+    await recordAudit({ entityType: "TaskTimeEntry", entityId: e.id, action: "stop_timer_on_clock_out", actorId: userId });
+  }
+  revalidatePath("/time-tracking");
 }
 
 /** The session a break interrupted — startBreak closes it at exactly
@@ -221,6 +237,8 @@ export async function endBreakForDay(input: { visitNote?: string } = {}) {
   // a normal clock-out.
   const beforeBreak = await entryBeforeBreak(session.user.id, openBreak.breakStart);
   if (beforeBreak) await saveVisitNote(beforeBreak, input.visitNote);
+  // And it's a clock-out, so a running task timer stops too.
+  await stopTaskTimersAtDayEnd(session.user.id, entry.breakEnd!);
 
   await recordAudit({
     entityType: "BreakEntry",

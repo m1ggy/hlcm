@@ -7,6 +7,7 @@ import { requireSession, requireRole, isManagement } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
 import { TaskTimeError } from "@/lib/task-time-entries";
+import { clockIn, endBreak } from "@/lib/actions/time-entries";
 
 const entryInclude = {
   user: { select: { id: true, name: true, hourlyRate: true } },
@@ -32,6 +33,21 @@ export async function getMyOpenTaskTimer() {
  */
 export async function startTaskTimer(input: { taskId?: string; description?: string } = {}) {
   const session = await requireSession();
+
+  // Working on a task means you're working: clock in first if you aren't,
+  // or come back from a break. Caregivers are left alone — their clock-in
+  // is a visit to a chosen recipient, which a task timer can't pick.
+  let clockedIn = false;
+  if (session.user.role !== "CAREGIVER") {
+    const [openShift, openBreak] = await Promise.all([
+      db.timeEntry.findFirst({ where: { userId: session.user.id, clockOut: null }, select: { id: true } }),
+      db.breakEntry.findFirst({ where: { userId: session.user.id, breakEnd: null }, select: { id: true } }),
+    ]);
+    if (openBreak) await endBreak();
+    else if (!openShift) await clockIn();
+    clockedIn = Boolean(openBreak || !openShift);
+  }
+
   const now = new Date();
 
   await db.taskTimeEntry.updateMany({
@@ -52,7 +68,7 @@ export async function startTaskTimer(input: { taskId?: string; description?: str
 
   await recordAudit({ entityType: "TaskTimeEntry", entityId: entry.id, action: "start_timer", actorId: session.user.id });
   revalidatePath("/", "layout");
-  return entry;
+  return { ...entry, clockedIn };
 }
 
 /** Stops the caller's running timer. Throws if nothing is running — mirrors
