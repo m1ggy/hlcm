@@ -54,43 +54,43 @@
 }
 
 /* Carenela palette (design system: https://claude.ai/artifact/G7UAKowwB4gXyrSuV8je52).
-   ground/surface/ink neutrals lean teal; brand = Carenela teal; marigold is the
+   ground/surface/ink neutrals lean blue; brand = Carenela blue; marigold is the
    warm accent, used once per screen at most. */
 :root {
-  --background: #f4f7f6;
-  --foreground: #132629;
+  --background: #f4f6f9;
+  --foreground: #121c2b;
   --card: #ffffff;
-  --card-foreground: #132629;
+  --card-foreground: #121c2b;
   --popover: #ffffff;
-  --popover-foreground: #132629;
-  --primary: #16696d;
+  --popover-foreground: #121c2b;
+  --primary: #1f5fbf;
   --primary-foreground: #ffffff;
-  --secondary: #e8eeec;
-  --secondary-foreground: #132629;
-  --muted: #e8eeec;
-  --muted-foreground: #4d6064;
-  --accent: #d9eeec;
-  --accent-foreground: #16696d;
+  --secondary: #e8edf3;
+  --secondary-foreground: #121c2b;
+  --muted: #e8edf3;
+  --muted-foreground: #4a5668;
+  --accent: #dde8f8;
+  --accent-foreground: #1f5fbf;
   --destructive: #b42318;
-  --border: #d6e0dd;
-  --input: #728786;
-  --ring: #16696d;
-  --chart-1: #16696d;
+  --border: #d5dde8;
+  --input: #718096;
+  --ring: #1f5fbf;
+  --chart-1: #1f5fbf;
   --chart-2: #f0a73a;
-  --chart-3: #1f63ad;
+  --chart-3: #16696d;
   --chart-4: #6b4fa8;
-  --chart-5: #4d6064;
+  --chart-5: #4a5668;
   --radius: 0.625rem;
   --sidebar: #ffffff;
-  --sidebar-foreground: #132629;
-  --sidebar-primary: #16696d;
+  --sidebar-foreground: #121c2b;
+  --sidebar-primary: #1f5fbf;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #d9eeec;
-  --sidebar-accent-foreground: #0f5357;
-  --sidebar-border: #d6e0dd;
-  --sidebar-ring: #16696d;
+  --sidebar-accent: #dde8f8;
+  --sidebar-accent-foreground: #174a96;
+  --sidebar-border: #d5dde8;
+  --sidebar-ring: #1f5fbf;
   /* Carenela extras */
-  --brand-deep: #0d3b3e;
+  --brand-deep: #0f2d5c;
   --marigold: #f0a73a;
   --on-marigold: #2b1a00;
   --marigold-tint: #fcefd8;
@@ -98,38 +98,38 @@
 }
 
 .dark {
-  --background: #0d191b;
-  --foreground: #e4eeec;
-  --card: #142326;
-  --card-foreground: #e4eeec;
-  --popover: #142326;
-  --popover-foreground: #e4eeec;
-  --primary: #52b9b4;
-  --primary-foreground: #06201f;
-  --secondary: #1b2d30;
-  --secondary-foreground: #e4eeec;
-  --muted: #1b2d30;
-  --muted-foreground: #9db1b0;
-  --accent: #13393a;
-  --accent-foreground: #7dd0cb;
+  --background: #0c1320;
+  --foreground: #e6ecf4;
+  --card: #131c2b;
+  --card-foreground: #e6ecf4;
+  --popover: #131c2b;
+  --popover-foreground: #e6ecf4;
+  --primary: #6fa3f0;
+  --primary-foreground: #071526;
+  --secondary: #1a2536;
+  --secondary-foreground: #e6ecf4;
+  --muted: #1a2536;
+  --muted-foreground: #9eabbe;
+  --accent: #142a4a;
+  --accent-foreground: #9cc0f5;
   --destructive: #f2867c;
-  --border: #24383b;
-  --input: #5d7a7d;
-  --ring: #52b9b4;
-  --chart-1: #52b9b4;
+  --border: #243147;
+  --input: #62748f;
+  --ring: #6fa3f0;
+  --chart-1: #6fa3f0;
   --chart-2: #f4b65a;
-  --chart-3: #7fb0ec;
+  --chart-3: #52b9b4;
   --chart-4: #b9a3e6;
-  --chart-5: #9db1b0;
-  --sidebar: #142326;
-  --sidebar-foreground: #e4eeec;
-  --sidebar-primary: #52b9b4;
-  --sidebar-primary-foreground: #06201f;
-  --sidebar-accent: #13393a;
-  --sidebar-accent-foreground: #7dd0cb;
-  --sidebar-border: #24383b;
-  --sidebar-ring: #52b9b4;
-  --brand-deep: #1f5f62;
+  --chart-5: #9eabbe;
+  --sidebar: #131c2b;
+  --sidebar-foreground: #e6ecf4;
+  --sidebar-primary: #6fa3f0;
+  --sidebar-primary-foreground: #071526;
+  --sidebar-accent: #142a4a;
+  --sidebar-accent-foreground: #9cc0f5;
+  --sidebar-border: #243147;
+  --sidebar-ring: #6fa3f0;
+  --brand-deep: #1d4f8f;
   --marigold: #f4b65a;
   --on-marigold: #2b1a00;
   --marigold-tint: #3a2a10;
