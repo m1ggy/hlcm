@@ -161,6 +161,12 @@ jobs:
         run: |
           ssh -p "${{ secrets.DROPLET_SSH_PORT || 22 }}" "${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}" \
             "IMAGE_BASE='$IMAGE_BASE' ENV_TAG='$ENV_TAG' GH_TOKEN='$GH_TOKEN' GH_ACTOR='$GH_ACTOR' DEPLOY_PATH='${{ env.DEPLOY_PATH }}' bash -s" <<'REMOTE'
+          # The script arrives on stdin. Wrapped in a function so bash reads
+          # all of it before running anything, and run with stdin from
+          # /dev/null: otherwise a docker command that reads stdin swallows
+          # the rest of the script and bash exits 0 halfway through (the
+          # 2026-11-05 deploy "passed" after pulling, without migrating).
+          deploy() {
           set -euo pipefail
           cd "$DEPLOY_PATH"
 
@@ -214,4 +220,6 @@ jobs:
           # for both app and migrator), not just dangling/untagged ones —
           # without it the droplet's disk fills up over enough deploys.
           docker image prune -af
+          }
+          deploy < /dev/null
           REMOTE
