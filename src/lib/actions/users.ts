@@ -9,6 +9,17 @@ import { db } from "@/lib/db";
 import { requireRole, ForbiddenError, isAdmin, isSuperuser } from "@/lib/rbac";
 import { recordAudit, recordFieldChanges } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
+import { endAssignmentsForHomeUser } from "@/lib/workspace-assignments";
+
+// A managing company's linked account (User.assignedFromUserId, see
+// src/lib/workspace-assignments.ts) belongs to that company: this
+// workspace's admins can see it but not edit, reset or remove it.
+async function assertNotLinkedAccount(userId: string) {
+  const user = await db.user.findUnique({ where: { id: userId }, select: { assignedFromUserId: true } });
+  if (user?.assignedFromUserId) {
+    throw new ForbiddenError("This person is assigned by your managing company — ask them to change or remove the assignment");
+  }
+}
 
 const ROLE_VALUES = ["OWNER", "ADMIN", "ACCOUNTANT", "MANAGER", "STAFF", "CLIENT", "CAREGIVER"] as const;
 
@@ -35,6 +46,7 @@ export async function listUsers() {
       hourlyRate: true,
       phone: true,
       smsRemindersEnabled: true,
+      assignedFromUserId: true,
     },
   });
 }
@@ -47,6 +59,7 @@ const rateSchema = z.object({
 export async function setHourlyRate(input: { userId: string; hourlyRate: number | null }) {
   const session = await requireRole(["ADMIN"]);
   const parsed = rateSchema.parse(input);
+  await assertNotLinkedAccount(parsed.userId);
 
   const before = await db.user.findUniqueOrThrow({
     where: { id: parsed.userId },
@@ -136,6 +149,7 @@ export async function createUser(formData: FormData): Promise<{ inviteSent: bool
  */
 export async function sendSetPasswordLink(userId: string): Promise<{ sent: boolean }> {
   const session = await requireRole(["ADMIN"]);
+  await assertNotLinkedAccount(userId);
   const user = await db.user.findUniqueOrThrow({ where: { id: userId }, select: { id: true, name: true, email: true, role: true, active: true } });
   if (!user.active) throw new Error("This user is deactivated");
   if (isAdmin(user.role) && !isSuperuser(session.user.role)) {
@@ -170,6 +184,7 @@ const updateSchema = z.object({
 export async function updateUser(input: z.infer<typeof updateSchema>) {
   const session = await requireRole(["ADMIN"]);
   const parsed = updateSchema.parse(input);
+  await assertNotLinkedAccount(parsed.userId);
 
   const before = await db.user.findUniqueOrThrow({
     where: { id: parsed.userId },
@@ -235,6 +250,8 @@ export async function updateUser(input: z.infer<typeof updateSchema>) {
       actorId: session.user.id,
     });
   }
+  // Deactivated here = no longer working in any client workspace either.
+  if (before.active && !parsed.active) await endAssignmentsForHomeUser(parsed.userId);
 
   revalidatePath("/admin/users");
   return user;

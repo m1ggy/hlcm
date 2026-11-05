@@ -37,6 +37,8 @@ export function isPublicPath(pathname: string) {
     pathname.startsWith("/set-password") ||
     // Platform support's one-time sign-in link (src/lib/support-access.ts).
     pathname.startsWith("/support/enter") ||
+    // Switching workspaces: a one-time link into another workspace's host (src/lib/workspace-switch.ts).
+    pathname.startsWith("/switch/enter") ||
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/handbook") ||
     // Stripe calls this directly with no session — it's authenticated

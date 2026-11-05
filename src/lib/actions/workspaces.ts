@@ -1,0 +1,52 @@
+"use server";
+
+import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
+import { AuthError } from "next-auth";
+import { signIn } from "@/auth";
+import { requireSession } from "@/lib/rbac";
+import { toActionResult } from "@/lib/action-result";
+import { startWorkspaceSwitch } from "@/lib/workspace-switch";
+import { assignToWorkspace, endAssignment, type AssignableRole, type AssignmentActor } from "@/lib/workspace-assignments";
+
+// Switching workspaces and assigning a managing company's people to client
+// workspaces (docs/workspace-tasks-plan.md, Phase 1). The rules live in
+// src/lib/workspace-switch.ts and src/lib/workspace-assignments.ts.
+
+async function actor(): Promise<AssignmentActor> {
+  const session = await requireSession();
+  return { userId: session.user.id, orgId: session.user.organizationId, role: session.user.role, name: session.user.name };
+}
+
+/** The switcher: a one-time link into `slug` for the browser to open. */
+export async function switchWorkspace(slug: string) {
+  return toActionResult(async () => {
+    const session = await requireSession();
+    return { url: await startWorkspaceSwitch({ id: session.user.id, organizationId: session.user.organizationId }, slug) };
+  });
+}
+
+/** /switch/enter: trades the one-time link for a session in this workspace. */
+export async function enterSwitchedWorkspace(formData: FormData) {
+  const token = String(formData.get("token") ?? "");
+  try {
+    await signIn("credentials", { switchToken: token, redirectTo: "/" });
+  } catch (error) {
+    if (error instanceof AuthError) redirect("/switch/enter?error=1");
+    throw error;
+  }
+}
+
+export async function assignStaff(input: { orgId: string; homeUserId: string; role: AssignableRole; canAssign: boolean }) {
+  return toActionResult(async () => {
+    await assignToWorkspace(await actor(), input);
+    revalidatePath("/client-workspaces");
+  });
+}
+
+export async function removeAssignment(assignmentId: string) {
+  return toActionResult(async () => {
+    await endAssignment(await actor(), assignmentId);
+    revalidatePath("/client-workspaces");
+  });
+}

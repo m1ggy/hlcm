@@ -11,6 +11,8 @@ declare module "next-auth" {
       orgSlug: string;
       // Signed in as the workspace's platform-support user (src/lib/support-access.ts).
       isSupport?: boolean;
+      // A managing company's linked account here (src/lib/workspace-switch.ts).
+      isAssigned?: boolean;
     } & DefaultSession["user"];
   }
 
@@ -19,6 +21,7 @@ declare module "next-auth" {
     organizationId: string;
     orgSlug: string;
     isSupport?: boolean;
+    isAssigned?: boolean;
     /** Set by authorize — see src/lib/login-device.ts. */
     deviceType?: string;
   }

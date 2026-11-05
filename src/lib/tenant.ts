@@ -17,6 +17,7 @@ export type HostOrg = {
   replyToEmail: string | null;
   termsVersion: string | null;
   pipelineSettings: unknown;
+  kind: "FULL" | "TASKS";
 };
 
 const HOST_ORG_SELECT = {
@@ -28,6 +29,7 @@ const HOST_ORG_SELECT = {
   replyToEmail: true,
   termsVersion: true,
   pipelineSettings: true,
+  kind: true,
 } as const;
 
 // slug → org, cached briefly: this runs on every tenant-scoped query's first

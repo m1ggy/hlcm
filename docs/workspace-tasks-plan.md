@@ -25,6 +25,15 @@ Request (user, 2026-11-05):
 
 ## Phase 1 — Assigned staff + workspace switcher (cross-workspace)
 
+**Done 2026-11-05 on `feature/workspace-tasks`** (not pushed). Migration `20261105120000_workspace_assignments`; logic in `src/lib/workspace-assignments.ts` + `src/lib/workspace-switch.ts`; tests `tests/workspace-assignments.test.ts`. As built:
+- `Organization.managedByOrgId` (not an `isManaging` flag) says which company manages a workspace; `kind FULL | TASKS`. Set in the platform console (create dialog + per-row "Setup").
+- Managing side: **Client workspaces** page (`/client-workspaces`, sidebar link only for admins / account managers).
+- Client side: assigned people show in Admin → Users labeled "From <company>", no edit / reset / rate.
+- Switcher in the sidebar header; `/switch/enter` auto-submits the one-time link. **Only works with workspace addresses on (`ROOT_DOMAIN`)** — in single-tenant mode the switcher is hidden and the page says so.
+- Tasks-only workspaces: proxy sends any non-tasks page to `/work` (placeholder until Phase 2); sidebar = Projects / Settings / Users.
+- Verified over HTTP on a scratch DB with `ROOT_DOMAIN=localhost`: home sign-in → switch → linked session; link single-use; sessions don't cross hosts; linked account can't use a password; licensing pages redirect.
+- Not run: `TEST_RLS=1` suite (Docker was off). Local dev DB `hclm` can't apply main's `20261016120000_caregiver_visits` (old local test data: cross-org `pipeline_stages.createdById`) — unrelated, fix by hand or recreate.
+
 ### Model
 - **Managing workspace**: **CTK** (decided 2026-11-05). `Organization.isManaging Boolean` (set by superadmin).
 - **Client workspaces**: `Organization.kind` = `FULL` (today's CRM) | `TASKS` (tasks-only: projects, tasks, summary, users, settings — every licensing/CRM page hidden). See W2.

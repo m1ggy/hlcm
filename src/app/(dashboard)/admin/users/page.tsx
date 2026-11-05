@@ -4,7 +4,8 @@ import { ArrowUpRight } from "lucide-react";
 import { auth } from "@/auth";
 import { listUsers } from "@/lib/actions/users";
 import { listLoginSummaries } from "@/lib/actions/login-activity";
-import { db } from "@/lib/db";
+import { currentOrgId, db } from "@/lib/db";
+import { managingOrgName } from "@/lib/workspace-assignments";
 import { NewUserDialog } from "@/components/admin/new-user-dialog";
 import { UsersTable } from "@/components/admin/users-table";
 import { PageInfoButton } from "@/components/shared/page-info-button";
@@ -24,6 +25,8 @@ export default async function UsersPage() {
     if (error instanceof ForbiddenError) notFound();
     throw error;
   }
+
+  const managedByName = users.some((u) => u.assignedFromUserId) ? await managingOrgName(await currentOrgId()) : null;
 
   // Sign-in history + the mobile-login switch are DEVELOPER-only (not OWNER).
   const showLogins = isDeveloper(session?.user?.role);
@@ -58,6 +61,7 @@ export default async function UsersPage() {
         currentUserId={session?.user?.id}
         canManageAdmins={canManageAdmins}
         loginSummaries={loginSummaries}
+        managedByName={managedByName}
         viewerTimezone={viewer?.timezone ?? null}
       />
     </div>

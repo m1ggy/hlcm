@@ -16,6 +16,8 @@ const TTL_MS: Record<AuthTokenKind, number> = {
   INVITE: 7 * 24 * 60 * 60 * 1000,
   PASSWORD_RESET: 60 * 60 * 1000,
   SUPPORT_LOGIN: 5 * 60 * 1000,
+  // Used by the browser right away (src/lib/workspace-switch.ts).
+  WORKSPACE_SWITCH: 2 * 60 * 1000,
 };
 
 /** The kinds that let someone set a password (/set-password). */

@@ -13,7 +13,9 @@ import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { getHostOrg } from "@/lib/tenant";
 import { PRODUCT_NAME } from "@/lib/branding";
-import { BrandLogo } from "@/components/brand-logo";
+import { listSwitchTargets } from "@/lib/workspace-switch";
+import { canManageAnyWorkspace } from "@/lib/workspace-assignments";
+import { WorkspaceSwitcher } from "@/components/workspaces/workspace-switcher";
 
 export async function AppSidebar() {
   const session = await auth();
@@ -21,14 +23,16 @@ export async function AppSidebar() {
   const org = await getHostOrg();
   const isCaregiver = session.user.role === "CAREGIVER";
   const showCaregiverClients = isCaregiver ? await caregiverHasClients() : true;
+  const actor = { id: session.user.id, organizationId: session.user.organizationId };
+  const [switchTargets, managesWorkspaces] = await Promise.all([
+    listSwitchTargets(actor),
+    canManageAnyWorkspace({ userId: actor.id, orgId: actor.organizationId, role: session.user.role }),
+  ]);
 
   return (
     <Sidebar>
       <SidebarHeader className="px-3 py-3">
-        <Link href="/" className="flex min-w-0 items-center gap-2">
-          <BrandLogo iconOnly className="h-7 shrink-0" />
-          <span className="truncate font-heading text-lg font-semibold tracking-tight">{org?.name ?? PRODUCT_NAME}</span>
-        </Link>
+        <WorkspaceSwitcher currentName={org?.name ?? PRODUCT_NAME} targets={switchTargets} />
       </SidebarHeader>
       <SidebarContent className="px-2">
         <AppSidebarNav
@@ -37,6 +41,8 @@ export async function AppSidebar() {
           canViewPayroll={isManagement(session.user.role)}
           isCaregiver={isCaregiver}
           showCaregiverClients={showCaregiverClients}
+          showClientWorkspaces={managesWorkspaces}
+          isTasksWorkspace={org?.kind === "TASKS"}
         />
       </SidebarContent>
       <SidebarFooter className="gap-2 border-t px-3 py-3">

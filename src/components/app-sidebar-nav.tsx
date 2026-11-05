@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FolderKanban, Users, ClipboardList, UserCog, CheckSquare, Clock, Timer, Receipt, Settings, Inbox, MapPin, CalendarCheck, BarChart3, Sun, Wallet } from "lucide-react";
+import { LayoutList, Building2, FolderKanban, Users, ClipboardList, UserCog, CheckSquare, Clock, Timer, Receipt, Settings, Inbox, MapPin, CalendarCheck, BarChart3, Sun, Wallet } from "lucide-react";
 import {
   SidebarMenu,
   SidebarMenuButton,
@@ -41,23 +41,36 @@ export function AppSidebarNav({
   canViewPayroll = false,
   isCaregiver,
   showCaregiverClients = true,
+  showClientWorkspaces = false,
+  isTasksWorkspace = false,
 }: {
   isAdmin: boolean;
   canManageInvoices: boolean;
   canViewPayroll?: boolean;
   isCaregiver: boolean;
   showCaregiverClients?: boolean;
+  /** A managing company's admins and account managers (src/lib/workspace-assignments.ts). */
+  showClientWorkspaces?: boolean;
+  /** A client company's tasks-only workspace: no licensing pages. */
+  isTasksWorkspace?: boolean;
 }) {
   const pathname = usePathname();
 
   let links: typeof LINKS;
-  if (isCaregiver) {
+  if (isTasksWorkspace) {
+    links = [
+      { href: "/work", label: "Projects", icon: LayoutList, tour: "nav-work" },
+      { href: "/account", label: "Settings", icon: Settings, tour: "nav-settings" },
+    ];
+    if (isAdmin) links = [...links, { href: "/admin/users", label: "Users", icon: UserCog, tour: "nav-admin" }];
+  } else if (isCaregiver) {
     links = showCaregiverClients ? CAREGIVER_LINKS : CAREGIVER_LINKS.filter((l) => l.href !== "/clients");
   } else {
     links = canManageInvoices
       ? [...LINKS, { href: "/invoices", label: "Invoices", icon: Receipt, tour: "nav-invoices" }]
       : LINKS;
     if (canViewPayroll) links = [...links, { href: "/payroll", label: "Payroll", icon: Wallet, tour: "nav-payroll" }];
+    if (showClientWorkspaces) links = [...links, { href: "/client-workspaces", label: "Client workspaces", icon: Building2, tour: "nav-client-workspaces" }];
     links = [...links, { href: "/account", label: "Settings", icon: Settings, tour: "nav-settings" }];
     if (isAdmin) links = [...links, { href: "/admin", label: "Admin", icon: UserCog, tour: "nav-admin" }];
   }

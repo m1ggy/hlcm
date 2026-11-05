@@ -26,6 +26,8 @@ type ListedUser = {
   hourlyRate: number | null;
   phone: string | null;
   smsRemindersEnabled: boolean;
+  /** Set for a managing company's assigned person — read-only here. */
+  assignedFromUserId?: string | null;
 };
 
 export function UsersTable({
@@ -34,10 +36,13 @@ export function UsersTable({
   canManageAdmins,
   loginSummaries,
   viewerTimezone = null,
+  managedByName = null,
 }: {
   users: ListedUser[];
   currentUserId: string | undefined;
   canManageAdmins: boolean;
+  /** The managing company's name, for the "From …" label on its assigned people. */
+  managedByName?: string | null;
   /** Only passed for a DEVELOPER viewer — adds the "Last sign-in" column. */
   loginSummaries?: Record<string, LoginSummary>;
   viewerTimezone?: string | null;
@@ -82,7 +87,14 @@ export function UsersTable({
         <TableBody>
           {filtered.map((user) => (
             <TableRow key={user.id}>
-              <TableCell className="font-medium">{user.name}</TableCell>
+              <TableCell className="font-medium">
+                {user.name}
+                {user.assignedFromUserId && (
+                  <Badge variant="secondary" className="ml-2" title="Assigned by your managing company — they add and remove these people">
+                    {managedByName ? `From ${managedByName}` : "Assigned"}
+                  </Badge>
+                )}
+              </TableCell>
               <TableCell>{user.email}</TableCell>
               <TableCell>{user.role}</TableCell>
               <TableCell>
@@ -91,7 +103,11 @@ export function UsersTable({
                 </Badge>
               </TableCell>
               <TableCell>
-                <RateCell userId={user.id} initialRate={user.hourlyRate} />
+                {user.assignedFromUserId ? (
+                  <span className="text-sm text-muted-foreground">—</span>
+                ) : (
+                  <RateCell userId={user.id} initialRate={user.hourlyRate} />
+                )}
               </TableCell>
               {showLogins && (
                 <TableCell>
@@ -104,11 +120,13 @@ export function UsersTable({
                 </TableCell>
               )}
               <TableCell>
-                <EditUserDialog
-                  user={user}
-                  isSelf={user.id === currentUserId}
-                  canManageAdmins={canManageAdmins}
-                />
+                {!user.assignedFromUserId && (
+                  <EditUserDialog
+                    user={user}
+                    isSelf={user.id === currentUserId}
+                    canManageAdmins={canManageAdmins}
+                  />
+                )}
               </TableCell>
             </TableRow>
           ))}

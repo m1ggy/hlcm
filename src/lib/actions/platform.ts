@@ -18,6 +18,7 @@ import {
   type PlatformOrganization,
 } from "@/lib/platform";
 import { startSupportSession } from "@/lib/support-access";
+import { setWorkspaceSetup } from "@/lib/workspace-assignments";
 
 // The platform console (admin.<ROOT_DOMAIN>): only DEVELOPER users (superadmins) of
 // the platform organization. Audit rows land in the platform org's own log.
@@ -51,6 +52,20 @@ export async function createOrganizationFromPlatform(input: CreateOrganizationIn
     await recordAudit({ entityType: "Organization", entityId: org.id, action: "create", actorId: session.user.id, newValue: `${org.slug}:${org.name}` });
     revalidatePath("/platform");
     return { slug: org.slug, inviteSent };
+  });
+}
+
+/** A workspace's type (full CRM / tasks only) and managing company. */
+export async function setWorkspaceSetupFromPlatform(
+  orgId: string,
+  input: { kind: "FULL" | "TASKS"; managedByOrgId: string | null }
+): Promise<ActionResult<void>> {
+  return toActionResult(async () => {
+    const session = await requirePlatformAdmin();
+    const org = await getTenantOrganization(orgId);
+    await setWorkspaceSetup(org.id, input);
+    await recordAudit({ entityType: "Organization", entityId: org.id, action: "workspace_setup", actorId: session.user.id, newValue: input });
+    revalidatePath("/platform");
   });
 }
 

@@ -7,6 +7,7 @@ import { isValidOrgSlug, PLATFORM_SLUG } from "@/lib/tenant-host";
 import { seedOrganization } from "@/lib/org-seed";
 import { sendInviteEmail } from "@/lib/auth-emails";
 import { UserFacingError } from "@/lib/user-facing-error";
+import { setWorkspaceSetup } from "@/lib/workspace-assignments";
 
 // Operator-side management of tenant workspaces — the only app code that
 // works *across* organizations (hence the raw client; see the ESLint
@@ -30,6 +31,11 @@ export type PlatformOrganization = {
   lastActivityAt: Date | null;
   termsVersion: string | null;
   termsAcceptedAt: Date | null;
+  /** FULL = licensing CRM; TASKS = a client company's tasks-only workspace. */
+  kind: "FULL" | "TASKS";
+  /** The managing company whose people work here (docs/workspace-tasks-plan.md). */
+  managedByOrgId: string | null;
+  managedByName: string | null;
 };
 
 type OrgGroup<T> = { organizationId: string } & T;
@@ -51,7 +57,11 @@ export async function listOrganizations(): Promise<PlatformOrganization[]> {
       createdAt: true,
       termsVersion: true,
       termsAcceptedAt: true,
-      _count: { select: { users: { where: { isSupport: false, active: true } } } },
+      kind: true,
+      managedByOrgId: true,
+      managedBy: { select: { name: true } },
+      // A managing company's assigned staff (linked accounts) aren't the workspace's own users.
+      _count: { select: { users: { where: { isSupport: false, assignedFromUserId: null, active: true } } } },
     },
   });
   const [clients, applications, versions, attachments, formFiles, activity] = await Promise.all([
@@ -67,8 +77,9 @@ export async function listOrganizations(): Promise<PlatformOrganization[]> {
   const storage = [versions, attachments, formFiles].map((rows) => byOrg(rows, (r) => r._sum.sizeBytes ?? 0));
   const lastActivity = new Map(activity.map((r) => [r.organizationId, r._max.createdAt]));
 
-  return orgs.map(({ _count, ...org }) => ({
+  return orgs.map(({ _count, managedBy, ...org }) => ({
     ...org,
+    managedByName: managedBy?.name ?? null,
     userCount: _count.users,
     clientCount: clientCounts.get(org.id) ?? 0,
     applicationCount: applicationCounts.get(org.id) ?? 0,
@@ -84,7 +95,14 @@ export async function getTenantOrganization(orgId: string) {
   return org;
 }
 
-export type CreateOrganizationInput = { name: string; slug: string; ownerName: string; ownerEmail: string };
+export type CreateOrganizationInput = {
+  name: string;
+  slug: string;
+  ownerName: string;
+  ownerEmail: string;
+  kind?: "FULL" | "TASKS";
+  managedByOrgId?: string | null;
+};
 
 /**
  * Creates a tenant: the organization, its first OWNER (no usable password —
@@ -112,6 +130,9 @@ export async function createOrganization(input: CreateOrganizationInput, invited
     select: { id: true, name: true, email: true },
   });
   await seedOrganization({ org, ownerId: owner.id });
+  if (input.kind === "TASKS" || input.managedByOrgId) {
+    await setWorkspaceSetup(org.id, { kind: input.kind ?? "FULL", managedByOrgId: input.managedByOrgId || null });
+  }
 
   let inviteSent = true;
   try {
@@ -190,6 +211,8 @@ export async function findWorkspacesForEmail(email: string): Promise<{ name: str
       email: { equals: email.trim(), mode: "insensitive" },
       active: true,
       isSupport: false,
+      // Linked accounts are reached through the switcher, not signed into directly.
+      assignedFromUserId: null,
       organization: { status: "ACTIVE", slug: { not: PLATFORM_SLUG } },
     },
     select: { organization: { select: { name: true, slug: true } } },
@@ -272,6 +295,12 @@ export async function deleteOrganization(orgId: string) {
   const deleted: Record<string, number> = {};
   await prisma.$transaction(
     async (tx) => {
+      // Its people's linked accounts in the workspaces it managed stay there
+      // (their history does), switched off; the assignments go with the org.
+      await tx.$executeRawUnsafe(
+        `UPDATE users SET active = false WHERE id IN (SELECT "userId" FROM workspace_assignments WHERE "homeOrgId" = $1)`,
+        orgId
+      );
       for (const j of joinTables) {
         deleted[j.table] = await tx.$executeRawUnsafe(
           `DELETE FROM ${ident(j.table)} WHERE "A" IN (SELECT id FROM ${ident(j.aTable)} WHERE "organizationId" = $1)`,

@@ -22,12 +22,20 @@ enum OrgStatus {
   SUSPENDED
 }
 
+// What a workspace is for (docs/workspace-tasks-plan.md). FULL = the
+// licensing CRM; TASKS = a client company's workspace with only projects,
+// tasks, the weekly summary, users and settings (licensing pages hidden).
+enum OrgKind {
+  FULL
+  TASKS
+}
+
 model Organization {
-  id                        String    @id @default(cuid())
+  id                        String         @id @default(cuid())
   // The tenant's subdomain (<slug>.<root domain>).
-  slug                      String    @unique
+  slug                      String         @unique
   name                      String
-  status                    OrgStatus @default(ACTIVE)
+  status                    OrgStatus      @default(ACTIVE)
   // IANA zone (e.g. "America/Chicago") for org-wide schedules like the 8am
   // due-date digest. Null = the server's own timezone (the old behavior).
   timezone                  String?
@@ -47,8 +55,18 @@ model Organization {
   // (src/lib/pipeline-settings.ts): { HOME_CARE: { label, hidden }, … }.
   // Null / missing keys = the built-in name, shown.
   pipelineSettings          Json?
-  createdAt                 DateTime  @default(now())
-  updatedAt                 DateTime  @updatedAt
+  kind                      OrgKind        @default(FULL)
+  // The managing company whose staff work in this workspace (CTK for its
+  // client companies' workspaces) — its admins assign their people here
+  // (WorkspaceAssignment). Null = nobody manages it.
+  managedByOrgId            String?
+  managedBy                 Organization?  @relation("ManagedWorkspaces", fields: [managedByOrgId], references: [id])
+  managedWorkspaces         Organization[] @relation("ManagedWorkspaces")
+  createdAt                 DateTime       @default(now())
+  updatedAt                 DateTime       @updatedAt
+
+  assignmentsHome WorkspaceAssignment[] @relation("AssignmentHomeOrg")
+  assignmentsIn   WorkspaceAssignment[] @relation("AssignmentOrg")
 
   orgCounters              OrgCounter[]
   picklistOptions          PicklistOption[]
@@ -197,6 +215,40 @@ enum AuthTokenKind {
   // One-time link a platform admin uses to open a workspace as its support
   // user (src/lib/support-access.ts). Minutes-long, single use.
   SUPPORT_LOGIN
+  // One-time link that signs someone into another workspace they're
+  // assigned to, or back into their home one (src/lib/workspace-switch.ts).
+  WORKSPACE_SWITCH
+}
+
+// A managing company's user (homeUserId, in homeOrgId) working in another
+// workspace (orgId) through a linked account there (userId) — see
+// docs/workspace-tasks-plan.md. Cross-org on purpose, so no organizationId
+// column: row-level security lets the app role see none of it, and only
+// src/lib/workspace-assignments.ts / workspace-switch.ts (system client)
+// read or write it.
+model WorkspaceAssignment {
+  id           String       @id @default(cuid())
+  homeOrgId    String
+  homeOrg      Organization @relation("AssignmentHomeOrg", fields: [homeOrgId], references: [id], onDelete: Cascade)
+  homeUserId   String
+  homeUser     User         @relation("AssignmentHomeUser", fields: [homeUserId], references: [id], onDelete: Cascade)
+  orgId        String
+  org          Organization @relation("AssignmentOrg", fields: [orgId], references: [id], onDelete: Cascade)
+  // The linked account in orgId (User.assignedFromUserId = homeUserId).
+  userId       String       @unique
+  user         User         @relation("AssignmentLinkedUser", fields: [userId], references: [id], onDelete: Cascade)
+  role         Role         @default(STAFF)
+  // Account manager: may assign/unassign VAs in this workspace.
+  canAssign    Boolean      @default(false)
+  active       Boolean      @default(true)
+  assignedById String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  endedAt      DateTime?
+
+  @@unique([homeUserId, orgId])
+  @@index([orgId])
+  @@map("workspace_assignments")
 }
 
 // A single-use link that lets someone set their password without knowing
@@ -384,8 +436,17 @@ model User {
   // phone or tablet browser is refused and any open phone/tablet session is
   // ended at its next check (see src/lib/login-device.ts).
   mobileLoginBlocked        Boolean      @default(false)
+  // A managing company's user's linked account in this workspace
+  // (WorkspaceAssignment): their user id in their home workspace — no FK,
+  // it's another org's row. Like support accounts, it can't sign in with a
+  // password, only through the workspace switcher, and this workspace's
+  // admins can't edit or remove it (the managing company does).
+  assignedFromUserId        String?
   createdAt                 DateTime     @default(now())
   updatedAt                 DateTime     @updatedAt
+
+  assignmentsHome  WorkspaceAssignment[] @relation("AssignmentHomeUser")
+  assignmentLinked WorkspaceAssignment?  @relation("AssignmentLinkedUser")
 
   projectsCreated               Project[]                 @relation("ProjectCreatedBy")
   clientsCreated                Client[]                  @relation("ClientCreatedBy")

@@ -76,7 +76,7 @@ export async function recordLoginEvent(params: {
   userId: string;
   device: LoginDevice;
   success: boolean;
-  method: "password" | "password+mfa" | "support";
+  method: "password" | "password+mfa" | "support" | "switch";
   reason?: string;
 }) {
   try {
@@ -103,7 +103,7 @@ export async function recordLoginEvent(params: {
 export async function refuseIfMobileBlocked(
   user: { id: string; mobileLoginBlocked: boolean },
   device: LoginDevice,
-  method: "password" | "password+mfa"
+  method: "password" | "password+mfa" | "switch"
 ): Promise<boolean> {
   if (!user.mobileLoginBlocked || !isMobileDevice(device.deviceType)) return false;
   await recordLoginEvent({ userId: user.id, device, success: false, method, reason: "mobile_blocked" });

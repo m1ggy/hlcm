@@ -10,6 +10,9 @@ import { authConfig, isPublicPath } from "@/auth.config";
 import { getClientIp } from "@/lib/rate-limit";
 import { clearLoginFailures, isLoginThrottled, recordLoginFailure } from "@/lib/login-throttle";
 import { isMobileDevice, parseLoginDevice, recordLoginEvent, refuseIfMobileBlocked } from "@/lib/login-device";
+import { isLinkedAccountActive } from "@/lib/workspace-switch";
+import { isTasksWorkspacePath, TASKS_HOME } from "@/lib/workspace-kind";
+import { requestHost } from "@/lib/tenant-host";
 
 /** Thrown from authorize so the login actions can show the right message. */
 export class MobileLoginBlockedError extends CredentialsSignin {
@@ -20,6 +23,9 @@ export class MobileLoginBlockedError extends CredentialsSignin {
 // a developer turning it on ends that session within a minute instead of
 // waiting for the idle timeout. Desktop sessions never pay for this check.
 const MOBILE_RECHECK_MS = 60 * 1000;
+// Same idea for a managing company's linked account: unassigning someone
+// (or deactivating them at home) ends their session here within a minute.
+const ASSIGNMENT_RECHECK_MS = 60 * 1000;
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
@@ -34,6 +40,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         otp: { label: "MFA code", type: "text" },
         challenge: { label: "Challenge", type: "text" },
         supportToken: { label: "Support token", type: "text" },
+        switchToken: { label: "Switch token", type: "text" },
       },
       // Users are looked up in the request host's organization only (the
       // tenant client adds organizationId to every lookup) — the same email
@@ -72,6 +79,29 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           };
         }
 
+        // Switching from another workspace (src/lib/workspace-switch.ts): a
+        // one-time link issued to someone already signed in there.
+        const switchToken = credentials?.switchToken as string | undefined;
+        if (switchToken) {
+          const used = await consumeAuthToken(switchToken, ["WORKSPACE_SWITCH"]);
+          if (!used) return null;
+          const user = await db.user.findUnique({ where: { id: used.userId } });
+          if (!user || !user.active || user.isSupport) return null;
+          if (user.assignedFromUserId && !(await isLinkedAccountActive(user.id))) return null;
+          if (await refuseIfMobileBlocked(user, device, "switch")) throw new MobileLoginBlockedError();
+          await recordLoginEvent({ userId: user.id, device, success: true, method: "switch" });
+          return {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            organizationId: org.id,
+            orgSlug: org.slug,
+            isAssigned: Boolean(user.assignedFromUserId),
+            deviceType: device.deviceType,
+          };
+        }
+
         const challenge = credentials?.challenge as string | undefined;
         const otp = credentials?.otp as string | undefined;
 
@@ -82,7 +112,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           if (!userId) return null;
 
           const user = await db.user.findUnique({ where: { id: userId } });
-          if (!user || !user.active || user.isSupport || !user.mfaEnabled || !user.mfaSecret) return null;
+          if (!user || !user.active || user.isSupport || user.assignedFromUserId || !user.mfaEnabled || !user.mfaSecret) return null;
           if (isLoginThrottled(ip, org.id, user.email)) return null;
           if (!otp || !verifyTotpToken(otp, user.mfaSecret)) {
             recordLoginFailure(ip, org.id, user.email);
@@ -109,7 +139,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (isLoginThrottled(ip, org.id, email)) return null;
 
         const user = await db.user.findFirst({ where: { email } });
-        const passwordValid = user?.active && !user.isSupport ? await bcrypt.compare(password, user.passwordHash) : false;
+        const passwordValid = user?.active && !user.isSupport && !user.assignedFromUserId ? await bcrypt.compare(password, user.passwordHash) : false;
         if (!user || !passwordValid) {
           recordLoginFailure(ip, org.id, email);
           return null;
@@ -144,7 +174,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       const allowed = authConfig.callbacks.authorized(params);
       if (!allowed || !params.auth?.user || isPublicPath(params.request.nextUrl.pathname)) return allowed;
       const org = await getOrgBySlug(params.auth.user.orgSlug);
-      return org?.status === "ACTIVE";
+      if (org?.status !== "ACTIVE") return false;
+      // A tasks-only workspace has no licensing CRM: those addresses go to its home page.
+      if (org.kind === "TASKS" && !isTasksWorkspacePath(params.request.nextUrl.pathname)) {
+        // Built from the browser's host (the request URL here is the app's
+        // internal one) — the same trusted header that picked the workspace.
+        const headers = params.request.headers;
+        const proto = headers.get("x-forwarded-proto")?.split(",")[0]?.trim() || params.request.nextUrl.protocol.replace(":", "");
+        return Response.redirect(`${proto}://${requestHost(headers)}${TASKS_HOME}`);
+      }
+      return true;
     },
     async jwt({ token, user }) {
       if (user) {
@@ -153,6 +192,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.organizationId = user.organizationId;
         token.orgSlug = user.orgSlug;
         token.isSupport = user.isSupport ?? false;
+        token.isAssigned = user.isAssigned ?? false;
+        token.assignmentCheckedAt = Date.now();
         token.mobile = isMobileDevice(user.deviceType);
         token.mobileCheckedAt = Date.now();
         return token;
@@ -166,6 +207,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (!row || !row.active || row.mobileLoginBlocked) return null;
         token.mobileCheckedAt = Date.now();
       }
+      if (token.isAssigned && Date.now() - ((token.assignmentCheckedAt as number | undefined) ?? 0) > ASSIGNMENT_RECHECK_MS) {
+        if (!(await isLinkedAccountActive(token.id as string))) return null;
+        token.assignmentCheckedAt = Date.now();
+      }
       return token;
     },
     async session({ session, token }) {
@@ -175,6 +220,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.organizationId = token.organizationId as string;
         session.user.orgSlug = token.orgSlug as string;
         session.user.isSupport = Boolean(token.isSupport);
+        session.user.isAssigned = Boolean(token.isAssigned);
       }
       return session;
     },
