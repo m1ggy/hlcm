@@ -4,8 +4,8 @@
 // sends those addresses to the workspace's home page instead. Pure, so the
 // proxy can use it.
 
-/** A tasks-only workspace's home page (projects, tasks, weekly summary). */
-export const TASKS_HOME = "/work";
+/** A tasks-only workspace's home page: the client's weekly summary. */
+export const TASKS_HOME = "/work/summary";
 
 const TASKS_PATHS = [
   "/work",

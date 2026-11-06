@@ -33,6 +33,9 @@ export default async function WorkPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button variant="outline" nativeButton={false} render={<Link href="/work/summary" />}>
+            Weekly summary
+          </Button>
           {scope.side === "team" && (
             <Button variant="outline" nativeButton={false} render={<Link href="/work/my" />}>
               My tasks

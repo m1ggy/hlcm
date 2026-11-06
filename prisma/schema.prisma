@@ -71,7 +71,17 @@ model Organization {
   workTaskAssignees  WorkTaskAssignee[]
   workTaskComments   WorkTaskComment[]
   workTaskActivities WorkTaskActivity[]
+  workSummaryNotes   WorkSummaryNote[]
   assignmentsIn      WorkspaceAssignment[] @relation("AssignmentOrg")
+
+  // Client weekly summary (docs/workspace-tasks-plan.md, Phase 3). Hours
+  // reach the client only when this is on (decided W7).
+  workShowHoursToClient Boolean @default(false)
+  // A Claude-written note per day and per week (decided W8: on by default;
+  // nothing is sent without ANTHROPIC_API_KEY on the server).
+  workAiSummaries       Boolean @default(true)
+  // Monday email of last week to the client's people.
+  workWeeklyEmail       Boolean @default(true)
 
   orgCounters              OrgCounter[]
   picklistOptions          PicklistOption[]
@@ -462,6 +472,7 @@ model User {
   workTaskAssignments WorkTaskAssignee[]
   workTaskComments    WorkTaskComment[]
   workTaskActivities  WorkTaskActivity[]
+  workSummaryNotes    WorkSummaryNote[]
 
   projectsCreated               Project[]                 @relation("ProjectCreatedBy")
   clientsCreated                Client[]                  @relation("ClientCreatedBy")
@@ -2969,4 +2980,41 @@ model WorkTaskActivity {
   @@index([projectId, occurredAt])
   @@index([taskId, occurredAt])
   @@map("work_task_activities")
+}
+
+enum WorkSummaryPeriod {
+  DAY
+  WEEK
+}
+
+enum WorkSummarySource {
+  // Written by Claude from the day's client-visible activity.
+  AI
+  // Written by a person from scratch.
+  HUMAN
+  // Claude's note, changed by a person: never overwritten by a regenerate run.
+  EDITED
+}
+
+// The short written note on a day card, or the paragraph at the top of a
+// week, in the client's weekly summary (docs/workspace-tasks-plan.md, Phase
+// 3). Everything else on the summary is computed from activity on read.
+// date is the day, or the Monday of the week. emailedAt (WEEK only) marks
+// the Monday email as sent.
+model WorkSummaryNote {
+  id             String            @id @default(cuid())
+  organizationId String            @default(dbgenerated("current_org_id()"))
+  organization   Organization      @relation(fields: [organizationId], references: [id])
+  period         WorkSummaryPeriod
+  date           DateTime          @db.Date
+  body           String
+  source         WorkSummarySource
+  author         User?             @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  authorId       String?
+  emailedAt      DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@unique([organizationId, period, date])
+  @@map("work_summary_notes")
 }

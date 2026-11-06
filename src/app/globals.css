@@ -210,3 +210,17 @@
 .hclm-tour-popover .driver-popover-arrow-side-right { border-left-color: var(--popover); }
 .hclm-tour-popover .driver-popover-arrow-side-top { border-bottom-color: var(--popover); }
 .hclm-tour-popover .driver-popover-arrow-side-bottom { border-top-color: var(--popover); }
+/* Printing a page (the client weekly summary's Print button): just the
+   content, no app chrome. Mark anything else to leave out with
+   data-print-hide. */
+@media print {
+  [data-slot="sidebar"],
+  [data-slot="sidebar-gap"],
+  [data-slot="sidebar-container"],
+  [data-print-hide] {
+    display: none !important;
+  }
+  body {
+    background: #ffffff;
+  }
+}

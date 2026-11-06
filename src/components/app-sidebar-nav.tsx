@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutList, KanbanSquare, Building2, FolderKanban, Users, ClipboardList, UserCog, CheckSquare, Clock, Timer, Receipt, Settings, Inbox, MapPin, CalendarCheck, BarChart3, Sun, Wallet } from "lucide-react";
+import { LayoutList, KanbanSquare, CalendarDays, Building2, FolderKanban, Users, ClipboardList, UserCog, CheckSquare, Clock, Timer, Receipt, Settings, Inbox, MapPin, CalendarCheck, BarChart3, Sun, Wallet } from "lucide-react";
 import {
   SidebarMenu,
   SidebarMenuButton,
@@ -64,6 +64,7 @@ export function AppSidebarNav({
   let links: typeof LINKS;
   if (isTasksWorkspace) {
     links = [
+      { href: "/work/summary", label: "This week", icon: CalendarDays, tour: "nav-work-summary" },
       { href: "/work", label: "Projects", icon: LayoutList, tour: "nav-work" },
       ...(isWorkTeam ? [{ href: "/work/my", label: "My tasks", icon: CheckSquare, tour: "nav-work-my" }] : []),
       { href: "/account", label: "Settings", icon: Settings, tour: "nav-settings" },

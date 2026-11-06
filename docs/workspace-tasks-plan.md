@@ -101,6 +101,13 @@ One helper `workScope(session)` used by every query; tests that internal comment
 
 ## Phase 3 — Client view + weekly summary
 
+**Done 2026-11-07 on `feature/workspace-tasks`** (not pushed). Migration `20261107120000_work_summary` (`work_summary_notes` + three workspace settings); summary in `src/lib/work-summary.ts`, Claude call in `src/lib/work-ai.ts`, notes/job/email in `src/lib/work-summary-notes.ts`, page `/work/summary` (now the tasks-only workspace home); tests `tests/work-summary.test.ts`. As built:
+- The summary always shows the client's view (client-visible projects, tasks, comments, activity), even to the team, so the team sees exactly what the client sees. Hours: client sees them only with "Show hours to the client" on; the team always sees them, marked as hidden from the client.
+- One `WorkSummaryNote` table for both day notes and the week paragraph (`period DAY | WEEK`); the WEEK row's `emailedAt` marks the Monday email as sent.
+- Claude: `claude-opus-5-5`, effort low, server-side fallback (`fallbacks: "default"`), 60s timeout, 2 retries; failures fall back to the plain list. Only runs with `ANTHROPIC_API_KEY` set (not set in production yet, pending the ToS/BAA wording).
+- Hourly job (`src/instrumentation.ts`): day notes for finished days (today after 7 pm local), last week's paragraph, then the Monday email after 8 am local to the client's own people (not linked accounts); quiet weeks skipped.
+- Managers edit a note (Claude's note becomes EDITED and is never auto-replaced) or "Rewrite with AI". Settings dialog on the page for managers.
+
 ### Client home (`/work/summary`, landing page for OWNER/CLIENT in TASKS workspaces)
 - **Week view** (Mon–Sun in the workspace timezone), prev/next week + date picker; any past week, kept forever.
 - **Week header**: tasks completed, tasks started, comments, files shared, hours (only when the workspace setting "Show hours to client" is on — **off by default**, decided W7; CTK admins/account manager toggle it) — with small sparkline per day.

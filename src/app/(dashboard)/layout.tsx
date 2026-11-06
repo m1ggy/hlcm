@@ -65,7 +65,7 @@ export default async function DashboardLayout({
             </a>
           </div>
         )}
-        <header className="flex flex-wrap items-center justify-between gap-x-2 gap-y-2 border-b px-4 py-3">
+        <header data-print-hide className="flex flex-wrap items-center justify-between gap-x-2 gap-y-2 border-b px-4 py-3">
           <div className="flex min-w-0 flex-1 items-center gap-3">
             <SidebarTrigger />
             <SearchBox />

@@ -59,10 +59,25 @@ async function tickMeetingReminders() {
   }
 }
 
+// Client weekly summaries (docs/workspace-tasks-plan.md, Phase 3): Claude
+// writes each finished day's note and last week's paragraph, then the Monday
+// email goes out. Idempotent per org (notes once, email marked sent), so
+// hourly is fine; tasks-only workspaces only.
+async function tickWorkSummaries() {
+  const { runSummaryJob } = await import("@/lib/work-summary-notes");
+  const { forEachActiveOrg } = await import("@/lib/db");
+  try {
+    await forEachActiveOrg("Work summaries", (org) => runSummaryJob(org.slug));
+  } catch (error) {
+    console.error("Work summary run failed:", error);
+  }
+}
+
 export function register() {
   if (process.env.NEXT_RUNTIME === "edge") return;
   setInterval(maybeSendDigest, 60 * 60 * 1000);
   setInterval(tickMeetingReminders, 5 * 60 * 1000);
+  setInterval(tickWorkSummaries, 60 * 60 * 1000);
 }
 
 // Next logs the error itself; this adds which tenant it happened in (from
