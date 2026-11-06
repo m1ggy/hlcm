@@ -38,6 +38,11 @@ export default async function DashboardLayout({
   // workspace can't be used — except by support, who may be there to help.
   if (!session?.user?.isSupport && needsTermsAcceptance(org)) redirect("/accept-terms");
   const isCaregiver = session?.user?.role === "CAREGIVER";
+  // In a client's tasks-only workspace there's no shift clock (shifts and
+  // payroll belong to each person's home workspace), and only the assigned
+  // team times its work; the client's own people get neither.
+  const tasksWorkspace = org.kind === "TASKS";
+  const showTaskTimer = !tasksWorkspace || Boolean(session?.user?.isAssigned) || session?.user?.role === "DEVELOPER";
   const [activeEntry, activeBreak, careRecipients, visitRecipientId, openTimer, myTasks, recentTimerTasks] = await Promise.all([
     getMyActiveEntry(),
     getMyActiveBreak(),
@@ -66,29 +71,33 @@ export default async function DashboardLayout({
             <SearchBox />
           </div>
           <div className="flex flex-wrap items-center justify-end gap-1">
-            <TimeClockWidget
-              // Remount whenever the server-side clock state changes — the
-              // widget seeds its state from these props once, so without
-              // this a clock-in from the Today page would leave the header
-              // showing "Clock in".
-              key={`${activeEntry?.id ?? "-"}:${activeBreak?.id ?? "-"}`}
-              initialClockIn={activeEntry ? activeEntry.clockIn.toISOString() : null}
-              initialBreakStart={activeBreak ? activeBreak.breakStart.toISOString() : null}
-              initialCareRecipientId={visitRecipientId}
-              isCaregiver={isCaregiver}
-              careRecipients={careRecipients}
-            />
-            <TaskTimerWidget
-              // Remounts when the server's open timer changes (e.g. started
-              // from the Time tracking page's bar), so both stay in sync.
-              key={`${openTimer?.id ?? "idle"}:${openTimer?.description ?? ""}`}
-              initialTaskId={openTimer?.taskId ?? null}
-              initialTaskLabel={openTimer?.task?.label ?? null}
-              initialStartedAt={openTimer ? openTimer.startedAt.toISOString() : null}
-              initialDescription={openTimer?.description ?? null}
-              tasks={myTasks}
-              recentTaskIds={recentTimerTasks.map((t) => t.id)}
-            />
+            {!tasksWorkspace && (
+              <TimeClockWidget
+                // Remount whenever the server-side clock state changes — the
+                // widget seeds its state from these props once, so without
+                // this a clock-in from the Today page would leave the header
+                // showing "Clock in".
+                key={`${activeEntry?.id ?? "-"}:${activeBreak?.id ?? "-"}`}
+                initialClockIn={activeEntry ? activeEntry.clockIn.toISOString() : null}
+                initialBreakStart={activeBreak ? activeBreak.breakStart.toISOString() : null}
+                initialCareRecipientId={visitRecipientId}
+                isCaregiver={isCaregiver}
+                careRecipients={careRecipients}
+              />
+            )}
+            {showTaskTimer && (
+              <TaskTimerWidget
+                // Remounts when the server's open timer changes (e.g. started
+                // from the Time tracking page's bar), so both stay in sync.
+                key={`${openTimer?.id ?? "idle"}:${openTimer?.description ?? ""}`}
+                initialTaskId={openTimer?.taskId ?? null}
+                initialTaskLabel={openTimer?.task?.label ?? openTimer?.workTask?.title ?? null}
+                initialStartedAt={openTimer ? openTimer.startedAt.toISOString() : null}
+                initialDescription={openTimer?.description ?? null}
+                tasks={myTasks}
+                recentTaskIds={recentTimerTasks.map((t) => t.id)}
+              />
+            )}
             <Button
               variant="ghost"
               size="sm"

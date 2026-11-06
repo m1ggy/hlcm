@@ -65,8 +65,13 @@ model Organization {
   createdAt                 DateTime       @default(now())
   updatedAt                 DateTime       @updatedAt
 
-  assignmentsHome WorkspaceAssignment[] @relation("AssignmentHomeOrg")
-  assignmentsIn   WorkspaceAssignment[] @relation("AssignmentOrg")
+  assignmentsHome    WorkspaceAssignment[] @relation("AssignmentHomeOrg")
+  workProjects       WorkProject[]
+  workTasks          WorkTask[]
+  workTaskAssignees  WorkTaskAssignee[]
+  workTaskComments   WorkTaskComment[]
+  workTaskActivities WorkTaskActivity[]
+  assignmentsIn      WorkspaceAssignment[] @relation("AssignmentOrg")
 
   orgCounters              OrgCounter[]
   picklistOptions          PicklistOption[]
@@ -386,6 +391,9 @@ enum NotificationType {
   CARE_INCIDENT_REPORTED
   PAYROLL_PAID
   PAYROLL_PROBLEM_REPORTED
+  WORK_TASK_ASSIGNED
+  WORK_TASK_COMMENTED
+  WORK_TASK_REQUESTED
 }
 
 enum InvoiceStatus {
@@ -445,8 +453,15 @@ model User {
   createdAt                 DateTime     @default(now())
   updatedAt                 DateTime     @updatedAt
 
-  assignmentsHome  WorkspaceAssignment[] @relation("AssignmentHomeUser")
-  assignmentLinked WorkspaceAssignment?  @relation("AssignmentLinkedUser")
+  assignmentsHome     WorkspaceAssignment[] @relation("AssignmentHomeUser")
+  assignmentLinked    WorkspaceAssignment?  @relation("AssignmentLinkedUser")
+  workProjectsLed     WorkProject[]         @relation("WorkProjectLead")
+  workProjectsCreated WorkProject[]         @relation("WorkProjectCreatedBy")
+  workTasksCreated    WorkTask[]            @relation("WorkTaskCreatedBy")
+  workTasksCompleted  WorkTask[]            @relation("WorkTaskCompletedBy")
+  workTaskAssignments WorkTaskAssignee[]
+  workTaskComments    WorkTaskComment[]
+  workTaskActivities  WorkTaskActivity[]
 
   projectsCreated               Project[]                 @relation("ProjectCreatedBy")
   clientsCreated                Client[]                  @relation("ClientCreatedBy")
@@ -1729,6 +1744,9 @@ model FileAsset {
   createdAt       DateTime       @default(now())
   clientService   ClientService? @relation(fields: [clientServiceId], references: [id], onDelete: SetNull)
   clientServiceId String?
+  // Fourth parent kind: a file on a project task (docs/workspace-tasks-plan.md).
+  workTask        WorkTask?      @relation(fields: [workTaskId], references: [id], onDelete: Cascade)
+  workTaskId      String?
 
   versions            FileVersion[]
   signatureEvents     SignatureEvent[]
@@ -1933,8 +1951,11 @@ model TaskTimeEntry {
   user           User         @relation(fields: [userId], references: [id])
   userId         String
 
-  task   Task?   @relation(fields: [taskId], references: [id])
-  taskId String?
+  task       Task?     @relation(fields: [taskId], references: [id])
+  taskId     String?
+  // Or a project task (never both: DB CHECK task_time_entries_one_task).
+  workTask   WorkTask? @relation(fields: [workTaskId], references: [id], onDelete: SetNull)
+  workTaskId String?
 
   startedAt   DateTime
   // Null = still running — the one open timer for this user (startTimer in
@@ -1960,6 +1981,7 @@ model TaskTimeEntry {
 
   @@index([userId, startedAt])
   @@index([taskId])
+  @@index([workTaskId])
   @@index([organizationId])
   @@map("task_time_entries")
 }
@@ -2773,4 +2795,178 @@ model FormSubmissionFile {
 
   @@index([organizationId])
   @@map("form_submission_files")
+}
+
+// ---------------------------------------------------------------------------
+// Projects and tasks (docs/workspace-tasks-plan.md, Phase 2). General work,
+// separate from the licensing Task/Phase checklist: a managing company's
+// staff and a client company's people share them in the client's workspace.
+// Client-side people only ever see clientVisible projects and tasks, CLIENT
+// comments and clientVisible activity (src/lib/work.ts workScope).
+
+enum WorkProjectStatus {
+  ACTIVE
+  ON_HOLD
+  DONE
+  ARCHIVED
+}
+
+enum WorkTaskStatus {
+  TODO
+  IN_PROGRESS
+  IN_REVIEW
+  BLOCKED
+  DONE
+  CANCELLED
+}
+
+enum WorkTaskPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum WorkCommentVisibility {
+  INTERNAL
+  CLIENT
+}
+
+enum WorkActivityKind {
+  CREATED
+  REQUESTED
+  STATUS_CHANGED
+  ASSIGNED
+  UNASSIGNED
+  COMMENTED
+  FILE_ADDED
+  DUE_CHANGED
+  DECLINED
+}
+
+model WorkProject {
+  id             String            @id @default(cuid())
+  organizationId String            @default(dbgenerated("current_org_id()"))
+  organization   Organization      @relation(fields: [organizationId], references: [id])
+  name           String
+  description    String?
+  // A palette key (src/lib/work.ts PROJECT_COLORS), not a raw color.
+  color          String            @default("blue")
+  status         WorkProjectStatus @default(ACTIVE)
+  clientVisible  Boolean           @default(true)
+  lead           User?             @relation("WorkProjectLead", fields: [leadId], references: [id], onDelete: SetNull)
+  leadId         String?
+  startDate      DateTime?         @db.Date
+  dueDate        DateTime?         @db.Date
+  sortOrder      Int               @default(0)
+  createdBy      User              @relation("WorkProjectCreatedBy", fields: [createdById], references: [id])
+  createdById    String
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  tasks      WorkTask[]
+  activities WorkTaskActivity[]
+
+  @@index([organizationId, status])
+  @@map("work_projects")
+}
+
+model WorkTask {
+  id              String           @id @default(cuid())
+  organizationId  String           @default(dbgenerated("current_org_id()"))
+  organization    Organization     @relation(fields: [organizationId], references: [id])
+  project         WorkProject      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId       String
+  // Subtasks: one level deep, same project (checked in src/lib/actions/work.ts).
+  parent          WorkTask?        @relation("WorkSubtasks", fields: [parentId], references: [id], onDelete: Cascade)
+  parentId        String?
+  subtasks        WorkTask[]       @relation("WorkSubtasks")
+  title           String
+  description     String?
+  status          WorkTaskStatus   @default(TODO)
+  priority        WorkTaskPriority @default(NORMAL)
+  startDate       DateTime?        @db.Date
+  dueDate         DateTime?        @db.Date
+  completedAt     DateTime?
+  completedBy     User?            @relation("WorkTaskCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
+  completedById   String?
+  sortOrder       Int              @default(0)
+  clientVisible   Boolean          @default(true)
+  estimateHours   Float?
+  // A client asked for it ("Request a task"); declineReason is shown to them
+  // when a manager cancels the request.
+  isClientRequest Boolean          @default(false)
+  declineReason   String?
+  createdBy       User             @relation("WorkTaskCreatedBy", fields: [createdById], references: [id])
+  createdById     String
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  assignees   WorkTaskAssignee[]
+  comments    WorkTaskComment[]
+  activities  WorkTaskActivity[]
+  files       FileAsset[]
+  timeEntries TaskTimeEntry[]
+
+  @@index([organizationId, projectId, status])
+  @@index([parentId])
+  @@map("work_tasks")
+}
+
+model WorkTaskAssignee {
+  id             String       @id @default(cuid())
+  organizationId String       @default(dbgenerated("current_org_id()"))
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  task           WorkTask     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  taskId         String
+  user           User         @relation(fields: [userId], references: [id])
+  userId         String
+  createdAt      DateTime     @default(now())
+
+  @@unique([taskId, userId])
+  @@index([userId])
+  @@index([organizationId])
+  @@map("work_task_assignees")
+}
+
+model WorkTaskComment {
+  id             String                @id @default(cuid())
+  organizationId String                @default(dbgenerated("current_org_id()"))
+  organization   Organization          @relation(fields: [organizationId], references: [id])
+  task           WorkTask              @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  taskId         String
+  author         User                  @relation(fields: [authorId], references: [id])
+  authorId       String
+  body           String
+  visibility     WorkCommentVisibility @default(INTERNAL)
+  createdAt      DateTime              @default(now())
+  editedAt       DateTime?
+
+  @@index([taskId, createdAt])
+  @@index([organizationId])
+  @@map("work_task_comments")
+}
+
+// Append-only log; feeds the activity tab and the client's weekly summary
+// (Phase 3). from/to hold the old/new status, due date or assignee name.
+model WorkTaskActivity {
+  id             String           @id @default(cuid())
+  organizationId String           @default(dbgenerated("current_org_id()"))
+  organization   Organization     @relation(fields: [organizationId], references: [id])
+  task           WorkTask         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  taskId         String
+  project        WorkProject      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId      String
+  actor          User             @relation(fields: [actorId], references: [id])
+  actorId        String
+  kind           WorkActivityKind
+  from           String?
+  to             String?
+  clientVisible  Boolean          @default(true)
+  occurredAt     DateTime         @default(now())
+
+  @@index([organizationId, occurredAt])
+  @@index([projectId, occurredAt])
+  @@index([taskId, occurredAt])
+  @@map("work_task_activities")
 }

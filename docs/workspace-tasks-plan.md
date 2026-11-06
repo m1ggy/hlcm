@@ -62,6 +62,14 @@ Request (user, 2026-11-05):
 
 ## Phase 2 — Projects and tasks
 
+**Done 2026-11-06 on `feature/workspace-tasks`** (not pushed). Migration `20261106120000_work_projects`; rules in `src/lib/work.ts` (`workScope`), reads in `src/lib/work-data.ts`, changes in `src/lib/work-service.ts`, actions in `src/lib/actions/work.ts`; pages under `src/app/(dashboard)/work`; tests `tests/work-projects.test.ts`. As built:
+- **Sides:** in a TASKS workspace, linked accounts (and platform support) are the team; every other account, the client's OWNER included, is the client side. In a FULL workspace, CLIENT users are the client side (they're still sent to /portal for now) and caregivers have no access.
+- **Clients** see client-visible projects (not archived) and tasks, CLIENT comments, client-visible activity and the task's files; never hours. They comment (always client-visible), attach files, and request tasks.
+- **Notifications:** assigned, new comment (internal notes only to the team), new client request (project lead, else the team's managers), request declined.
+- **Timer:** "Start timer" on a task runs the regular task timer against it (`TaskTimeEntry.workTaskId`). In TASKS workspaces there's no shift clock and no auto clock-in (shifts and payroll belong to the home workspace); clients see no clock or timer.
+- **Not in v1:** drag reorder in the List view (the Board reorders), @mentions, "due tomorrow" reminders, rich-text descriptions (plain text), per-file client visibility.
+- **Open question:** VA hours timed in a client's workspace live in that workspace, not CTK's payroll — decide how they reach payroll (Phase 3 or 5).
+
 New tenant tables (all `organizationId` default `current_org_id()`, index, `ensure_tenant_policies()`, same-org FK triggers, export/delete coverage):
 
 - **`WorkProject`**: `name, description, color, status (ACTIVE | ON_HOLD | DONE | ARCHIVED), clientVisible (default true), leadId?, startDate?, dueDate?, sortOrder, createdById`.

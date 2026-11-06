@@ -38,6 +38,9 @@ const NOTIFICATION_HEADINGS: Record<$Enums.NotificationType, string> = {
   CARE_INCIDENT_REPORTED: "Caregiver reported a concern",
   PAYROLL_PAID: "Payment sent",
   PAYROLL_PROBLEM_REPORTED: "Payment problem reported",
+  WORK_TASK_ASSIGNED: "Task assigned to you",
+  WORK_TASK_COMMENTED: "New comment",
+  WORK_TASK_REQUESTED: "New task request",
 };
 
 // Fire-and-forget from inside a mutation — never let a notification failure

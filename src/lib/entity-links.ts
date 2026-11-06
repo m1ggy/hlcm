@@ -30,8 +30,11 @@ export const ENTITY_LINKS: Record<EntityLinkVariant, Record<string, (id: string)
     // Someone's own pay — the My Pay card (caregivers have it on /hours).
     MyPay: () => "/time#my-pay",
     MyPayCaregiver: () => "/hours#my-pay",
+    // A project task: opens its project with the task panel showing.
+    WorkTask: (id) => `/work/tasks/${id}`,
   },
   portal: {
     Application: (id) => `/portal/applications/${id}`,
+    WorkTask: (id) => `/work/tasks/${id}`,
   },
 };

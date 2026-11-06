@@ -43,6 +43,7 @@ export async function AppSidebar() {
           showCaregiverClients={showCaregiverClients}
           showClientWorkspaces={managesWorkspaces}
           isTasksWorkspace={org?.kind === "TASKS"}
+          isWorkTeam={Boolean(session.user.isAssigned) || session.user.role === "DEVELOPER"}
         />
       </SidebarContent>
       <SidebarFooter className="gap-2 border-t px-3 py-3">

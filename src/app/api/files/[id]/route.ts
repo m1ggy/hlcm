@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { db, currentOrganization } from "@/lib/db";
 import { requireSession, assertApplicationAccess, UnauthorizedError, ForbiddenError, AppRole, isManagement } from "@/lib/rbac";
 import { readStoredFile } from "@/lib/storage";
+import { taskWhere, workScope } from "@/lib/work";
 
 export async function GET(_req: NextRequest, ctx: RouteContext<"/api/files/[id]">) {
   const { id } = await ctx.params;
@@ -27,6 +28,12 @@ export async function GET(_req: NextRequest, ctx: RouteContext<"/api/files/[id]"
           throw new ForbiddenError("Not your task");
         }
       }
+    } else if (asset.workTaskId) {
+      // A project task's file: whoever can see the task (src/lib/work.ts).
+      const org = await currentOrganization();
+      const scope = workScope({ userId: session.user.id, role: session.user.role, isAssigned: Boolean(session.user.isAssigned), orgKind: org.kind });
+      const visible = await db.workTask.findFirst({ where: { id: asset.workTaskId, ...taskWhere(scope) }, select: { id: true } });
+      if (!visible) throw new ForbiddenError("Not accessible");
     } else if (asset.clientId) {
       // Same flat role gate as uploadClientFile/listClientFiles
       // (src/lib/actions/files.ts) — Clients have no per-record

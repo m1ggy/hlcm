@@ -2,16 +2,19 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { db } from "@/lib/db";
+import { db, currentOrganization } from "@/lib/db";
 import { requireSession, requireRole, isManagement } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
 import { TaskTimeError } from "@/lib/task-time-entries";
 import { clockIn, endBreak } from "@/lib/actions/time-entries";
+import { UserFacingError } from "@/lib/user-facing-error";
+import { taskWhere, workScope } from "@/lib/work";
 
 const entryInclude = {
   user: { select: { id: true, name: true, hourlyRate: true } },
   task: { select: { id: true, label: true, estimatedHours: true, application: { select: { id: true, name: true } } } },
+  workTask: { select: { id: true, title: true, project: { select: { id: true, name: true } } } },
 } as const;
 
 /** The signed-in user's running timer, or null — for the nav widget's
@@ -31,14 +34,27 @@ export async function getMyOpenTaskTimer() {
  * rule — so any of the caller's open entries are closed first rather than
  * rejecting the new start; switching tasks is just "start the next one".
  */
-export async function startTaskTimer(input: { taskId?: string; description?: string } = {}) {
+export async function startTaskTimer(input: { taskId?: string; workTaskId?: string; description?: string } = {}) {
   const session = await requireSession();
+  const org = await currentOrganization();
+
+  // A project task (docs/workspace-tasks-plan.md): only the team side times
+  // work, and only on tasks it can see.
+  if (input.workTaskId) {
+    if (input.taskId) throw new UserFacingError("Pick one task to time");
+    const scope = workScope({ userId: session.user.id, role: session.user.role, isAssigned: Boolean(session.user.isAssigned), orgKind: org.kind });
+    if (scope.side !== "team") throw new UserFacingError("Only the team can track time on tasks");
+    const visible = await db.workTask.findFirst({ where: { id: input.workTaskId, ...taskWhere(scope) }, select: { id: true } });
+    if (!visible) throw new UserFacingError("That task doesn't exist or you can't see it");
+  }
 
   // Working on a task means you're working: clock in first if you aren't,
   // or come back from a break. Caregivers are left alone — their clock-in
   // is a visit to a chosen recipient, which a task timer can't pick.
   let clockedIn = false;
-  if (session.user.role !== "CAREGIVER") {
+  // Not in a client's tasks-only workspace either: the shift clock (and
+  // payroll) belongs to the person's home workspace.
+  if (session.user.role !== "CAREGIVER" && org.kind !== "TASKS") {
     const [openShift, openBreak] = await Promise.all([
       db.timeEntry.findFirst({ where: { userId: session.user.id, clockOut: null }, select: { id: true } }),
       db.breakEntry.findFirst({ where: { userId: session.user.id, breakEnd: null }, select: { id: true } }),
@@ -59,6 +75,7 @@ export async function startTaskTimer(input: { taskId?: string; description?: str
     data: {
       userId: session.user.id,
       taskId: input.taskId || undefined,
+      workTaskId: input.workTaskId || undefined,
       description: input.description?.trim() || undefined,
       startedAt: now,
       source: "TIMER",

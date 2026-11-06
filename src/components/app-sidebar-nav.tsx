@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutList, Building2, FolderKanban, Users, ClipboardList, UserCog, CheckSquare, Clock, Timer, Receipt, Settings, Inbox, MapPin, CalendarCheck, BarChart3, Sun, Wallet } from "lucide-react";
+import { LayoutList, KanbanSquare, Building2, FolderKanban, Users, ClipboardList, UserCog, CheckSquare, Clock, Timer, Receipt, Settings, Inbox, MapPin, CalendarCheck, BarChart3, Sun, Wallet } from "lucide-react";
 import {
   SidebarMenu,
   SidebarMenuButton,
@@ -14,6 +14,8 @@ const LINKS = [
   { href: "/clients", label: "Clients", icon: Users, tour: "nav-clients" },
   { href: "/applications", label: "Applications", icon: ClipboardList, tour: "nav-applications" },
   { href: "/tasks", label: "My Tasks", icon: CheckSquare, tour: "nav-tasks" },
+  // Projects and tasks (docs/workspace-tasks-plan.md): general work, not licensing.
+  { href: "/work", label: "Work", icon: KanbanSquare, tour: "nav-work" },
   { href: "/form-submissions", label: "Form Submissions", icon: Inbox, tour: "nav-form-submissions" },
   { href: "/leads", label: "Leads", icon: CalendarCheck, tour: "nav-leads" },
   { href: "/time", label: "Time", icon: Clock, tour: "nav-time" },
@@ -43,6 +45,7 @@ export function AppSidebarNav({
   showCaregiverClients = true,
   showClientWorkspaces = false,
   isTasksWorkspace = false,
+  isWorkTeam = false,
 }: {
   isAdmin: boolean;
   canManageInvoices: boolean;
@@ -53,6 +56,8 @@ export function AppSidebarNav({
   showClientWorkspaces?: boolean;
   /** A client company's tasks-only workspace: no licensing pages. */
   isTasksWorkspace?: boolean;
+  /** On the team side of a tasks-only workspace (a managing company's assigned staff). */
+  isWorkTeam?: boolean;
 }) {
   const pathname = usePathname();
 
@@ -60,6 +65,7 @@ export function AppSidebarNav({
   if (isTasksWorkspace) {
     links = [
       { href: "/work", label: "Projects", icon: LayoutList, tour: "nav-work" },
+      ...(isWorkTeam ? [{ href: "/work/my", label: "My tasks", icon: CheckSquare, tour: "nav-work-my" }] : []),
       { href: "/account", label: "Settings", icon: Settings, tour: "nav-settings" },
     ];
     if (isAdmin) links = [...links, { href: "/admin/users", label: "Users", icon: UserCog, tour: "nav-admin" }];
@@ -78,7 +84,9 @@ export function AppSidebarNav({
   return (
     <SidebarMenu>
       {links.map((link) => {
-        const isActive = pathname === link.href || pathname.startsWith(`${link.href}/`);
+        const matches = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
+        const best = links.filter((l) => matches(l.href)).sort((a, b) => b.href.length - a.href.length)[0];
+        const isActive = best?.href === link.href;
         return (
           <SidebarMenuItem key={link.href}>
             <SidebarMenuButton isActive={isActive} render={<Link href={link.href} data-tour={link.tour} />}>
