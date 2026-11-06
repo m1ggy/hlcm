@@ -12,6 +12,7 @@ import {
   getTenantOrganization,
   inviteOwner,
   listOrganizations,
+  listStaffOf,
   resendOwnerInvites,
   setOrganizationStatus,
   type CreateOrganizationInput,
@@ -45,13 +46,23 @@ export async function listOrganizationsForPlatform(): Promise<(PlatformOrganizat
   return (await listOrganizations()).map((org) => ({ ...org, url: orgAppUrl(org.slug) }));
 }
 
-export async function createOrganizationFromPlatform(input: CreateOrganizationInput): Promise<ActionResult<{ slug: string; inviteSent: boolean }>> {
+export async function createOrganizationFromPlatform(
+  input: CreateOrganizationInput
+): Promise<ActionResult<{ slug: string; inviteSent: boolean; assigned: number; assignErrors: string[] }>> {
   return toActionResult(async () => {
     const session = await requirePlatformAdmin();
-    const { org, inviteSent } = await createOrganization(input, session.user.name ?? undefined);
+    const { org, inviteSent, assignErrors } = await createOrganization(input, { id: session.user.id, name: session.user.name ?? session.user.email });
     await recordAudit({ entityType: "Organization", entityId: org.id, action: "create", actorId: session.user.id, newValue: `${org.slug}:${org.name}` });
     revalidatePath("/platform");
-    return { slug: org.slug, inviteSent };
+    return { slug: org.slug, inviteSent, assigned: (input.assign?.length ?? 0) - assignErrors.length, assignErrors };
+  });
+}
+
+/** The create wizard's "Assign staff" step: who works at the managing company. */
+export async function listStaffForPlatform(managingOrgId: string): Promise<ActionResult<{ id: string; name: string; email: string; role: string }[]>> {
+  return toActionResult(async () => {
+    await requirePlatformAdmin();
+    return listStaffOf(managingOrgId);
   });
 }
 

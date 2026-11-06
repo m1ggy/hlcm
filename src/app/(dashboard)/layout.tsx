@@ -42,7 +42,8 @@ export default async function DashboardLayout({
   // payroll belong to each person's home workspace), and only the assigned
   // team times its work; the client's own people get neither.
   const tasksWorkspace = org.kind === "TASKS";
-  const showTaskTimer = !tasksWorkspace || Boolean(session?.user?.isAssigned) || session?.user?.role === "DEVELOPER";
+  const onWorkTeam = Boolean(session?.user?.isAssigned) || session?.user?.role === "DEVELOPER";
+  const showTaskTimer = !tasksWorkspace || onWorkTeam;
   const [activeEntry, activeBreak, careRecipients, visitRecipientId, openTimer, myTasks, recentTimerTasks] = await Promise.all([
     getMyActiveEntry(),
     getMyActiveBreak(),
@@ -108,7 +109,10 @@ export default async function DashboardLayout({
               <BookOpen className="size-3.5" /> <span className="hidden sm:inline">Handbook</span>
             </Button>
             <div className="hidden sm:block">
-              <ProductTour role={session?.user?.role} />
+              <ProductTour
+                role={session?.user?.role}
+                tasksSide={tasksWorkspace ? (onWorkTeam ? "team" : "client") : undefined}
+              />
             </div>
             <NotificationBell />
           </div>

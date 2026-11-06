@@ -75,7 +75,7 @@ export function ProjectFormDialog({
               <Pencil className="size-4" /> Edit project
             </Button>
           ) : (
-            <Button>
+            <Button data-tour="new-project">
               <Plus className="size-4" /> New project
             </Button>
           )

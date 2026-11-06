@@ -131,6 +131,14 @@ One helper `workScope(session)` used by every query; tests that internal comment
 ---
 
 ## Phase 4 — Onboarding a client workspace
+
+**Done 2026-11-07 on `feature/workspace-tasks`** (not pushed). No migration. As built:
+- Platform console "New organization" is a two-step wizard: details + type + managing company, then (for a managed workspace) **Assign staff** — each of the managing company's people as Not assigned / Staff / Manager / Account manager. `createOrganization(input, by)` takes `assign[]`; a failed pick (e.g. a caregiver) is reported in a toast, the workspace still gets created. Assignments made here are audited in the managing workspace on the assigned person (the platform admin has no account there), naming "<admin> (platform console)".
+- Tasks-only workspaces skip the licensing template (built-in defaults only) and get a **"Getting started"** project with 4 client-visible tasks (`src/lib/work-starter.ts`), written without activity rows so they don't count as news in the first summary or Monday email.
+- First sign-in lands on `/work/summary`; while nothing has happened yet, a **welcome card** explains the page (client and team wording differ).
+- **Tour**: tasks-only client tour (summary, days, projects, request a task, notifications, users, settings, handbook) and team tour (switcher, client's summary, summary settings, new project, projects, my tasks, timer, notifications). The staff tour gains the switcher and Client workspaces steps when present.
+- **Handbook**: sections 19 "Client workspaces" (for our team) and 20 "For client companies".
+- Tests: `tests/workspace-onboarding.test.ts`. Walked through in a browser on the scratch DB (wizard → new owner → both tours), no console errors.
 - Superadmin create wizard (platform console §4) gains **Type: Tasks-only** and **Assign staff** steps; template = a starter project ("Getting started") instead of the licensing template.
 - Owner invite as today; first sign-in lands on the weekly summary (empty-state explains it).
 - Handbook + product tour: tasks-only tour for clients; switcher step for assigned staff.

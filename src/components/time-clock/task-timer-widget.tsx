@@ -125,7 +125,7 @@ export function TaskTimerWidget({
 
   if (isRunning) {
     return (
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1" data-tour="task-timer">
         {editingNote ? (
           <Input
             autoFocus
@@ -163,7 +163,7 @@ export function TaskTimerWidget({
   }
 
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-1" data-tour="task-timer">
       <SearchableSelect
         items={taskItems}
         value={pickedTaskId}

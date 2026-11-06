@@ -1,6 +1,6 @@
 import { requireWorkViewer } from "@/lib/work-session";
 import { listAssignableUsers, workspaceToday } from "@/lib/work-data";
-import { getWeekSummary, weekStartOf } from "@/lib/work-summary";
+import { getWeekSummary, summaryHasHistory, weekStartOf } from "@/lib/work-summary";
 import { aiSummariesConfigured } from "@/lib/work-ai";
 import { DEFAULT_TIMEZONE } from "@/lib/time-entries";
 import { SummaryView } from "@/components/work/summary-view";
@@ -17,9 +17,10 @@ export default async function WorkSummaryPage({ searchParams }: { searchParams: 
   // Hours: shown to the client only when the workspace turns that on; the
   // team always sees them, marked as hidden from the client when they are.
   const withHours = org.workShowHoursToClient || scope.side === "team";
-  const [summary, people] = await Promise.all([
+  const [summary, people, hasHistory] = await Promise.all([
     getWeekSummary({ monday, timeZone: org.timezone || DEFAULT_TIMEZONE, orgKind: org.kind, withHours }),
     scope.side === "team" ? listAssignableUsers(org.kind) : Promise.resolve([]),
+    summaryHasHistory(org.kind),
   ]);
   const focusedDay = valid(day);
 
@@ -32,6 +33,7 @@ export default async function WorkSummaryPage({ searchParams }: { searchParams: 
       currentUserId={viewer.userId}
       people={people}
       workspaceName={org.name}
+      isNew={!hasHistory}
       settings={{
         showHoursToClient: org.workShowHoursToClient,
         aiSummaries: org.workAiSummaries,

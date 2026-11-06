@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import {
   createOrganizationFromPlatform,
   inviteOwnerFromPlatform,
+  listStaffForPlatform,
   openSupportSessionFromPlatform,
   resendOwnerInvitesFromPlatform,
   setOrganizationStatusFromPlatform,
@@ -160,73 +161,201 @@ function SetupDialog({ org, organizations }: { org: Org; organizations: Org[] })
 
 const EMPTY_FORM = { name: "", slug: "", ownerName: "", ownerEmail: "" };
 
+type Pick = "STAFF" | "MANAGER" | "ACCOUNT_MANAGER";
+const NOT_ASSIGNED = "none";
+type PickOption = Pick | typeof NOT_ASSIGNED;
+const PICK_LABELS: Record<PickOption, string> = {
+  none: "Not assigned",
+  STAFF: "Staff",
+  MANAGER: "Manager",
+  ACCOUNT_MANAGER: "Account manager",
+};
+type Staff = { id: string; name: string; email: string; role: string };
+
+// Creating a workspace (docs/workspace-tasks-plan.md, Phase 4): details,
+// type and managing company, then — for a managed workspace — which of the
+// managing company's people work there from day one.
 function NewOrganizationDialog({ organizations }: { organizations: Org[] }) {
   const [kind, setKind] = useState<Kind>("TASKS");
   const [managedBy, setManagedBy] = useState(NO_MANAGER);
   const [open, setOpen] = useState(false);
+  const [step, setStep] = useState<"details" | "staff">("details");
   const [form, setForm] = useState(EMPTY_FORM);
   const [slugEdited, setSlugEdited] = useState(false);
+  const [staff, setStaff] = useState<{ orgId: string; people: Staff[] } | null>(null);
+  const [picks, setPicks] = useState<Record<string, Pick>>({});
+  const [loadingStaff, startLoadingStaff] = useTransition();
   const { isPending, run } = useAction();
+  const managed = managedBy !== NO_MANAGER;
+  const managerName = organizations.find((o) => o.id === managedBy)?.name ?? "the managing company";
 
   function set(key: keyof typeof EMPTY_FORM, value: string) {
     setForm((f) => ({ ...f, [key]: value, ...(key === "name" && !slugEdited ? { slug: slugify(value) } : {}) }));
   }
 
-  function handleCreate() {
-    run(() => createOrganizationFromPlatform({ ...form, kind, managedByOrgId: managedBy === NO_MANAGER ? null : managedBy }), ({ slug, inviteSent }) => {
-      if (inviteSent) toast.success(`Created ${slug} and invited its owner`);
-      else toast.warning(`Created ${slug}, but the owner invite couldn't be sent — use "Resend owner invite".`);
-      setOpen(false);
-      setForm(EMPTY_FORM);
-      setSlugEdited(false);
+  function reset() {
+    setStep("details");
+    setForm(EMPTY_FORM);
+    setSlugEdited(false);
+    setPicks({});
+  }
+
+  function chooseManager(id: string) {
+    setManagedBy(id);
+    setPicks({});
+  }
+
+  function pick(userId: string, value: PickOption) {
+    setPicks((current) => {
+      const next = { ...current };
+      if (value === NOT_ASSIGNED) delete next[userId];
+      else next[userId] = value;
+      return next;
     });
   }
 
+  function goToStaff() {
+    setStep("staff");
+    if (staff?.orgId === managedBy) return;
+    startLoadingStaff(async () => {
+      const result = await listStaffForPlatform(managedBy);
+      if (!result.ok) {
+        toast.error(result.error);
+        setStep("details");
+        return;
+      }
+      setStaff({ orgId: managedBy, people: result.data });
+    });
+  }
+
+  function handleCreate() {
+    const assign = managed
+      ? Object.entries(picks).map(([homeUserId, p]) => ({
+          homeUserId,
+          role: p === "STAFF" ? ("STAFF" as const) : ("MANAGER" as const),
+          canAssign: p === "ACCOUNT_MANAGER",
+        }))
+      : [];
+    run(
+      () => createOrganizationFromPlatform({ ...form, kind, managedByOrgId: managed ? managedBy : null, assign }),
+      ({ slug, inviteSent, assigned, assignErrors }) => {
+        const people = assigned ? `, assigned ${assigned} ${assigned === 1 ? "person" : "people"}` : "";
+        if (inviteSent) toast.success(`Created ${slug}${people} and invited its owner`);
+        else toast.warning(`Created ${slug}${people}, but the owner invite couldn't be sent — use "Resend owner invite".`);
+        for (const error of assignErrors) toast.error(error);
+        setOpen(false);
+        reset();
+      }
+    );
+  }
+
+  const people = staff?.orgId === managedBy ? staff.people : [];
+  const pickedCount = Object.keys(picks).length;
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o);
+        if (!o) setStep("details");
+      }}
+    >
       <DialogTrigger render={<Button>New organization</Button>} />
-      <DialogContent>
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>New organization</DialogTitle>
+          <DialogTitle>{step === "details" ? "New organization" : `Who from ${managerName} works here?`}</DialogTitle>
+          {managed && <p className="text-xs text-muted-foreground">Step {step === "details" ? 1 : 2} of 2</p>}
         </DialogHeader>
-        <form
-          className="space-y-4"
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleCreate();
-          }}
-        >
-          <div className="space-y-1">
-            <Label htmlFor="org-name">Organization name</Label>
-            <Input id="org-name" value={form.name} onChange={(e) => set("name", e.target.value)} required />
+        {step === "details" ? (
+          <form
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (managed) goToStaff();
+              else handleCreate();
+            }}
+          >
+            <div className="space-y-1">
+              <Label htmlFor="org-name">Organization name</Label>
+              <Input id="org-name" value={form.name} onChange={(e) => set("name", e.target.value)} required />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="org-slug">Address</Label>
+              <Input
+                id="org-slug"
+                value={form.slug}
+                onChange={(e) => {
+                  setSlugEdited(true);
+                  set("slug", e.target.value.toLowerCase());
+                }}
+                required
+                className="font-mono"
+              />
+              <p className="text-xs text-muted-foreground">The workspace&apos;s subdomain. Can&apos;t be changed later.</p>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="owner-name">Owner name</Label>
+              <Input id="owner-name" value={form.ownerName} onChange={(e) => set("ownerName", e.target.value)} required />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="owner-email">Owner email</Label>
+              <Input id="owner-email" type="email" value={form.ownerEmail} onChange={(e) => set("ownerEmail", e.target.value)} required />
+            </div>
+            <SetupFields kind={kind} managedBy={managedBy} onKind={setKind} onManagedBy={chooseManager} managers={managersFor(organizations)} />
+            {kind === "TASKS" && (
+              <p className="rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
+                Starts with a &ldquo;Getting started&rdquo; project for the client instead of the licensing setup.
+              </p>
+            )}
+            <Button type="submit" className="w-full" loading={isPending}>
+              {managed ? "Next: assign staff" : "Create and invite owner"}
+            </Button>
+          </form>
+        ) : (
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Each person gets a linked account in {form.name || "the new workspace"} and opens it with the workspace switcher.
+              Managers run projects; an account manager can also assign staff later. This can change any time on {managerName}
+              &apos;s Client workspaces page.
+            </p>
+            {loadingStaff ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">Loading people…</p>
+            ) : people.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">{managerName} has nobody to assign yet.</p>
+            ) : (
+              <ul className="max-h-80 divide-y overflow-y-auto rounded-lg border">
+                {people.map((p) => (
+                  <li key={p.id} className="flex items-center justify-between gap-3 px-3 py-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{p.name}</p>
+                      <p className="truncate text-xs text-muted-foreground">{p.email}</p>
+                    </div>
+                    <Select value={picks[p.id] ?? NOT_ASSIGNED} onValueChange={(v) => pick(p.id, v as PickOption)}>
+                      <SelectTrigger className="w-40" aria-label={`Role for ${p.name}`}>
+                        <SelectValue>{(v: PickOption) => PICK_LABELS[v]}</SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(Object.keys(PICK_LABELS) as PickOption[]).map((k) => (
+                          <SelectItem key={k} value={k}>
+                            {PICK_LABELS[k]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setStep("details")} disabled={isPending}>
+                Back
+              </Button>
+              <Button className="flex-1" onClick={handleCreate} loading={isPending} disabled={loadingStaff}>
+                {pickedCount ? `Create, assign ${pickedCount}, invite owner` : "Create and invite owner"}
+              </Button>
+            </div>
           </div>
-          <div className="space-y-1">
-            <Label htmlFor="org-slug">Address</Label>
-            <Input
-              id="org-slug"
-              value={form.slug}
-              onChange={(e) => {
-                setSlugEdited(true);
-                set("slug", e.target.value.toLowerCase());
-              }}
-              required
-              className="font-mono"
-            />
-            <p className="text-xs text-muted-foreground">The workspace&apos;s subdomain. Can&apos;t be changed later.</p>
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="owner-name">Owner name</Label>
-            <Input id="owner-name" value={form.ownerName} onChange={(e) => set("ownerName", e.target.value)} required />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="owner-email">Owner email</Label>
-            <Input id="owner-email" type="email" value={form.ownerEmail} onChange={(e) => set("ownerEmail", e.target.value)} required />
-          </div>
-          <SetupFields kind={kind} managedBy={managedBy} onKind={setKind} onManagedBy={setManagedBy} managers={managersFor(organizations)} />
-          <Button type="submit" className="w-full" loading={isPending}>
-            Create and invite owner
-          </Button>
-        </form>
+        )}
       </DialogContent>
     </Dialog>
   );

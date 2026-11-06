@@ -44,7 +44,7 @@ export function RequestTaskDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button>Request a task</Button>} />
+      <DialogTrigger render={<Button data-tour="request-task">Request a task</Button>} />
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Request a task</DialogTitle>

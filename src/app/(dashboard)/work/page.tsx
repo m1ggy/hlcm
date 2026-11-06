@@ -51,7 +51,7 @@ export default async function WorkPage() {
       </div>
 
       {projects.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed px-6 py-16 text-center">
+        <div data-tour="work-projects" className="flex flex-col items-center gap-3 rounded-xl border border-dashed px-6 py-16 text-center">
           <FolderKanban className="size-8 text-muted-foreground" aria-hidden />
           <p className="font-heading text-lg font-semibold">No projects yet</p>
           <p className="max-w-sm text-sm text-muted-foreground">
@@ -80,7 +80,7 @@ export default async function WorkPage() {
 function ProjectGrid({ projects, showHidden }: { projects: ProjectCard[]; showHidden: boolean }) {
   if (projects.length === 0) return null;
   return (
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+    <div data-tour="work-projects" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
       {projects.map((p) => {
         const pct = p.total ? Math.round((p.done / p.total) * 100) : 0;
         return (

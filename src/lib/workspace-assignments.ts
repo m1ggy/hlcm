@@ -23,7 +23,19 @@ import { UserFacingError } from "@/lib/user-facing-error";
 // Cross-org by nature, so this uses the system client (see the ESLint
 // allowlist). Callers pass the signed-in actor from their own session.
 
-export type AssignmentActor = { userId: string; orgId: string; role: string; name?: string | null };
+export type AssignmentActor = {
+  userId: string;
+  orgId: string;
+  role: string;
+  name?: string | null;
+  /**
+   * A platform admin acting for the managing company (the create wizard in
+   * the platform console). They have no account in it, so `userId` is theirs
+   * from the platform org and the managing side's audit entry is recorded on
+   * the assigned person instead.
+   */
+  viaPlatform?: boolean;
+};
 
 export type AssignableRole = "STAFF" | "MANAGER";
 const ASSIGNABLE_ROLES: AssignableRole[] = ["STAFF", "MANAGER"];
@@ -43,7 +55,7 @@ async function accessTo(actor: AssignmentActor, orgId: string): Promise<Access> 
     select: { id: true, slug: true, name: true, status: true, managedByOrgId: true },
   });
   if (!org || org.managedByOrgId !== actor.orgId) throw new UserFacingError("That workspace isn't managed by yours");
-  if (isWorkspaceAdmin(actor.role)) return { org, level: "admin" };
+  if (actor.viaPlatform || isWorkspaceAdmin(actor.role)) return { org, level: "admin" };
   const mine = await prisma.workspaceAssignment.findFirst({
     where: { homeUserId: actor.userId, orgId, active: true, canAssign: true },
     select: { id: true },
@@ -213,7 +225,7 @@ export async function assignToWorkspace(actor: AssignmentActor, input: AssignInp
   });
 
   const detail = { workspace: org.slug, person: home.email, role: input.role, accountManager: input.canAssign };
-  await auditBoth(actor, org, assignmentId.userId, existing ? "workspace_assignment_updated" : "workspace_assigned", detail);
+  await auditBoth(actor, org, assignmentId.userId, existing ? "workspace_assignment_updated" : "workspace_assigned", detail, home.id);
   return assignmentId.id;
 }
 
@@ -255,10 +267,25 @@ export async function managingOrgName(orgId: string): Promise<string | null> {
 
 // Logged in both workspaces: the managing one under the actor, the client
 // one on the linked account (the actor has no account there), naming who did it.
-async function auditBoth(actor: AssignmentActor, org: { id: string; slug: string }, linkedUserId: string, action: string, detail: Record<string, unknown>) {
+async function auditBoth(
+  actor: AssignmentActor,
+  org: { id: string; slug: string },
+  linkedUserId: string,
+  action: string,
+  detail: Record<string, unknown>,
+  homeUserId?: string
+) {
   const home = await prisma.organization.findUniqueOrThrow({ where: { id: actor.orgId }, select: { id: true, slug: true, name: true } });
+  const homeActorId = actor.viaPlatform && homeUserId ? homeUserId : actor.userId;
+  const by = actor.viaPlatform ? `${actor.name ?? "A platform admin"} (platform console)` : `${actor.name ?? "An admin"} (${home.name})`;
   await runAsTenant({ id: home.id, slug: home.slug }, () =>
-    recordAudit({ entityType: "WorkspaceAssignment", entityId: org.id, action, actorId: actor.userId, newValue: detail })
+    recordAudit({
+      entityType: "WorkspaceAssignment",
+      entityId: org.id,
+      action,
+      actorId: homeActorId,
+      newValue: actor.viaPlatform ? { ...detail, by } : detail,
+    })
   );
   await runAsTenant({ id: org.id, slug: org.slug }, () =>
     recordAudit({
@@ -266,7 +293,7 @@ async function auditBoth(actor: AssignmentActor, org: { id: string; slug: string
       entityId: linkedUserId,
       action,
       actorId: linkedUserId,
-      newValue: { ...detail, by: `${actor.name ?? "An admin"} (${home.name})` },
+      newValue: { ...detail, by },
     })
   );
 }

@@ -15,6 +15,26 @@ import { Button } from "@/components/ui/button";
 // would.
 type TourStep = DriveStep & { data: { path: string } };
 
+/** Which tasks-only workspace tour, if any (src/lib/work.ts workScope sides). */
+export type TasksTourSide = "client" | "team";
+
+const optional = { skipMissingElement: true, waitForElement: 0 } as const;
+
+// Managing-company staff with client workspaces see the switcher at the top
+// of the sidebar (src/components/workspaces/workspace-switcher.tsx).
+function switcherStep(path: string): TourStep {
+  return {
+    data: { path },
+    element: '[data-tour="workspace-switcher"]',
+    popover: {
+      title: "Switch workspace",
+      description: "You work in more than one workspace: your own company's and each client company you're assigned to. Pick one here to open it — each keeps its own tasks, people and notifications, and you're signed in to it without a password.",
+      side: "right",
+    },
+    ...optional,
+  } satisfies TourStep;
+}
+
 // Every role that reaches this component gets its own step list, built to
 // match exactly what that role's own sidebar/layout shows — a shared list
 // with steps silently skipped for missing elements looked right for
@@ -29,6 +49,7 @@ function buildStaffSteps(role: string | undefined): TourStep[] {
   const canManageInvoices = role === "ACCOUNTANT" || role === "OWNER" || role === "DEVELOPER";
 
   const steps: TourStep[] = [
+    switcherStep("/"),
     {
       data: { path: "/" },
       element: '[data-tour="pipeline-alerts"]',
@@ -117,6 +138,16 @@ function buildStaffSteps(role: string | undefined): TourStep[] {
       },
       skipMissingElement: true,
       waitForElement: 0,
+    } satisfies TourStep,
+    {
+      data: { path: "/applications" },
+      element: '[data-tour="nav-client-workspaces"]',
+      popover: {
+        title: "Client workspaces",
+        description: "Each client company you do task work for has its own workspace. Assign people to them here; account managers can assign staff to the ones they run.",
+        side: "right",
+      },
+      ...optional,
     } satisfies TourStep,
     {
       data: { path: "/applications" },
@@ -408,25 +439,185 @@ function buildClientSteps(): TourStep[] {
   ];
 }
 
-function buildSteps(role: string | undefined): TourStep[] {
+// A client company's tasks-only workspace (docs/workspace-tasks-plan.md):
+// This week / Projects / Settings (+ Users for its admins). The client's
+// own people see what the team shares with them and ask for work.
+function buildTasksClientSteps(): TourStep[] {
+  return [
+    {
+      data: { path: "/work/summary" },
+      element: '[data-tour="summary-header"]',
+      popover: {
+        title: "Your weekly summary",
+        description: "Your home page: what your team did for you this week, day by day. Use the arrows or pick a date to look back at any week, and Print for a clean copy.",
+        side: "bottom",
+      },
+    },
+    {
+      data: { path: "/work/summary" },
+      element: '[data-tour="summary-days"]',
+      popover: {
+        title: "Day by day",
+        description: "Each card shows what was finished, moved forward or added that day, plus comments and files shared with you. Click a day for the details, and a task to open it.",
+        side: "top",
+      },
+    },
+    {
+      data: { path: "/work" },
+      element: '[data-tour="work-projects"]',
+      popover: {
+        title: "Projects",
+        description: "Everything the team is working on for you, with progress. Open a project for its tasks; open a task to comment or add files.",
+        side: "top",
+      },
+    },
+    {
+      data: { path: "/work" },
+      element: '[data-tour="request-task"]',
+      popover: {
+        title: "Request a task",
+        description: "Need something done? Ask here. The team picks it up (or tells you why not), and you follow it like any other task.",
+        side: "bottom",
+      },
+      ...optional,
+    } satisfies TourStep,
+    {
+      data: { path: "/work" },
+      element: '[data-tour="notifications"]',
+      popover: {
+        title: "Notifications",
+        description: "Replies to your comments, finished requests and new tasks for you land here — and in your email, unless you turn that off in Settings.",
+        side: "bottom",
+        align: "end",
+      },
+    },
+    {
+      data: { path: "/work" },
+      element: '[data-tour="nav-admin"]',
+      popover: {
+        title: "Users",
+        description: "Invite the people at your company who should follow this work. The staff working for you are added by your managing company.",
+        side: "right",
+      },
+      ...optional,
+    } satisfies TourStep,
+    {
+      data: { path: "/work" },
+      element: '[data-tour="nav-settings"]',
+      popover: {
+        title: "Settings",
+        description: "Password, two-factor sign-in, email notifications and your timezone.",
+        side: "right",
+      },
+    },
+    {
+      data: { path: "/work" },
+      element: '[data-tour="handbook-link"]',
+      popover: {
+        title: "Handbook",
+        description: "A written guide with a section for client workspaces — opens in a new tab.",
+        side: "bottom",
+      },
+    },
+  ];
+}
+
+// The managing company's people inside a client's workspace.
+function buildTasksTeamSteps(): TourStep[] {
+  return [
+    switcherStep("/work/summary"),
+    {
+      data: { path: "/work/summary" },
+      element: '[data-tour="summary-header"]',
+      popover: {
+        title: "The client's weekly summary",
+        description: "This is the client's home page, and you see it as they do: what was finished, moved forward or added each day. Hidden tasks and internal comments never show here.",
+        side: "bottom",
+      },
+    },
+    {
+      data: { path: "/work/summary" },
+      element: '[data-tour="summary-settings"]',
+      popover: {
+        title: "Summary settings",
+        description: "Managers choose whether the client sees hours, whether Claude drafts the daily and weekly notes, and whether the client gets the Monday email. You can edit or rewrite any note on the page.",
+        side: "left",
+      },
+      ...optional,
+    } satisfies TourStep,
+    {
+      data: { path: "/work" },
+      element: '[data-tour="new-project"]',
+      popover: {
+        title: "New project",
+        description: "Projects hold the tasks. Leave a project or task visible to the client, or hide it for internal work.",
+        side: "left",
+      },
+      ...optional,
+    } satisfies TourStep,
+    {
+      data: { path: "/work" },
+      element: '[data-tour="work-projects"]',
+      popover: {
+        title: "Projects",
+        description: "Open a project for its board and list. Drag tasks between statuses, assign people, set due dates; comments can be shared with the client or kept internal.",
+        side: "top",
+      },
+    },
+    {
+      data: { path: "/work" },
+      element: '[data-tour="nav-work-my"]',
+      popover: {
+        title: "My tasks",
+        description: "Everything assigned to you in this workspace, overdue first.",
+        side: "right",
+      },
+    },
+    {
+      data: { path: "/work" },
+      element: '[data-tour="task-timer"]',
+      popover: {
+        title: "Task timer",
+        description: "Time your work on a task here. Your team sees the hours; the client sees them only if a manager turns that on.",
+        side: "bottom",
+      },
+      ...optional,
+    } satisfies TourStep,
+    {
+      data: { path: "/work" },
+      element: '[data-tour="notifications"]',
+      popover: {
+        title: "Notifications",
+        description: "Assignments, client comments and client task requests land here.",
+        side: "bottom",
+        align: "end",
+      },
+    },
+  ];
+}
+
+function buildSteps(role: string | undefined, tasksSide?: TasksTourSide): TourStep[] {
+  if (tasksSide === "client") return buildTasksClientSteps();
+  if (tasksSide === "team") return buildTasksTeamSteps();
   if (role === "CAREGIVER") return buildCaregiverSteps();
   if (role === "CLIENT") return buildClientSteps();
   return buildStaffSteps(role);
 }
 
-function firstPathFor(role: string | undefined): string {
+function firstPathFor(role: string | undefined, tasksSide?: TasksTourSide): string {
+  if (tasksSide) return "/work/summary";
   if (role === "CAREGIVER") return "/today";
   if (role === "CLIENT") return "/portal";
   return "/applications";
 }
 
-export function ProductTour({ role }: { role?: string }) {
+export function ProductTour({ role, tasksSide }: { role?: string; tasksSide?: TasksTourSide }) {
   const router = useRouter();
   const pathname = usePathname();
   const driverRef = useRef<ReturnType<typeof driver> | null>(null);
   const pendingIndexRef = useRef<number | null>(null);
   const pathnameRef = useRef(pathname);
-  const steps = useMemo(() => buildSteps(role), [role]);
+  const steps = useMemo(() => buildSteps(role, tasksSide), [role, tasksSide]);
 
   useEffect(() => {
     pathnameRef.current = pathname;
@@ -485,7 +676,7 @@ export function ProductTour({ role }: { role?: string }) {
   }, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleClick() {
-    const firstPath = steps[0]?.data.path ?? firstPathFor(role);
+    const firstPath = steps[0]?.data.path ?? firstPathFor(role, tasksSide);
     if (pathname === firstPath) {
       start(0);
     } else {

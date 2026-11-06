@@ -7,7 +7,8 @@ import { isValidOrgSlug, PLATFORM_SLUG } from "@/lib/tenant-host";
 import { seedOrganization } from "@/lib/org-seed";
 import { sendInviteEmail } from "@/lib/auth-emails";
 import { UserFacingError } from "@/lib/user-facing-error";
-import { setWorkspaceSetup } from "@/lib/workspace-assignments";
+import { assignToWorkspace, setWorkspaceSetup, type AssignableRole } from "@/lib/workspace-assignments";
+import { createStarterProject } from "@/lib/work-starter";
 
 // Operator-side management of tenant workspaces — the only app code that
 // works *across* organizations (hence the raw client; see the ESLint
@@ -102,14 +103,23 @@ export type CreateOrganizationInput = {
   ownerEmail: string;
   kind?: "FULL" | "TASKS";
   managedByOrgId?: string | null;
+  /** The managing company's people to put to work there straight away (needs managedByOrgId). */
+  assign?: { homeUserId: string; role: AssignableRole; canAssign: boolean }[];
 };
+
+/** The platform admin creating the workspace, for the invite email and the assignment audit entries. */
+export type PlatformActor = { id: string; name?: string | null };
 
 /**
  * Creates a tenant: the organization, its first OWNER (no usable password —
  * they get an invite), and its starting setup (a copy of the template org's,
- * see seedOrganization). Returns whether the owner's invite email went out.
+ * see seedOrganization). A tasks-only client workspace gets a "Getting
+ * started" project instead of the licensing template, and the managing
+ * company's people picked in the wizard. Returns whether the owner's invite
+ * email went out, and any assignment that couldn't be made.
  */
-export async function createOrganization(input: CreateOrganizationInput, invitedBy?: string) {
+export async function createOrganization(input: CreateOrganizationInput, by?: PlatformActor) {
+  const invitedBy = by?.name ?? undefined;
   const name = input.name.trim();
   const slug = input.slug.trim().toLowerCase();
   const ownerName = input.ownerName.trim();
@@ -129,9 +139,26 @@ export async function createOrganization(input: CreateOrganizationInput, invited
     data: { name: ownerName, email: ownerEmail, role: "OWNER", passwordHash: await bcrypt.hash(randomBytes(32).toString("hex"), 12) },
     select: { id: true, name: true, email: true },
   });
-  await seedOrganization({ org, ownerId: owner.id });
-  if (input.kind === "TASKS" || input.managedByOrgId) {
+  const tasksOnly = input.kind === "TASKS";
+  // Tasks-only: no licensing setup to copy (only the built-in defaults).
+  await seedOrganization({ org, ownerId: owner.id, ...(tasksOnly && { templateOrgSlug: null }) });
+  if (tasksOnly || input.managedByOrgId) {
     await setWorkspaceSetup(org.id, { kind: input.kind ?? "FULL", managedByOrgId: input.managedByOrgId || null });
+  }
+  if (tasksOnly) await runAsTenant({ id: org.id, slug: org.slug }, () => createStarterProject(owner.id));
+
+  // The workspace exists by now, so a failed pick is reported, not thrown.
+  const assignErrors: string[] = [];
+  if (input.managedByOrgId && by) {
+    const actor = { userId: by.id, orgId: input.managedByOrgId, role: "DEVELOPER", name: by.name, viaPlatform: true };
+    for (const pick of input.assign ?? []) {
+      try {
+        await assignToWorkspace(actor, { orgId: org.id, ...pick });
+      } catch (error) {
+        assignErrors.push(error instanceof UserFacingError ? error.message : "An assignment failed");
+        if (!(error instanceof UserFacingError)) console.error(`Failed to assign ${pick.homeUserId} to new org ${org.slug}:`, error);
+      }
+    }
   }
 
   let inviteSent = true;
@@ -141,7 +168,18 @@ export async function createOrganization(input: CreateOrganizationInput, invited
     console.error(`Failed to send the owner invite for new org ${org.slug}:`, error);
     inviteSent = false;
   }
-  return { org, inviteSent };
+  return { org, inviteSent, assignErrors };
+}
+
+/** The people a managing company could put to work in a new workspace (the create wizard's "Assign staff" step). */
+export async function listStaffOf(orgId: string) {
+  const org = await prisma.organization.findUnique({ where: { id: orgId }, select: { slug: true, managedByOrgId: true } });
+  if (!org || org.slug === PLATFORM_SLUG || org.managedByOrgId) throw new UserFacingError("Pick a workspace as the managing company");
+  return prisma.user.findMany({
+    where: { organizationId: orgId, active: true, isSupport: false, assignedFromUserId: null, role: { notIn: ["CLIENT", "CAREGIVER"] } },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true, email: true, role: true },
+  });
 }
 
 /**

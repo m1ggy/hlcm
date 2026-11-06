@@ -48,6 +48,7 @@ export function SummaryView({
   currentUserId,
   people,
   workspaceName,
+  isNew,
   settings,
 }: {
   summary: WeekSummary;
@@ -57,6 +58,8 @@ export function SummaryView({
   currentUserId: string;
   people: { id: string; name: string }[];
   workspaceName: string;
+  /** Nothing has happened in the workspace yet: explain the page. */
+  isNew: boolean;
   settings: Settings;
 }) {
   const router = useRouter();
@@ -87,7 +90,7 @@ export function SummaryView({
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
+        <div data-tour="summary-header">
           <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">{workspaceName} · Weekly summary</p>
           <h1 className="font-heading text-3xl font-semibold tracking-tight">Week of {title}</h1>
         </div>
@@ -126,6 +129,8 @@ export function SummaryView({
         </div>
       </div>
 
+      {isNew && <Welcome side={scope.side} canEdit={canEdit} aiOn={aiAvailable} />}
+
       {/* The week's paragraph */}
       <NoteBlock
         key={`week-${summary.from}`}
@@ -158,7 +163,7 @@ export function SummaryView({
       </section>
 
       {/* Days */}
-      <section aria-label="Days" className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-7">
+      <section aria-label="Days" data-tour="summary-days" className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-7">
         {summary.days.map((d) => (
           <DayCard key={d.date} d={d} today={today} selected={d.date === day} onSelect={() => pickDay(d.date === day ? null : d.date)} />
         ))}
@@ -178,6 +183,36 @@ export function SummaryView({
 
       <TaskSheet taskId={taskId} onOpenChange={onSheetOpenChange} onOpenTask={setTaskId} scope={scope} currentUserId={currentUserId} people={people} />
     </div>
+  );
+}
+
+// A brand-new workspace (docs/workspace-tasks-plan.md, Phase 4): what this
+// page is, until the first thing happens.
+function Welcome({ side, canEdit, aiOn }: { side: WorkScope["side"]; canEdit: boolean; aiOn: boolean }) {
+  const client = side === "client";
+  return (
+    <section className="rounded-xl border border-primary/30 bg-primary/5 p-5" aria-label="Welcome">
+      <h2 className="font-heading text-lg font-semibold">{client ? "Welcome — this is your weekly summary" : "This is the client's weekly summary"}</h2>
+      <div className="mt-2 max-w-3xl space-y-2 text-sm text-muted-foreground">
+        <p>
+          {client
+            ? "Each day card below fills in as your team works: tasks finished, moved forward or added, comments and files shared with you. Click a day for the details, or use the arrows to look back at any week."
+            : "It's what the client sees when they sign in: each day card fills in from tasks finished, moved forward or added, and the comments and files you share with them. Hidden tasks and internal comments never show here."}
+        </p>
+        <p>
+          {client
+            ? `${aiOn ? "A short written note sums up each day and week, and every" : "Every"} Monday morning you get last week's summary by email.`
+            : canEdit
+              ? `${aiOn ? "Claude drafts a short note for each day and week; edit or rewrite any of them." : "Write a short note for any day or week."} The client gets last week's summary by email every Monday — change that and hours in Settings.`
+              : "Your managers can add a short note to each day and week."}
+        </p>
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2" data-print-hide>
+        <Button size="sm" nativeButton={false} render={<Link href="/work" />}>
+          {client ? "See your projects" : canEdit ? "Set up projects" : "See projects"}
+        </Button>
+      </div>
+    </section>
   );
 }
 
@@ -472,7 +507,7 @@ function SettingsDialog({ settings }: { settings: Settings }) {
     <Dialog>
       <DialogTrigger
         render={
-          <Button variant="outline" size="icon" aria-label="Summary settings">
+          <Button variant="outline" size="icon" aria-label="Summary settings" data-tour="summary-settings">
             <Settings2 className="size-4" />
           </Button>
         }

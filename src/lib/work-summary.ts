@@ -14,7 +14,14 @@ function clientScope(orgKind: "FULL" | "TASKS") {
   return workScope({ userId: "", role: "CLIENT", isAssigned: false, orgKind });
 }
 
-export type SummaryTaskRef = { taskId: string; title: string; projectId: string; projectName: string };
+/** Whether anything the client could see has happened yet — a brand-new workspace's summary explains itself instead. */
+export async function summaryHasHistory(orgKind: "FULL" | "TASKS"): Promise<boolean> {
+  const scope = clientScope(orgKind);
+  const found = await db.workTaskActivity.findFirst({ where: { ...activityWhere(scope), task: taskWhere(scope) }, select: { id: true } });
+  return Boolean(found);
+}
+
+export type SummaryTaskRef ={ taskId: string; title: string; projectId: string; projectName: string };
 
 export type DaySummary = {
   date: string;
