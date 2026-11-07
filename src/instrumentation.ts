@@ -73,11 +73,25 @@ async function tickWorkSummaries() {
   }
 }
 
+// End-of-day report reminders (docs/client-portal-eod-plan.md, decided D4):
+// 6 pm in each person's / workspace's timezone; one notification per person
+// per day doubles as the "sent" mark, so hourly is fine.
+async function tickEodReminders() {
+  const { runEodReminders } = await import("@/lib/eod-reminders");
+  const { forEachActiveOrg } = await import("@/lib/db");
+  try {
+    await forEachActiveOrg("EOD reminders", (org) => runEodReminders(org.slug).then(() => undefined));
+  } catch (error) {
+    console.error("EOD reminder run failed:", error);
+  }
+}
+
 export function register() {
   if (process.env.NEXT_RUNTIME === "edge") return;
   setInterval(maybeSendDigest, 60 * 60 * 1000);
   setInterval(tickMeetingReminders, 5 * 60 * 1000);
   setInterval(tickWorkSummaries, 60 * 60 * 1000);
+  setInterval(tickEodReminders, 60 * 60 * 1000);
 }
 
 // Next logs the error itself; this adds which tenant it happened in (from

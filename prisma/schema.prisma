@@ -73,6 +73,9 @@ model Organization {
   workTaskActivities WorkTaskActivity[]
   workSummaryNotes   WorkSummaryNote[]
   assignmentsIn      WorkspaceAssignment[] @relation("AssignmentOrg")
+  eodReports         EodReport[]
+  eodReportItems     EodReportItem[]
+  eodReportComments  EodReportComment[]
 
   // Client weekly summary (docs/workspace-tasks-plan.md, Phase 3). Hours
   // reach the client only when this is on (decided W7).
@@ -404,6 +407,8 @@ enum NotificationType {
   WORK_TASK_ASSIGNED
   WORK_TASK_COMMENTED
   WORK_TASK_REQUESTED
+  EOD_REMINDER
+  EOD_COMMENTED
 }
 
 enum InvoiceStatus {
@@ -473,6 +478,13 @@ model User {
   workTaskComments    WorkTaskComment[]
   workTaskActivities  WorkTaskActivity[]
   workSummaryNotes    WorkSummaryNote[]
+  // Whether this person is expected to submit an end-of-day report
+  // (reminders, the team page's "missing" list) — not who may write one.
+  // Null = the role's default: STAFF yes, everyone else no (src/lib/eod.ts).
+  eodRequired         Boolean?
+  eodReports          EodReport[]           @relation("EodReportAuthor")
+  eodReportsReopened  EodReport[]           @relation("EodReportReopenedBy")
+  eodReportComments   EodReportComment[]
 
   projectsCreated               Project[]                 @relation("ProjectCreatedBy")
   clientsCreated                Client[]                  @relation("ClientCreatedBy")
@@ -1940,6 +1952,7 @@ model Task {
   notes           Note[]
   files           FileAsset[]
   taskTimeEntries TaskTimeEntry[]
+  eodItems        EodReportItem[]
 
   @@index([organizationId])
   @@map("tasks")
@@ -3017,4 +3030,89 @@ model WorkSummaryNote {
 
   @@unique([organizationId, period, date])
   @@map("work_summary_notes")
+}
+
+// End-of-day reports (docs/client-portal-eod-plan.md, Phase C): what each
+// person worked on today, line by line against their tasks, with a summary,
+// blockers and tomorrow's plan. One per person per day (their timezone).
+enum EodStatus {
+  DRAFT
+  SUBMITTED
+}
+
+model EodReport {
+  id             String       @id @default(cuid())
+  organizationId String       @default(dbgenerated("current_org_id()"))
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  user           User         @relation("EodReportAuthor", fields: [userId], references: [id])
+  userId         String
+  reportDate     DateTime     @db.Date
+  status         EodStatus    @default(DRAFT)
+  startedAt      DateTime     @default(now())
+  submittedAt    DateTime?
+  summary        String?
+  blockers       String?
+  tomorrowPlan   String?
+  // Last reopened after submitting (by the author the same day, or a manager).
+  reopenedAt     DateTime?
+  reopenedBy     User?        @relation("EodReportReopenedBy", fields: [reopenedById], references: [id], onDelete: SetNull)
+  reopenedById   String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  items    EodReportItem[]
+  comments EodReportComment[]
+
+  @@unique([userId, reportDate])
+  @@index([organizationId, reportDate])
+  @@map("eod_reports")
+}
+
+model EodReportItem {
+  id             String       @id @default(cuid())
+  organizationId String       @default(dbgenerated("current_org_id()"))
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  report         EodReport    @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  reportId       String
+  // Null = ad-hoc work not on a task (then `title` says what it was).
+  task           Task?        @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  taskId         String?
+  // The task's label when the line was written, so the report still reads
+  // right if the task is renamed or deleted; the ad-hoc line's own title.
+  title          String
+  // Copied from the task, for filtering the team page by client.
+  applicationId  String?
+  clientId       String?
+  statusBefore   TaskStatus?
+  // Applied to the task on submit (audited) when it differs from before.
+  statusAfter    TaskStatus?
+  workDone       String       @default("")
+  internalNote   String?
+  minutes        Int?
+  // Shared with the client (decided D5: on for a line on a client's task).
+  clientVisible  Boolean      @default(false)
+  sortOrder      Int          @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([reportId])
+  @@index([taskId])
+  @@index([organizationId, clientId])
+  @@map("eod_report_items")
+}
+
+// Manager feedback on a report (and the author's replies).
+model EodReportComment {
+  id             String       @id @default(cuid())
+  organizationId String       @default(dbgenerated("current_org_id()"))
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  report         EodReport    @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  reportId       String
+  author         User         @relation(fields: [authorId], references: [id])
+  authorId       String
+  body           String
+  createdAt      DateTime     @default(now())
+
+  @@index([reportId])
+  @@map("eod_report_comments")
 }

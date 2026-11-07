@@ -32,6 +32,10 @@ export const ENTITY_LINKS: Record<EntityLinkVariant, Record<string, (id: string)
     MyPayCaregiver: () => "/hours#my-pay",
     // A project task: opens its project with the task panel showing.
     WorkTask: (id) => `/work/tasks/${id}`,
+    // End-of-day reports: one report; a day of one's own; a day of the team's.
+    EodReport: (id) => `/eod/r/${id}`,
+    Eod: (day) => `/eod?date=${day}`,
+    EodTeam: (day) => `/eod/team?date=${day}`,
   },
   portal: {
     Application: (id) => `/portal/applications/${id}`,
