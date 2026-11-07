@@ -97,6 +97,17 @@ function buildStaffSteps(role: string | undefined): TourStep[] {
     },
     {
       data: { path: "/applications" },
+      element: '[data-tour="nav-eod"]',
+      popover: {
+        title: "End of day",
+        description: "Your end-of-day report. Start your day and it lists your open tasks and anything you timed; write what you did on each, move tasks along, and submit before you clock out. Managers see everyone's on the Team page.",
+        side: "right",
+      },
+      skipMissingElement: true,
+      waitForElement: 0,
+    } satisfies TourStep,
+    {
+      data: { path: "/applications" },
       element: '[data-tour="nav-form-submissions"]',
       popover: {
         title: "Form Submissions",

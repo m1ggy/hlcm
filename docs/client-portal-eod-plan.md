@@ -79,6 +79,15 @@ Built first because the EOD report and the client portal both show it.
 
 ## Phase C — EOD reports (feature 2)
 
+**Done 2026-11-08 on `feature/eod`** (off main, which already had phase-6 — Phase A happened as the 2026-11-05 merge). Built before Phase B, so **no correspondence links yet** (add when B lands). Migration `20261108120000_eod_reports`; logic `src/lib/eod.ts` + `src/lib/eod-reminders.ts`; tests `tests/eod.test.ts`. As built:
+- `/eod`: Start day → draft pre-filled with tasks timed today (minutes from the timer) then open assigned tasks by due date. Each line: what you did, new task status, minutes, share with client (only on a client's task), internal note. Autosaves. Submit drops untouched lines, applies status changes to the tasks (audited, reviewers notified) and locks. Past days via ?date=, recent reports on the side.
+- Reopen: author until the end of the report's day, managers any time (audited).
+- `/eod/team` (OWNER/ADMIN/MANAGER/DEVELOPER): per day, submitted / drafting / missing / not expected; "expected daily" checkbox per person (`User.eodRequired`, null = STAFF yes); xlsx export of a day or week (`/api/export/eod`). `/eod/r/[id]`: one report + comment thread (notifies the other side).
+- Clock-in toast offers "Start your EOD"; clock-out reminds if not submitted (never blocks).
+- 6 pm reminders (person's timezone) to required people who worked today (clocked in, timed, or have a draft); managers get one "who's missing" notification at 6 pm workspace time. One notification per person per day = the sent mark.
+- Not in tasks-only client workspaces. Work tasks (client workspaces) can't go on a report yet — that's workspace-tasks Phase 5.
+- Sidebar "End of day", tour step, handbook section 21.
+
 **Who:** every role except `CLIENT` and `CAREGIVER` (caregivers already have visit notes). Per-person switch "EOD required" (`User.eodRequired`, default on for STAFF) controls reminders and the "missing" list — not who *can* write one.
 
 **Models** (tenant tables):

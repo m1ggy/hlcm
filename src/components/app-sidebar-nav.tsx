@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutList, KanbanSquare, CalendarDays, Building2, FolderKanban, Users, ClipboardList, UserCog, CheckSquare, Clock, Timer, Receipt, Settings, Inbox, MapPin, CalendarCheck, BarChart3, Sun, Wallet } from "lucide-react";
+import { LayoutList, KanbanSquare, CalendarDays, Building2, FolderKanban, Users, ClipboardList, UserCog, CheckSquare, Clock, Timer, Receipt, Settings, Inbox, MapPin, CalendarCheck, BarChart3, Sun, Wallet, NotebookPen } from "lucide-react";
 import {
   SidebarMenu,
   SidebarMenuButton,
@@ -14,6 +14,8 @@ const LINKS = [
   { href: "/clients", label: "Clients", icon: Users, tour: "nav-clients" },
   { href: "/applications", label: "Applications", icon: ClipboardList, tour: "nav-applications" },
   { href: "/tasks", label: "My Tasks", icon: CheckSquare, tour: "nav-tasks" },
+  // End-of-day reports (docs/client-portal-eod-plan.md, Phase C).
+  { href: "/eod", label: "End of day", icon: NotebookPen, tour: "nav-eod" },
   // Projects and tasks (docs/workspace-tasks-plan.md): general work, not licensing.
   { href: "/work", label: "Work", icon: KanbanSquare, tour: "nav-work" },
   { href: "/form-submissions", label: "Form Submissions", icon: Inbox, tour: "nav-form-submissions" },

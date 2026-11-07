@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Clock, Coffee, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -8,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { AvatarInitials } from "@/components/ui/avatar-initials";
 import { clockIn, clockOut, startBreak, endBreak, endBreakForDay } from "@/lib/actions/time-entries";
 import { formatDuration } from "@/lib/time-entries";
+import { myEodStatusToday } from "@/lib/actions/eod";
 import { useStartVisit } from "@/components/visits/use-start-visit";
 import { EndVisitDialog } from "@/components/visits/end-visit-dialog";
 
@@ -69,12 +71,30 @@ export function TimeClockWidget({
     };
   }, [anchor]);
 
+  // End-of-day report prompts (docs/client-portal-eod-plan.md, decided D3):
+  // offered at clock-in and clock-out, never in the way of clocking.
+  const router = useRouter();
+  async function eodPrompt(moment: "in" | "out", message: string) {
+    if (isCaregiver) return toast.success(message);
+    const status = await myEodStatusToday().catch(() => "NOT_USED" as const);
+    if (moment === "in" && status === "NONE") {
+      return toast.success(message, { action: { label: "Start your EOD", onClick: () => router.push("/eod") } });
+    }
+    if (moment === "out" && (status === "NONE" || status === "DRAFT")) {
+      return toast.success(`${message} — don't forget your end-of-day report`, {
+        action: { label: "Write it", onClick: () => router.push("/eod") },
+        duration: 10_000,
+      });
+    }
+    toast.success(message);
+  }
+
   function doClockIn() {
     startTransition(async () => {
       try {
         const entry = await clockIn();
         setClockedInAt(new Date(entry.clockIn));
-        toast.success("Clocked in");
+        await eodPrompt("in", "Clocked in");
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to clock in");
       }
@@ -111,7 +131,7 @@ export function TimeClockWidget({
       try {
         await clockOut();
         setClockedInAt(null);
-        toast.success("Clocked out");
+        await eodPrompt("out", "Clocked out");
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to clock out");
       }
@@ -153,7 +173,7 @@ export function TimeClockWidget({
       try {
         await endBreakForDay();
         setBreakStartedAt(null);
-        toast.success("Clocked out for the day");
+        await eodPrompt("out", "Clocked out for the day");
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to end break");
       }
