@@ -1,10 +1,13 @@
 "use server";
 
+import { after } from "next/server";
 import { createRateLimiter, getClientIp } from "@/lib/rate-limit";
-import { db } from "@/lib/db";
+import { db, currentOrg, runAsTenant } from "@/lib/db";
 import { getHostOrg } from "@/lib/tenant";
-import { sendEmail, renderEmailLayout, getEmailBranding } from "@/lib/email";
-import { saveUploadedFile } from "@/lib/storage";
+import { toActionResult } from "@/lib/action-result";
+import { UserFacingError } from "@/lib/user-facing-error";
+import { alertForSubmission, recordSubmission } from "@/lib/form-submit";
+import type { Answers } from "@/lib/form-logic";
 
 // The one file in the app allowed to skip requireSession/requireRole — see
 // isPublicPath in src/auth.config.ts, which is what actually lets an
@@ -12,44 +15,11 @@ import { saveUploadedFile } from "@/lib/storage";
 // Every write here is deliberately narrow: it can only ever create a
 // FormSubmission (+ its files), never touch a Client or anything else.
 
-const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20MB, same cap the rest of the app uses
-// Narrower than invoice-attachments.ts's allowlist on purpose — no Office
-// docs from an anonymous sender, just what an intake form plausibly needs
-// (a photo of an ID, a signed page).
-const ALLOWED_FILE_MIME_TYPES = new Set([
-  "image/png",
-  "image/jpeg",
-  "image/gif",
-  "image/webp",
-  "image/heic",
-  "image/heif",
-  "application/pdf",
-]);
-const ALLOWED_FILE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".heic", ".heif", ".pdf"]);
-
 // See src/lib/rate-limit.ts — this is the app's main public write surface.
-const isRateLimited = createRateLimiter({ windowMs: 60 * 60 * 1000, max: 5 });
-
-// Who gets emailed when this form gets a new submission — see the
-// "notifyUserIds"/"notifyEmails" fields on FormTemplate. Both empty falls
-// back to every active ADMIN, the original hardcoded behavior; either one
-// non-empty replaces that default entirely rather than adding to it, per
-// how this was scoped — deduped against each other since the same address
-// could plausibly show up both ways (a picked user who's also typed in
-// manually by habit).
-async function resolveNotifyRecipients(template: { notifyUserIds: string[]; notifyEmails: string | null }): Promise<string[]> {
-  const hasCustomRecipients = template.notifyUserIds.length > 0 || !!template.notifyEmails?.trim();
-  if (!hasCustomRecipients) {
-    const admins = await db.user.findMany({ where: { role: { in: ["ADMIN", "OWNER"] }, active: true }, select: { email: true } });
-    return admins.map((a) => a.email);
-  }
-
-  const users = template.notifyUserIds.length
-    ? await db.user.findMany({ where: { id: { in: template.notifyUserIds }, active: true }, select: { email: true } })
-    : [];
-  const extra = (template.notifyEmails ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-  return [...new Set([...users.map((u) => u.email), ...extra])];
-}
+// Generous enough for an office sharing one connection.
+const isRateLimited = createRateLimiter({ windowMs: 60 * 60 * 1000, max: 20 });
+/** A person takes longer than this to fill in any form; bots don't. */
+const MIN_FILL_MS = 2500;
 
 // Only ever returns an active template — an inactive/unknown slug is
 // indistinguishable from "doesn't exist" to the public page, which just
@@ -64,108 +34,39 @@ export async function getPublicFormTemplate(slug: string) {
   });
 }
 
+/**
+ * The form posts `answers` (JSON: key → text or list), files as
+ * `file:<fieldKey>` (several allowed), `startedAt` (ms) and the honeypot.
+ * Returns { ok, error } so the message survives production; alerts go out
+ * after the response.
+ */
 export async function submitForm(templateId: string, formData: FormData) {
-  // Honeypot: a field real users never see (hidden off-screen in the form,
-  // not just visually — see the client component). A bot filling every
-  // input trips it; silently no-op rather than error, so it doesn't learn
-  // anything from the response.
-  if (((formData.get("website") as string | null) ?? "").trim()) {
-    return { ok: true };
-  }
+  return toActionResult(async () => {
+    // Honeypot / too fast: look successful, save nothing.
+    const startedAt = Number(formData.get("startedAt") ?? 0);
+    if (((formData.get("website") as string | null) ?? "").trim() || (startedAt && Date.now() - startedAt < MIN_FILL_MS)) {
+      return { thankYouMessage: null as string | null };
+    }
+    const ip = await getClientIp();
+    if (ip && isRateLimited(ip)) throw new UserFacingError("Too many submissions from this connection — please try again in a little while.");
 
-  const ip = await getClientIp();
-  if (ip && isRateLimited(ip)) {
-    throw new Error("Too many submissions from this connection — please try again later.");
-  }
+    let answers: Answers;
+    try {
+      answers = JSON.parse(String(formData.get("answers") ?? "{}"));
+    } catch {
+      throw new UserFacingError("Something went wrong reading the form — please try again.");
+    }
+    const files: { key: string; file: File }[] = [];
+    for (const [name, value] of formData.entries()) {
+      if (name.startsWith("file:") && value instanceof File) files.push({ key: name.slice(5), file: value });
+    }
 
-  const template = await db.formTemplate.findFirst({
-    where: { id: templateId, active: true },
-    include: { fields: true },
+    const { submissionId, thankYouMessage } = await recordSubmission({ templateId, answers, files, ip });
+    // Best effort, after the person sees "thanks": a failed alert never fails their submission.
+    const org = await currentOrg();
+    after(() =>
+      runAsTenant(org, () => alertForSubmission(submissionId)).catch((error) => console.error("submitForm: alerts failed:", error))
+    );
+    return { thankYouMessage };
   });
-  if (!template) throw new Error("This form isn't available anymore.");
-
-  const answers: Record<string, string> = {};
-  const fileUploads: { fieldKey: string; file: File }[] = [];
-
-  for (const field of template.fields) {
-    if (field.type === "FILE") {
-      const value = formData.get(field.key);
-      if (value instanceof File && value.size > 0) {
-        fileUploads.push({ fieldKey: field.key, file: value });
-      } else if (field.required) {
-        throw new Error(`"${field.label}" is required.`);
-      }
-      continue;
-    }
-
-    if (field.type === "CHECKBOX") {
-      const checked = formData.get(field.key) === "on";
-      if (field.required && !checked) throw new Error(`"${field.label}" must be checked.`);
-      if (checked) answers[field.key] = "yes";
-      continue;
-    }
-
-    const raw = (formData.get(field.key) as string | null) ?? "";
-    const value = raw.trim();
-    if (field.required && !value) throw new Error(`"${field.label}" is required.`);
-    if (field.type === "SELECT" && value && !field.options.includes(value)) {
-      throw new Error(`"${field.label}" has an invalid value.`);
-    }
-    if (value) answers[field.key] = value;
-  }
-
-  for (const { file } of fileUploads) {
-    if (file.size > MAX_FILE_BYTES) throw new Error(`"${file.name}" is too large — files are limited to 20MB.`);
-    const ext = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
-    if (!ALLOWED_FILE_EXTENSIONS.has(ext) && !ALLOWED_FILE_MIME_TYPES.has(file.type)) {
-      throw new Error(`"${file.name}" isn't a supported file type — only images and PDFs are allowed.`);
-    }
-  }
-
-  const submission = await db.formSubmission.create({
-    data: { templateId: template.id, answers, ipAddress: ip },
-  });
-
-  // Uploaded (and virus-scanned via saveUploadedFile) after the row exists
-  // so a failed upload doesn't orphan a half-created submission — the
-  // submission itself is always valid even if a file attached to it isn't.
-  for (const { fieldKey, file } of fileUploads) {
-    const { storageKey, sizeBytes } = await saveUploadedFile(file);
-    await db.formSubmissionFile.create({
-      data: {
-        submissionId: submission.id,
-        fieldKey,
-        fileName: file.name,
-        storageKey,
-        mimeType: file.type || "application/octet-stream",
-        sizeBytes,
-      },
-    });
-  }
-
-  // Best-effort — a notification failure must never make the submission
-  // itself look like it failed to whoever just filled the form out.
-  try {
-    const recipients = await resolveNotifyRecipients(template);
-    const { appUrl, brand } = await getEmailBranding();
-    for (const email of recipients) {
-      await sendEmail({
-        to: email,
-        subject: `New form submission — ${template.name}`,
-        html: renderEmailLayout({
-          heading: "New form submission",
-          bodyHtml: `<p style="margin:0">Someone just filled out &quot;${template.name}&quot;.</p>`,
-          preheader: `New submission for ${template.name}`,
-          ctaLabel: "Review it",
-          ctaUrl: `${appUrl}/form-submissions`,
-          appUrl,
-          brand,
-        }),
-      });
-    }
-  } catch (error) {
-    console.error("submitForm: failed to notify admins:", error);
-  }
-
-  return { ok: true };
 }

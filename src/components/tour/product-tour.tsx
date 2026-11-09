@@ -110,8 +110,8 @@ function buildStaffSteps(role: string | undefined): TourStep[] {
       data: { path: "/applications" },
       element: '[data-tour="nav-form-submissions"]',
       popover: {
-        title: "Form Submissions",
-        description: "The review queue for anyone who filled out one of your public intake forms. Create a new Client from a submission's answers, attach it to an existing one, or dismiss it as spam — nothing becomes a Client until you say so.",
+        title: "Forms",
+        description: "Your intake forms and everything people send through them. Build a form (with a live preview), share its link or QR code, and pick who's notified — by email, in the app, or by text. New submissions wait here: create a client from one, attach it to a client, mark it reviewed, or dismiss it.",
         side: "right",
       },
     },

@@ -5,6 +5,8 @@ import { db } from "@/lib/db";
 import { requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
+import { toActionResult } from "@/lib/action-result";
+import { UserFacingError } from "@/lib/user-facing-error";
 import type { $Enums } from "@/generated/prisma/client";
 
 const REVIEW_ROLES = ["ADMIN", "MANAGER", "STAFF"] as const;
@@ -58,7 +60,7 @@ export async function linkSubmissionToClient(submissionId: string, clientId: str
     newValue: clientId,
   });
 
-  revalidatePath("/form-submissions");
+  revalidatePath("/intake", "layout");
 }
 
 export async function dismissSubmission(id: string) {
@@ -73,7 +75,44 @@ export async function dismissSubmission(id: string) {
 
   await recordAudit({ entityType: "FormSubmission", entityId: id, action: "dismiss", actorId: session.user.id });
 
-  revalidatePath("/form-submissions");
+  revalidatePath("/intake", "layout");
+}
+
+/** Marks a submission handled without creating or attaching a client. */
+export async function markSubmissionReviewed(id: string) {
+  return toActionResult(async () => {
+    const session = await requireRole([...REVIEW_ROLES]);
+    await db.formSubmission
+      .update({ where: { id }, data: { status: "REVIEWED", reviewedById: session.user.id, reviewedAt: new Date() } })
+      .catch((e) => friendlyPrismaError(e, { notFoundMessage: "That submission is already gone" }));
+    await recordAudit({ entityType: "FormSubmission", entityId: id, action: "mark_reviewed", actorId: session.user.id });
+    revalidatePath("/intake", "layout");
+  });
+}
+
+/** Back to New (undo Reviewed/Dismissed). Keeps any client it was attached to. */
+export async function reopenSubmission(id: string) {
+  return toActionResult(async () => {
+    const session = await requireRole([...REVIEW_ROLES]);
+    await db.formSubmission
+      .update({ where: { id }, data: { status: "PENDING", reviewedById: null, reviewedAt: null } })
+      .catch((e) => friendlyPrismaError(e, { notFoundMessage: "That submission is already gone" }));
+    await recordAudit({ entityType: "FormSubmission", entityId: id, action: "reopen", actorId: session.user.id });
+    revalidatePath("/intake", "layout");
+  });
+}
+
+/** The team's own note on a submission (never shown to the person who filled it in). */
+export async function saveSubmissionNote(id: string, note: string) {
+  return toActionResult(async () => {
+    const session = await requireRole([...REVIEW_ROLES]);
+    const text = note.trim().slice(0, 5000) || null;
+    const before = await db.formSubmission.findUnique({ where: { id }, select: { note: true } });
+    if (!before) throw new UserFacingError("That submission is already gone");
+    await db.formSubmission.update({ where: { id }, data: { note: text } });
+    await recordAudit({ entityType: "FormSubmission", entityId: id, action: "note", actorId: session.user.id, oldValue: before.note, newValue: text });
+    revalidatePath("/intake", "layout");
+  });
 }
 
 // Used by the download route (src/app/api/form-submissions/[id]/files/

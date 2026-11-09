@@ -51,7 +51,7 @@ export function isPublicPath(pathname: string) {
     // The public intake-form fill/submit page — the one place in the
     // app anyone can write to with no session at all (see
     // src/lib/actions/public-forms.ts). The admin builder (/admin/forms)
-    // and the submissions inbox (/form-submissions — deliberately NOT
+    // and the submissions inbox (/intake, formerly /form-submissions — deliberately NOT
     // under /forms/*, to stay clear of this exact prefix check) live
     // under (dashboard) and stay behind the normal auth check.
     pathname.startsWith("/forms/") ||

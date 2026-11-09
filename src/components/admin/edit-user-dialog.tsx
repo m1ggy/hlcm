@@ -201,7 +201,7 @@ export function EditUserDialog({
               type="tel"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
-              placeholder="For SMS/call meeting reminders"
+              placeholder="For text reminders and alerts"
             />
           </div>
           <label className="flex items-center gap-2 text-sm">

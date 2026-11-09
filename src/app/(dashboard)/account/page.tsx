@@ -3,6 +3,7 @@ import { PasswordChangeForm } from "@/components/account/password-change-form";
 import { MfaSection } from "@/components/account/mfa-section";
 import { EmailNotificationsToggle } from "@/components/account/email-notifications-toggle";
 import { TimezoneSection } from "@/components/account/timezone-section";
+import { TextAlertsSection } from "@/components/account/text-alerts-section";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default async function AccountPage() {
@@ -40,6 +41,9 @@ export default async function AccountPage() {
         </CardHeader>
         <CardContent>
           <EmailNotificationsToggle initialEnabled={account.emailNotificationsEnabled} />
+          <div className="mt-5 border-t pt-5">
+            <TextAlertsSection phone={account.phone} enabled={account.smsFormAlerts} optedOut={Boolean(account.smsOptedOutAt)} />
+          </div>
         </CardContent>
       </Card>
 

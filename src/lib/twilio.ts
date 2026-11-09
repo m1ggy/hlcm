@@ -14,10 +14,27 @@ export class TwilioConfigError extends Error {}
 export class TwilioApiError extends Error {
   constructor(
     message: string,
-    public status: number
+    public status: number,
+    /** Twilio's own error code, e.g. 21610 = the number replied STOP. */
+    public code?: number
   ) {
     super(message);
   }
+}
+
+export type TwilioCreds = { accountSid: string; authToken: string; fromNumber: string };
+
+/** Sends one text with the given account (the shared platform number uses this; see src/lib/sms.ts). Returns the message SID. */
+export async function sendSmsWith(creds: TwilioCreds, to: string, body: string): Promise<string> {
+  const auth = Buffer.from(`${creds.accountSid}:${creds.authToken}`).toString("base64");
+  const res = await fetch(`${API_BASE}/Accounts/${creds.accountSid}/Messages.json`, {
+    method: "POST",
+    headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ To: to, From: creds.fromNumber, Body: body }).toString(),
+  });
+  const json = await res.json().catch(() => null);
+  if (!res.ok) throw new TwilioApiError(json?.message ?? `Twilio request failed: ${res.status}`, res.status, json?.code);
+  return json?.sid ?? "";
 }
 
 // The current organization's own Twilio account (Admin > Integrations, via

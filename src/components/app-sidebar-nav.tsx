@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { LayoutList, KanbanSquare, CalendarDays, Building2, FolderKanban, Users, ClipboardList, UserCog, CheckSquare, Clock, Timer, Receipt, Settings, Inbox, MapPin, CalendarCheck, BarChart3, Sun, Wallet, NotebookPen } from "lucide-react";
 import {
   SidebarMenu,
+  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
@@ -18,7 +19,8 @@ const LINKS = [
   { href: "/eod", label: "End of day", icon: NotebookPen, tour: "nav-eod" },
   // Projects and tasks (docs/workspace-tasks-plan.md): general work, not licensing.
   { href: "/work", label: "Work", icon: KanbanSquare, tour: "nav-work" },
-  { href: "/form-submissions", label: "Form Submissions", icon: Inbox, tour: "nav-form-submissions" },
+  // Intake forms and what people sent through them (docs/forms-plan.md).
+  { href: "/intake", label: "Forms", icon: Inbox, tour: "nav-form-submissions" },
   { href: "/leads", label: "Leads", icon: CalendarCheck, tour: "nav-leads" },
   { href: "/time", label: "Time", icon: Clock, tour: "nav-time" },
   { href: "/time-tracking", label: "Time Tracking", icon: Timer, tour: "nav-time-tracking" },
@@ -49,6 +51,7 @@ export function AppSidebarNav({
   isTasksWorkspace = false,
   isWorkTeam = false,
   showClientWork = false,
+  newSubmissions = 0,
 }: {
   isAdmin: boolean;
   canManageInvoices: boolean;
@@ -63,6 +66,8 @@ export function AppSidebarNav({
   isWorkTeam?: boolean;
   /** Assigned to client workspaces: "Client work", my tasks in all of them (workspace tasks Phase 5). */
   showClientWork?: boolean;
+  /** New form submissions waiting, shown on the Forms link. */
+  newSubmissions?: number;
 }) {
   const pathname = usePathname();
 
@@ -103,6 +108,7 @@ export function AppSidebarNav({
               <link.icon />
               <span>{link.label}</span>
             </SidebarMenuButton>
+            {link.href === "/intake" && newSubmissions > 0 && <SidebarMenuBadge aria-label={`${newSubmissions} new`}>{newSubmissions}</SidebarMenuBadge>}
           </SidebarMenuItem>
         );
       })}

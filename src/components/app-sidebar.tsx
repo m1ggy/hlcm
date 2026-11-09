@@ -14,6 +14,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { getHostOrg } from "@/lib/tenant";
 import { PRODUCT_NAME } from "@/lib/branding";
 import { listSwitchTargets } from "@/lib/workspace-switch";
+import { db } from "@/lib/db";
 import { canManageAnyWorkspace } from "@/lib/workspace-assignments";
 import { WorkspaceSwitcher } from "@/components/workspaces/workspace-switcher";
 
@@ -24,9 +25,11 @@ export async function AppSidebar() {
   const isCaregiver = session.user.role === "CAREGIVER";
   const showCaregiverClients = isCaregiver ? await caregiverHasClients() : true;
   const actor = { id: session.user.id, organizationId: session.user.organizationId };
-  const [switchTargets, managesWorkspaces] = await Promise.all([
+  const seesForms = !isCaregiver && org?.kind !== "TASKS" && ["OWNER", "ADMIN", "ACCOUNTANT", "MANAGER", "STAFF", "DEVELOPER"].includes(session.user.role);
+  const [switchTargets, managesWorkspaces, newSubmissions] = await Promise.all([
     listSwitchTargets(actor),
     canManageAnyWorkspace({ userId: actor.id, orgId: actor.organizationId, role: session.user.role }),
+    seesForms ? db.formSubmission.count({ where: { status: "PENDING" } }).catch(() => 0) : Promise.resolve(0),
   ]);
 
   return (
@@ -45,6 +48,7 @@ export async function AppSidebar() {
           isTasksWorkspace={org?.kind === "TASKS"}
           isWorkTeam={Boolean(session.user.isAssigned) || session.user.role === "DEVELOPER"}
           showClientWork={switchTargets.some((t) => t.home && t.current)}
+          newSubmissions={newSubmissions}
         />
       </SidebarContent>
       <SidebarFooter className="gap-2 border-t px-3 py-3">

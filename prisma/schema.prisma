@@ -80,6 +80,7 @@ model Organization {
   correspondence        Correspondence[]
   eodItemCorrespondence EodItemCorrespondence[]
   applicationShareLinks ApplicationShareLink[]
+  smsLogs               SmsLog[]
 
   // Client weekly summary (docs/workspace-tasks-plan.md, Phase 3). Hours
   // reach the client only when this is on (decided W7).
@@ -413,6 +414,7 @@ enum NotificationType {
   WORK_TASK_REQUESTED
   EOD_REMINDER
   EOD_COMMENTED
+  FORM_SUBMITTED
 }
 
 enum InvoiceStatus {
@@ -459,6 +461,11 @@ model User {
   // upcoming meeting"), not a per-user preference everyone starts with.
   phone                     String?
   smsRemindersEnabled       Boolean      @default(false)
+  // Texted (from the shared Carenela number) when a form they're picked for
+  // is filled in (docs/forms-plan.md). Set when they reply STOP.
+  smsFormAlerts             Boolean      @default(false)
+  smsOptedOutAt             DateTime?
+  smsLogs                   SmsLog[]
   // Developer-only switch (Admin > Users > Logins): when on, sign-in from a
   // phone or tablet browser is refused and any open phone/tablet session is
   // ended at its next check (see src/lib/login-device.ts).
@@ -2617,6 +2624,13 @@ enum FormFieldType {
   SELECT
   CHECKBOX
   FILE
+  // docs/forms-plan.md, Phase 2:
+  RADIO
+  MULTI_CHECKBOX
+  NUMBER
+  // Layout only — no answer.
+  HEADING
+  PARAGRAPH
 }
 
 enum FormSubmissionStatus {
@@ -2641,8 +2655,15 @@ model FormTemplate {
   // src/lib/actions/public-forms.ts. Both empty falls back to every active
   // ADMIN (the original, hardcoded behavior); either one non-empty
   // replaces that default entirely, deduped against each other.
-  notifyUserIds String[] @default([])
-  notifyEmails  String?
+  notifyUserIds       String[] @default([])
+  notifyEmails        String?
+  // Staff texted on a new submission (if they've turned on text alerts and
+  // have a phone) — docs/forms-plan.md, Phase 5.
+  notifyTextUserIds   String[] @default([])
+  // Shown after submitting; null = the default thanks.
+  thankYouMessage     String?
+  // Email the person a copy of their answers (to the first email field).
+  sendCopyToSubmitter Boolean  @default(false)
 
   createdBy   User     @relation("FormTemplateCreatedBy", fields: [createdById], references: [id])
   createdById String
@@ -2673,8 +2694,13 @@ model FormField {
   label          String
   type           FormFieldType
   required       Boolean       @default(false)
-  options        String[] // SELECT only
+  options        String[] // SELECT, RADIO, MULTI_CHECKBOX
   clientField    String?
+  helpText       String?
+  placeholder    String?
+  // Show this field only when another one matches:
+  // { key, op: "equals" | "not_equals" | "filled" | "includes", value? }.
+  showIf         Json?
   sortOrder      Int           @default(0)
 
   @@unique([templateId, key])
@@ -2810,6 +2836,13 @@ model FormSubmission {
   reviewedAt     DateTime?
   ipAddress      String?
   createdAt      DateTime             @default(now())
+  // The form's fields as they were when it was filled in, so answers keep
+  // their labels after the form changes: [{ key, label, type }].
+  fieldsSnapshot Json?
+  // Staff-only note on the submission.
+  note           String?
+  // Where the person's copy was emailed, if it was.
+  copyEmailedTo  String?
 
   files FormSubmissionFile[]
 
@@ -3285,4 +3318,25 @@ model WorkTaskTemplate {
   @@index([organizationId])
   @@index([projectId])
   @@map("work_task_templates")
+}
+
+// One text message the app sent (docs/forms-plan.md, Phase 5) — who, why,
+// and what Twilio said. Shown on the submission ("Texted Ada").
+model SmsLog {
+  id             String       @id @default(cuid())
+  organizationId String       @default(dbgenerated("current_org_id()"))
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  user           User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId         String?
+  toNumber       String
+  purpose        String
+  entityId       String?
+  ok             Boolean
+  twilioSid      String?
+  error          String?
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId])
+  @@index([entityId])
+  @@map("sms_logs")
 }

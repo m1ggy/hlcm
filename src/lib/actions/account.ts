@@ -4,6 +4,9 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import QRCode from "qrcode";
 import { db, currentOrganization, currentWorkspaceTimezone } from "@/lib/db";
+import { toActionResult } from "@/lib/action-result";
+import { UserFacingError } from "@/lib/user-facing-error";
+import { normalizePhone } from "@/lib/form-logic";
 import { requireSession } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { generateMfaSecret, getOtpAuthUrl, verifyTotpToken } from "@/lib/totp";
@@ -13,7 +16,7 @@ export async function getAccount() {
   const [user, workspaceTimezone] = await Promise.all([
     db.user.findUniqueOrThrow({
       where: { id: session.user.id },
-      select: { id: true, name: true, email: true, mfaEnabled: true, emailNotificationsEnabled: true, timezone: true },
+      select: { id: true, name: true, email: true, mfaEnabled: true, emailNotificationsEnabled: true, timezone: true, phone: true, smsFormAlerts: true, smsOptedOutAt: true },
     }),
     currentWorkspaceTimezone(),
   ]);
@@ -151,5 +154,26 @@ export async function disableMfa() {
     entityId: session.user.id,
     action: "disable_mfa",
     actorId: session.user.id,
+  });
+}
+
+/**
+ * "Text me about new form submissions" (docs/forms-plan.md, Phase 5): the
+ * person's own opt-in and number — texts go only to people who turned this
+ * on themselves. Turning it on again clears an earlier STOP on our side
+ * (they may also need to text START to the number).
+ */
+export async function updateTextAlerts(input: { phone: string; enabled: boolean }) {
+  return toActionResult(async () => {
+    const session = await requireSession();
+    const phone = input.phone.trim() ? normalizePhone(input.phone) : null;
+    if (input.phone.trim() && !phone) throw new UserFacingError("Enter a valid mobile number, like (555) 123-4567");
+    if (input.enabled && !phone) throw new UserFacingError("Add your mobile number to get texts");
+    await db.user.update({
+      where: { id: session.user.id },
+      data: { phone, smsFormAlerts: input.enabled, ...(input.enabled && { smsOptedOutAt: null }) },
+    });
+    await recordAudit({ entityType: "User", entityId: session.user.id, action: "update", actorId: session.user.id, field: "smsFormAlerts", newValue: input.enabled });
+    return { phone };
   });
 }

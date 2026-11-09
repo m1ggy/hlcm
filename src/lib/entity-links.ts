@@ -34,5 +34,7 @@ export const ENTITY_LINKS: Record<EntityLinkVariant, Record<string, (id: string)
     EodReport: (id) => `/eod/r/${id}`,
     Eod: (day) => `/eod?date=${day}`,
     EodTeam: (day) => `/eod/team?date=${day}`,
+    // A form submission: the inbox with it open (docs/forms-plan.md).
+    FormSubmission: (id) => `/intake?open=${id}`,
   },
 };
