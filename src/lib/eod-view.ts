@@ -27,6 +27,7 @@ export function toReportData(r: EodReportFull): EodReportData {
       internalNote: i.internalNote,
       minutes: i.minutes,
       clientVisible: i.clientVisible,
+      correspondence: i.correspondence.map((l) => l.correspondence),
     })),
     comments: r.comments.map((c) => ({ id: c.id, body: c.body, createdAt: c.createdAt, author: c.author })),
   };

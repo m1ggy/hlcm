@@ -53,7 +53,10 @@ const OPEN = { notIn: [...TASK_CLOSED_STATUSES] as TaskStatusValue[] };
 export const REPORT_INCLUDE = {
   user: { select: { id: true, name: true, email: true } },
   reopenedBy: { select: { name: true } },
-  items: { orderBy: { sortOrder: "asc" as const } },
+  items: {
+    orderBy: { sortOrder: "asc" as const },
+    include: { correspondence: { include: { correspondence: { select: { id: true, subject: true, kind: true, occurredAt: true } } } } },
+  },
   comments: { orderBy: { createdAt: "asc" as const }, include: { author: { select: { id: true, name: true } } } },
 };
 
@@ -201,6 +204,8 @@ export type EodLineInput = {
   internalNote?: string | null;
   minutes?: number | null;
   clientVisible?: boolean;
+  /** Correspondence on the line's task or its application (Phase B); omitted = unchanged. */
+  correspondenceIds?: string[];
 };
 
 export type EodDraftInput = {
@@ -229,6 +234,27 @@ async function ownDraft(actor: EodActor, reportId: string) {
 }
 
 /** Saves the draft as a whole (autosave): header fields, and the lines in order (missing ones are removed). */
+type Tx = Parameters<Parameters<typeof db.$transaction>[0]>[0];
+
+/**
+ * Points a line at correspondence (replacing what it had). Only entries on
+ * the line's own task or that task's application; ad-hoc lines have none.
+ */
+async function linkCorrespondence(tx: Tx, item: { id: string; taskId: string | null; applicationId: string | null }, ids: string[] | undefined) {
+  if (ids === undefined) return;
+  const wanted = [...new Set(ids)];
+  if (wanted.length && !item.taskId) throw new UserFacingError("Only a line on a task can point at correspondence");
+  const allowed = wanted.length
+    ? await tx.correspondence.findMany({
+        where: { id: { in: wanted }, OR: [{ taskId: item.taskId }, ...(item.applicationId ? [{ applicationId: item.applicationId }] : [])] },
+        select: { id: true },
+      })
+    : [];
+  if (allowed.length !== wanted.length) throw new UserFacingError("That correspondence isn't on this task");
+  await tx.eodItemCorrespondence.deleteMany({ where: { itemId: item.id } });
+  if (allowed.length) await tx.eodItemCorrespondence.createMany({ data: allowed.map((c) => ({ itemId: item.id, correspondenceId: c.id })) });
+}
+
 export async function saveDraft(actor: EodActor, reportId: string, input: EodDraftInput) {
   const report = await ownDraft(actor, reportId);
   const existing = new Map(report.items.map((i) => [i.id, i]));
@@ -255,6 +281,7 @@ export async function saveDraft(actor: EodActor, reportId: string, input: EodDra
             ...(current.taskId && line.statusAfter !== undefined && { statusAfter: line.statusAfter }),
           },
         });
+        await linkCorrespondence(tx, current, line.correspondenceIds);
       } else if (line.taskId) {
         const task = await assertCanReport(actor, line.taskId);
         const clientId = clientOf(task);
@@ -271,6 +298,7 @@ export async function saveDraft(actor: EodActor, reportId: string, input: EodDra
             clientVisible: line.clientVisible ?? Boolean(clientId),
           },
         });
+        await linkCorrespondence(tx, row, line.correspondenceIds);
         keep.add(row.id);
       } else {
         const title = line.title?.trim();

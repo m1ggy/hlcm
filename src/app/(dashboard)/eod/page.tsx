@@ -6,6 +6,7 @@ import { eodActor } from "@/lib/eod-session";
 import { canManageEods, canWriteEod, eodToday, getReportFor, listMyReports } from "@/lib/eod";
 import { toReportData } from "@/lib/eod-view";
 import { listMyTaskOptions } from "@/lib/actions/tasks";
+import { listLinkableCorrespondence } from "@/lib/correspondence";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -89,7 +90,15 @@ export default async function EodPage({ searchParams }: { searchParams: Promise<
             <p className="rounded-xl border border-dashed p-6 text-sm text-muted-foreground">No report for this day.</p>
           )
         ) : report.status === "DRAFT" ? (
-          <EodEditor key={report.id} report={toReportData(report)} tasks={tasks} />
+          <EodEditor
+            key={report.id}
+            report={toReportData(report)}
+            tasks={tasks}
+            linkable={await listLinkableCorrespondence(
+              actor,
+              [...new Set([...report.items.map((i) => i.taskId), ...tasks.map((t) => t.id)].filter((id): id is string => Boolean(id)))]
+            )}
+          />
         ) : (
           <EodReportView report={toReportData(report)} canReopen={isToday || manager} showAuthor={false} />
         )}

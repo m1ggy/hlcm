@@ -4,7 +4,11 @@ import { requireSession, assertApplicationAccess, UnauthorizedError, ForbiddenEr
 import { readStoredFile } from "@/lib/storage";
 import { taskWhere, workScope } from "@/lib/work";
 
-export async function GET(_req: NextRequest, ctx: RouteContext<"/api/files/[id]">) {
+// Raster images may be shown in place (correspondence thumbnails, ?inline=1);
+// everything else always downloads. No SVG: it can carry script.
+const INLINE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+
+export async function GET(req: NextRequest, ctx: RouteContext<"/api/files/[id]">) {
   const { id } = await ctx.params;
 
   try {
@@ -14,6 +18,8 @@ export async function GET(_req: NextRequest, ctx: RouteContext<"/api/files/[id]"
       include: { task: { include: { assignees: { select: { userId: true } } } } },
     });
     if (!asset) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    // Correspondence is internal (src/lib/correspondence.ts), even when its parent isn't.
+    if (asset.correspondenceId && (session.user.role === "CLIENT" || session.user.role === "CAREGIVER")) throw new ForbiddenError("Not accessible");
 
     if (asset.applicationId) {
       await assertApplicationAccess(session, asset.applicationId, "view");
@@ -47,11 +53,14 @@ export async function GET(_req: NextRequest, ctx: RouteContext<"/api/files/[id]"
     }
 
     const buffer = await readStoredFile(asset.storageKey);
+    const inline = req.nextUrl.searchParams.get("inline") === "1" && INLINE_TYPES.has(asset.mimeType);
     return new NextResponse(new Uint8Array(buffer), {
       headers: {
         "Content-Type": asset.mimeType,
-        "Content-Disposition": `attachment; filename="${encodeURIComponent(asset.fileName)}"`,
+        "Content-Disposition": `${inline ? "inline" : "attachment"}; filename="${encodeURIComponent(asset.fileName)}"`,
         "Content-Length": String(asset.sizeBytes),
+        "X-Content-Type-Options": "nosniff",
+        ...(inline && { "Cache-Control": "private, max-age=300" }),
       },
     });
   } catch (error) {

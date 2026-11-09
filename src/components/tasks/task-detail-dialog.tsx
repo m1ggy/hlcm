@@ -17,6 +17,7 @@ import { MultiUserSelect } from "@/components/ui/multi-user-select";
 import { CommentThread } from "@/components/comment-thread";
 import { AuditLogPanel } from "@/components/applications/audit-log-panel";
 import { TaskFilePool } from "@/components/tasks/task-file-pool";
+import { CorrespondencePanel } from "@/components/correspondence/correspondence-panel";
 import { AddTaskTimeDialog } from "@/components/time-clock/add-task-time-dialog";
 import { updateTask, setTaskReviewers, getTaskAuditLog } from "@/lib/actions/tasks";
 import { listTaskNotes, addTaskNote } from "@/lib/actions/notes";
@@ -361,6 +362,13 @@ export function TaskDetailDialog({
             <h3 className="mb-3 text-sm font-medium">Files</h3>
             <TaskFilePool taskId={taskId} files={files} onFilesChange={setFiles} />
           </div>
+
+          {!isCaregiver && (
+            <div className="border-t pt-4">
+              <h3 className="mb-3 text-sm font-medium">Correspondence</h3>
+              <CorrespondencePanel parent={{ taskId }} canAdd />
+            </div>
+          )}
 
           <div className="border-t pt-4">
             <h3 className="mb-3 text-sm font-medium">Comments</h3>

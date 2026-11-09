@@ -54,6 +54,14 @@ Boss's request:
 
 ## Phase B — Correspondence (feature 3)
 
+**Done 2026-11-09 on `feature/correspondence`** (branched off `feature/eod`, so it carries Phase C too). Migration `20261109120000_correspondence`; logic `src/lib/correspondence.ts` + `src/lib/email-import.ts`; tests `tests/correspondence.test.ts`. As built:
+- `Correspondence` as planned (CHECK: application or task). A task's entry also carries the task's application and client, so the application's card lists it. Attachments are `FileAsset`s with `correspondenceId` plus the parent's applicationId/taskId (downloads keep the parent's access check); the Files tab and task file pool leave them out. Never for CLIENT/CAREGIVER (also blocked in `/api/files/[id]`).
+- Application page: "Correspondence" card under the checklist (not a sidebar tab — the sidebar already has six). Task details: a Correspondence section.
+- Add dialog: drop/pick files, paste a screenshot (named `screenshot-<date>-<time>.png`), or drop an `.eml`/`.msg` (`mailparser` / `@kenjiuno/msgreader`) which fills the form; its attachments and the email file itself are stored. Tiny inline images (signature logos) are skipped. Dates read/written in the person's working timezone.
+- Images show as thumbnails (`/api/files/[id]?inline=1`, raster types only). Edit/delete: author or management; audited on the parent (`add_correspondence`, `edit_correspondence`, `delete_correspondence`, `remove_correspondence_file`).
+- EOD lines link to correspondence (`EodItemCorrespondence`): only entries on the line's task or its application, last 30 days; shown on the submitted report.
+- Not yet: forwarding address (D6), product-tour step.
+
 Built first because the EOD report and the client portal both show it.
 
 **Model** — new `Correspondence` (tenant table):

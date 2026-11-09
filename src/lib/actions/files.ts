@@ -107,7 +107,7 @@ export async function listFiles(applicationId: string) {
   const session = await requireSession();
   await assertApplicationAccess(session, applicationId, "view");
   const assets = await db.fileAsset.findMany({
-    where: { applicationId },
+    where: { applicationId, correspondenceId: null },
     include: {
       uploadedBy: { select: { id: true, name: true } },
       _count: { select: { versions: true, signatureEvents: true } },
@@ -216,7 +216,7 @@ export async function listTaskFiles(taskId: string) {
   await assertCanAccessTask(session, task, "view");
 
   const assets = await db.fileAsset.findMany({
-    where: { taskId },
+    where: { taskId, correspondenceId: null },
     include: {
       uploadedBy: { select: { id: true, name: true } },
       _count: { select: { versions: true, signatureEvents: true } },

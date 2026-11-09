@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Check, Loader2, Plus, Send, Trash2 } from "lucide-react";
+import { Check, Link2, Loader2, Plus, Send, Trash2, X } from "lucide-react";
 import { saveEodDraftAction, submitEodAction } from "@/lib/actions/eod";
 import { TASK_STATUSES, TASK_STATUS_LABELS, type TaskStatusValue } from "@/lib/task-status";
 import { unexpectedErrorMessage } from "@/lib/action-result";
@@ -16,7 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { formatMinutes } from "@/lib/eod-format";
-import type { EodLine, EodReportData, TaskOption } from "./eod-types";
+import type { EodLine, EodReportData, LinkableCorrespondence, TaskOption } from "./eod-types";
 
 // Today's report while it's a draft (docs/client-portal-eod-plan.md, Phase
 // C): a card per line — what you did, the task's new status, minutes, and
@@ -28,7 +28,7 @@ const AUTOSAVE_MS = 1200;
 let nextKey = 0;
 const keyed = (l: EodLine): Draft => ({ ...l, key: l.id });
 
-export function EodEditor({ report, tasks }: { report: EodReportData; tasks: TaskOption[] }) {
+export function EodEditor({ report, tasks, linkable = [] }: { report: EodReportData; tasks: TaskOption[]; linkable?: LinkableCorrespondence[] }) {
   const router = useRouter();
   const [lines, setLines] = useState<Draft[]>(() => report.items.map(keyed));
   const [summary, setSummary] = useState(report.summary ?? "");
@@ -66,6 +66,7 @@ export function EodEditor({ report, tasks }: { report: EodReportData; tasks: Tas
             internalNote: l.internalNote,
             minutes: l.minutes,
             clientVisible: l.clientVisible,
+            ...(l.taskId && { correspondenceIds: l.correspondence.map((c) => c.id) }),
           })),
         });
         if (!result.ok) {
@@ -127,7 +128,7 @@ export function EodEditor({ report, tasks }: { report: EodReportData; tasks: Tas
     if (!task) return;
     setLines((current) => [
       ...current,
-      { key: `new-${nextKey++}`, taskId: task.id, title: task.label, clientId: null, statusBefore: null, statusAfter: null, workDone: "", internalNote: null, minutes: null, clientVisible: false },
+      { key: `new-${nextKey++}`, taskId: task.id, title: task.label, clientId: null, statusBefore: null, statusAfter: null, workDone: "", internalNote: null, minutes: null, clientVisible: false, correspondence: [] },
     ]);
     touch();
   }
@@ -136,7 +137,7 @@ export function EodEditor({ report, tasks }: { report: EodReportData; tasks: Tas
     if (!title) return;
     setLines((current) => [
       ...current,
-      { key: `new-${nextKey++}`, taskId: null, title, clientId: null, statusBefore: null, statusAfter: null, workDone: "", internalNote: null, minutes: null, clientVisible: false },
+      { key: `new-${nextKey++}`, taskId: null, title, clientId: null, statusBefore: null, statusAfter: null, workDone: "", internalNote: null, minutes: null, clientVisible: false, correspondence: [] },
     ]);
     setExtraTitle("");
     setAdding(null);
@@ -175,7 +176,13 @@ export function EodEditor({ report, tasks }: { report: EodReportData; tasks: Tas
 
       <ol className="space-y-3">
         {lines.map((l) => (
-          <LineCard key={l.key} line={l} onChange={(patch) => update(l.key, patch)} onRemove={() => remove(l.key)} />
+          <LineCard
+            key={l.key}
+            line={l}
+            linkable={l.taskId ? linkable.filter((c) => c.taskId === l.taskId) : []}
+            onChange={(patch) => update(l.key, patch)}
+            onRemove={() => remove(l.key)}
+          />
         ))}
       </ol>
 
@@ -233,8 +240,23 @@ export function EodEditor({ report, tasks }: { report: EodReportData; tasks: Tas
   );
 }
 
-function LineCard({ line, onChange, onRemove }: { line: Draft; onChange: (p: Partial<Draft>) => void; onRemove: () => void }) {
+function LineCard({
+  line,
+  linkable,
+  onChange,
+  onRemove,
+}: {
+  line: Draft;
+  linkable: LinkableCorrespondence[];
+  onChange: (p: Partial<Draft>) => void;
+  onRemove: () => void;
+}) {
   const [noteOpen, setNoteOpen] = useState(Boolean(line.internalNote));
+  const [linking, setLinking] = useState(false);
+  const linked = new Set(line.correspondence.map((c) => c.id));
+  const choices = Object.fromEntries(
+    linkable.filter((c) => !linked.has(c.id)).map((c) => [c.id, `${c.subject} · ${new Date(c.occurredAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`])
+  );
   const id = `line-${line.key}`;
   const empty = !line.workDone.trim();
   return (
@@ -314,7 +336,52 @@ function LineCard({ line, onChange, onRemove }: { line: Draft; onChange: (p: Par
             Add an internal note
           </button>
         )}
+        {line.taskId &&
+          (linking ? (
+            <div className="flex w-full max-w-md items-center gap-2">
+              <SearchableSelect
+                items={choices}
+                value={null}
+                onValueChange={(id) => {
+                  const c = linkable.find((x) => x.id === id);
+                  setLinking(false);
+                  if (c) onChange({ correspondence: [...line.correspondence, { id: c.id, subject: c.subject, kind: c.kind, occurredAt: c.occurredAt }] });
+                }}
+                placeholder="Pick an email or call…"
+                searchPlaceholder="Search correspondence…"
+                emptyText="Nothing from the last 30 days on this task or its application."
+                className="flex-1"
+              />
+              <Button variant="ghost" size="sm" onClick={() => setLinking(false)}>
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            linkable.length > linked.size && (
+              <button type="button" className="flex items-center gap-1 text-muted-foreground underline-offset-4 hover:underline" onClick={() => setLinking(true)}>
+                <Link2 className="size-3.5" /> Link correspondence
+              </button>
+            )
+          ))}
       </div>
+      {line.correspondence.length > 0 && (
+        <ul className="mt-2 flex flex-wrap gap-2" aria-label={`Correspondence on ${line.title}`}>
+          {line.correspondence.map((c) => (
+            <li key={c.id} className="flex items-center gap-1 rounded-md border bg-muted/40 py-0.5 pr-0.5 pl-2 text-xs">
+              <Link2 className="size-3 text-muted-foreground" />
+              <span className="max-w-64 truncate">{c.subject}</span>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label={`Unlink ${c.subject}`}
+                onClick={() => onChange({ correspondence: line.correspondence.filter((x) => x.id !== c.id) })}
+              >
+                <X className="size-3" />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
     </li>
   );
 }

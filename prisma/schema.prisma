@@ -65,17 +65,19 @@ model Organization {
   createdAt                 DateTime       @default(now())
   updatedAt                 DateTime       @updatedAt
 
-  assignmentsHome    WorkspaceAssignment[] @relation("AssignmentHomeOrg")
-  workProjects       WorkProject[]
-  workTasks          WorkTask[]
-  workTaskAssignees  WorkTaskAssignee[]
-  workTaskComments   WorkTaskComment[]
-  workTaskActivities WorkTaskActivity[]
-  workSummaryNotes   WorkSummaryNote[]
-  assignmentsIn      WorkspaceAssignment[] @relation("AssignmentOrg")
-  eodReports         EodReport[]
-  eodReportItems     EodReportItem[]
-  eodReportComments  EodReportComment[]
+  assignmentsHome       WorkspaceAssignment[]   @relation("AssignmentHomeOrg")
+  workProjects          WorkProject[]
+  workTasks             WorkTask[]
+  workTaskAssignees     WorkTaskAssignee[]
+  workTaskComments      WorkTaskComment[]
+  workTaskActivities    WorkTaskActivity[]
+  workSummaryNotes      WorkSummaryNote[]
+  assignmentsIn         WorkspaceAssignment[]   @relation("AssignmentOrg")
+  eodReports            EodReport[]
+  eodReportItems        EodReportItem[]
+  eodReportComments     EodReportComment[]
+  correspondence        Correspondence[]
+  eodItemCorrespondence EodItemCorrespondence[]
 
   // Client weekly summary (docs/workspace-tasks-plan.md, Phase 3). Hours
   // reach the client only when this is on (decided W7).
@@ -468,23 +470,24 @@ model User {
   createdAt                 DateTime     @default(now())
   updatedAt                 DateTime     @updatedAt
 
-  assignmentsHome     WorkspaceAssignment[] @relation("AssignmentHomeUser")
-  assignmentLinked    WorkspaceAssignment?  @relation("AssignmentLinkedUser")
-  workProjectsLed     WorkProject[]         @relation("WorkProjectLead")
-  workProjectsCreated WorkProject[]         @relation("WorkProjectCreatedBy")
-  workTasksCreated    WorkTask[]            @relation("WorkTaskCreatedBy")
-  workTasksCompleted  WorkTask[]            @relation("WorkTaskCompletedBy")
-  workTaskAssignments WorkTaskAssignee[]
-  workTaskComments    WorkTaskComment[]
-  workTaskActivities  WorkTaskActivity[]
-  workSummaryNotes    WorkSummaryNote[]
+  assignmentsHome       WorkspaceAssignment[] @relation("AssignmentHomeUser")
+  assignmentLinked      WorkspaceAssignment?  @relation("AssignmentLinkedUser")
+  workProjectsLed       WorkProject[]         @relation("WorkProjectLead")
+  workProjectsCreated   WorkProject[]         @relation("WorkProjectCreatedBy")
+  workTasksCreated      WorkTask[]            @relation("WorkTaskCreatedBy")
+  workTasksCompleted    WorkTask[]            @relation("WorkTaskCompletedBy")
+  workTaskAssignments   WorkTaskAssignee[]
+  workTaskComments      WorkTaskComment[]
+  workTaskActivities    WorkTaskActivity[]
+  workSummaryNotes      WorkSummaryNote[]
   // Whether this person is expected to submit an end-of-day report
   // (reminders, the team page's "missing" list) — not who may write one.
   // Null = the role's default: STAFF yes, everyone else no (src/lib/eod.ts).
-  eodRequired         Boolean?
-  eodReports          EodReport[]           @relation("EodReportAuthor")
-  eodReportsReopened  EodReport[]           @relation("EodReportReopenedBy")
-  eodReportComments   EodReportComment[]
+  eodRequired           Boolean?
+  eodReports            EodReport[]           @relation("EodReportAuthor")
+  eodReportsReopened    EodReport[]           @relation("EodReportReopenedBy")
+  eodReportComments     EodReportComment[]
+  correspondenceCreated Correspondence[]      @relation("CorrespondenceCreatedBy")
 
   projectsCreated               Project[]                 @relation("ProjectCreatedBy")
   clientsCreated                Client[]                  @relation("ClientCreatedBy")
@@ -1091,6 +1094,7 @@ model Client {
   agreements      ClientAgreement[]
   licenses        ClientLicense[]
   files           FileAsset[]
+  correspondence  Correspondence[]
   services        ClientService[]
 
   @@index([clientGroupId])
@@ -1630,6 +1634,7 @@ model Application {
   tasks              Task[]
   accessGrants       AccessGrant[]
   files              FileAsset[]
+  correspondence     Correspondence[]
   generatedDocuments GeneratedDocument[]
   notes              Note[]
   stageHistory       StageHistory[]
@@ -1745,31 +1750,36 @@ model AccessGrant {
 // fileName/mimeType/sizeBytes mirror the latest FileVersion so list queries
 // don't need to join versions just to show current metadata.
 model FileAsset {
-  id              String         @id @default(cuid())
-  organizationId  String         @default(dbgenerated("current_org_id()"))
-  organization    Organization   @relation(fields: [organizationId], references: [id])
-  application     Application?   @relation(fields: [applicationId], references: [id])
-  applicationId   String?
-  task            Task?          @relation(fields: [taskId], references: [id])
-  taskId          String?
+  id               String          @id @default(cuid())
+  organizationId   String          @default(dbgenerated("current_org_id()"))
+  organization     Organization    @relation(fields: [organizationId], references: [id])
+  application      Application?    @relation(fields: [applicationId], references: [id])
+  applicationId    String?
+  task             Task?           @relation(fields: [taskId], references: [id])
+  taskId           String?
   // Third parent kind, alongside applicationId/taskId above — the "one
   // stop shop" ask: a signed agreement, EIN letter, W-9, license, or
   // insurance certificate attached directly to the client, not routed
   // through a case or task.
-  client          Client?        @relation(fields: [clientId], references: [id])
-  clientId        String?
-  fileName        String
-  storageKey      String
-  mimeType        String
-  sizeBytes       Int
-  uploadedBy      User           @relation("FileUploadedBy", fields: [uploadedById], references: [id])
-  uploadedById    String
-  createdAt       DateTime       @default(now())
-  clientService   ClientService? @relation(fields: [clientServiceId], references: [id], onDelete: SetNull)
-  clientServiceId String?
+  client           Client?         @relation(fields: [clientId], references: [id])
+  clientId         String?
+  fileName         String
+  storageKey       String
+  mimeType         String
+  sizeBytes        Int
+  uploadedBy       User            @relation("FileUploadedBy", fields: [uploadedById], references: [id])
+  uploadedById     String
+  createdAt        DateTime        @default(now())
+  clientService    ClientService?  @relation(fields: [clientServiceId], references: [id], onDelete: SetNull)
+  clientServiceId  String?
   // Fourth parent kind: a file on a project task (docs/workspace-tasks-plan.md).
-  workTask        WorkTask?      @relation(fields: [workTaskId], references: [id], onDelete: Cascade)
-  workTaskId      String?
+  workTask         WorkTask?       @relation(fields: [workTaskId], references: [id], onDelete: Cascade)
+  workTaskId       String?
+  // An attachment of a correspondence entry (an email's attachments, a
+  // pasted screenshot). Also carries the entry's applicationId/taskId so
+  // downloads keep the parent's access check; file pools leave these out.
+  correspondence   Correspondence? @relation(fields: [correspondenceId], references: [id], onDelete: Cascade)
+  correspondenceId String?
 
   versions            FileVersion[]
   signatureEvents     SignatureEvent[]
@@ -1953,6 +1963,7 @@ model Task {
   files           FileAsset[]
   taskTimeEntries TaskTimeEntry[]
   eodItems        EodReportItem[]
+  correspondence  Correspondence[]
 
   @@index([organizationId])
   @@map("tasks")
@@ -3069,13 +3080,13 @@ model EodReport {
 }
 
 model EodReportItem {
-  id             String       @id @default(cuid())
-  organizationId String       @default(dbgenerated("current_org_id()"))
-  organization   Organization @relation(fields: [organizationId], references: [id])
-  report         EodReport    @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  id             String                  @id @default(cuid())
+  organizationId String                  @default(dbgenerated("current_org_id()"))
+  organization   Organization            @relation(fields: [organizationId], references: [id])
+  report         EodReport               @relation(fields: [reportId], references: [id], onDelete: Cascade)
   reportId       String
   // Null = ad-hoc work not on a task (then `title` says what it was).
-  task           Task?        @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  task           Task?                   @relation(fields: [taskId], references: [id], onDelete: SetNull)
   taskId         String?
   // The task's label when the line was written, so the report still reads
   // right if the task is renamed or deleted; the ad-hoc line's own title.
@@ -3086,14 +3097,15 @@ model EodReportItem {
   statusBefore   TaskStatus?
   // Applied to the task on submit (audited) when it differs from before.
   statusAfter    TaskStatus?
-  workDone       String       @default("")
+  workDone       String                  @default("")
   internalNote   String?
   minutes        Int?
   // Shared with the client (decided D5: on for a line on a client's task).
-  clientVisible  Boolean      @default(false)
-  sortOrder      Int          @default(0)
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  clientVisible  Boolean                 @default(false)
+  sortOrder      Int                     @default(0)
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+  correspondence EodItemCorrespondence[]
 
   @@index([reportId])
   @@index([taskId])
@@ -3115,4 +3127,75 @@ model EodReportComment {
 
   @@index([reportId])
   @@map("eod_report_comments")
+}
+
+// Correspondence (docs/client-portal-eod-plan.md, Phase B): an email,
+// letter, call or screenshot about an application or a task, kept on the
+// timeline with its attachments. At least one parent — DB CHECK.
+enum CorrespondenceKind {
+  EMAIL
+  SCREENSHOT
+  LETTER
+  PHONE_CALL
+  PORTAL_MESSAGE
+  OTHER
+}
+
+enum CorrespondenceDirection {
+  INBOUND
+  OUTBOUND
+  INTERNAL
+}
+
+model Correspondence {
+  id              String                  @id @default(cuid())
+  organizationId  String                  @default(dbgenerated("current_org_id()"))
+  organization    Organization            @relation(fields: [organizationId], references: [id])
+  application     Application?            @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  applicationId   String?
+  task            Task?                   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  taskId          String?
+  // Derived from the application/task, so share pages can filter on it.
+  client          Client?                 @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  clientId        String?
+  clientServiceId String?
+  kind            CorrespondenceKind      @default(EMAIL)
+  direction       CorrespondenceDirection @default(INBOUND)
+  subject         String
+  fromParty       String?
+  toParty         String?
+  // When it was sent or received — not when it was uploaded.
+  occurredAt      DateTime
+  // The email body or a typed summary.
+  body            String?
+  // Off by default (decided D5).
+  clientVisible   Boolean                 @default(false)
+  createdBy       User                    @relation("CorrespondenceCreatedBy", fields: [createdById], references: [id])
+  createdById     String
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+
+  attachments FileAsset[]
+  eodItems    EodItemCorrespondence[]
+
+  @@index([organizationId])
+  @@index([applicationId, occurredAt])
+  @@index([taskId, occurredAt])
+  @@index([organizationId, clientId])
+  @@map("correspondence")
+}
+
+// An EOD line pointing at correspondence ("sent the follow-up email").
+model EodItemCorrespondence {
+  organizationId   String         @default(dbgenerated("current_org_id()"))
+  organization     Organization   @relation(fields: [organizationId], references: [id])
+  item             EodReportItem  @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  itemId           String
+  correspondence   Correspondence @relation(fields: [correspondenceId], references: [id], onDelete: Cascade)
+  correspondenceId String
+
+  @@id([itemId, correspondenceId])
+  @@index([organizationId])
+  @@index([correspondenceId])
+  @@map("eod_item_correspondence")
 }

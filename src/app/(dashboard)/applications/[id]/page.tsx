@@ -13,6 +13,10 @@ import { listLicenseTypes } from "@/lib/actions/license-types";
 import { listCaseTypes } from "@/lib/actions/case-types";
 import { listTasksForApplication } from "@/lib/actions/tasks";
 import { listFiles } from "@/lib/actions/files";
+import { listCorrespondence } from "@/lib/correspondence";
+import { getMyWorkingTimezone } from "@/lib/actions/account";
+import { toCorrespondenceRow } from "@/lib/correspondence-view";
+import { CorrespondencePanel } from "@/components/correspondence/correspondence-panel";
 import { listEnvelopesForApplication } from "@/lib/actions/docusign-envelopes";
 import { listAccessGrants, listGrantableUsers } from "@/lib/actions/access-grants";
 import { listApplicableTemplates, listGeneratedDocuments } from "@/lib/actions/generated-documents";
@@ -90,6 +94,8 @@ export default async function ApplicationDetailPage({
     caseTypes,
     stageLookup,
     picklists,
+    correspondence,
+    workingTimezone,
   ] = await Promise.all([
     listClients({ filter: "all" }),
     listAssignableUsers(),
@@ -108,6 +114,8 @@ export default async function ApplicationDetailPage({
     listCaseTypes(),
     listAllStageNames(),
     getPicklists(),
+    listCorrespondence({ userId: session.user.id, role: session.user.role }, { applicationId: id }),
+    getMyWorkingTimezone(),
   ]);
 
   const stepIndex = application.stage ? forwardStages.findIndex((s) => s.id === application.stage!.id) : -1;
@@ -168,6 +176,7 @@ export default async function ApplicationDetailPage({
 
       <CaseDetailLayout
         checklist={
+          <div className="min-w-0 space-y-6">
           <Card className="min-w-0">
             <CardHeader>
               <CardTitle>Checklist</CardTitle>
@@ -186,6 +195,23 @@ export default async function ApplicationDetailPage({
               />
             </CardContent>
           </Card>
+          <Card className="min-w-0">
+            <CardHeader>
+              <CardTitle>Correspondence</CardTitle>
+            </CardHeader>
+            <CardContent className="min-w-0">
+              <CorrespondencePanel
+                parent={{ applicationId: id }}
+                initial={correspondence.map(toCorrespondenceRow)}
+                canAdd={canEdit}
+                currentUserId={session.user.id}
+                canManage={isManagement(session.user.role)}
+                timeZone={workingTimezone}
+                showTask
+              />
+            </CardContent>
+          </Card>
+          </div>
         }
         sidebar={
           <>

@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowRight, Eye, Lock, RotateCcw } from "lucide-react";
+import { ArrowRight, Eye, Link2, Lock, RotateCcw } from "lucide-react";
 import { commentOnEodAction, reopenEodAction } from "@/lib/actions/eod";
 import { TASK_STATUS_LABELS } from "@/lib/task-status";
 import { Badge } from "@/components/ui/badge";
@@ -91,6 +91,16 @@ export function EodReportView({ report, canReopen, showAuthor }: { report: EodRe
                 <p className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
                   <Lock className="mt-0.5 size-3 shrink-0" /> {l.internalNote}
                 </p>
+              )}
+              {l.correspondence.length > 0 && (
+                <ul className="mt-2 flex flex-wrap gap-2" aria-label={`Correspondence on ${l.title}`}>
+                  {l.correspondence.map((c) => (
+                    <li key={c.id} className="flex items-center gap-1 rounded-md border bg-muted/40 px-2 py-0.5 text-xs">
+                      <Link2 className="size-3 text-muted-foreground" />
+                      <span className="max-w-64 truncate">{c.subject}</span>
+                    </li>
+                  ))}
+                </ul>
               )}
             </li>
           );

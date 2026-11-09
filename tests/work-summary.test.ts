@@ -36,6 +36,9 @@ let vaId = "";
 let projectId = "";
 const today = toDateInputValue(new Date(), "UTC");
 const monday = weekStartOf(today);
+// Notes Claude was asked to write for today. The job also backfills the
+// past week, which on a Monday includes the "last week" fixture below.
+const todayNoteCalls = () => ai.day.mock.calls.filter(([d]) => (d as { date: string }).date === today).length;
 
 beforeAll(async () => {
   await prisma.organization.deleteMany({ where: { id: { in: [CLIENT.id, HOME.id] } } });
@@ -118,14 +121,14 @@ describe("notes", () => {
       await runSummaryJob(CLIENT.slug, new Date(`${today}T20:00:00Z`));
       let note = await tenantDb(CLIENT.id).workSummaryNote.findFirstOrThrow({ where: { period: "DAY", date: new Date(`${today}T00:00:00Z`) } });
       expect(note).toMatchObject({ source: "AI", body: "We finished collecting the logo files." });
-      expect(ai.day).toHaveBeenCalledTimes(1);
+      expect(todayNoteCalls()).toBe(1);
 
       await saveSummaryNote(manager, "DAY", today, "We finished the logo files and started the homepage copy.");
       note = await tenantDb(CLIENT.id).workSummaryNote.findUniqueOrThrow({ where: { id: note.id } });
       expect(note.source).toBe("EDITED");
 
       // The next run leaves an existing note alone.
-    ai.day.mockClear();
+      ai.day.mockClear();
       await runSummaryJob(CLIENT.slug, new Date(`${today}T21:00:00Z`));
       expect(ai.day).not.toHaveBeenCalled();
       const week = await getWeekSummary({ monday, timeZone: "UTC", orgKind: "TASKS", withHours: false });
@@ -137,7 +140,7 @@ describe("notes", () => {
     await inClient(async () => {
       await tenantDb(CLIENT.id).workSummaryNote.deleteMany({ where: { period: "DAY" } });
       await runSummaryJob(CLIENT.slug, new Date(`${today}T10:00:00Z`));
-      expect(ai.day).not.toHaveBeenCalled();
+      expect(todayNoteCalls()).toBe(0);
     });
   });
 
