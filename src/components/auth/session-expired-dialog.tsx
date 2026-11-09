@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 // exactly when this actually fires — catching the "I stepped away, came
 // back, and nothing said I'd been logged out" gap directly.
 //
-// Mount once inside each authenticated layout ((dashboard), (portal)) —
+// Mount once inside each authenticated layout ((dashboard)) —
 // never at the root, since /login itself is legitimately unauthenticated
 // and shouldn't trigger this.
 export function SessionExpiredDialog() {

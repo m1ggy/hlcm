@@ -12,9 +12,8 @@ type NotifyEntry = {
   entityId: string;
 };
 
-function entityPath(role: string, entityType: string, entityId: string) {
-  const variant = role === "CLIENT" ? "portal" : "staff";
-  return ENTITY_LINKS[variant][entityType]?.(entityId) ?? "/";
+function entityPath(_role: string, entityType: string, entityId: string) {
+  return ENTITY_LINKS.staff[entityType]?.(entityId) ?? "/";
 }
 
 // Short label shown above the message in the email — the message itself

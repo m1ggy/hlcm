@@ -22,7 +22,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-const ROLES = ["OWNER", "ADMIN", "ACCOUNTANT", "MANAGER", "STAFF", "CLIENT", "CAREGIVER"] as const;
+// No CLIENT: the client portal is retired (share links replace it).
+const ROLES = ["OWNER", "ADMIN", "ACCOUNTANT", "MANAGER", "STAFF", "CAREGIVER"] as const;
 const ADMIN_TIER_ROLES = new Set<(typeof ROLES)[number]>(["OWNER", "ADMIN", "ACCOUNTANT"]);
 
 export function NewUserDialog({ canAssignAdmin = false }: { canAssignAdmin?: boolean }) {

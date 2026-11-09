@@ -29,7 +29,8 @@ import {
 // type-check. It's never assignable here, and a DEVELOPER row
 // is always fully protected.
 const ROLES = ["DEVELOPER", "OWNER", "ADMIN", "ACCOUNTANT", "MANAGER", "STAFF", "CLIENT", "CAREGIVER"] as const;
-const ASSIGNABLE_ROLES = ROLES.filter((r) => r !== "DEVELOPER");
+// No CLIENT: the client portal is retired (share links replace it).
+const ASSIGNABLE_ROLES = ROLES.filter((r) => r !== "DEVELOPER" && r !== "CLIENT");
 const ADMIN_TIER_ROLES = new Set<(typeof ROLES)[number]>(["OWNER", "ADMIN", "ACCOUNTANT"]);
 
 type EditableUser = {

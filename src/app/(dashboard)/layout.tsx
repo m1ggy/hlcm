@@ -31,9 +31,10 @@ export default async function DashboardLayout({
   // The platform org has no CRM of its own — its admins use the console.
   if (session?.user?.orgSlug === PLATFORM_SLUG) redirect("/platform");
   const org = await currentOrganization();
-  // Licensing clients use the portal; a tasks-only workspace's client users
-  // stay here (it has no portal — src/lib/workspace-kind.ts).
-  if (session?.user?.role === "CLIENT" && org.kind !== "TASKS") redirect("/portal");
+  // The client portal is retired (licensing clients get a share link per
+  // application instead); a leftover CLIENT account in a full workspace sees
+  // a note. A tasks-only workspace's client users stay here.
+  if (session?.user?.role === "CLIENT" && org.kind !== "TASKS") redirect("/no-access");
   // Until the owner accepts the platform's terms (src/lib/terms.ts), the
   // workspace can't be used — except by support, who may be there to help.
   if (!session?.user?.isSupport && needsTermsAcceptance(org)) redirect("/accept-terms");

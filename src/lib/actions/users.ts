@@ -21,7 +21,9 @@ async function assertNotLinkedAccount(userId: string) {
   }
 }
 
-const ROLE_VALUES = ["OWNER", "ADMIN", "ACCOUNTANT", "MANAGER", "STAFF", "CLIENT", "CAREGIVER"] as const;
+// No CLIENT: the client portal is retired (share links replace it); the
+// enum value stays in the database until it's dropped.
+const ROLE_VALUES = ["OWNER", "ADMIN", "ACCOUNTANT", "MANAGER", "STAFF", "CAREGIVER"] as const;
 
 const userSchema = z.object({
   name: z.string().min(1),

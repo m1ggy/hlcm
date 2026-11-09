@@ -144,6 +144,8 @@ Built first because the EOD report and the client portal both show it.
 
 **Security:** token unguessable + hashed at rest; revoked/expired → generic "link no longer active" page; per-IP rate limit on `/share/*`; resolve org from host, look up by token hash with the system client, then read as that tenant; tests that a token for org A never shows org B data and internal fields never reach the page payload.
 
+**Done 2026-11-09 on `feature/retire-portal`:** prod checked first — 0 CLIENT users; the 3 access_grants all belong to STAFF/ACCOUNTANT (the application **Sharing** tab between teammates), so `access_grants` and AccessGrant UI **stay**. Removed `(portal)` routes and `components/portal`, the portal tour, the portal link variant; CLIENT is no longer offered when adding/editing users (`users.ts` ROLE_VALUES). A leftover CLIENT account in a full workspace lands on `/no-access` (sign out + "ask for a share link"). CLIENT stays in the enum (tasks-only workspaces' scope logic and the summary's synthetic client view use it); dropping it is a later cleanup. Handbook §18 now describes share links.
+
 **Retire `/portal` + `CLIENT` role (decided D9)**: once share links ship — check prod for CLIENT users/AccessGrants first, tell CTK, then remove `(portal)` routes, portal components, client branches in `rbac.ts`/`assertApplicationAccess`, AccessGrant UI; drop `access_grants` + convert/deactivate CLIENT users in a later migration (enum value kept until no rows use it). Note: client workspaces (docs/workspace-tasks-plan.md) use OWNER + their own client users — check that plan still has a role for a client company's extra users before dropping `CLIENT` from the enum.
 
 ## Cross-cutting

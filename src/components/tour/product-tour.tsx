@@ -413,43 +413,6 @@ function buildCaregiverSteps(): TourStep[] {
   ];
 }
 
-// The client portal (src/app/(portal)/) is a separate, single-page layout
-// with no sidebar at all — nothing in the staff or Caregiver lists above
-// applies, so this is built from scratch around the one page a CLIENT
-// session ever lands on.
-function buildClientSteps(): TourStep[] {
-  return [
-    {
-      data: { path: "/portal" },
-      element: '[data-tour="portal-applications"]',
-      popover: {
-        title: "Your Applications",
-        description: "Every case that's been shared with you, each showing its current stage or status. Click a card to open its Checklist, Files, and Documents tabs — the same checklist phases staff work from, any documents once they're sent to you, and files you can download (or upload to, if you've been given edit access).",
-        side: "bottom",
-      },
-    },
-    {
-      data: { path: "/portal" },
-      element: '[data-tour="email-notifications"]',
-      popover: {
-        title: "Email notifications",
-        description: "On by default — you'll get an email whenever a shared case's status changes. Turn it off here if you'd rather just check the bell.",
-        side: "bottom",
-      },
-    },
-    {
-      data: { path: "/portal" },
-      element: '[data-tour="notifications"]',
-      popover: {
-        title: "Notifications",
-        description: "Status changes and new shares land here. Click one to jump straight to that case.",
-        side: "bottom",
-        align: "end",
-      },
-    },
-  ];
-}
-
 // A client company's tasks-only workspace (docs/workspace-tasks-plan.md):
 // This week / Projects / Settings (+ Users for its admins). The client's
 // own people see what the team shares with them and ask for work.
@@ -611,14 +574,12 @@ function buildSteps(role: string | undefined, tasksSide?: TasksTourSide): TourSt
   if (tasksSide === "client") return buildTasksClientSteps();
   if (tasksSide === "team") return buildTasksTeamSteps();
   if (role === "CAREGIVER") return buildCaregiverSteps();
-  if (role === "CLIENT") return buildClientSteps();
   return buildStaffSteps(role);
 }
 
 function firstPathFor(role: string | undefined, tasksSide?: TasksTourSide): string {
   if (tasksSide) return "/work/summary";
   if (role === "CAREGIVER") return "/today";
-  if (role === "CLIENT") return "/portal";
   return "/applications";
 }
 
