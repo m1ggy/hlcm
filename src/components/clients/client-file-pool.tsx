@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { deleteClientFile } from "@/lib/actions/files";
 import { useUpload } from "@/components/files/use-upload";
 import { UploadProgress } from "@/components/files/upload-progress";
+import { useJustAdded } from "@/components/files/use-just-added";
 import { unexpectedErrorMessage } from "@/lib/action-result";
 import { MAX_FILE_BYTES, fileTooLargeMessage } from "@/lib/file-limits";
 import { FileCard } from "@/components/files/file-card";
@@ -38,6 +39,7 @@ export function ClientFilePool({
   const formRef = useRef<HTMLFormElement>(null);
   const [isPending, startTransition] = useTransition();
   const { status: uploadStatus, upload, cancel: cancelUpload, uploading: isUploading } = useUpload();
+  const shown = useJustAdded(files);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [activeFile, setActiveFile] = useState<FileRow | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -60,6 +62,7 @@ export function ClientFilePool({
         toast.error(result.error);
         return;
       }
+      shown.add(result.data);
       formRef.current?.reset();
       router.refresh();
     });
@@ -74,6 +77,7 @@ export function ClientFilePool({
           toast.error(result.error);
           return;
         }
+        shown.remove(fileId);
         router.refresh();
         setDrawerOpen(false);
       } catch (error) {
@@ -104,11 +108,11 @@ export function ClientFilePool({
           )}
           <UploadProgress status={uploadStatus} onCancel={cancelUpload} />
 
-          {files.length === 0 ? (
+          {shown.rows.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">No files yet</p>
           ) : (
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {files.map((file) => (
+              {shown.rows.map((file) => (
                 <FileCard
                   key={file.id}
                   file={file}

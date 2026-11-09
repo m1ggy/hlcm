@@ -10,6 +10,7 @@ import { formatBytes } from "@/components/files/format-bytes";
 import { deleteInvoiceAttachment } from "@/lib/actions/invoice-attachments";
 import { useUpload } from "@/components/files/use-upload";
 import { UploadProgress } from "@/components/files/upload-progress";
+import { useJustAdded } from "@/components/files/use-just-added";
 
 type AttachmentRow = {
   id: string;
@@ -37,6 +38,7 @@ export function InvoiceAttachments({
   const formRef = useRef<HTMLFormElement>(null);
   const [isPending, startTransition] = useTransition();
   const { status: uploadStatus, upload, cancel: cancelUpload, uploading: isUploading } = useUpload();
+  const shown = useJustAdded(attachments);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -52,6 +54,7 @@ export function InvoiceAttachments({
         toast.error(result.error);
         return;
       }
+      shown.add(result.data);
       formRef.current?.reset();
       router.refresh();
     });
@@ -63,6 +66,7 @@ export function InvoiceAttachments({
     startTransition(async () => {
       try {
         await deleteInvoiceAttachment(attachmentId, invoiceId);
+        shown.remove(attachmentId);
         router.refresh();
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Delete failed");
@@ -90,11 +94,11 @@ export function InvoiceAttachments({
       )}
       <UploadProgress status={uploadStatus} onCancel={cancelUpload} />
 
-      {attachments.length === 0 ? (
+      {shown.rows.length === 0 ? (
         <p className="py-4 text-center text-sm text-muted-foreground">No attachments yet</p>
       ) : (
         <div className="space-y-2">
-          {attachments.map((file) => (
+          {shown.rows.map((file) => (
             <div key={file.id} className="flex min-w-0 items-center gap-2.5 rounded-lg border p-2.5">
               <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
                 <FileTypeIcon mimeType={file.mimeType} className="size-4" />

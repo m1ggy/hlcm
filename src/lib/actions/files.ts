@@ -152,6 +152,7 @@ async function uploadFileImpl(applicationId: string, formData: FormData) {
         create: { version: 1, generation, fileName: file.name, mimeType, sizeBytes, uploadedById: session.user.id },
       },
     },
+    include: { uploadedBy: { select: { id: true, name: true } } },
   });
 
   await recordAudit({
@@ -164,7 +165,7 @@ async function uploadFileImpl(applicationId: string, formData: FormData) {
   });
 
   revalidatePath(`/applications/${applicationId}`);
-  return asset;
+  return { ...asset, versionCount: 1, isSigned: false };
 }
 
 export async function deleteFile(fileId: string, applicationId: string) {
