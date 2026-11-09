@@ -23,11 +23,22 @@ const globalForPrisma = globalThis as unknown as {
 const appUrl = process.env.DATABASE_URL;
 const systemUrl = process.env.SYSTEM_DATABASE_URL || appUrl;
 
-export const prisma = globalForPrisma.prisma ?? new PrismaClient({ adapter: new PrismaPg({ connectionString: appUrl }) });
+// Every tenant query runs inside its own short transaction (src/lib/db.ts),
+// so each one has to grab a pooled connection within `maxWait`. Prisma's 2s
+// default is too tight on the small prod box: right after a large upload the
+// page re-render fires many queries at once while memory is tight, they queue
+// for connections past 2s, and the action fails with P2028 ("Unable to start
+// a transaction in the given time") even though the file was saved.
+const transactionOptions = { maxWait: 15_000, timeout: 20_000 };
+
+export const prisma =
+  globalForPrisma.prisma ?? new PrismaClient({ adapter: new PrismaPg({ connectionString: appUrl }), transactionOptions });
 
 export const systemPrisma =
   globalForPrisma.systemPrisma ??
-  (systemUrl === appUrl ? prisma : new PrismaClient({ adapter: new PrismaPg({ connectionString: systemUrl }) }));
+  (systemUrl === appUrl
+    ? prisma
+    : new PrismaClient({ adapter: new PrismaPg({ connectionString: systemUrl }), transactionOptions }));
 
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
