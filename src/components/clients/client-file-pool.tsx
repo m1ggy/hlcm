@@ -9,9 +9,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { deleteClientFile } from "@/lib/actions/files";
 import { useUpload } from "@/components/files/use-upload";
 import { UploadProgress } from "@/components/files/upload-progress";
+import { pickedFiles, reportBatch } from "@/components/files/report-batch";
 import { useJustAdded } from "@/components/files/use-just-added";
 import { unexpectedErrorMessage } from "@/lib/action-result";
-import { MAX_FILE_BYTES, fileTooLargeMessage } from "@/lib/file-limits";
+import { MAX_FILE_BYTES } from "@/lib/file-limits";
 import { FileCard } from "@/components/files/file-card";
 import { FileInfoDrawer } from "@/components/files/file-info-drawer";
 import type { FileRow } from "@/components/files/types";
@@ -38,7 +39,7 @@ export function ClientFilePool({
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const [isPending, startTransition] = useTransition();
-  const { status: uploadStatus, upload, cancel: cancelUpload, uploading: isUploading } = useUpload();
+  const { status: uploadStatus, uploadMany, cancel: cancelUpload, uploading: isUploading } = useUpload();
   const shown = useJustAdded(files);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [activeFile, setActiveFile] = useState<FileRow | null>(null);
@@ -46,25 +47,14 @@ export function ClientFilePool({
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const formData = new FormData(e.currentTarget);
-    if (clientServiceId) formData.set("clientServiceId", clientServiceId);
-    const file = formData.get("file");
-    if (!(file instanceof File) || file.size === 0) {
-      toast.error("Choose a file to upload");
-      return;
-    }
-    if (file.size > MAX_FILE_BYTES) {
-      toast.error(fileTooLargeMessage(file.name));
-      return;
-    }
-    void upload("client", clientId, formData).then((result) => {
-      if (!result.ok) {
-        toast.error(result.error);
-        return;
-      }
-      shown.add(result.data);
-      formRef.current?.reset();
-      router.refresh();
+    const files = pickedFiles(new FormData(e.currentTarget), MAX_FILE_BYTES);
+    if (!files) return;
+    const extra = clientServiceId ? { clientServiceId } : undefined;
+    void uploadMany("client", clientId, files, extra).then((outcome) => {
+      for (const { data } of outcome.uploaded) shown.add(data);
+      reportBatch(outcome);
+      if (outcome.failed.length === 0) formRef.current?.reset();
+      if (outcome.uploaded.length > 0) router.refresh();
     });
   }
 
@@ -98,6 +88,7 @@ export function ClientFilePool({
               <input
                 type="file"
                 name="file"
+                multiple
                 required
                 className="h-8 flex-1 rounded-lg border border-input bg-transparent text-sm file:mr-2 file:h-8 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground"
               />

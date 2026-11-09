@@ -20,15 +20,19 @@ export function UploadProgress({
   return (
     <div role="status" aria-live="polite" className={cn("space-y-1.5 rounded-lg border p-2.5", className)}>
       <div className="flex items-center gap-2 text-xs">
-        <span className="min-w-0 flex-1 truncate font-medium">{status.label}</span>
+        <span className="min-w-0 flex-1 truncate font-medium">
+          {status.step && <span className="text-muted-foreground">{status.step} · </span>}
+          {status.label}
+        </span>
         <span className="shrink-0 text-muted-foreground tabular-nums">
           {status.processing
             ? "Scanning and saving…"
             : `${formatBytes(status.loaded)} of ${formatBytes(status.total)} · ${pct}%`}
         </span>
-        {onCancel && !status.processing && (
+        {/* Mid-batch, while a file is being saved, Cancel skips the rest. */}
+        {onCancel && (!status.processing || status.step) && (
           <Button type="button" size="xs" variant="ghost" onClick={onCancel}>
-            Cancel
+            {status.processing ? "Skip the rest" : "Cancel"}
           </Button>
         )}
       </div>

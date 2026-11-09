@@ -48,7 +48,9 @@ import { MultiUserSelect } from "@/components/ui/multi-user-select";
 import { AvatarInitials } from "@/components/ui/avatar-initials";
 import { StatusDot, WorkStatusPill, formatDay } from "./work-status";
 import { useUpload } from "@/components/files/use-upload";
+import { MAX_FILE_BYTES, fileTooLargeMessage } from "@/lib/file-limits";
 import { UploadProgress } from "@/components/files/upload-progress";
+import { reportBatch } from "@/components/files/report-batch";
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -198,7 +200,7 @@ function TaskBody({
   const [reason, setReason] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
-  const { status: uploadStatus, upload: sendUpload, cancel: cancelUpload, uploading } = useUpload();
+  const { status: uploadStatus, uploadMany, cancel: cancelUpload, uploading } = useUpload();
 
   const status = task.status as WorkTaskStatus;
   // Assignee options: the team, plus anyone already on it.
@@ -208,10 +210,18 @@ function TaskBody({
   const pending = task.isClientRequest && !task.approvedAt && status !== "CANCELLED";
   const repeatItems: Record<string, string> = { NONE: "Doesn't repeat", ...WORK_REPEAT_LABELS };
 
-  function upload(file: File) {
-    const fd = new FormData();
-    fd.set("file", file);
-    run(() => sendUpload("workTask", task.id, fd), "File added");
+  function upload(files: File[]) {
+    if (files.length === 0) return;
+    const big = files.find((f) => f.size > MAX_FILE_BYTES);
+    if (big) return void toast.error(fileTooLargeMessage(big.name));
+    // Always "ok" so run() reloads the task; reportBatch has already said
+    // what failed.
+    run(async () => {
+      const outcome = await uploadMany("workTask", task.id, files);
+      reportBatch(outcome);
+      if (outcome.uploaded.length === 1 && outcome.failed.length === 0 && !outcome.cancelled) toast.success("File added");
+      return { ok: true as const, data: undefined };
+    });
   }
 
   return (
@@ -481,8 +491,7 @@ function TaskBody({
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
           e.preventDefault();
-          const f = e.dataTransfer.files?.[0];
-          if (f) upload(f);
+          upload(Array.from(e.dataTransfer.files ?? []));
         }}
       >
         <div className="flex items-center justify-between">
@@ -493,17 +502,17 @@ function TaskBody({
           <input
             ref={fileInput}
             type="file"
+            multiple
             className="hidden"
             onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) upload(f);
+              upload(Array.from(e.target.files ?? []));
               e.target.value = "";
             }}
           />
         </div>
         <UploadProgress status={uploadStatus} onCancel={cancelUpload} />
         {task.files.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Drop a file here or use Attach.</p>
+          <p className="text-sm text-muted-foreground">Drop files here or use Attach.</p>
         ) : (
           <ul className="divide-y rounded-lg border">
             {task.files.map((f) => (

@@ -11,6 +11,10 @@ import { unexpectedErrorMessage } from "@/lib/action-result";
 import { deletePayrollAttachment } from "@/lib/actions/payroll-attachments";
 import { useUpload } from "@/components/files/use-upload";
 import { UploadProgress } from "@/components/files/upload-progress";
+import { pickedFiles, reportBatch } from "@/components/files/report-batch";
+
+// Matches MAX_FILE_BYTES in src/lib/actions/payroll-attachments.ts.
+const MAX_PAYROLL_FILE_BYTES = 20 * 1024 * 1024;
 import type { PayrollFile } from "@/lib/actions/payroll";
 
 /**
@@ -33,20 +37,19 @@ export function PayrollFiles({
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const [isPending, startTransition] = useTransition();
-  const { status: uploadStatus, upload, cancel: cancelUpload, uploading } = useUpload();
+  const { status: uploadStatus, uploadMany, cancel: cancelUpload, uploading } = useUpload();
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const formData = new FormData(e.currentTarget);
-    const file = formData.get("file");
-    if (!(file instanceof File) || file.size === 0) return void toast.error("Choose a file to upload");
     if (!paymentId) return;
-    void upload("payroll", paymentId, formData).then((result) => {
-      if (!result.ok) return void toast.error(result.error);
-      formRef.current?.reset();
-      toast.success("File added");
-      router.refresh();
+    const files = pickedFiles(new FormData(e.currentTarget), MAX_PAYROLL_FILE_BYTES, (f) => `"${f.name}" is larger than 20MB`);
+    if (!files) return;
+    void uploadMany("payroll", paymentId, files).then((outcome) => {
+      reportBatch(outcome);
+      if (outcome.uploaded.length === 1 && outcome.failed.length === 0 && !outcome.cancelled) toast.success("File added");
+      if (outcome.failed.length === 0) formRef.current?.reset();
+      if (outcome.uploaded.length > 0) router.refresh();
     });
   }
 
@@ -73,6 +76,7 @@ export function PayrollFiles({
           <input
             type="file"
             name="file"
+            multiple
             required
             accept="image/*,.pdf,.csv,.xlsx,.docx"
             className="h-8 min-w-0 flex-1 rounded-lg border border-input bg-transparent text-sm file:mr-2 file:h-8 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground"

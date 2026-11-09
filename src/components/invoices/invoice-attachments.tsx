@@ -10,6 +10,10 @@ import { formatBytes } from "@/components/files/format-bytes";
 import { deleteInvoiceAttachment } from "@/lib/actions/invoice-attachments";
 import { useUpload } from "@/components/files/use-upload";
 import { UploadProgress } from "@/components/files/upload-progress";
+import { pickedFiles, reportBatch } from "@/components/files/report-batch";
+
+// Matches MAX_FILE_BYTES in src/lib/actions/invoice-attachments.ts.
+const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 import { useJustAdded } from "@/components/files/use-just-added";
 
 type AttachmentRow = {
@@ -37,26 +41,19 @@ export function InvoiceAttachments({
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const [isPending, startTransition] = useTransition();
-  const { status: uploadStatus, upload, cancel: cancelUpload, uploading: isUploading } = useUpload();
+  const { status: uploadStatus, uploadMany, cancel: cancelUpload, uploading: isUploading } = useUpload();
   const shown = useJustAdded(attachments);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const formData = new FormData(e.currentTarget);
-    const file = formData.get("file");
-    if (!(file instanceof File) || file.size === 0) {
-      toast.error("Choose a file to upload");
-      return;
-    }
-    void upload("invoice", invoiceId, formData).then((result) => {
-      if (!result.ok) {
-        toast.error(result.error);
-        return;
-      }
-      shown.add(result.data);
-      formRef.current?.reset();
-      router.refresh();
+    const files = pickedFiles(new FormData(e.currentTarget), MAX_ATTACHMENT_BYTES, (f) => `"${f.name}" is larger than 20MB`);
+    if (!files) return;
+    void uploadMany("invoice", invoiceId, files).then((outcome) => {
+      for (const { data } of outcome.uploaded) shown.add(data);
+      reportBatch(outcome);
+      if (outcome.failed.length === 0) formRef.current?.reset();
+      if (outcome.uploaded.length > 0) router.refresh();
     });
   }
 
@@ -83,6 +80,7 @@ export function InvoiceAttachments({
           <input
             type="file"
             name="file"
+            multiple
             required
             accept="image/*,.pdf,.xlsx,.docx"
             className="h-8 min-w-0 flex-1 rounded-lg border border-input bg-transparent text-sm file:mr-2 file:h-8 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground"
