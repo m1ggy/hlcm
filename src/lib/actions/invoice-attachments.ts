@@ -6,6 +6,7 @@ import { requireRole, AppRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
 import { saveUploadedFile, deleteStoredFile } from "@/lib/storage";
+import { UserFacingError } from "@/lib/user-facing-error";
 
 // Same ACCOUNTANT-exclusive gate as invoices.ts — see canAccessInvoices() in
 // src/lib/rbac.ts.
@@ -33,7 +34,7 @@ const ALLOWED_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".
 function assertAllowedType(file: File) {
   const ext = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
   if (!ALLOWED_EXTENSIONS.has(ext) && !ALLOWED_MIME_TYPES.has(file.type)) {
-    throw new Error("Only images, PDF, .xlsx, and .docx files can be attached to an invoice");
+    throw new UserFacingError("Only images, PDF, .xlsx, and .docx files can be attached to an invoice");
   }
 }
 
@@ -51,10 +52,10 @@ export async function uploadInvoiceAttachment(invoiceId: string, formData: FormD
 
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) {
-    throw new Error("Choose a file to upload");
+    throw new UserFacingError("Choose a file to upload");
   }
   if (file.size > MAX_FILE_BYTES) {
-    throw new Error("File is larger than 20MB");
+    throw new UserFacingError("File is larger than 20MB");
   }
   assertAllowedType(file);
 

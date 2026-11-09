@@ -14,7 +14,8 @@ import { unexpectedErrorMessage } from "@/lib/action-result";
 import { formatDuration, formatMoney, toDateInputValue } from "@/lib/time-entries";
 import { PAYROLL_METHODS, PAYROLL_METHOD_LABELS, PAYROLL_TIMEZONE, type PayrollMethodValue } from "@/lib/payroll";
 import { markPaid, updatePayment } from "@/lib/actions/payroll";
-import { uploadPayrollAttachment } from "@/lib/actions/payroll-attachments";
+import { useUpload } from "@/components/files/use-upload";
+import { UploadProgress } from "@/components/files/upload-progress";
 
 type Details = { paidOn: string; method: PayrollMethodValue; reference: string; note: string };
 
@@ -102,6 +103,7 @@ export function MarkPaidDialog({
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const { status: uploadStatus, upload } = useUpload();
   // The parent mounts this only while open, so state starts fresh from the
   // latest numbers every time.
   const [details, setDetails] = useState<Details>(() => ({ paidOn: today(), method: "DIRECT_DEPOSIT", reference: "", note: "" }));
@@ -158,13 +160,9 @@ export function MarkPaidDialog({
           for (const file of files[p.userId] ?? []) {
             const form = new FormData();
             form.set("file", file);
-            try {
-              const upload = paymentId ? await uploadPayrollAttachment(paymentId, form) : { ok: false as const, error: "" };
-              if (!upload.ok) failed.push(`${file.name} (${p.userName})${upload.error ? `: ${upload.error}` : ""}`);
-            } catch {
-              // The payment is saved either way — only this file is missing.
-              failed.push(`${file.name} (${p.userName})`);
-            }
+            // The payment is saved either way — a failure only means this file is missing.
+            const uploaded = paymentId ? await upload("payroll", paymentId, form) : { ok: false as const, error: "" };
+            if (!uploaded.ok) failed.push(`${file.name} (${p.userName})${uploaded.error ? `: ${uploaded.error}` : ""}`);
           }
         }
         toast.success(result.data.count === 1 ? "Marked paid" : `${result.data.count} people marked paid`);
@@ -280,6 +278,7 @@ export function MarkPaidDialog({
             </p>
           )}
           <DetailFields value={details} onChange={setDetails} />
+          <UploadProgress status={uploadStatus} />
           <Button onClick={handleSubmit} loading={isPending} className="w-full">
             {single ? "Mark paid" : `Mark ${included.length} paid`}
           </Button>

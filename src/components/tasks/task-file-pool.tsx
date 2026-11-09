@@ -4,7 +4,9 @@ import { useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { uploadTaskFile, deleteTaskFile, listTaskFiles } from "@/lib/actions/files";
+import { deleteTaskFile, listTaskFiles } from "@/lib/actions/files";
+import { useUpload } from "@/components/files/use-upload";
+import { UploadProgress } from "@/components/files/upload-progress";
 import { unexpectedErrorMessage } from "@/lib/action-result";
 import { MAX_FILE_BYTES, fileTooLargeMessage } from "@/lib/file-limits";
 import { FileCard } from "@/components/files/file-card";
@@ -22,7 +24,7 @@ export function TaskFilePool({
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [isPending, startTransition] = useTransition();
-  const [isUploading, setIsUploading] = useState(false);
+  const { status: uploadStatus, upload, cancel: cancelUpload, uploading: isUploading } = useUpload();
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [activeFile, setActiveFile] = useState<FileRow | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -39,21 +41,13 @@ export function TaskFilePool({
       toast.error(fileTooLargeMessage(file.name));
       return;
     }
-    setIsUploading(true);
-    startTransition(async () => {
-      try {
-        const result = await uploadTaskFile(taskId, formData);
-        if (!result.ok) {
-          toast.error(result.error);
-          return;
-        }
-        onFilesChange([result.data, ...files]);
-        formRef.current?.reset();
-      } catch (error) {
-        toast.error(unexpectedErrorMessage(error, "Upload failed. Please try again."));
-      } finally {
-        setIsUploading(false);
+    void upload("task", taskId, formData).then((result) => {
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
       }
+      onFilesChange([result.data, ...files]);
+      formRef.current?.reset();
     });
   }
 
@@ -89,6 +83,7 @@ export function TaskFilePool({
           <Upload className="size-3.5" /> Upload
         </Button>
       </form>
+      <UploadProgress status={uploadStatus} onCancel={cancelUpload} />
 
       {files.length === 0 ? (
         <p className="py-6 text-center text-sm text-muted-foreground">No files yet</p>

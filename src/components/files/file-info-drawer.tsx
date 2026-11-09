@@ -6,7 +6,9 @@ import { Download, RotateCcw, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { listFileVersions, revertFileVersion, uploadNewFileVersion } from "@/lib/actions/files";
+import { listFileVersions, revertFileVersion } from "@/lib/actions/files";
+import { useUpload } from "./use-upload";
+import { UploadProgress } from "./upload-progress";
 import { unexpectedErrorMessage } from "@/lib/action-result";
 import { MAX_FILE_BYTES, fileTooLargeMessage } from "@/lib/file-limits";
 import { formatBytes } from "./format-bytes";
@@ -46,7 +48,7 @@ export function FileInfoDrawer({
   const [versionsState, setVersionsState] = useState<{ fileId: string; rows: VersionRow[] } | null>(null);
   const [isPending, startTransition] = useTransition();
   const [revertingId, setRevertingId] = useState<string | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
+  const { status: uploadStatus, upload, cancel: cancelUpload, uploading: isUploading } = useUpload();
   const formRef = useRef<HTMLFormElement>(null);
 
   const fileId = file?.id ?? null;
@@ -74,23 +76,19 @@ export function FileInfoDrawer({
       toast.error(fileTooLargeMessage(uploaded.name));
       return;
     }
-    setIsUploading(true);
-    startTransition(async () => {
+    const fileId = file.id;
+    void upload("fileVersion", fileId, formData).then(async (result) => {
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      formRef.current?.reset();
+      onChanged();
+      toast.success("New version uploaded");
       try {
-        const result = await uploadNewFileVersion(file.id, formData);
-        if (!result.ok) {
-          toast.error(result.error);
-          return;
-        }
-        const refreshed = await listFileVersions(file.id);
-        setVersionsState({ fileId: file.id, rows: refreshed });
-        formRef.current?.reset();
-        onChanged();
-        toast.success("New version uploaded");
-      } catch (error) {
-        toast.error(unexpectedErrorMessage(error, "Upload failed. Please try again."));
-      } finally {
-        setIsUploading(false);
+        setVersionsState({ fileId, rows: await listFileVersions(fileId) });
+      } catch {
+        toast.error("Failed to load version history");
       }
     });
   }
@@ -169,6 +167,7 @@ export function FileInfoDrawer({
                 </Button>
               </form>
             )}
+            <UploadProgress status={uploadStatus} onCancel={cancelUpload} />
 
             <div className="space-y-1.5">
               <p className="text-xs font-medium text-muted-foreground">Version history</p>

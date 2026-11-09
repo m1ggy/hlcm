@@ -65,6 +65,7 @@ export async function saveFileVersion(
   buffer: Buffer,
   contentType?: string
 ): Promise<{ generation: bigint }> {
+  await scanForViruses(buffer);
   await getBucket().file(storageKey).save(buffer, { resumable: false, contentType });
   return { generation: await currentGeneration(storageKey) };
 }

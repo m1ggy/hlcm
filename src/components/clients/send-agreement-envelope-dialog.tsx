@@ -6,8 +6,9 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { listClientFiles, uploadClientFile } from "@/lib/actions/files";
-import { unexpectedErrorMessage } from "@/lib/action-result";
+import { listClientFiles } from "@/lib/actions/files";
+import { useUpload } from "@/components/files/use-upload";
+import { UploadProgress } from "@/components/files/upload-progress";
 import { MAX_FILE_BYTES, fileTooLargeMessage } from "@/lib/file-limits";
 
 // Same deferred-import reasoning as send-envelope-dialog.tsx — react-pdf/
@@ -27,7 +28,7 @@ export function SendAgreementEnvelopeDialog({ clientId, clientAgreementId }: { c
   const [files, setFiles] = useState<{ id: string; fileName: string }[] | null>(null);
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
   const [selectedFileName, setSelectedFileName] = useState("");
-  const [isUploading, setIsUploading] = useState(false);
+  const { status: uploadStatus, upload, cancel: cancelUpload, uploading: isUploading } = useUpload();
 
   useEffect(() => {
     if (!open || files !== null) return;
@@ -66,19 +67,15 @@ export function SendAgreementEnvelopeDialog({ clientId, clientAgreementId }: { c
       toast.error(fileTooLargeMessage(file.name));
       return;
     }
-    setIsUploading(true);
-    uploadClientFile(clientId, formData)
-      .then((result) => {
-        if (!result.ok) {
-          toast.error(result.error);
-          return;
-        }
-        setSelectedFileId(result.data.id);
-        setSelectedFileName(result.data.fileName);
-        setStep("sending");
-      })
-      .catch((error) => toast.error(unexpectedErrorMessage(error, "Upload failed. Please try again.")))
-      .finally(() => setIsUploading(false));
+    void upload("client", clientId, formData).then((result) => {
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      setSelectedFileId(result.data.id);
+      setSelectedFileName(result.data.fileName);
+      setStep("sending");
+    });
   }
 
   return (
@@ -121,6 +118,7 @@ export function SendAgreementEnvelopeDialog({ clientId, clientAgreementId }: { c
                   Upload
                 </Button>
               </form>
+              <UploadProgress status={uploadStatus} onCancel={cancelUpload} />
             </div>
           </div>
         </DialogContent>

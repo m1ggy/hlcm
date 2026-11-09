@@ -17,7 +17,6 @@ import {
   setAssigneesAction,
   startWorkTimerAction,
   updateTaskAction,
-  uploadWorkTaskFileAction,
 } from "@/lib/actions/work";
 import {
   WORK_REPEATS,
@@ -48,6 +47,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { MultiUserSelect } from "@/components/ui/multi-user-select";
 import { AvatarInitials } from "@/components/ui/avatar-initials";
 import { StatusDot, WorkStatusPill, formatDay } from "./work-status";
+import { useUpload } from "@/components/files/use-upload";
+import { UploadProgress } from "@/components/files/upload-progress";
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -197,6 +198,7 @@ function TaskBody({
   const [reason, setReason] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const { status: uploadStatus, upload: sendUpload, cancel: cancelUpload, uploading } = useUpload();
 
   const status = task.status as WorkTaskStatus;
   // Assignee options: the team, plus anyone already on it.
@@ -209,7 +211,7 @@ function TaskBody({
   function upload(file: File) {
     const fd = new FormData();
     fd.set("file", file);
-    run(() => uploadWorkTaskFileAction(task.id, fd), "File added");
+    run(() => sendUpload("workTask", task.id, fd), "File added");
   }
 
   return (
@@ -485,7 +487,7 @@ function TaskBody({
       >
         <div className="flex items-center justify-between">
           <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Files</h3>
-          <Button size="sm" variant="ghost" disabled={isPending} onClick={() => fileInput.current?.click()}>
+          <Button size="sm" variant="ghost" disabled={isPending || uploading} onClick={() => fileInput.current?.click()}>
             <Paperclip className="size-3.5" /> Attach
           </Button>
           <input
@@ -499,6 +501,7 @@ function TaskBody({
             }}
           />
         </div>
+        <UploadProgress status={uploadStatus} onCancel={cancelUpload} />
         {task.files.length === 0 ? (
           <p className="text-sm text-muted-foreground">Drop a file here or use Attach.</p>
         ) : (

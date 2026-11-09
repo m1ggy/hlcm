@@ -8,7 +8,9 @@ import { Button } from "@/components/ui/button";
 import { FileTypeIcon } from "@/components/files/file-icon";
 import { formatBytes } from "@/components/files/format-bytes";
 import { unexpectedErrorMessage } from "@/lib/action-result";
-import { uploadPayrollAttachment, deletePayrollAttachment } from "@/lib/actions/payroll-attachments";
+import { deletePayrollAttachment } from "@/lib/actions/payroll-attachments";
+import { useUpload } from "@/components/files/use-upload";
+import { UploadProgress } from "@/components/files/upload-progress";
 import type { PayrollFile } from "@/lib/actions/payroll";
 
 /**
@@ -31,7 +33,7 @@ export function PayrollFiles({
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const [isPending, startTransition] = useTransition();
-  const [uploading, setUploading] = useState(false);
+  const { status: uploadStatus, upload, cancel: cancelUpload, uploading } = useUpload();
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -39,20 +41,12 @@ export function PayrollFiles({
     const formData = new FormData(e.currentTarget);
     const file = formData.get("file");
     if (!(file instanceof File) || file.size === 0) return void toast.error("Choose a file to upload");
-    setUploading(true);
-    startTransition(async () => {
-      try {
-        if (!paymentId) return;
-        const result = await uploadPayrollAttachment(paymentId, formData);
-        if (!result.ok) return void toast.error(result.error);
-        formRef.current?.reset();
-        toast.success("File added");
-        router.refresh();
-      } catch (error) {
-        toast.error(unexpectedErrorMessage(error, "Upload failed — try again"));
-      } finally {
-        setUploading(false);
-      }
+    if (!paymentId) return;
+    void upload("payroll", paymentId, formData).then((result) => {
+      if (!result.ok) return void toast.error(result.error);
+      formRef.current?.reset();
+      toast.success("File added");
+      router.refresh();
     });
   }
 
@@ -88,6 +82,7 @@ export function PayrollFiles({
           </Button>
         </form>
       )}
+      <UploadProgress status={uploadStatus} onCancel={cancelUpload} />
 
       {files.length === 0 ? (
         <p className={compact ? "text-xs text-muted-foreground" : "py-3 text-center text-sm text-muted-foreground"}>{emptyText}</p>

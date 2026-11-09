@@ -6,6 +6,8 @@ import { FileText, ImagePlus, Mail, Paperclip, X } from "lucide-react";
 import { createCorrespondenceAction, previewEmailAction, removeCorrespondenceFileAction, updateCorrespondenceAction } from "@/lib/actions/correspondence";
 import { unexpectedErrorMessage } from "@/lib/action-result";
 import { MAX_FILE_BYTES, fileTooLargeMessage } from "@/lib/file-limits";
+import { useUpload } from "@/components/files/use-upload";
+import { UploadProgress } from "@/components/files/upload-progress";
 import { cn } from "@/lib/utils";
 import { toDatetimeLocalValue, zonedInputToISOString } from "@/lib/time-entries";
 import { Button } from "@/components/ui/button";
@@ -90,6 +92,7 @@ function Form({
   const [reading, setReading] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [saving, startSaving] = useTransition();
+  const { status: uploadStatus, upload, cancel: cancelUpload } = useUpload();
   const picker = useRef<HTMLInputElement>(null);
 
   async function readEmail(file: File) {
@@ -178,7 +181,16 @@ function Form({
     if (emailFile) form.set("emailFile", emailFile);
     startSaving(async () => {
       try {
-        const result = entry ? await updateCorrespondenceAction(entry.id, form) : await createCorrespondenceAction(form);
+        // With files attached, go through the upload route so there's a
+        // progress bar; it runs these same actions.
+        const hasFiles = files.length > 0 || Boolean(emailFile);
+        const result = hasFiles
+          ? entry
+            ? await upload("correspondence", entry.id, form)
+            : await upload("correspondenceNew", "", form)
+          : entry
+            ? await updateCorrespondenceAction(entry.id, form)
+            : await createCorrespondenceAction(form);
         if (!result.ok) {
           toast.error(result.error);
           return;
@@ -357,6 +369,8 @@ function Form({
         <Checkbox checked={clientVisible} onCheckedChange={(c) => setClientVisible(Boolean(c))} />
         Share with the client
       </label>
+
+      <UploadProgress status={uploadStatus} onCancel={cancelUpload} />
 
       <DialogFooter>
         <Button type="button" variant="ghost" onClick={onClose}>

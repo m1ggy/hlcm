@@ -7,7 +7,9 @@ import { Download, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FileTypeIcon } from "@/components/files/file-icon";
 import { formatBytes } from "@/components/files/format-bytes";
-import { uploadInvoiceAttachment, deleteInvoiceAttachment } from "@/lib/actions/invoice-attachments";
+import { deleteInvoiceAttachment } from "@/lib/actions/invoice-attachments";
+import { useUpload } from "@/components/files/use-upload";
+import { UploadProgress } from "@/components/files/upload-progress";
 
 type AttachmentRow = {
   id: string;
@@ -34,7 +36,7 @@ export function InvoiceAttachments({
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const [isPending, startTransition] = useTransition();
-  const [isUploading, setIsUploading] = useState(false);
+  const { status: uploadStatus, upload, cancel: cancelUpload, uploading: isUploading } = useUpload();
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -45,17 +47,13 @@ export function InvoiceAttachments({
       toast.error("Choose a file to upload");
       return;
     }
-    setIsUploading(true);
-    startTransition(async () => {
-      try {
-        await uploadInvoiceAttachment(invoiceId, formData);
-        formRef.current?.reset();
-        router.refresh();
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Upload failed");
-      } finally {
-        setIsUploading(false);
+    void upload("invoice", invoiceId, formData).then((result) => {
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
       }
+      formRef.current?.reset();
+      router.refresh();
     });
   }
 
@@ -90,6 +88,7 @@ export function InvoiceAttachments({
           </Button>
         </form>
       )}
+      <UploadProgress status={uploadStatus} onCancel={cancelUpload} />
 
       {attachments.length === 0 ? (
         <p className="py-4 text-center text-sm text-muted-foreground">No attachments yet</p>
