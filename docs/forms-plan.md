@@ -2,7 +2,7 @@
 
 Drafted 2026-11-09. Covers the public intake forms (Admin → Forms), the page people fill in (`/forms/<slug>`), the Form Submissions inbox, and a new text (SMS) alert when a form is filled.
 
-**Built 2026-11-09 on `feature/forms`** (all five phases; migration `20261109160000_forms_upgrade`; tests `tests/forms.test.ts`). Decisions: F1 staff only, F2 one shared Carenela number (`SMS_TWILIO_ACCOUNT_SID`, `SMS_TWILIO_AUTH_TOKEN`, `SMS_TWILIO_FROM` in the server `.env`), F3 form + first name + link, F4 any time, F5 conditional questions now, F6 email copy yes. Forms moved out of Admin to a sidebar **Forms** area (`/intake`, `/intake/forms`); managers can build forms too. Texting stays off until those env vars are set and the number is registered (A2P 10DLC or toll-free verification).
+**Built 2026-11-09 on `feature/forms`** (all five phases; migration `20261109160000_forms_upgrade`; tests `tests/forms.test.ts`). Decisions: F1 staff only, F2 one shared Carenela number (`SMS_TWILIO_*` if set, else the server's existing `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_FROM_NUMBER` in `.env.production`, which production already has), F3 form + first name + link, F4 any time, F5 conditional questions now, F6 email copy yes. Forms moved out of Admin to a sidebar **Forms** area (`/intake`, `/intake/forms`); managers can build forms too. Texts only get through once the number is registered for business texting (A2P 10DLC or toll-free verification).
 
 ## Where things stand
 

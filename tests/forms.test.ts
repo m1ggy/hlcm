@@ -182,7 +182,9 @@ describe("alerts", () => {
 
   it("logs instead of texting when texting isn't set up", async () => {
     const saved = process.env.SMS_TWILIO_FROM;
+    const savedFallback = process.env.TWILIO_FROM_NUMBER;
     delete process.env.SMS_TWILIO_FROM;
+    delete process.env.TWILIO_FROM_NUMBER;
     try {
       await inOrg(async () => {
         const { submissionId } = await recordSubmission({ templateId, answers: { full_name: "Kim", email: "k@x.co", care: "Myself" }, files: [], ip: null });
@@ -193,6 +195,20 @@ describe("alerts", () => {
       });
     } finally {
       process.env.SMS_TWILIO_FROM = saved;
+      if (savedFallback !== undefined) process.env.TWILIO_FROM_NUMBER = savedFallback;
+    }
+  });
+
+  it("uses the server's existing Twilio settings when the SMS_ ones aren't set", async () => {
+    const keys = ["SMS_TWILIO_ACCOUNT_SID", "SMS_TWILIO_AUTH_TOKEN", "SMS_TWILIO_FROM", "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER"];
+    const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+    for (const k of keys.slice(0, 3)) delete process.env[k];
+    Object.assign(process.env, { TWILIO_ACCOUNT_SID: "AC_legacy", TWILIO_AUTH_TOKEN: "tok", TWILIO_FROM_NUMBER: "+15559990000" });
+    try {
+      const { platformSmsCreds } = await import("@/lib/sms");
+      expect(platformSmsCreds()).toEqual({ accountSid: "AC_legacy", authToken: "tok", fromNumber: "+15559990000" });
+    } finally {
+      for (const k of keys) (saved[k] === undefined ? delete process.env[k] : (process.env[k] = saved[k]));
     }
   });
 });

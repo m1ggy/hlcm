@@ -5,6 +5,9 @@ import { sendSmsWith, TwilioApiError, type TwilioCreds } from "@/lib/twilio";
 // decided F2) — not a workspace's own Twilio account (that one still sends
 // meeting reminders, src/lib/meeting-reminders.ts). Configured on the server:
 //   SMS_TWILIO_ACCOUNT_SID, SMS_TWILIO_AUTH_TOKEN, SMS_TWILIO_FROM (+1…)
+// and, when those aren't set, the server's existing Twilio account
+// (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER — the one
+// production already has).
 // The number must be registered for business texting (A2P 10DLC or a
 // verified toll-free number) or US carriers drop the messages.
 //
@@ -14,9 +17,10 @@ import { sendSmsWith, TwilioApiError, type TwilioCreds } from "@/lib/twilio";
 const OPTED_OUT = 21610;
 
 export function platformSmsCreds(): TwilioCreds | null {
-  const accountSid = process.env.SMS_TWILIO_ACCOUNT_SID?.trim();
-  const authToken = process.env.SMS_TWILIO_AUTH_TOKEN?.trim();
-  const fromNumber = process.env.SMS_TWILIO_FROM?.trim();
+  const env = (primary: string, fallback: string) => (process.env[primary] ?? process.env[fallback])?.trim();
+  const accountSid = env("SMS_TWILIO_ACCOUNT_SID", "TWILIO_ACCOUNT_SID");
+  const authToken = env("SMS_TWILIO_AUTH_TOKEN", "TWILIO_AUTH_TOKEN");
+  const fromNumber = env("SMS_TWILIO_FROM", "TWILIO_FROM_NUMBER");
   return accountSid && authToken && fromNumber ? { accountSid, authToken, fromNumber } : null;
 }
 
