@@ -17,6 +17,8 @@ import { listCorrespondence } from "@/lib/correspondence";
 import { getMyWorkingTimezone } from "@/lib/actions/account";
 import { toCorrespondenceRow } from "@/lib/correspondence-view";
 import { CorrespondencePanel } from "@/components/correspondence/correspondence-panel";
+import { ShareLinkDialog } from "@/components/applications/share-link-dialog";
+import { canShareApplication } from "@/lib/share-links";
 import { listEnvelopesForApplication } from "@/lib/actions/docusign-envelopes";
 import { listAccessGrants, listGrantableUsers } from "@/lib/actions/access-grants";
 import { listApplicableTemplates, listGeneratedDocuments } from "@/lib/actions/generated-documents";
@@ -75,6 +77,7 @@ export default async function ApplicationDetailPage({
   const canEdit = accessLevel === "edit";
   const canArchive = isManagement(session.user.role);
   const grantableUsers = canEdit ? await listGrantableUsers(id) : [];
+  const canShare = await canShareApplication({ userId: session.user.id, role: session.user.role }, id);
 
   const [
     clients,
@@ -160,6 +163,7 @@ export default async function ApplicationDetailPage({
         <div className="flex items-center gap-2">
           {!application.active && <Badge variant="outline">Archived</Badge>}
           <ApplicationFlags readyToSubmit={readyToSubmit} staleDays={staleDays} />
+          {canShare && <ShareLinkDialog applicationId={id} />}
           <FavoriteStar applicationId={id} />
           {canArchive && (
             <ArchiveButton

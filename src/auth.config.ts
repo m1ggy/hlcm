@@ -54,6 +54,9 @@ export function isPublicPath(pathname: string) {
     // and the submissions inbox (/form-submissions — deliberately NOT
     // under /forms/*, to stay clear of this exact prefix check) live
     // under (dashboard) and stay behind the normal auth check.
-    pathname.startsWith("/forms/")
+    pathname.startsWith("/forms/") ||
+    // An application's share link: a read-only progress page anyone with
+    // the token can open (src/lib/share-links.ts, src/app/share).
+    pathname.startsWith("/share/")
   );
 }

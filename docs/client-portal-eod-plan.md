@@ -120,6 +120,12 @@ Built first because the EOD report and the client portal both show it.
 
 ## Phase D — Shareable application page (feature 1) — replaces the client portal
 
+**Done 2026-11-09 on `feature/correspondence`** (same branch as B and C), except retiring `/portal` (below — needs the prod check first). Migration `20261109130000_application_share_links`; logic `src/lib/share-links.ts`; page `src/app/share/a/[token]/page.tsx`; tests `tests/share-links.test.ts`. As built:
+- Token: 32 random bytes (base64url), only SHA-256 stored, so the link is shown once when made (Share dialog says so; "Make a new link" revokes the old). Partial unique index = one active link per application. Lookup scoped to the host's workspace by the tenant db.
+- Share dialog (management + the application's VA/manager): make link, copy, email it to the client's contacts/business email (only those addresses), expiry date (end of that day, workspace tz), views count + last opened, turn off. Audited: create/regenerate/expiry/revoke; views audited at most hourly (actor = link creator, with IP).
+- Public page: `/share/` added to isPublicPath; noindex + no-referrer; 30 req/min per IP; unknown/revoked/expired all show "no longer active". Shows client + application name, license type, stage chip, stage progress (forward stages done/current/upcoming) + history, "we're waiting on you" when the stage role is WAITING_CLIENT_DOCS, a week view of shared EOD lines + shared correspondence (subject only, no body), checklist by phase with progress. Built field by field in `sharePageData`; tests check no internal text, minutes or staff names reach it.
+- Not done: "what we need from you" as a per-task list (tasks have no "waiting on client" flag — only the stage callout); org logo/colors (workspaces have no logo yet, uses the name).
+
 **Decided 2026-11-05:** no client logins/portal for licensing clients. Instead each application gets a **share link**: a read-only progress page anyone with the link can open, no account needed. (The old "portal per client" design is dropped. General-task clients get their own workspace instead: `docs/workspace-tasks-plan.md`.)
 
 **Model** — `ApplicationShareLink` (tenant table): `organizationId`, `applicationId`, `tokenHash` (SHA-256 of a 32-byte random token; raw token only in the URL), `createdById`, `createdAt`, `expiresAt?`, `revokedAt?`, `lastViewedAt?`, `viewCount`. One active link per application (regenerate = revoke old + new).

@@ -78,6 +78,7 @@ model Organization {
   eodReportComments     EodReportComment[]
   correspondence        Correspondence[]
   eodItemCorrespondence EodItemCorrespondence[]
+  applicationShareLinks ApplicationShareLink[]
 
   // Client weekly summary (docs/workspace-tasks-plan.md, Phase 3). Hours
   // reach the client only when this is on (decided W7).
@@ -470,12 +471,12 @@ model User {
   createdAt                 DateTime     @default(now())
   updatedAt                 DateTime     @updatedAt
 
-  assignmentsHome       WorkspaceAssignment[] @relation("AssignmentHomeUser")
-  assignmentLinked      WorkspaceAssignment?  @relation("AssignmentLinkedUser")
-  workProjectsLed       WorkProject[]         @relation("WorkProjectLead")
-  workProjectsCreated   WorkProject[]         @relation("WorkProjectCreatedBy")
-  workTasksCreated      WorkTask[]            @relation("WorkTaskCreatedBy")
-  workTasksCompleted    WorkTask[]            @relation("WorkTaskCompletedBy")
+  assignmentsHome       WorkspaceAssignment[]  @relation("AssignmentHomeUser")
+  assignmentLinked      WorkspaceAssignment?   @relation("AssignmentLinkedUser")
+  workProjectsLed       WorkProject[]          @relation("WorkProjectLead")
+  workProjectsCreated   WorkProject[]          @relation("WorkProjectCreatedBy")
+  workTasksCreated      WorkTask[]             @relation("WorkTaskCreatedBy")
+  workTasksCompleted    WorkTask[]             @relation("WorkTaskCompletedBy")
   workTaskAssignments   WorkTaskAssignee[]
   workTaskComments      WorkTaskComment[]
   workTaskActivities    WorkTaskActivity[]
@@ -484,10 +485,12 @@ model User {
   // (reminders, the team page's "missing" list) — not who may write one.
   // Null = the role's default: STAFF yes, everyone else no (src/lib/eod.ts).
   eodRequired           Boolean?
-  eodReports            EodReport[]           @relation("EodReportAuthor")
-  eodReportsReopened    EodReport[]           @relation("EodReportReopenedBy")
+  eodReports            EodReport[]            @relation("EodReportAuthor")
+  eodReportsReopened    EodReport[]            @relation("EodReportReopenedBy")
   eodReportComments     EodReportComment[]
-  correspondenceCreated Correspondence[]      @relation("CorrespondenceCreatedBy")
+  correspondenceCreated Correspondence[]       @relation("CorrespondenceCreatedBy")
+  shareLinksCreated     ApplicationShareLink[] @relation("ShareLinkCreatedBy")
+  shareLinksRevoked     ApplicationShareLink[] @relation("ShareLinkRevokedBy")
 
   projectsCreated               Project[]                 @relation("ProjectCreatedBy")
   clientsCreated                Client[]                  @relation("ClientCreatedBy")
@@ -1635,6 +1638,7 @@ model Application {
   accessGrants       AccessGrant[]
   files              FileAsset[]
   correspondence     Correspondence[]
+  shareLinks         ApplicationShareLink[]
   generatedDocuments GeneratedDocument[]
   notes              Note[]
   stageHistory       StageHistory[]
@@ -3198,4 +3202,32 @@ model EodItemCorrespondence {
   @@index([organizationId])
   @@index([correspondenceId])
   @@map("eod_item_correspondence")
+}
+
+// A read-only progress page for an application that anyone with the link
+// can open, no account needed (docs/client-portal-eod-plan.md, Phase D —
+// replaces the client portal). Only the SHA-256 of the token is stored; the
+// raw token lives only in the URL. One active link per application
+// (partial unique index in the migration).
+model ApplicationShareLink {
+  id             String       @id @default(cuid())
+  organizationId String       @default(dbgenerated("current_org_id()"))
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  application    Application  @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  applicationId  String
+  tokenHash      String
+  createdBy      User         @relation("ShareLinkCreatedBy", fields: [createdById], references: [id])
+  createdById    String
+  createdAt      DateTime     @default(now())
+  expiresAt      DateTime?
+  revokedAt      DateTime?
+  revokedBy      User?        @relation("ShareLinkRevokedBy", fields: [revokedById], references: [id], onDelete: SetNull)
+  revokedById    String?
+  lastViewedAt   DateTime?
+  viewCount      Int          @default(0)
+
+  @@unique([organizationId, tokenHash])
+  @@index([organizationId])
+  @@index([applicationId])
+  @@map("application_share_links")
 }
