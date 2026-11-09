@@ -371,7 +371,16 @@ const createManualInvoiceSchema = z.object({
 // later. Care Recipient billing is a separate flow — see
 // createCareRecipientInvoice in src/lib/actions/care-recipient-invoices.ts
 // — this action never tags a careRecipientId.
+// Returns a result rather than throwing, so a duplicate invoice number or a
+// visit someone else just billed reaches the user as a readable message.
 export async function createManualInvoice(input: z.infer<typeof createManualInvoiceSchema>) {
+  return toActionResult(async () => {
+    const invoice = await createManualInvoiceImpl(input);
+    return { id: invoice.id };
+  });
+}
+
+async function createManualInvoiceImpl(input: z.infer<typeof createManualInvoiceSchema>) {
   const session = await requireRole(MANAGE_ROLES);
   const parsed = createManualInvoiceSchema.parse(input);
   const total = subtotalOf(parsed.lineItems);
@@ -387,12 +396,12 @@ export async function createManualInvoice(input: z.infer<typeof createManualInvo
   // client-side check — scoped through the Application's own Tasks. See
   // listUnbilledTaskTime in src/lib/actions/task-time-entries.ts.
   if (parsed.taskTimeEntryIds?.length) {
-    if (!parsed.applicationId) throw new Error("Tracked time can only be billed alongside a case");
+    if (!parsed.applicationId) throw new UserFacingError("Tracked time can only be billed alongside a case");
     const billableCount = await db.taskTimeEntry.count({
       where: { id: { in: parsed.taskTimeEntryIds }, task: { applicationId: parsed.applicationId }, billedInvoiceId: null },
     });
     if (billableCount !== parsed.taskTimeEntryIds.length) {
-      throw new Error("One or more of those time entries is no longer available to bill — someone else may have just billed it");
+      throw new UserFacingError("One or more of those time entries is no longer available to bill — someone else may have just billed it");
     }
   }
 

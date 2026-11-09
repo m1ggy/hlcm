@@ -13,6 +13,7 @@ import { InvoiceLineItemsEditor, emptyLineItem, type LineItem } from "@/componen
 import { UnbilledVisitsSection, type RecipientLineItem } from "@/components/invoices/unbilled-visits-section";
 import { DayRateSection } from "@/components/invoices/day-rate-section";
 import { formatMoney } from "@/lib/money";
+import { unexpectedErrorMessage } from "@/lib/action-result";
 
 type ProfileOption = { id: string; name: string };
 type CaregiverOption = { id: string; name: string };
@@ -113,7 +114,7 @@ export function CareRecipientInvoiceForm({
 
     startTransition(async () => {
       try {
-        await createCareRecipientInvoice({
+        const result = await createCareRecipientInvoice({
           clientId,
           careRecipientId,
           timeEntryIds: visitBilling.timeEntryIds.length ? visitBilling.timeEntryIds : undefined,
@@ -127,11 +128,15 @@ export function CareRecipientInvoiceForm({
           internalTag: internalTag || undefined,
           lineItems: allItems,
         });
+        if (!result.ok) {
+          toast.error(result.error);
+          return;
+        }
         toast.success("Invoice created");
         router.refresh();
         onCreated();
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Failed to create invoice");
+        toast.error(unexpectedErrorMessage(error, "Couldn't create the invoice. Please try again."));
       }
     });
   }

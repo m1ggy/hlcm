@@ -21,6 +21,7 @@ import { InvoiceLineItemsEditor, emptyLineItem, type LineItem } from "./invoice-
 import { UnbilledTaskTimeSection } from "./unbilled-task-time-section";
 import { ServiceSelect, NO_SERVICE, type ServiceOption } from "@/components/clients/service-select";
 import { formatMoney } from "@/lib/money";
+import { unexpectedErrorMessage } from "@/lib/action-result";
 
 // One combobox covers "just a client, no case" and "this specific case" —
 // prefixing the key is simpler than a parallel id/type pair to carry
@@ -139,7 +140,7 @@ export function RecordPaymentDialog({
 
     startTransition(async () => {
       try {
-        await createManualInvoice({
+        const result = await createManualInvoice({
           clientId,
           applicationId,
           taskTimeEntryIds: taskTimeBilling.taskTimeEntryIds.length ? taskTimeBilling.taskTimeEntryIds : undefined,
@@ -152,12 +153,16 @@ export function RecordPaymentDialog({
           internalTag: internalTag || undefined,
           lineItems: allItems,
         });
+        if (!result.ok) {
+          toast.error(result.error);
+          return;
+        }
         toast.success("Invoice created");
         setOpen(false);
         reset();
         router.refresh();
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Failed to create invoice");
+        toast.error(unexpectedErrorMessage(error, "Couldn't create the invoice. Please try again."));
       }
     });
   }

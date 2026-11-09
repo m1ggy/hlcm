@@ -24,6 +24,8 @@ import {
   subtotalOf,
   friendlyInvoiceNumberError,
 } from "@/lib/invoice-shared";
+import { toActionResult } from "@/lib/action-result";
+import { UserFacingError } from "@/lib/user-facing-error";
 
 const createCareRecipientInvoiceSchema = z.object({
   clientId: z.string().min(1),
@@ -54,7 +56,16 @@ const createCareRecipientInvoiceSchema = z.object({
 // ranges instead of free-typed lines. See CreateRecipientInvoiceDialog.
 // z.input, not z.infer (== z.output) — see updateManualInvoiceDraft's own
 // comment on this in src/lib/actions/invoices.ts.
+// Returns a result rather than throwing, so a duplicate invoice number or a
+// visit someone else just billed reaches the user as a readable message.
 export async function createCareRecipientInvoice(input: z.input<typeof createCareRecipientInvoiceSchema>) {
+  return toActionResult(async () => {
+    const invoice = await createCareRecipientInvoiceImpl(input);
+    return { id: invoice.id };
+  });
+}
+
+async function createCareRecipientInvoiceImpl(input: z.input<typeof createCareRecipientInvoiceSchema>) {
   const session = await requireRole(MANAGE_ROLES);
   const parsed = createCareRecipientInvoiceSchema.parse(input);
   const total = subtotalOf(parsed.lineItems);
@@ -66,7 +77,7 @@ export async function createCareRecipientInvoice(input: z.input<typeof createCar
   // prisma/schema.prisma).
   const recipient = await db.careRecipient.findUniqueOrThrow({ where: { id: parsed.careRecipientId } });
   if (recipient.clientId !== parsed.clientId) {
-    throw new Error("That care recipient doesn't belong to this client");
+    throw new UserFacingError("That care recipient doesn't belong to this client");
   }
 
   // Visits being billed must actually belong to this recipient and still
@@ -78,7 +89,7 @@ export async function createCareRecipientInvoice(input: z.input<typeof createCar
       where: { id: { in: parsed.timeEntryIds }, careRecipientId: parsed.careRecipientId, billedInvoiceId: null },
     });
     if (billableCount !== parsed.timeEntryIds.length) {
-      throw new Error("One or more of those visits is no longer available to bill — someone else may have just billed it");
+      throw new UserFacingError("One or more of those visits is no longer available to bill — someone else may have just billed it");
     }
   }
 
@@ -184,7 +195,7 @@ export async function createBatchCareRecipientInvoices(
     }
 
     try {
-      const invoice = await createCareRecipientInvoice({
+      const invoice = await createCareRecipientInvoiceImpl({
         clientId: parsed.clientId,
         careRecipientId: recipientId,
         invoiceProfileId: parsed.invoiceProfileId,
