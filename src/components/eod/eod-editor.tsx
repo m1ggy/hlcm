@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Check, Link2, Loader2, Plus, Send, Trash2, X } from "lucide-react";
 import { saveEodDraftAction, submitEodAction } from "@/lib/actions/eod";
 import { TASK_STATUSES, TASK_STATUS_LABELS, type TaskStatusValue } from "@/lib/task-status";
+import { WORK_TASK_STATUSES, WORK_TASK_STATUS_LABELS, type WorkTaskStatus } from "@/lib/work";
 import { unexpectedErrorMessage } from "@/lib/action-result";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -16,7 +17,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { formatMinutes } from "@/lib/eod-format";
-import type { EodLine, EodReportData, LinkableCorrespondence, TaskOption } from "./eod-types";
+import type { EodLine, EodReportData, LinkableCorrespondence, TaskOption, WorkTaskOption } from "./eod-types";
 
 // Today's report while it's a draft (docs/client-portal-eod-plan.md, Phase
 // C): a card per line — what you did, the task's new status, minutes, and
@@ -27,8 +28,20 @@ type Draft = Omit<EodLine, "id"> & { id?: string; key: string };
 const AUTOSAVE_MS = 1200;
 let nextKey = 0;
 const keyed = (l: EodLine): Draft => ({ ...l, key: l.id });
+const workKey = (w: { orgId: string; taskId: string }) => `w:${w.orgId}:${w.taskId}`;
 
-export function EodEditor({ report, tasks, linkable = [] }: { report: EodReportData; tasks: TaskOption[]; linkable?: LinkableCorrespondence[] }) {
+export function EodEditor({
+  report,
+  tasks,
+  workTasks = [],
+  linkable = [],
+}: {
+  report: EodReportData;
+  tasks: TaskOption[];
+  /** My open tasks in client workspaces (workspace tasks Phase 5). */
+  workTasks?: WorkTaskOption[];
+  linkable?: LinkableCorrespondence[];
+}) {
   const router = useRouter();
   const [lines, setLines] = useState<Draft[]>(() => report.items.map(keyed));
   const [summary, setSummary] = useState(report.summary ?? "");
@@ -67,6 +80,7 @@ export function EodEditor({ report, tasks, linkable = [] }: { report: EodReportD
             minutes: l.minutes,
             clientVisible: l.clientVisible,
             ...(l.taskId && { correspondenceIds: l.correspondence.map((c) => c.id) }),
+            ...(l.work && { workStatusAfter: l.workStatusAfter, ...(!l.id && { work: { orgId: l.work.orgId, taskId: l.work.taskId } }) }),
           })),
         });
         if (!result.ok) {
@@ -81,6 +95,10 @@ export function EodEditor({ report, tasks, linkable = [] }: { report: EodReportD
             const i = s.lines.findIndex((x) => x.key === l.key);
             const back = i >= 0 ? saved[i] : undefined;
             if (!back || l.id) return l;
+            if (l.work) {
+              const wb = back.workStatusBefore as WorkTaskStatus | null;
+              return { ...l, id: back.id, workStatusBefore: wb, workStatusAfter: l.workStatusAfter ?? wb };
+            }
             const before = back.statusBefore as TaskStatusValue | null;
             return { ...l, id: back.id, clientId: back.clientId, statusBefore: before, statusAfter: l.statusAfter ?? before, clientVisible: l.clientVisible || Boolean(back.clientId) };
           })
@@ -123,12 +141,36 @@ export function EodEditor({ report, tasks, linkable = [] }: { report: EodReportD
     touch();
   }
   function addTask(taskId: string | null) {
-    const task = tasks.find((t) => t.id === taskId);
     setAdding(null);
+    const work = workTasks.find((w) => workKey(w) === taskId);
+    if (work) {
+      setLines((current) => [
+        ...current,
+        {
+          key: `new-${nextKey++}`,
+          taskId: null,
+          title: work.title,
+          clientId: null,
+          statusBefore: null,
+          statusAfter: null,
+          workDone: "",
+          internalNote: null,
+          minutes: null,
+          clientVisible: work.clientVisible,
+          correspondence: [],
+          work: { orgId: work.orgId, taskId: work.taskId, workspaceName: work.workspaceName },
+          workStatusBefore: null,
+          workStatusAfter: null,
+        },
+      ]);
+      touch();
+      return;
+    }
+    const task = tasks.find((t) => t.id === taskId);
     if (!task) return;
     setLines((current) => [
       ...current,
-      { key: `new-${nextKey++}`, taskId: task.id, title: task.label, clientId: null, statusBefore: null, statusAfter: null, workDone: "", internalNote: null, minutes: null, clientVisible: false, correspondence: [] },
+      { key: `new-${nextKey++}`, taskId: task.id, title: task.label, clientId: null, statusBefore: null, statusAfter: null, workDone: "", internalNote: null, minutes: null, clientVisible: false, correspondence: [], work: null, workStatusBefore: null, workStatusAfter: null },
     ]);
     touch();
   }
@@ -137,7 +179,7 @@ export function EodEditor({ report, tasks, linkable = [] }: { report: EodReportD
     if (!title) return;
     setLines((current) => [
       ...current,
-      { key: `new-${nextKey++}`, taskId: null, title, clientId: null, statusBefore: null, statusAfter: null, workDone: "", internalNote: null, minutes: null, clientVisible: false, correspondence: [] },
+      { key: `new-${nextKey++}`, taskId: null, title, clientId: null, statusBefore: null, statusAfter: null, workDone: "", internalNote: null, minutes: null, clientVisible: false, correspondence: [], work: null, workStatusBefore: null, workStatusAfter: null },
     ]);
     setExtraTitle("");
     setAdding(null);
@@ -157,10 +199,14 @@ export function EodEditor({ report, tasks, linkable = [] }: { report: EodReportD
     });
   }
 
-  const onReport = useMemo(() => new Set(lines.map((l) => l.taskId).filter(Boolean)), [lines]);
+  const onReport = useMemo(() => new Set(lines.map((l) => (l.work ? workKey(l.work) : l.taskId)).filter(Boolean)), [lines]);
   const pickable = useMemo(
-    () => Object.fromEntries(tasks.filter((t) => !onReport.has(t.id)).map((t) => [t.id, t.applicationName ? `${t.label} — ${t.applicationName}` : t.label])),
-    [tasks, onReport]
+    () =>
+      Object.fromEntries([
+        ...tasks.filter((t) => !onReport.has(t.id)).map((t) => [t.id, t.applicationName ? `${t.label} — ${t.applicationName}` : t.label]),
+        ...workTasks.filter((w) => !onReport.has(workKey(w))).map((w) => [workKey(w), `${w.title} — ${w.workspaceName} · ${w.projectName}`]),
+      ]),
+    [tasks, workTasks, onReport]
   );
   const written = lines.filter((l) => l.workDone.trim()).length;
   const totalMinutes = lines.reduce((s, l) => s + (l.workDone.trim() ? l.minutes ?? 0 : 0), 0);
@@ -264,7 +310,11 @@ function LineCard({
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="font-medium">{line.title}</p>
-          {!line.taskId && <p className="text-xs text-muted-foreground">Not on a task</p>}
+          {line.work ? (
+            <p className="text-xs text-muted-foreground">In {line.work.workspaceName}</p>
+          ) : (
+            !line.taskId && <p className="text-xs text-muted-foreground">Not on a task</p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {line.taskId && (
@@ -276,6 +326,23 @@ function LineCard({
                 {TASK_STATUSES.map((s) => (
                   <SelectItem key={s} value={s}>
                     {TASK_STATUS_LABELS[s]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {line.work && (
+            <Select
+              value={line.workStatusAfter ?? line.workStatusBefore ?? "TODO"}
+              onValueChange={(v) => onChange({ workStatusAfter: v as WorkTaskStatus })}
+            >
+              <SelectTrigger size="sm" className="w-36" aria-label={`Status of ${line.title}`}>
+                <SelectValue>{(v: WorkTaskStatus) => WORK_TASK_STATUS_LABELS[v]}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {WORK_TASK_STATUSES.map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {WORK_TASK_STATUS_LABELS[s]}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -317,7 +384,7 @@ function LineCard({
         </div>
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-        {line.clientId && (
+        {(line.clientId || line.work) && (
           <label className="flex items-center gap-2">
             <Checkbox checked={line.clientVisible} onCheckedChange={(c) => onChange({ clientVisible: Boolean(c) })} />
             Share with the client

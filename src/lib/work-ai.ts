@@ -40,6 +40,7 @@ export function describeDayForPrompt(d: DaySummary) {
   for (const a of d.added) lines.push(`${a.requested ? "Client requested" : "New task"}: "${a.title}" (${a.projectName})`);
   for (const f of d.files) lines.push(`File added to "${f.title}": ${f.fileName}`);
   for (const c of d.comments) lines.push(`Comment by ${c.by} on "${c.title}": ${c.body.slice(0, 500)}`);
+  for (const u of d.updates) lines.push(`Update by ${u.by} on "${u.title}": ${u.text.slice(0, 500)}`);
   return lines.join("\n");
 }
 

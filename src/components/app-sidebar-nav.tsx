@@ -48,6 +48,7 @@ export function AppSidebarNav({
   showClientWorkspaces = false,
   isTasksWorkspace = false,
   isWorkTeam = false,
+  showClientWork = false,
 }: {
   isAdmin: boolean;
   canManageInvoices: boolean;
@@ -60,6 +61,8 @@ export function AppSidebarNav({
   isTasksWorkspace?: boolean;
   /** On the team side of a tasks-only workspace (a managing company's assigned staff). */
   isWorkTeam?: boolean;
+  /** Assigned to client workspaces: "Client work", my tasks in all of them (workspace tasks Phase 5). */
+  showClientWork?: boolean;
 }) {
   const pathname = usePathname();
 
@@ -78,6 +81,10 @@ export function AppSidebarNav({
     links = canManageInvoices
       ? [...LINKS, { href: "/invoices", label: "Invoices", icon: Receipt, tour: "nav-invoices" }]
       : LINKS;
+    if (showClientWork) {
+      const at = links.findIndex((l) => l.href === "/tasks") + 1;
+      links = [...links.slice(0, at), { href: "/client-work", label: "Client work", icon: Building2, tour: "nav-client-work" }, ...links.slice(at)];
+    }
     if (canViewPayroll) links = [...links, { href: "/payroll", label: "Payroll", icon: Wallet, tour: "nav-payroll" }];
     if (showClientWorkspaces) links = [...links, { href: "/client-workspaces", label: "Client workspaces", icon: Building2, tour: "nav-client-workspaces" }];
     links = [...links, { href: "/account", label: "Settings", icon: Settings, tour: "nav-settings" }];

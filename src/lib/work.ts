@@ -29,6 +29,25 @@ export function isOpenStatus(status: WorkTaskStatus) {
   return OPEN_WORK_STATUSES.includes(status);
 }
 
+export const WORK_REPEATS = ["DAILY", "WEEKLY", "MONTHLY"] as const;
+export type WorkRepeat = (typeof WORK_REPEATS)[number];
+export const WORK_REPEAT_LABELS: Record<WorkRepeat, string> = { DAILY: "Every day", WEEKLY: "Every week", MONTHLY: "Every month" };
+
+/** The next due date (YYYY-MM-DD) of a recurring task due on `day`. A monthly task due the 31st lands on the month's last day. */
+export function nextRepeatDate(day: string, repeat: WorkRepeat) {
+  const d = new Date(`${day}T00:00:00Z`);
+  if (repeat === "DAILY") d.setUTCDate(d.getUTCDate() + 1);
+  else if (repeat === "WEEKLY") d.setUTCDate(d.getUTCDate() + 7);
+  else {
+    const target = d.getUTCDate();
+    d.setUTCDate(1);
+    d.setUTCMonth(d.getUTCMonth() + 1);
+    const lastDay = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+    d.setUTCDate(Math.min(target, lastDay));
+  }
+  return d.toISOString().slice(0, 10);
+}
+
 export const WORK_TASK_PRIORITIES = ["LOW", "NORMAL", "HIGH", "URGENT"] as const;
 export type WorkTaskPriority = (typeof WORK_TASK_PRIORITIES)[number];
 
@@ -159,6 +178,10 @@ export function describeActivity(a: { kind: string; from: string | null; to: str
       return a.to ? `set the due date to ${a.to}` : "removed the due date";
     case "DECLINED":
       return `declined the request: ${a.to ?? ""}`;
+    case "APPROVED":
+      return "accepted the request";
+    case "REPORTED":
+      return `reported: ${a.to ?? ""}`;
     default:
       return "updated the task";
   }

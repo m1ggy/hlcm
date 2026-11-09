@@ -144,9 +144,13 @@ One helper `workScope(session)` used by every query; tests that internal comment
 - Handbook + product tour: tasks-only tour for clients; switcher step for assigned staff.
 
 ## Phase 5 — Later
-- "My work" across all assigned workspaces (above).
-- EOD reports (portal plan Phase C) list work tasks too; a submitted EOD line feeds the day card.
-- Recurring tasks, task templates per project, client task requests approval queue.
+
+**Done 2026-11-09 on `feature/workspace-phase5`.** Migration `20261109140000_workspace_tasks_phase5`; cross-workspace reads in `src/lib/work-everywhere.ts` (+ `listLinkedWorkspaces` in `workspace-assignments.ts`, the only system-client query); tests `tests/workspace-phase5.test.ts`. As built:
+- **Client work** (`/client-work`, sidebar link when you're in your home workspace and assigned somewhere): open tasks assigned to your linked account in every workspace, read per workspace with that workspace's tenant client. Clicking one switches workspaces and lands on the task — switch links take a `next` path, allowed only under `/work` (`safeSwitchPath`).
+- **EOD lines on workspace tasks:** `EodReportItem.workOrgId/workTaskId/workspaceName/workStatusBefore/After` (plain ids, no FK — other workspace). Start day prefills tasks timed today there + open assigned ones; "Add a task" lists them. On submit, each line is applied in its workspace as the linked account: status via `updateTask` (activity + audit there), and the text as a `REPORTED` activity (client-visible when the line is shared and the task is) — the weekly summary shows these as "Updates from the team" and the AI day note reads them. Resubmitting a reopened report doesn't post the same update twice. Not notified to reviewers across workspaces.
+- **Recurring:** `WorkTask.repeat` DAILY/WEEKLY/MONTHLY; marking done creates the next one (same details/assignees, due one period after the old due date or today; month-end clamps), once (`repeatedFromId` unique).
+- **Templates:** `WorkTaskTemplate` per project (title, description, priority, visibility, repeat, subtask titles). "Save as template" in the task panel; "From template" on the project page.
+- **Approval queue:** client requests wait (`approvedAt` null) — "Waiting for approval" badge, status can't change until a manager accepts (task panel "Accept request", optionally with the assignees picked) or declines. `/work/requests` lists them; Projects page shows "Requests" with a count. Existing requests were marked accepted by the migration.
 
 ---
 

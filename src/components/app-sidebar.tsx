@@ -44,6 +44,7 @@ export async function AppSidebar() {
           showClientWorkspaces={managesWorkspaces}
           isTasksWorkspace={org?.kind === "TASKS"}
           isWorkTeam={Boolean(session.user.isAssigned) || session.user.role === "DEVELOPER"}
+          showClientWork={switchTargets.some((t) => t.home && t.current)}
         />
       </SidebarContent>
       <SidebarFooter className="gap-2 border-t px-3 py-3">

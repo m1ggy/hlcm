@@ -1,4 +1,5 @@
 import type { TaskStatusValue } from "@/lib/task-status";
+import type { WorkTaskStatus } from "@/lib/work";
 
 // What the EOD pages hand their client components (src/lib/eod.ts REPORT_INCLUDE, serialized).
 
@@ -14,6 +15,10 @@ export type EodLine = {
   minutes: number | null;
   clientVisible: boolean;
   correspondence: CorrespondenceLink[];
+  /** A task in a client workspace instead of one here (workspace tasks Phase 5). */
+  work: { orgId: string; taskId: string; workspaceName: string } | null;
+  workStatusBefore: WorkTaskStatus | null;
+  workStatusAfter: WorkTaskStatus | null;
 };
 
 /** Correspondence a line points at ("sent the follow-up email"). */
@@ -40,3 +45,5 @@ export type EodReportData = {
 };
 
 export type TaskOption = { id: string; label: string; applicationName: string | null };
+/** One of my open tasks in a client workspace, for "Add a task". */
+export type WorkTaskOption = { orgId: string; taskId: string; title: string; workspaceName: string; projectName: string; clientVisible: boolean };

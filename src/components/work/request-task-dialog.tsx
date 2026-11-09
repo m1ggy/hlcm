@@ -36,7 +36,7 @@ export function RequestTaskDialog({
         toast.error(result.error);
         return;
       }
-      toast.success("Request sent. The team has been notified.");
+      toast.success("Request sent. A manager will accept it or get back to you.");
       setOpen(false);
       router.push(`/work/projects/${result.data.projectId}?task=${result.data.id}`);
     });

@@ -6,7 +6,7 @@ import { AuthError } from "next-auth";
 import { signIn } from "@/auth";
 import { requireSession } from "@/lib/rbac";
 import { toActionResult } from "@/lib/action-result";
-import { startWorkspaceSwitch } from "@/lib/workspace-switch";
+import { safeSwitchPath, startWorkspaceSwitch } from "@/lib/workspace-switch";
 import { assignToWorkspace, endAssignment, type AssignableRole, type AssignmentActor } from "@/lib/workspace-assignments";
 
 // Switching workspaces and assigning a managing company's people to client
@@ -19,18 +19,19 @@ async function actor(): Promise<AssignmentActor> {
 }
 
 /** The switcher: a one-time link into `slug` for the browser to open. */
-export async function switchWorkspace(slug: string) {
+export async function switchWorkspace(slug: string, next?: string) {
   return toActionResult(async () => {
     const session = await requireSession();
-    return { url: await startWorkspaceSwitch({ id: session.user.id, organizationId: session.user.organizationId }, slug) };
+    return { url: await startWorkspaceSwitch({ id: session.user.id, organizationId: session.user.organizationId }, slug, next) };
   });
 }
 
 /** /switch/enter: trades the one-time link for a session in this workspace. */
 export async function enterSwitchedWorkspace(formData: FormData) {
   const token = String(formData.get("token") ?? "");
+  const next = safeSwitchPath(String(formData.get("next") ?? "")) ?? "/";
   try {
-    await signIn("credentials", { switchToken: token, redirectTo: "/" });
+    await signIn("credentials", { switchToken: token, redirectTo: next });
   } catch (error) {
     if (error instanceof AuthError) redirect("/switch/enter?error=1");
     throw error;

@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { AvatarInitials } from "@/components/ui/avatar-initials";
 import { formatMinutes } from "@/lib/eod-format";
+import { WORK_TASK_STATUS_LABELS } from "@/lib/work";
 import type { EodReportData } from "./eod-types";
 
 // A submitted report, read-only (docs/client-portal-eod-plan.md, Phase C):
@@ -64,12 +65,23 @@ export function EodReportView({ report, canReopen, showAuthor }: { report: EodRe
       <ol className="space-y-3">
         {report.items.map((l) => {
           const moved = l.taskId && l.statusAfter && l.statusAfter !== l.statusBefore;
+          const workMoved = l.work && l.workStatusAfter && l.workStatusAfter !== l.workStatusBefore;
           return (
             <li key={l.id} className="rounded-xl border bg-card p-4">
               <div className="flex flex-wrap items-start justify-between gap-2">
-                <p className="font-medium">{l.title}</p>
+                <div>
+                  <p className="font-medium">{l.title}</p>
+                  {l.work && <p className="text-xs text-muted-foreground">In {l.work.workspaceName}</p>}
+                </div>
                 <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                  {moved ? (
+                  {workMoved ? (
+                    <span className="flex items-center gap-1">
+                      {WORK_TASK_STATUS_LABELS[l.workStatusBefore!]} <ArrowRight className="size-3" />{" "}
+                      <span className="font-medium text-foreground">{WORK_TASK_STATUS_LABELS[l.workStatusAfter!]}</span>
+                    </span>
+                  ) : l.work ? (
+                    <span>{l.workStatusAfter ? WORK_TASK_STATUS_LABELS[l.workStatusAfter] : ""}</span>
+                  ) : moved ? (
                     <span className="flex items-center gap-1">
                       {TASK_STATUS_LABELS[l.statusBefore!]} <ArrowRight className="size-3" /> <span className="font-medium text-foreground">{TASK_STATUS_LABELS[l.statusAfter!]}</span>
                     </span>

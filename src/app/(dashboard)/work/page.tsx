@@ -2,6 +2,7 @@ import Link from "next/link";
 import { FolderKanban, Lock } from "lucide-react";
 import { requireWorkViewer } from "@/lib/work-session";
 import { listAssignableUsers, listProjects, listRequestableProjects, type ProjectCard } from "@/lib/work-data";
+import { listPendingRequests } from "@/lib/work-service";
 import { WORK_PROJECT_STATUS_LABELS, projectColorClass, type WorkProjectStatus } from "@/lib/work";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -15,10 +16,11 @@ import { formatDay } from "@/components/work/work-status";
 // home, and "Work" in a full workspace.
 export default async function WorkPage() {
   const { scope, org } = await requireWorkViewer();
-  const [projects, people, requestable] = await Promise.all([
+  const [projects, people, requestable, pending] = await Promise.all([
     listProjects(scope),
     scope.canManageProjects ? listAssignableUsers(org.kind) : Promise.resolve([]),
     scope.canRequestTasks ? listRequestableProjects(scope) : Promise.resolve([]),
+    listPendingRequests(scope),
   ]);
   const current = projects.filter((p) => p.status === "ACTIVE" || p.status === "ON_HOLD");
   const finished = projects.filter((p) => p.status === "DONE" || p.status === "ARCHIVED");
@@ -39,6 +41,12 @@ export default async function WorkPage() {
           {scope.side === "team" && (
             <Button variant="outline" nativeButton={false} render={<Link href="/work/my" />}>
               My tasks
+            </Button>
+          )}
+          {scope.canManageProjects && (
+            <Button variant="outline" nativeButton={false} render={<Link href="/work/requests" />}>
+              Requests
+              {pending.length > 0 && <Badge className="ml-1">{pending.length}</Badge>}
             </Button>
           )}
           {scope.canRequestTasks && (

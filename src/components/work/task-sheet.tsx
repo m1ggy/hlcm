@@ -3,27 +3,32 @@
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Download, Lock, Paperclip, Play, Trash2, Users } from "lucide-react";
+import { BookmarkPlus, Check, Download, Lock, Paperclip, Play, Repeat, Trash2, Users } from "lucide-react";
 import {
   addCommentAction,
+  approveRequestAction,
   createTaskAction,
   declineRequestAction,
   deleteCommentAction,
   deleteTaskAction,
   deleteWorkTaskFileAction,
   getTaskDetailAction,
+  saveTemplateAction,
   setAssigneesAction,
   startWorkTimerAction,
   updateTaskAction,
   uploadWorkTaskFileAction,
 } from "@/lib/actions/work";
 import {
+  WORK_REPEATS,
+  WORK_REPEAT_LABELS,
   WORK_TASK_PRIORITIES,
   WORK_TASK_PRIORITY_LABELS,
   WORK_TASK_STATUSES,
   WORK_TASK_STATUS_LABELS,
   describeActivity,
   isOpenStatus,
+  type WorkRepeat,
   type WorkScope,
   type WorkTaskPriority,
   type WorkTaskStatus,
@@ -197,6 +202,9 @@ function TaskBody({
   // Assignee options: the team, plus anyone already on it.
   const peopleItems = Object.fromEntries([...people, ...task.assignees.map((a) => a.user)].map((p) => [p.id, p.name]));
   const canDelete = edit && (scope.canManageProjects || task.createdBy.id === currentUserId);
+  // A client's request no manager has accepted yet (workspace tasks Phase 5).
+  const pending = task.isClientRequest && !task.approvedAt && status !== "CANCELLED";
+  const repeatItems: Record<string, string> = { NONE: "Doesn't repeat", ...WORK_REPEAT_LABELS };
 
   function upload(file: File) {
     const fd = new FormData();
@@ -234,6 +242,12 @@ function TaskBody({
         )}
         <div className="flex flex-wrap items-center gap-2 pt-1">
           {task.isClientRequest && <Badge variant="secondary">Client request</Badge>}
+          {pending && <Badge variant="outline">Waiting for approval</Badge>}
+          {task.repeat && (
+            <Badge variant="outline" className="gap-1">
+              <Repeat className="size-3" /> {WORK_REPEAT_LABELS[task.repeat as WorkRepeat]}
+            </Badge>
+          )}
           {edit && !task.clientVisible && (
             <Badge variant="outline" className="gap-1">
               <Lock className="size-3" /> Hidden from client
@@ -241,6 +255,21 @@ function TaskBody({
           )}
         </div>
       </SheetHeader>
+
+      {pending && edit && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/40 bg-primary/5 px-3 py-2 text-sm">
+          <p>
+            {scope.canManageProjects
+              ? "The client asked for this. Accept it to start work, or decline it below."
+              : "The client asked for this. A manager needs to accept it before work starts."}
+          </p>
+          {scope.canManageProjects && (
+            <Button size="sm" disabled={isPending} onClick={() => run(() => approveRequestAction(task.id, assignees), "Request accepted")}>
+              <Check className="size-3.5" /> Accept request
+            </Button>
+          )}
+        </div>
+      )}
 
       {task.declineReason && status === "CANCELLED" && (
         <div className="rounded-lg border bg-muted px-3 py-2 text-sm">
@@ -255,7 +284,7 @@ function TaskBody({
           <Label>Status</Label>
           {edit ? (
             <Select items={WORK_TASK_STATUS_LABELS} value={status} onValueChange={(v) => v && v !== status && run(() => updateTaskAction(task.id, { status: v as WorkTaskStatus }))}>
-              <SelectTrigger className="w-full" disabled={isPending}>
+              <SelectTrigger className="w-full" disabled={isPending || pending}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -311,6 +340,28 @@ function TaskBody({
             <p className="text-sm">{formatDay(task.dueDate, { month: "short", day: "numeric", year: "numeric" }) ?? "—"}</p>
           )}
         </div>
+        {edit && !task.parent && (
+          <div className="space-y-1 sm:col-span-2">
+            <Label>Repeat</Label>
+            <Select
+              items={repeatItems}
+              value={task.repeat ?? "NONE"}
+              onValueChange={(v) => v && v !== (task.repeat ?? "NONE") && run(() => updateTaskAction(task.id, { repeat: v === "NONE" ? null : (v as WorkRepeat) }))}
+            >
+              <SelectTrigger className="w-full" disabled={isPending}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {(["NONE", ...WORK_REPEATS] as const).map((r) => (
+                  <SelectItem key={r} value={r}>
+                    {repeatItems[r]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {task.repeat && <p className="text-xs text-muted-foreground">When it&apos;s marked done, the next one is created, due one period later.</p>}
+          </div>
+        )}
         <div className="space-y-1 sm:col-span-2">
           <Label>Assignees</Label>
           {edit ? (
@@ -548,11 +599,16 @@ function TaskBody({
         </ul>
       </section>
 
-      {/* Request handling + delete */}
-      {(canDelete || (scope.canManageProjects && task.isClientRequest && isOpenStatus(status))) && (
+      {/* Template, request handling + delete */}
+      {(canDelete || (edit && !task.parent) || (scope.canManageProjects && task.isClientRequest && isOpenStatus(status))) && (
         <>
           <Separator />
           <div className="space-y-3">
+            {edit && !task.parent && (
+              <Button size="sm" variant="outline" disabled={isPending} onClick={() => run(() => saveTemplateAction(task.id), "Saved as a template for this project")}>
+                <BookmarkPlus className="size-3.5" /> Save as template
+              </Button>
+            )}
             {scope.canManageProjects && task.isClientRequest && isOpenStatus(status) && (
               declining ? (
                 <form

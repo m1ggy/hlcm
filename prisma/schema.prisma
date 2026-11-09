@@ -72,6 +72,7 @@ model Organization {
   workTaskComments      WorkTaskComment[]
   workTaskActivities    WorkTaskActivity[]
   workSummaryNotes      WorkSummaryNote[]
+  workTaskTemplates     WorkTaskTemplate[]
   assignmentsIn         WorkspaceAssignment[]   @relation("AssignmentOrg")
   eodReports            EodReport[]
   eodReportItems        EodReportItem[]
@@ -481,6 +482,7 @@ model User {
   workTaskComments      WorkTaskComment[]
   workTaskActivities    WorkTaskActivity[]
   workSummaryNotes      WorkSummaryNote[]
+  workTaskTemplates     WorkTaskTemplate[]
   // Whether this person is expected to submit an end-of-day report
   // (reminders, the team page's "missing" list) — not who may write one.
   // Null = the role's default: STAFF yes, everyone else no (src/lib/eod.ts).
@@ -2881,6 +2883,17 @@ enum WorkActivityKind {
   FILE_ADDED
   DUE_CHANGED
   DECLINED
+  // Someone's end-of-day line on the task (to = what they did); feeds the client's day card.
+  REPORTED
+  // A manager accepted a client's request (Phase 5 approval queue).
+  APPROVED
+}
+
+// How a task comes back once it's done (Phase 5): finishing it creates the next one.
+enum WorkRepeat {
+  DAILY
+  WEEKLY
+  MONTHLY
 }
 
 model WorkProject {
@@ -2905,6 +2918,7 @@ model WorkProject {
 
   tasks      WorkTask[]
   activities WorkTaskActivity[]
+  templates  WorkTaskTemplate[]
 
   @@index([organizationId, status])
   @@map("work_projects")
@@ -2936,6 +2950,14 @@ model WorkTask {
   // when a manager cancels the request.
   isClientRequest Boolean          @default(false)
   declineReason   String?
+  // A client request waits in the approval queue until a manager accepts it
+  // (or declines it); null on a request = still waiting. Not used otherwise.
+  approvedAt      DateTime?
+  // Recurring: finishing this task creates the next one (repeatedFrom points back).
+  repeat          WorkRepeat?
+  repeatedFrom    WorkTask?        @relation("WorkTaskRepeats", fields: [repeatedFromId], references: [id], onDelete: SetNull)
+  repeatedFromId  String?          @unique
+  repeatedBy      WorkTask?        @relation("WorkTaskRepeats")
   createdBy       User             @relation("WorkTaskCreatedBy", fields: [createdById], references: [id])
   createdById     String
   createdAt       DateTime         @default(now())
@@ -2948,6 +2970,7 @@ model WorkTask {
   timeEntries TaskTimeEntry[]
 
   @@index([organizationId, projectId, status])
+  @@index([organizationId, isClientRequest, approvedAt])
   @@index([parentId])
   @@map("work_tasks")
 }
@@ -3084,32 +3107,40 @@ model EodReport {
 }
 
 model EodReportItem {
-  id             String                  @id @default(cuid())
-  organizationId String                  @default(dbgenerated("current_org_id()"))
-  organization   Organization            @relation(fields: [organizationId], references: [id])
-  report         EodReport               @relation(fields: [reportId], references: [id], onDelete: Cascade)
-  reportId       String
+  id               String                  @id @default(cuid())
+  organizationId   String                  @default(dbgenerated("current_org_id()"))
+  organization     Organization            @relation(fields: [organizationId], references: [id])
+  report           EodReport               @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  reportId         String
   // Null = ad-hoc work not on a task (then `title` says what it was).
-  task           Task?                   @relation(fields: [taskId], references: [id], onDelete: SetNull)
-  taskId         String?
+  task             Task?                   @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  taskId           String?
   // The task's label when the line was written, so the report still reads
   // right if the task is renamed or deleted; the ad-hoc line's own title.
-  title          String
+  title            String
   // Copied from the task, for filtering the team page by client.
-  applicationId  String?
-  clientId       String?
-  statusBefore   TaskStatus?
+  applicationId    String?
+  clientId         String?
+  statusBefore     TaskStatus?
   // Applied to the task on submit (audited) when it differs from before.
-  statusAfter    TaskStatus?
-  workDone       String                  @default("")
-  internalNote   String?
-  minutes        Int?
+  statusAfter      TaskStatus?
+  // A line on a task in a client workspace (docs/workspace-tasks-plan.md,
+  // Phase 5): that workspace's task, by plain ids — it lives in another
+  // workspace, so no foreign key. taskId is null on these.
+  workOrgId        String?
+  workTaskId       String?
+  workspaceName    String?
+  workStatusBefore WorkTaskStatus?
+  workStatusAfter  WorkTaskStatus?
+  workDone         String                  @default("")
+  internalNote     String?
+  minutes          Int?
   // Shared with the client (decided D5: on for a line on a client's task).
-  clientVisible  Boolean                 @default(false)
-  sortOrder      Int                     @default(0)
-  createdAt      DateTime                @default(now())
-  updatedAt      DateTime                @updatedAt
-  correspondence EodItemCorrespondence[]
+  clientVisible    Boolean                 @default(false)
+  sortOrder        Int                     @default(0)
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+  correspondence   EodItemCorrespondence[]
 
   @@index([reportId])
   @@index([taskId])
@@ -3230,4 +3261,28 @@ model ApplicationShareLink {
   @@index([organizationId])
   @@index([applicationId])
   @@map("application_share_links")
+}
+
+// A reusable task for a project (Phase 5): "New from template" makes the
+// task and its subtasks.
+model WorkTaskTemplate {
+  id             String           @id @default(cuid())
+  organizationId String           @default(dbgenerated("current_org_id()"))
+  organization   Organization     @relation(fields: [organizationId], references: [id])
+  project        WorkProject      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId      String
+  title          String
+  description    String?
+  priority       WorkTaskPriority @default(NORMAL)
+  clientVisible  Boolean          @default(true)
+  repeat         WorkRepeat?
+  // Subtask titles, in order.
+  subtasks       String[]         @default([])
+  createdBy      User             @relation(fields: [createdById], references: [id])
+  createdById    String
+  createdAt      DateTime         @default(now())
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@map("work_task_templates")
 }

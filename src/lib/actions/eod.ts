@@ -33,7 +33,9 @@ export async function startDayAction() {
 export async function saveEodDraftAction(reportId: string, input: eod.EodDraftInput) {
   return toActionResult(async () => {
     const report = await eod.saveDraft(await eodActor(), reportId, input);
-    return { items: report.items.map((i) => ({ id: i.id, taskId: i.taskId, clientId: i.clientId, statusBefore: i.statusBefore })) };
+    return {
+      items: report.items.map((i) => ({ id: i.id, taskId: i.taskId, clientId: i.clientId, statusBefore: i.statusBefore, workStatusBefore: i.workStatusBefore })),
+    };
   });
 }
 

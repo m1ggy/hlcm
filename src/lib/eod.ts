@@ -4,6 +4,8 @@ import { UserFacingError } from "@/lib/user-facing-error";
 import { dayRangeToInstants, toDateInputValue } from "@/lib/time-entries";
 import { TASK_CLOSED_STATUSES, type TaskStatusValue } from "@/lib/task-status";
 import type { $Enums } from "@/generated/prisma/client";
+import { applyEodLine, workTaskForLine, workTasksForDay } from "@/lib/work-everywhere";
+import type { WorkTaskStatus } from "@/lib/work";
 
 // End-of-day reports (docs/client-portal-eod-plan.md, Phase C).
 //
@@ -154,6 +156,8 @@ export async function startDay(actor: EodActor, now = new Date()) {
     select: { id: true, label: true, status: true, applicationId: true, application: { select: { clientId: true } }, clientService: { select: { clientId: true } } },
   });
   const byId = new Map(tasks.map((t) => [t.id, t]));
+  // Tasks in the client workspaces they're assigned to (Phase 5).
+  const work = await workTasksForDay(actor.userId, day, actor.timeZone, now);
 
   try {
     const report = await db.eodReport.create({
@@ -162,7 +166,8 @@ export async function startDay(actor: EodActor, now = new Date()) {
         reportDate: asDate(day),
         startedAt: now,
         items: {
-          create: ids.flatMap((id, i) => {
+          create: [
+            ...ids.flatMap((id, i) => {
             const t = byId.get(id);
             if (!t) return [];
             const ms = minutes.get(id);
@@ -181,6 +186,12 @@ export async function startDay(actor: EodActor, now = new Date()) {
               },
             ];
           }),
+            ...work.map((w, i) => ({
+              ...workLineData(w),
+              minutes: w.minutes,
+              sortOrder: ids.length + i,
+            })),
+          ],
         },
       },
       include: REPORT_INCLUDE,
@@ -195,9 +206,25 @@ export async function startDay(actor: EodActor, now = new Date()) {
   }
 }
 
+/** The columns of a line on a client-workspace task (Phase 5). */
+function workLineData(w: { orgId: string; workspaceName: string; taskId: string; title: string; status: WorkTaskStatus; clientVisible: boolean }) {
+  return {
+    workOrgId: w.orgId,
+    workTaskId: w.taskId,
+    workspaceName: w.workspaceName,
+    title: w.title,
+    workStatusBefore: w.status,
+    workStatusAfter: w.status,
+    clientVisible: w.clientVisible,
+  };
+}
+
 export type EodLineInput = {
   id?: string;
   taskId?: string | null;
+  /** A task in a client workspace instead (Phase 5). */
+  work?: { orgId: string; taskId: string } | null;
+  workStatusAfter?: WorkTaskStatus | null;
   title?: string;
   statusAfter?: TaskStatusValue | null;
   workDone?: string;
@@ -259,6 +286,11 @@ export async function saveDraft(actor: EodActor, reportId: string, input: EodDra
   const report = await ownDraft(actor, reportId);
   const existing = new Map(report.items.map((i) => [i.id, i]));
   const keep = new Set<string>();
+  // New lines on client-workspace tasks: checked before the transaction (other workspaces' data).
+  const workSeeds = new Map<number, Awaited<ReturnType<typeof workTaskForLine>>>();
+  for (const [index, line] of input.items.entries()) {
+    if (!line.id && line.work) workSeeds.set(index, await workTaskForLine(actor.userId, line.work.orgId, line.work.taskId));
+  }
 
   await db.$transaction(async (tx) => {
     for (const [index, line] of input.items.entries()) {
@@ -279,9 +311,22 @@ export async function saveDraft(actor: EodActor, reportId: string, input: EodDra
             // An ad-hoc line's title is its own; a task line keeps the task's.
             ...(!current.taskId && line.title !== undefined && { title: line.title.trim() || current.title }),
             ...(current.taskId && line.statusAfter !== undefined && { statusAfter: line.statusAfter }),
+            ...(current.workTaskId && line.workStatusAfter !== undefined && { workStatusAfter: line.workStatusAfter }),
           },
         });
         await linkCorrespondence(tx, current, line.correspondenceIds);
+      } else if (workSeeds.has(index)) {
+        const seed = workSeeds.get(index)!;
+        const row = await tx.eodReportItem.create({
+          data: {
+            reportId,
+            ...workLineData(seed),
+            ...fields,
+            ...(line.workStatusAfter && { workStatusAfter: line.workStatusAfter }),
+            clientVisible: line.clientVisible ?? seed.clientVisible,
+          },
+        });
+        keep.add(row.id);
       } else if (line.taskId) {
         const task = await assertCanReport(actor, line.taskId);
         const clientId = clientOf(task);
@@ -324,7 +369,9 @@ export async function saveDraft(actor: EodActor, reportId: string, input: EodDra
  */
 export async function submitReport(actor: EodActor, reportId: string, now = new Date()) {
   const report = await ownDraft(actor, reportId);
-  const changed = (i: (typeof report.items)[number]) => Boolean(i.taskId && i.statusAfter && i.statusAfter !== i.statusBefore);
+  const changed = (i: (typeof report.items)[number]) =>
+    Boolean(i.taskId && i.statusAfter && i.statusAfter !== i.statusBefore) ||
+    Boolean(i.workTaskId && i.workStatusAfter && i.workStatusAfter !== i.workStatusBefore);
   const untouched = report.items.filter((i) => !i.workDone.trim() && !changed(i));
   const kept = report.items.filter((i) => !untouched.includes(i));
   const missing = kept.find((i) => !i.workDone.trim());
@@ -332,7 +379,18 @@ export async function submitReport(actor: EodActor, reportId: string, now = new 
   if (kept.length === 0 && !report.summary) throw new UserFacingError("Add at least one line or a summary before submitting");
 
   const notifications: EodNotification[] = [];
-  for (const item of kept.filter(changed)) {
+  // Client-workspace lines: applied in their own workspace (status, and the line on the client's day card).
+  for (const item of kept.filter((i) => i.workOrgId && i.workTaskId)) {
+    await applyEodLine(actor.userId, {
+      orgId: item.workOrgId!,
+      taskId: item.workTaskId!,
+      statusAfter: (item.workStatusAfter as WorkTaskStatus | null) ?? null,
+      workDone: item.workDone,
+      clientVisible: item.clientVisible,
+    });
+  }
+
+  for (const item of kept.filter((i) => i.taskId && changed(i))) {
     const task = await db.task.findUnique({
       where: { id: item.taskId! },
       select: { id: true, label: true, status: true, createdById: true, assignees: { select: { userId: true } }, reviewers: { select: { userId: true } } },

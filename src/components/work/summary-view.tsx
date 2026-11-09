@@ -36,9 +36,10 @@ function headline(d: DaySummary) {
   if (d.added.length) parts.push(`${d.added.length} new`);
   if (d.comments.length) parts.push(`${d.comments.length} ${d.comments.length === 1 ? "comment" : "comments"}`);
   if (d.files.length) parts.push(`${d.files.length} ${d.files.length === 1 ? "file" : "files"}`);
+  if (d.updates.length) parts.push(`${d.updates.length} ${d.updates.length === 1 ? "update" : "updates"}`);
   return parts.join(" · ");
 }
-const isActive = (d: DaySummary) => d.completed.length + d.progressed.length + d.added.length + d.comments.length + d.files.length > 0;
+const isActive = (d: DaySummary) => d.completed.length + d.progressed.length + d.added.length + d.comments.length + d.files.length + d.updates.length > 0;
 
 export function SummaryView({
   summary,
@@ -333,6 +334,18 @@ function DayDetail({
                   </li>
                 ))}
               </ul>
+            </li>
+          ))}
+        </DetailList>
+      )}
+      {d.updates.length > 0 && (
+        <DetailList title="Updates from the team">
+          {d.updates.map((u) => (
+            <li key={u.taskId + u.at.toString()} className="text-sm">
+              <p className="text-muted-foreground">
+                {u.by} on <TaskLink id={u.taskId} title={u.title} onOpen={onOpenTask} />
+              </p>
+              <p className="whitespace-pre-wrap">{u.text}</p>
             </li>
           ))}
         </DetailList>

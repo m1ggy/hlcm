@@ -18,6 +18,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { createTaskAction, moveTaskAction } from "@/lib/actions/work";
 import { WORK_TASK_STATUSES, WORK_TASK_STATUS_LABELS, describeActivity, isOverdue, type WorkScope, type WorkTaskStatus, type WorkTaskPriority } from "@/lib/work";
 import type { ProjectTask } from "@/lib/work-data";
+import { TemplateMenu } from "./template-menu";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -97,6 +98,7 @@ export function ProjectView({
             <TabsTrigger value="activity">Activity</TabsTrigger>
           </TabsList>
           <div className="flex flex-wrap items-center gap-3">
+            {scope.canEditTasks && <TemplateMenu projectId={projectId} onCreated={openTask} />}
             {scope.side === "team" && (
               <Select items={assigneeItems} value={assignee} onValueChange={(v) => setAssignee(v ?? ANYONE)}>
                 <SelectTrigger size="sm" className="w-40" aria-label="Filter by assignee">
@@ -199,8 +201,8 @@ function TaskList({
                   <span className={cn("min-w-0 flex-1 text-sm", (t.status === "DONE" || t.status === "CANCELLED") && "text-muted-foreground")}>
                     {t.title}
                     {t.isClientRequest && (
-                      <Badge variant="secondary" className="ml-2 align-middle">
-                        Client request
+                      <Badge variant={t.needsApproval ? "outline" : "secondary"} className="ml-2 align-middle">
+                        {t.needsApproval ? "Waiting for approval" : "Client request"}
                       </Badge>
                     )}
                     {scope.canSeeInternal && !t.clientVisible && <Lock className="ml-1.5 inline size-3 text-muted-foreground" aria-label="Hidden from client" />}
@@ -261,8 +263,8 @@ function BoardCard({ task, today, onOpen, draggable }: { task: ProjectTask; toda
       >
         <span className="text-sm font-medium">{task.title}</span>
         {task.isClientRequest && (
-          <Badge variant="secondary" className="self-start">
-            Client request
+          <Badge variant={task.needsApproval ? "outline" : "secondary"} className="self-start">
+            {task.needsApproval ? "Waiting for approval" : "Client request"}
           </Badge>
         )}
         <TaskMeta task={task} today={today} />

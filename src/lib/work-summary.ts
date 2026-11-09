@@ -30,6 +30,8 @@ export type DaySummary = {
   added: (SummaryTaskRef & { by: string; at: Date; requested: boolean })[];
   comments: (SummaryTaskRef & { by: string; at: Date; body: string })[];
   files: (SummaryTaskRef & { by: string; at: Date; fileName: string })[];
+  /** What the team reported doing, from their end-of-day lines shared with the client (Phase 5). */
+  updates: (SummaryTaskRef & { by: string; at: Date; text: string })[];
   hours: number | null;
   note: { body: string; source: "AI" | "HUMAN" | "EDITED"; authorName: string | null } | null;
 };
@@ -54,7 +56,7 @@ export function addDays(day: string, n: number) {
 }
 
 export function dayHasActivity(d: DaySummary) {
-  return d.completed.length + d.progressed.length + d.added.length + d.comments.length + d.files.length > 0;
+  return d.completed.length + d.progressed.length + d.added.length + d.comments.length + d.files.length + d.updates.length > 0;
 }
 
 /**
@@ -72,7 +74,7 @@ export async function getWeekSummary(opts: { monday: string; timeZone: string; o
 
   const [activities, comments, entries, notes] = await Promise.all([
     db.workTaskActivity.findMany({
-      where: { occurredAt: { gte: range.from, lte: range.to }, ...activityWhere(scope), task: visibleTask, kind: { in: ["CREATED", "REQUESTED", "STATUS_CHANGED", "FILE_ADDED", "DECLINED"] } },
+      where: { occurredAt: { gte: range.from, lte: range.to }, ...activityWhere(scope), task: visibleTask, kind: { in: ["CREATED", "REQUESTED", "STATUS_CHANGED", "FILE_ADDED", "DECLINED", "REPORTED"] } },
       orderBy: { occurredAt: "asc" },
       include: { actor: { select: { name: true } }, task: taskRef },
     }),
@@ -100,6 +102,7 @@ export async function getWeekSummary(opts: { monday: string; timeZone: string; o
     added: [],
     comments: [],
     files: [],
+    updates: [],
     hours: withHours ? 0 : null,
     note: null,
   }));
@@ -117,6 +120,7 @@ export async function getWeekSummary(opts: { monday: string; timeZone: string; o
     const base = { ...ref(a.task), by: a.actor.name, at: a.occurredAt };
     if (a.kind === "CREATED" || a.kind === "REQUESTED") day.added.push({ ...base, requested: a.kind === "REQUESTED" });
     else if (a.kind === "FILE_ADDED") day.files.push({ ...base, fileName: a.to ?? "a file" });
+    else if (a.kind === "REPORTED") day.updates.push({ ...base, text: a.to ?? "" });
     else if (a.kind === "DECLINED") day.progressed.push({ ...base, from: a.from, to: "CANCELLED", declined: true });
     else if (a.kind === "STATUS_CHANGED" && (a.to as WorkTaskStatus) === "DONE") day.completed.push(base);
     else if (a.kind === "STATUS_CHANGED") day.progressed.push({ ...base, from: a.from, to: a.to, declined: false });
@@ -168,5 +172,6 @@ export function dayHeadline(d: DaySummary) {
   if (d.added.length) parts.push(`${d.added.length} new`);
   if (d.comments.length) parts.push(`${d.comments.length} ${d.comments.length === 1 ? "comment" : "comments"}`);
   if (d.files.length) parts.push(`${d.files.length} ${d.files.length === 1 ? "file" : "files"}`);
+  if (d.updates.length) parts.push(`${d.updates.length} ${d.updates.length === 1 ? "update" : "updates"}`);
   return parts.length ? parts.join(" · ") : null;
 }

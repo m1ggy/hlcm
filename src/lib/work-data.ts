@@ -88,6 +88,7 @@ export async function getProject(scope: WorkScope, projectId: string) {
       dueDate: true,
       clientVisible: true,
       isClientRequest: true,
+      approvedAt: true,
       sortOrder: true,
       assignees: { select: { user: userName } },
       subtasks: { where: taskWhere(scope), select: { status: true } },
@@ -104,6 +105,8 @@ export async function getProject(scope: WorkScope, projectId: string) {
       dueDate: t.dueDate ? t.dueDate.toISOString().slice(0, 10) : null,
       clientVisible: t.clientVisible,
       isClientRequest: t.isClientRequest,
+      // A client request no manager has accepted yet (Phase 5 approval queue).
+      needsApproval: t.isClientRequest && !t.approvedAt && t.status !== "CANCELLED",
       sortOrder: t.sortOrder,
       assignees: t.assignees.map((a) => a.user),
       subtaskCount: t.subtasks.length,

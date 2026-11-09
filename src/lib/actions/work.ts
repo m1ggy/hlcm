@@ -126,6 +126,49 @@ export async function declineRequestAction(taskId: string, reason: string) {
   });
 }
 
+// ---- Phase 5: approval queue and templates ----------------------------------
+
+export async function approveRequestAction(taskId: string, assigneeIds: string[] = []) {
+  return toActionResult(async () => {
+    const a = await actor();
+    const { notifications } = await work.approveRequest(a, taskId, { assigneeIds });
+    await send(notifications, a.userId);
+    refresh();
+  });
+}
+
+export async function saveTemplateAction(taskId: string) {
+  return toActionResult(async () => {
+    const template = await work.saveTemplate(await actor(), taskId);
+    refresh();
+    return { id: template.id, title: template.title };
+  });
+}
+
+export async function listTemplatesAction(projectId: string) {
+  return toActionResult(async () => {
+    const a = await actor();
+    return (await work.listTemplates(a.scope, projectId)).map((t) => ({ id: t.id, title: t.title, subtasks: t.subtasks.length, repeat: t.repeat }));
+  });
+}
+
+export async function createFromTemplateAction(templateId: string, opts: { dueDate?: string | null } = {}) {
+  return toActionResult(async () => {
+    const a = await actor();
+    const { task, notifications } = await work.createFromTemplate(a, templateId, opts);
+    await send(notifications, a.userId);
+    refresh();
+    return { id: task.id };
+  });
+}
+
+export async function deleteTemplateAction(templateId: string) {
+  return toActionResult(async () => {
+    await work.deleteTemplate(await actor(), templateId);
+    refresh();
+  });
+}
+
 /** The task panel's data, filtered for whoever is looking. */
 export async function getTaskDetailAction(taskId: string) {
   return toActionResult(async () => {

@@ -7,6 +7,7 @@ import { canManageEods, canWriteEod, eodToday, getReportFor, listMyReports } fro
 import { toReportData } from "@/lib/eod-view";
 import { listMyTaskOptions } from "@/lib/actions/tasks";
 import { listLinkableCorrespondence } from "@/lib/correspondence";
+import { workTaskOptions } from "@/lib/work-everywhere";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -94,6 +95,7 @@ export default async function EodPage({ searchParams }: { searchParams: Promise<
             key={report.id}
             report={toReportData(report)}
             tasks={tasks}
+            workTasks={await workTaskOptions(actor.userId)}
             linkable={await listLinkableCorrespondence(
               actor,
               [...new Set([...report.items.map((i) => i.taskId), ...tasks.map((t) => t.id)].filter((id): id is string => Boolean(id)))]

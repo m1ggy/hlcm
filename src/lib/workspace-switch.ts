@@ -16,6 +16,16 @@ import { UserFacingError } from "@/lib/user-facing-error";
 
 export type SwitchTarget = { slug: string; name: string; home: boolean; current: boolean };
 
+/**
+ * Where a switch link may land after signing in: a path in the workspace's
+ * projects area only (Phase 5 "Client work" opens a task directly) — never
+ * another site or anything else.
+ */
+export function safeSwitchPath(next: string | null | undefined): string | null {
+  if (!next || next.length > 300) return null;
+  return /^\/work(\/[A-Za-z0-9_-]+)*(\?[A-Za-z0-9_=&-]*)?$/.test(next) ? next : null;
+}
+
 export function switchingAvailable() {
   return Boolean(process.env.ROOT_DOMAIN?.trim());
 }
@@ -57,7 +67,7 @@ export async function listSwitchTargets(user: { id: string; organizationId: stri
  * their linked account there, or their own account back home. Refuses unless
  * the assignment, the home account and both workspaces are active.
  */
-export async function startWorkspaceSwitch(user: { id: string; organizationId: string }, targetSlug: string): Promise<string> {
+export async function startWorkspaceSwitch(user: { id: string; organizationId: string }, targetSlug: string, next?: string | null): Promise<string> {
   if (!switchingAvailable()) throw new UserFacingError("Switching workspaces needs workspace addresses to be turned on");
   const homeUserId = await homeUserIdOf(user.id);
   if (!homeUserId) throw new UserFacingError("Your account is no longer active");
@@ -88,7 +98,8 @@ export async function startWorkspaceSwitch(user: { id: string; organizationId: s
   if (org.id === user.organizationId) throw new UserFacingError("You're already in that workspace");
 
   const token = await runAsTenant(org, () => issueAuthToken(targetUserId, "WORKSPACE_SWITCH"));
-  return `${orgAppUrl(org.slug)}/switch/enter?token=${encodeURIComponent(token)}`;
+  const landing = safeSwitchPath(next);
+  return `${orgAppUrl(org.slug)}/switch/enter?token=${encodeURIComponent(token)}${landing ? `&next=${encodeURIComponent(landing)}` : ""}`;
 }
 
 /**

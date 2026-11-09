@@ -260,6 +260,22 @@ export async function endAssignmentsForHomeUser(homeUserId: string) {
 }
 
 /** Who manages the current workspace, for the client side's "from <company>" labels. */
+export type LinkedWorkspace = { orgId: string; slug: string; name: string; linkedUserId: string; role: string };
+
+/**
+ * The client workspaces `homeUserId` is actively assigned to, with their
+ * linked account in each — for reading their work there from home
+ * (src/lib/work-everywhere.ts, workspace tasks Phase 5).
+ */
+export async function listLinkedWorkspaces(homeUserId: string): Promise<LinkedWorkspace[]> {
+  const rows = await prisma.workspaceAssignment.findMany({
+    where: { homeUserId, active: true, org: { status: "ACTIVE" }, user: { active: true }, homeUser: { active: true } },
+    orderBy: { org: { name: "asc" } },
+    select: { userId: true, role: true, org: { select: { id: true, slug: true, name: true } } },
+  });
+  return rows.map((r) => ({ orgId: r.org.id, slug: r.org.slug, name: r.org.name, linkedUserId: r.userId, role: r.role }));
+}
+
 export async function managingOrgName(orgId: string): Promise<string | null> {
   const org = await prisma.organization.findUnique({ where: { id: orgId }, select: { managedBy: { select: { name: true } } } });
   return org?.managedBy?.name ?? null;

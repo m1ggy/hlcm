@@ -5,8 +5,10 @@ import { UserFacingError } from "@/lib/user-facing-error";
 import {
   PROJECT_COLORS,
   WORK_PROJECT_STATUSES,
+  WORK_REPEATS,
   WORK_TASK_PRIORITIES,
   WORK_TASK_STATUSES,
+  nextRepeatDate,
   projectWhere,
   taskWhere,
   type WorkScope,
@@ -168,6 +170,7 @@ const taskSchema = z.object({
   dueDate: optionalDate,
   clientVisible: z.boolean().optional(),
   estimateHours: z.number().min(0).max(10_000).optional().nullable(),
+  repeat: z.enum(WORK_REPEATS).optional().nullable(),
   assigneeIds: z.array(z.string()).max(50).optional(),
 });
 
@@ -204,6 +207,7 @@ export async function createTask(actor: WorkActor, input: TaskInput) {
       dueDate: data.dueDate ?? null,
       clientVisible: data.clientVisible ?? project.clientVisible,
       estimateHours: data.estimateHours ?? null,
+      repeat: data.repeat ?? null,
       sortOrder: (last._max.sortOrder ?? 0) + 1,
       createdById: actor.userId,
       ...(status === "DONE" && { completedAt: new Date(), completedById: actor.userId }),
@@ -228,6 +232,7 @@ export async function updateTask(actor: WorkActor, taskId: string, patch: TaskPa
   const data = parse(taskPatchSchema, patch);
   const before = await findVisibleTask(actor, taskId);
   const statusChanged = data.status !== undefined && data.status !== before.status;
+  if (statusChanged && isPendingRequest(before)) throw new UserFacingError("Accept or decline the client's request first");
   const task = await db.workTask.update({
     where: { id: taskId },
     data: {
@@ -238,6 +243,7 @@ export async function updateTask(actor: WorkActor, taskId: string, patch: TaskPa
       ...(data.dueDate !== undefined && { dueDate: data.dueDate }),
       ...(data.clientVisible !== undefined && { clientVisible: data.clientVisible }),
       ...(data.estimateHours !== undefined && { estimateHours: data.estimateHours }),
+      ...(data.repeat !== undefined && { repeat: data.repeat }),
       ...(statusChanged && {
         status: data.status,
         ...(data.status === "DONE" ? { completedAt: new Date(), completedById: actor.userId } : { completedAt: null, completedById: null }),
@@ -246,16 +252,117 @@ export async function updateTask(actor: WorkActor, taskId: string, patch: TaskPa
   });
   if (statusChanged) {
     await logActivity(task, actor.userId, "STATUS_CHANGED", { from: before.status, to: task.status });
+    if (task.status === "DONE" && task.repeat) await createNextOccurrence(actor, task.id);
   }
   if (data.dueDate !== undefined && day(before.dueDate) !== day(task.dueDate)) {
     await logActivity(task, actor.userId, "DUE_CHANGED", { from: day(before.dueDate), to: day(task.dueDate) });
   }
-  for (const field of ["title", "status", "priority", "dueDate", "clientVisible"] as const) {
+  for (const field of ["title", "status", "priority", "dueDate", "clientVisible", "repeat"] as const) {
     if (data[field] !== undefined && String(before[field]) !== String(task[field])) {
       await recordAudit({ entityType: "WorkTask", entityId: taskId, action: "update", actorId: actor.userId, field, oldValue: before[field], newValue: task[field] });
     }
   }
   return task;
+}
+
+// ---- Recurring tasks (Phase 5) -------------------------------------------------
+
+/**
+ * Finishing a recurring task makes the next one: same details and people,
+ * due one period after this one's due date (or after today). Once per task —
+ * reopening and finishing it again doesn't make a second copy.
+ */
+async function createNextOccurrence(actor: WorkActor, taskId: string) {
+  const task = await db.workTask.findUnique({
+    where: { id: taskId },
+    include: { repeatedBy: { select: { id: true } }, assignees: { select: { userId: true } } },
+  });
+  if (!task?.repeat || task.repeatedBy) return null;
+  const today = new Date().toISOString().slice(0, 10);
+  const from = task.dueDate ? task.dueDate.toISOString().slice(0, 10) : today;
+  const due = nextRepeatDate(from, task.repeat);
+  const shift = task.dueDate ? new Date(`${due}T00:00:00Z`).getTime() - task.dueDate.getTime() : 0;
+  const last = await db.workTask.aggregate({ where: { projectId: task.projectId, parentId: task.parentId }, _max: { sortOrder: true } });
+  const next = await db.workTask.create({
+    data: {
+      projectId: task.projectId,
+      parentId: task.parentId,
+      title: task.title,
+      description: task.description,
+      priority: task.priority,
+      clientVisible: task.clientVisible,
+      estimateHours: task.estimateHours,
+      repeat: task.repeat,
+      repeatedFromId: task.id,
+      startDate: task.startDate && task.dueDate ? new Date(task.startDate.getTime() + shift) : null,
+      dueDate: new Date(`${due}T00:00:00Z`),
+      sortOrder: (last._max.sortOrder ?? 0) + 1,
+      createdById: actor.userId,
+      assignees: { create: task.assignees.map((a) => ({ userId: a.userId })) },
+    },
+  });
+  await logActivity(next, actor.userId, "CREATED", { to: next.title });
+  await recordAudit({ entityType: "WorkTask", entityId: next.id, action: "repeat", actorId: actor.userId, oldValue: task.id, newValue: due });
+  return next;
+}
+
+// ---- Task templates (Phase 5) ---------------------------------------------------
+
+export async function listTemplates(scope: WorkScope, projectId: string) {
+  if (!scope.canEditTasks) return [];
+  return db.workTaskTemplate.findMany({ where: { projectId }, orderBy: { title: "asc" } });
+}
+
+/** Saves a task (and its subtasks' titles) as a template for its project. */
+export async function saveTemplate(actor: WorkActor, taskId: string) {
+  requireTeam(actor);
+  const task = await findVisibleTask(actor, taskId);
+  if (task.parentId) throw new UserFacingError("Save the main task as a template, not a subtask");
+  const subtasks = await db.workTask.findMany({ where: { parentId: task.id }, orderBy: { sortOrder: "asc" }, select: { title: true } });
+  const template = await db.workTaskTemplate.create({
+    data: {
+      projectId: task.projectId,
+      title: task.title,
+      description: task.description,
+      priority: task.priority,
+      clientVisible: task.clientVisible,
+      repeat: task.repeat,
+      subtasks: subtasks.map((s) => s.title),
+      createdById: actor.userId,
+    },
+  });
+  await recordAudit({ entityType: "WorkProject", entityId: task.projectId, action: "save_template", actorId: actor.userId, newValue: template.title });
+  return template;
+}
+
+/** A new task (plus subtasks) from a template, due on `dueDate` if given. */
+export async function createFromTemplate(actor: WorkActor, templateId: string, opts: { dueDate?: string | null; assigneeIds?: string[] } = {}) {
+  requireTeam(actor);
+  const template = await db.workTaskTemplate.findUnique({ where: { id: templateId } });
+  if (!template) throw new UserFacingError("That template is gone");
+  const { task, notifications } = await createTask(actor, {
+    projectId: template.projectId,
+    title: template.title,
+    description: template.description,
+    priority: template.priority,
+    clientVisible: template.clientVisible,
+    repeat: template.repeat,
+    dueDate: opts.dueDate ?? null,
+    assigneeIds: opts.assigneeIds ?? [],
+  });
+  for (const title of template.subtasks) {
+    await createTask(actor, { projectId: template.projectId, parentId: task.id, title, clientVisible: template.clientVisible });
+  }
+  return { task, notifications };
+}
+
+export async function deleteTemplate(actor: WorkActor, templateId: string) {
+  requireTeam(actor);
+  const template = await db.workTaskTemplate.findUnique({ where: { id: templateId } });
+  if (!template) throw new UserFacingError("That template is already gone");
+  if (template.createdById !== actor.userId && !actor.scope.canManageProjects) throw new UserFacingError("Only a manager or whoever saved it can delete a template");
+  await db.workTaskTemplate.delete({ where: { id: templateId } });
+  await recordAudit({ entityType: "WorkProject", entityId: template.projectId, action: "delete_template", actorId: actor.userId, oldValue: template.title });
 }
 
 /**
@@ -385,6 +492,7 @@ export async function requestTask(actor: WorkActor, input: RequestInput) {
   });
   await logActivity(task, actor.userId, "REQUESTED", { to: task.title });
   await recordAudit({ entityType: "WorkTask", entityId: task.id, action: "request", actorId: actor.userId, newValue: task.title });
+  // It waits in the approval queue (approvedAt null) until a manager accepts or declines it.
   // The project lead hears about it; with no lead, every manager on the team.
   const recipients = project.leadId
     ? [project.leadId]
@@ -400,11 +508,50 @@ export async function requestTask(actor: WorkActor, input: RequestInput) {
   const notifications: WorkNotification[] = recipients.map((userId) => ({
     userId,
     type: "WORK_TASK_REQUESTED",
-    message: `New request in ${project.name}: "${task.title}"`,
+    message: `New request to approve in ${project.name}: "${task.title}"`,
     entityType: "WorkTask",
     entityId: task.id,
   }));
   return { task, notifications };
+}
+
+/** A client request no manager has accepted or declined yet. */
+export function isPendingRequest(task: { isClientRequest: boolean; approvedAt: Date | null; status: string }) {
+  return task.isClientRequest && !task.approvedAt && task.status !== "CANCELLED";
+}
+
+/** The approval queue: client requests waiting on a manager, oldest first. */
+export async function listPendingRequests(scope: WorkScope) {
+  if (!scope.canManageProjects) return [];
+  return db.workTask.findMany({
+    where: { isClientRequest: true, approvedAt: null, status: { not: "CANCELLED" } },
+    orderBy: { createdAt: "asc" },
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      dueDate: true,
+      createdAt: true,
+      createdBy: { select: { name: true } },
+      project: { select: { id: true, name: true, color: true } },
+    },
+  });
+}
+
+/** Accepts a client's request: it joins the project's normal work, optionally with people on it. */
+export async function approveRequest(actor: WorkActor, taskId: string, opts: { assigneeIds?: string[] } = {}) {
+  requireManager(actor);
+  const task = await findVisibleTask(actor, taskId);
+  if (!isPendingRequest(task)) throw new UserFacingError("That request isn't waiting for approval");
+  const updated = await db.workTask.update({ where: { id: taskId }, data: { approvedAt: new Date() } });
+  await logActivity(updated, actor.userId, "APPROVED", { to: task.title });
+  await recordAudit({ entityType: "WorkTask", entityId: taskId, action: "approve_request", actorId: actor.userId, newValue: task.title });
+  const notifications: WorkNotification[] =
+    task.createdById === actor.userId
+      ? []
+      : [{ userId: task.createdById, type: "WORK_TASK_COMMENTED", message: `Your request "${task.title}" was accepted`, entityType: "WorkTask", entityId: taskId }];
+  if (opts.assigneeIds?.length) notifications.push(...(await setAssignees(actor, taskId, opts.assigneeIds)).notifications);
+  return { notifications };
 }
 
 export async function declineRequest(actor: WorkActor, taskId: string, reason: string) {
@@ -421,6 +568,15 @@ export async function declineRequest(actor: WorkActor, taskId: string, reason: s
       ? []
       : [{ userId: task.createdById, type: "WORK_TASK_COMMENTED", message: `Your request "${task.title}" was declined: ${why}`, entityType: "WorkTask", entityId: taskId }];
   return { notifications };
+}
+
+// ---- End-of-day lines (Phase 5) ------------------------------------------------
+
+/** What someone reported doing on the task in their end-of-day report; shown on the client's day card when shared. */
+export async function recordReport(actor: WorkActor, taskId: string, text: string, shareWithClient: boolean) {
+  requireTeam(actor);
+  const task = await findVisibleTask(actor, taskId);
+  await logActivity(task, actor.userId, "REPORTED", { to: text.slice(0, 4000), clientVisible: task.clientVisible && shareWithClient });
 }
 
 // ---- Files ----------------------------------------------------------------

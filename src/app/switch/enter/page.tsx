@@ -5,8 +5,8 @@ import { SwitchEnterForm } from "@/components/workspaces/switch-enter-form";
 // Where the workspace switcher lands (src/lib/workspace-switch.ts). The form
 // submits itself on load; the button is the fallback with scripts off. A
 // POST either way, so nothing that merely fetches the URL can use the link.
-export default async function SwitchEnterPage({ searchParams }: { searchParams: Promise<{ token?: string; error?: string }> }) {
-  const { token, error } = await searchParams;
+export default async function SwitchEnterPage({ searchParams }: { searchParams: Promise<{ token?: string; error?: string; next?: string }> }) {
+  const { token, error, next } = await searchParams;
   const org = await getHostOrg();
 
   return (
@@ -22,7 +22,7 @@ export default async function SwitchEnterPage({ searchParams }: { searchParams: 
               the workspace switcher again.
             </p>
           ) : (
-            <SwitchEnterForm token={token} />
+            <SwitchEnterForm token={token} next={next} />
           )}
         </CardContent>
       </Card>
