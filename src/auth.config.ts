@@ -57,6 +57,8 @@ export function isPublicPath(pathname: string) {
     pathname.startsWith("/forms/") ||
     // An application's share link: a read-only progress page anyone with
     // the token can open (src/lib/share-links.ts, src/app/share).
-    pathname.startsWith("/share/")
+    pathname.startsWith("/share/") ||
+    // Terms, privacy policy, BAA and subprocessors (src/app/legal).
+    pathname.startsWith("/legal/")
   );
 }

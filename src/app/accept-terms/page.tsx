@@ -37,8 +37,12 @@ export default async function AcceptTermsPage({ searchParams }: { searchParams: 
                 and{" "}
                 <a href={terms.privacyUrl} target="_blank" rel="noreferrer" className="font-medium underline">
                   Privacy Policy
-                </a>{" "}
-                on your organization&apos;s behalf.
+                </a>
+                , including the{" "}
+                <a href={terms.baaUrl} target="_blank" rel="noreferrer" className="font-medium underline">
+                  Business Associate Agreement
+                </a>
+                , on your organization&apos;s behalf.
               </p>
               <label className="flex items-start gap-2">
                 <input type="checkbox" name="agree" id="agree" required className="mt-0.5 size-4" />
