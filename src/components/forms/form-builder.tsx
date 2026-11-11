@@ -350,14 +350,14 @@ export function FormBuilder({ initial, staff, textingReady }: { initial: Builder
                     id="fb-name"
                     value={meta.name}
                     onChange={(e) => setM({ name: e.target.value, ...(!meta.slugTouched && { slug: slugify(e.target.value, "-") }) })}
-                    placeholder="Home care intake"
+                    placeholder="Weekly check-in"
                   />
                 </div>
                 <div className="space-y-1">
                   <Label htmlFor="fb-slug">Link</Label>
                   <div className="flex items-center gap-1 text-sm text-muted-foreground">
                     <span className="shrink-0">/forms/</span>
-                    <Input id="fb-slug" value={meta.slug} onChange={(e) => setM({ slug: slugify(e.target.value, "-"), slugTouched: true })} placeholder="home-care-intake" />
+                    <Input id="fb-slug" value={meta.slug} onChange={(e) => setM({ slug: slugify(e.target.value, "-"), slugTouched: true })} placeholder="weekly-check-in" />
                   </div>
                   {initial.id && initial.slug !== meta.slug && <p className="text-xs text-amber-700 dark:text-amber-400">Changing the link breaks the old one wherever it&apos;s been shared.</p>}
                 </div>

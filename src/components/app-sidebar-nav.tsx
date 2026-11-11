@@ -24,9 +24,11 @@ const LICENSING: NavLink[] = [
   { href: "/clients", label: "Clients", icon: Users, tour: "nav-clients" },
   { href: "/tasks", label: "My Tasks", icon: CheckSquare, tour: "nav-tasks" },
   { href: "/leads", label: "Leads", icon: CalendarCheck, tour: "nav-leads" },
-  // Intake forms and what people sent through them (docs/forms-plan.md).
-  { href: "/intake", label: "Forms", icon: Inbox, tour: "nav-form-submissions" },
 ];
+
+// Not tied to licensing: forms serve intake, reports, applications and more
+// (docs/forms-plan.md).
+const GENERAL: NavLink[] = [{ href: "/intake", label: "Forms", icon: Inbox, tour: "nav-form-submissions" }];
 
 // Caregiver-restricted set — no Projects/Applications/Time/Invoices/Admin,
 // same scope the role is limited to everywhere else (see src/lib/rbac.ts,
@@ -107,6 +109,7 @@ export function AppSidebarNav({
     groups = [
       { label: "Licensing", links: LICENSING },
       { label: "Tasks", links: tasks },
+      { label: "General", links: GENERAL },
       { label: "Time & billing", links: money },
       { label: "Workspace", links: general },
     ];

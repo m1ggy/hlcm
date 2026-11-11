@@ -35,7 +35,7 @@ export default async function FormsListPage() {
           <FileText className="size-8 text-muted-foreground" aria-hidden />
           <p className="font-heading text-lg font-semibold">No forms yet</p>
           <p className="max-w-sm text-sm text-muted-foreground">
-            Build an intake form once, then share its link or QR code anywhere. People fill it in without an account, and you get notified.
+            Build a form once (intake, applications, check-ins, reports, anything you need to collect), then share its link or QR code anywhere. People fill it in without an account, and you get notified.
           </p>
           {canManage && (
             <Button nativeButton={false} render={<Link href="/intake/forms/new" />}>

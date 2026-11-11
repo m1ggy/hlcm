@@ -100,7 +100,7 @@ function buildStaffSteps(role: string | undefined): TourStep[] {
       element: '[data-tour="nav-work"]',
       popover: {
         title: "Projects & tasks",
-        description: "General projects and to-dos, kept apart from licensing work. Use a board or a list; each task has comments, files and a timer. The menu is grouped: Licensing, Tasks, Time & billing, and Workspace.",
+        description: "General projects and to-dos, kept apart from licensing work. Use a board or a list; each task has comments, files and a timer. The menu is grouped: Licensing, Tasks, General, Time & billing, and Workspace.",
         side: "right",
       },
       ...optional,
@@ -131,7 +131,7 @@ function buildStaffSteps(role: string | undefined): TourStep[] {
       element: '[data-tour="nav-form-submissions"]',
       popover: {
         title: "Forms",
-        description: "Your intake forms and everything people send through them. Build a form (with a live preview), share its link or QR code, and pick who's notified — by email, in the app, or by text. New submissions wait here: create a client from one, attach it to a client, mark it reviewed, or dismiss it.",
+        description: "Your forms (intake, applications, check-ins, reports) and everything people send through them. Build a form (with a live preview), share its link or QR code, and pick who's notified — by email, in the app, or by text. New submissions wait here: create a client from one, attach it to a client, mark it reviewed, or dismiss it.",
         side: "right",
       },
     },
