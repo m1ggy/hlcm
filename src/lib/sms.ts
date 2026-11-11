@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { sendSmsWith, TwilioApiError, type TwilioCreds } from "@/lib/twilio";
 
-// Texts to staff from the one shared Carenela number (docs/forms-plan.md,
+// Texts to people (staff form alerts, clients' daily updates) from the one shared Carenela number (docs/forms-plan.md,
 // decided F2) — not a workspace's own Twilio account (that one still sends
 // meeting reminders, src/lib/meeting-reminders.ts). Configured on the server:
 //   SMS_TWILIO_ACCOUNT_SID, SMS_TWILIO_AUTH_TOKEN, SMS_TWILIO_FROM (+1…)
@@ -34,17 +34,17 @@ export function fitSms(text: string, max = 160) {
   return t.length <= max ? t : `${t.slice(0, max - 1)}…`;
 }
 
-export type StaffTextResult = { userId: string; ok: boolean; error?: string };
+export type TextResult = { userId: string; ok: boolean; error?: string };
 
 /**
- * Texts a staff member. Skips quietly (logged) when texting isn't set up,
+ * Texts one person. Skips quietly (logged) when texting isn't set up,
  * they have no phone, or they've opted out. Never throws.
  */
-export async function textStaff(
+export async function textUser(
   user: { id: string; phone: string | null; smsOptedOutAt: Date | null },
   body: string,
   meta: { purpose: string; entityId?: string }
-): Promise<StaffTextResult> {
+): Promise<TextResult> {
   const log = (ok: boolean, extra: { twilioSid?: string; error?: string }) =>
     db.smsLog.create({ data: { userId: user.id, toNumber: user.phone ?? "", purpose: meta.purpose, entityId: meta.entityId, ok, ...extra } });
 

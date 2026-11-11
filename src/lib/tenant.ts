@@ -22,6 +22,7 @@ export type HostOrg = {
   workShowHoursToClient: boolean;
   workAiSummaries: boolean;
   workWeeklyEmail: boolean;
+  workDailyText: boolean;
 };
 
 const HOST_ORG_SELECT = {
@@ -37,6 +38,7 @@ const HOST_ORG_SELECT = {
   workShowHoursToClient: true,
   workAiSummaries: true,
   workWeeklyEmail: true,
+  workDailyText: true,
 } as const;
 
 // slug → org, cached briefly: this runs on every tenant-scoped query's first
@@ -100,9 +102,18 @@ export async function updateOrganizationSettings(orgId: string, data: { name?: s
 }
 
 /** The client weekly summary's settings (docs/workspace-tasks-plan.md, Phase 3); callers check who may change them. */
-export async function updateWorkSummarySettings(orgId: string, data: { workShowHoursToClient?: boolean; workAiSummaries?: boolean; workWeeklyEmail?: boolean }) {
+export async function updateWorkSummarySettings(
+  orgId: string,
+  data: { workShowHoursToClient?: boolean; workAiSummaries?: boolean; workWeeklyEmail?: boolean; workDailyText?: boolean }
+) {
   const org = await prisma.organization.update({ where: { id: orgId }, data, select: { slug: true } });
   forgetOrg(org.slug);
+}
+
+/** The name of the company that runs a client workspace, or null (texts are signed with it). */
+export async function managingOrgName(orgId: string) {
+  const org = await prisma.organization.findUnique({ where: { id: orgId }, select: { managedBy: { select: { name: true } } } });
+  return org?.managedBy?.name ?? null;
 }
 
 /** Saves the workspace's pipeline names / hidden pipelines (src/lib/actions/pipelines.ts). */

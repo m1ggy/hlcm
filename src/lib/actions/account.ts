@@ -16,7 +16,7 @@ export async function getAccount() {
   const [user, workspaceTimezone] = await Promise.all([
     db.user.findUniqueOrThrow({
       where: { id: session.user.id },
-      select: { id: true, name: true, email: true, mfaEnabled: true, emailNotificationsEnabled: true, timezone: true, phone: true, smsFormAlerts: true, smsOptedOutAt: true },
+      select: { id: true, name: true, email: true, mfaEnabled: true, emailNotificationsEnabled: true, timezone: true, phone: true, smsFormAlerts: true, smsDailyUpdates: true, smsOptedOutAt: true },
     }),
     currentWorkspaceTimezone(),
   ]);
@@ -163,17 +163,19 @@ export async function disableMfa() {
  * on themselves. Turning it on again clears an earlier STOP on our side
  * (they may also need to text START to the number).
  */
-export async function updateTextAlerts(input: { phone: string; enabled: boolean }) {
+/** Your mobile number and one text opt-in: new form submissions (team) or the daily update (a client workspace's client side). */
+export async function updateTextAlerts(input: { phone: string; enabled: boolean; kind?: "forms" | "daily" }) {
   return toActionResult(async () => {
     const session = await requireSession();
     const phone = input.phone.trim() ? normalizePhone(input.phone) : null;
     if (input.phone.trim() && !phone) throw new UserFacingError("Enter a valid mobile number, like (555) 123-4567");
     if (input.enabled && !phone) throw new UserFacingError("Add your mobile number to get texts");
+    const field = input.kind === "daily" ? "smsDailyUpdates" : "smsFormAlerts";
     await db.user.update({
       where: { id: session.user.id },
-      data: { phone, smsFormAlerts: input.enabled, ...(input.enabled && { smsOptedOutAt: null }) },
+      data: { phone, [field]: input.enabled, ...(input.enabled && { smsOptedOutAt: null }) },
     });
-    await recordAudit({ entityType: "User", entityId: session.user.id, action: "update", actorId: session.user.id, field: "smsFormAlerts", newValue: input.enabled });
+    await recordAudit({ entityType: "User", entityId: session.user.id, action: "update", actorId: session.user.id, field, newValue: input.enabled });
     return { phone };
   });
 }

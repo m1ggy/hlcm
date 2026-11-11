@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
-import { getOrgBySlug } from "@/lib/tenant";
+import { getOrgBySlug, managingOrgName } from "@/lib/tenant";
+import { fitSms, isPlatformSmsConfigured, textUser } from "@/lib/sms";
 import { UserFacingError } from "@/lib/user-facing-error";
 import { recordAudit } from "@/lib/audit";
 import { renderEmailLayout, getEmailBranding, sendEmail } from "@/lib/email";
@@ -31,7 +32,8 @@ export async function saveSummaryNote(actor: WorkActor, period: Period, day: str
   } else if (existing) {
     await db.workSummaryNote.update({
       where: { id: existing.id },
-      data: { body: text, source: existing.source === "HUMAN" ? "HUMAN" : "EDITED", authorId: actor.userId },
+      // An empty row only held a flag (tonight's text), so a note written into it is the person's own.
+      data: { body: text, source: existing.source === "HUMAN" || !existing.body.trim() ? "HUMAN" : "EDITED", authorId: actor.userId },
     });
   } else {
     await db.workSummaryNote.create({ data: { period, date, body: text, source: "HUMAN", authorId: actor.userId } });
@@ -72,6 +74,10 @@ export async function regenerateSummaryNote(
 
 /** After this local hour, today counts as over and gets its note. */
 export const DAY_NOTE_HOUR = 19;
+/** The day's text goes out after this local hour: an hour after the note is written, so the team can check it. */
+export const DAY_TEXT_HOUR = 20;
+/** No texts after this local hour; a day missed by then isn't texted late at night. */
+const LAST_TEXT_HOUR = 22;
 /** The Monday email goes out after this local hour. */
 export const WEEKLY_EMAIL_HOUR = 8;
 
@@ -121,6 +127,80 @@ export async function runSummaryJob(orgSlug: string, now = new Date()) {
   }
 
   if (org.workWeeklyEmail && hour >= WEEKLY_EMAIL_HOUR) await sendWeeklyEmail(org, lastMonday, timeZone);
+  if (org.workDailyText && hour >= DAY_TEXT_HOUR && hour <= LAST_TEXT_HOUR) await sendDayText(org, today, timeZone);
+}
+
+// ---- The evening text -------------------------------------------------------
+
+/** Client-side people who signed up for the evening text and can get one. */
+function dailyTextRecipients() {
+  return db.user.findMany({
+    where: {
+      active: true,
+      isSupport: false,
+      assignedFromUserId: null,
+      role: { not: "CAREGIVER" },
+      smsDailyUpdates: true,
+      phone: { not: null },
+      smsOptedOutAt: null,
+    },
+    select: { id: true, phone: true, smsOptedOutAt: true },
+  });
+}
+
+/** How many of the client's people get the evening text (shown in the summary settings). */
+export async function countDailyTextRecipients() {
+  return (await dailyTextRecipients()).length;
+}
+
+/** The team switches tonight's text off or back on, before it has gone out. */
+export async function setDayTextSkip(actor: WorkActor, day: string, skip: boolean) {
+  requireEditor(actor);
+  const date = asDate(day);
+  const existing = await db.workSummaryNote.findFirst({ where: { period: "DAY", date } });
+  if (existing?.textedAt) throw new UserFacingError("This day's text has already gone out");
+  // An empty AI row only holds the flag; the evening job still writes the note into it.
+  if (existing) await db.workSummaryNote.update({ where: { id: existing.id }, data: { textSkip: skip } });
+  else await db.workSummaryNote.create({ data: { period: "DAY", date, body: "", source: "AI", textSkip: skip } });
+  await recordAudit({ entityType: "WorkSummaryNote", entityId: `DAY:${day}`, action: skip ? "skip_text" : "unskip_text", actorId: actor.userId });
+}
+
+/** The text itself: who it's from, the day, the note (or the plain headline), a link, and how to stop. */
+export function dayTextBody(opts: { from: string; day: string; text: string; link: string }) {
+  const date = new Date(`${opts.day}T12:00:00Z`).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
+  const head = `${opts.from} update, ${date}: `;
+  const tail = ` ${opts.link} Reply STOP to opt out.`;
+  // Up to three text segments in all.
+  return head + fitSms(opts.text, Math.max(80, 459 - head.length - tail.length)) + tail;
+}
+
+/** Today's note to the people who signed up, once. Quiet days and days the team switched off are skipped. */
+async function sendDayText(org: { id: string; name: string; kind: "FULL" | "TASKS" }, today: string, timeZone: string) {
+  if (!isPlatformSmsConfigured()) return;
+  const marker = await db.workSummaryNote.findFirst({ where: { period: "DAY", date: asDate(today) } });
+  if (marker?.textedAt || marker?.textSkip) return;
+  const week = await getWeekSummary({ monday: weekStartOf(today), timeZone, orgKind: org.kind, withHours: false });
+  const day = week.days.find((d) => d.date === today);
+  if (!day || !dayHasActivity(day)) return;
+  const text = marker?.body.trim() || dayHeadline(day);
+  if (!text) return;
+
+  const people = await dailyTextRecipients();
+  // Mark it first: a failed send isn't retried every hour onto someone's phone.
+  const sentAt = new Date();
+  const note = marker
+    ? await db.workSummaryNote.update({ where: { id: marker.id }, data: { textedAt: sentAt, textedCount: 0 } })
+    : await db.workSummaryNote.create({ data: { period: "DAY", date: asDate(today), body: "", source: "AI", textedAt: sentAt, textedCount: 0 } });
+  if (people.length === 0) return;
+
+  const { appUrl } = await getEmailBranding();
+  const body = dayTextBody({ from: (await managingOrgName(org.id)) ?? org.name, day: today, text, link: `${appUrl}/work/summary?day=${today}` });
+  let sent = 0;
+  for (const person of people) {
+    const r = await textUser(person, body, { purpose: "WORK_DAY_TEXT", entityId: note.id });
+    if (r.ok) sent++;
+  }
+  await db.workSummaryNote.update({ where: { id: note.id }, data: { textedCount: sent } });
 }
 
 function escapeHtml(value: string) {

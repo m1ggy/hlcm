@@ -9,7 +9,7 @@ import { updateWorkSummarySettings } from "@/lib/tenant";
 import { UserFacingError } from "@/lib/user-facing-error";
 import { workScope } from "@/lib/work";
 import type { WorkActor } from "@/lib/work-service";
-import { regenerateSummaryNote, saveSummaryNote } from "@/lib/work-summary-notes";
+import { regenerateSummaryNote, saveSummaryNote, setDayTextSkip } from "@/lib/work-summary-notes";
 
 // The client weekly summary's notes and settings (docs/workspace-tasks-plan.md, Phase 3).
 
@@ -46,8 +46,18 @@ export async function regenerateSummaryNoteAction(period: "DAY" | "WEEK", day: s
   });
 }
 
-/** Show hours to the client, AI summaries, Monday email. Team managers only (decided W7). */
-export async function updateSummarySettingsAction(input: { showHoursToClient?: boolean; aiSummaries?: boolean; weeklyEmail?: boolean }) {
+/** Turn one day's evening text off (or back on) before it goes out. */
+export async function setDayTextSkipAction(day: string, skip: boolean) {
+  return toActionResult(async () => {
+    checkDay(day);
+    const { actor } = await context();
+    await setDayTextSkip(actor, day, skip);
+    revalidatePath("/work/summary");
+  });
+}
+
+/** Show hours to the client, AI summaries, Monday email, evening text. Team managers only (decided W7). */
+export async function updateSummarySettingsAction(input: { showHoursToClient?: boolean; aiSummaries?: boolean; weeklyEmail?: boolean; dailyText?: boolean }) {
   return toActionResult(async () => {
     const { actor, org } = await context();
     if (!actor.scope.canManageProjects) throw new UserFacingError("Only the team's managers can change these settings");
@@ -55,6 +65,7 @@ export async function updateSummarySettingsAction(input: { showHoursToClient?: b
       ...(input.showHoursToClient !== undefined && { workShowHoursToClient: input.showHoursToClient }),
       ...(input.aiSummaries !== undefined && { workAiSummaries: input.aiSummaries }),
       ...(input.weeklyEmail !== undefined && { workWeeklyEmail: input.weeklyEmail }),
+      ...(input.dailyText !== undefined && { workDailyText: input.dailyText }),
     };
     await updateWorkSummarySettings(org.id, data);
     for (const [field, value] of Object.entries(data)) {

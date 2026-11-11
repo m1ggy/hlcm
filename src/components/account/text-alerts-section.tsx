@@ -8,8 +8,32 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-/** Account → Notifications: your mobile number and "text me about new form submissions". */
-export function TextAlertsSection({ phone: initialPhone, enabled: initialEnabled, optedOut }: { phone: string | null; enabled: boolean; optedOut: boolean }) {
+const COPY = {
+  forms: {
+    label: "Text me when someone fills in a form I'm picked for",
+    hint: "The text has the form's name, the person's first name and a link. Reply STOP to any text to stop them.",
+    saved: "You'll get texts for new form submissions",
+  },
+  daily: {
+    label: "Text me a daily update",
+    hint: "On days the team worked on your projects, a short summary arrives in the evening, with a link to the full week. Reply STOP to any text to stop them.",
+    saved: "You'll get a text on days with updates",
+  },
+} as const;
+
+/** Account → Notifications: your mobile number and one text opt-in (form alerts, or a client's daily update). */
+export function TextAlertsSection({
+  kind = "forms",
+  phone: initialPhone,
+  enabled: initialEnabled,
+  optedOut,
+}: {
+  kind?: "forms" | "daily";
+  phone: string | null;
+  enabled: boolean;
+  optedOut: boolean;
+}) {
+  const copy = COPY[kind];
   const [phone, setPhone] = useState(initialPhone ?? "");
   const [enabled, setEnabled] = useState(initialEnabled);
   const [saved, setSaved] = useState({ phone: initialPhone ?? "", enabled: initialEnabled });
@@ -21,8 +45,8 @@ export function TextAlertsSection({ phone: initialPhone, enabled: initialEnabled
       <div className="flex items-start gap-2">
         <Checkbox id="text-alerts" checked={enabled} onCheckedChange={(c) => setEnabled(Boolean(c))} className="mt-0.5" />
         <Label htmlFor="text-alerts" className="block text-sm font-normal">
-          Text me when someone fills in a form I&apos;m picked for
-          <span className="block text-xs text-muted-foreground">The text has the form&apos;s name, the person&apos;s first name and a link. Reply STOP to any text to stop them.</span>
+          {copy.label}
+          <span className="block text-xs text-muted-foreground">{copy.hint}</span>
         </Label>
       </div>
       <div className="flex flex-wrap items-end gap-2">
@@ -36,11 +60,11 @@ export function TextAlertsSection({ phone: initialPhone, enabled: initialEnabled
           loading={pending}
           onClick={() =>
             start(async () => {
-              const r = await updateTextAlerts({ phone, enabled });
+              const r = await updateTextAlerts({ phone, enabled, kind });
               if (!r.ok) return void toast.error(r.error);
               setPhone(r.data.phone ?? "");
               setSaved({ phone: r.data.phone ?? "", enabled });
-              toast.success(enabled ? "You'll get texts for new form submissions" : "Saved");
+              toast.success(enabled ? copy.saved : "Saved");
             })
           }
         >

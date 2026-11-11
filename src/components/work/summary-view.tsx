@@ -4,8 +4,8 @@ import { useCallback, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronLeft, ChevronRight, EyeOff, Pencil, Printer, Settings2, Sparkles } from "lucide-react";
-import { regenerateSummaryNoteAction, saveSummaryNoteAction, updateSummarySettingsAction } from "@/lib/actions/work-summary";
+import { ChevronLeft, ChevronRight, EyeOff, MessageSquare, Pencil, Printer, Settings2, Sparkles } from "lucide-react";
+import { regenerateSummaryNoteAction, saveSummaryNoteAction, setDayTextSkipAction, updateSummarySettingsAction } from "@/lib/actions/work-summary";
 import { WORK_TASK_STATUS_LABELS, type WorkScope, type WorkTaskStatus } from "@/lib/work";
 import type { DaySummary, WeekSummary } from "@/lib/work-summary";
 import { cn } from "@/lib/utils";
@@ -17,7 +17,16 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { TaskSheet } from "./task-sheet";
 
-type Settings = { showHoursToClient: boolean; aiSummaries: boolean; weeklyEmail: boolean; aiConfigured: boolean };
+type Settings = {
+  showHoursToClient: boolean;
+  aiSummaries: boolean;
+  weeklyEmail: boolean;
+  aiConfigured: boolean;
+  /** Evening text of the day's note, whether texting works on this server, and how many of the client's people signed up. */
+  dailyText: boolean;
+  smsConfigured: boolean;
+  textPeople: number;
+};
 type Note = WeekSummary["note"];
 
 const fmt = (day: string, opts: Intl.DateTimeFormatOptions) => new Date(`${day}T12:00:00Z`).toLocaleDateString("en-US", { ...opts, timeZone: "UTC" });
@@ -177,6 +186,7 @@ export function SummaryView({
           canEdit={canEdit}
           aiAvailable={aiAvailable}
           hoursHidden={hoursHidden}
+          textInfo={canEdit && settings.dailyText ? { isToday: selected.date === today, people: settings.textPeople } : null}
           onOpenTask={setTaskId}
           onClose={() => pickDay(null)}
         />
@@ -296,6 +306,7 @@ function DayDetail({
   canEdit,
   aiAvailable,
   hoursHidden,
+  textInfo,
   onOpenTask,
   onClose,
 }: {
@@ -303,6 +314,8 @@ function DayDetail({
   canEdit: boolean;
   aiAvailable: boolean;
   hoursHidden: boolean;
+  /** For the team when the evening text is on. */
+  textInfo: { isToday: boolean; people: number } | null;
   onOpenTask: (id: string) => void;
   onClose: () => void;
 }) {
@@ -320,6 +333,7 @@ function DayDetail({
         </Button>
       </div>
       <NoteBlock period="DAY" day={d.date} note={d.note} canEdit={canEdit} aiAvailable={aiAvailable && isActive(d)} emptyText={canEdit ? "No note for this day yet." : null} />
+      {textInfo && <DayText d={d} {...textInfo} />}
       {!isActive(d) && <p className="text-sm text-muted-foreground">Nothing was updated this day.</p>}
 
       {d.completed.length > 0 && (
@@ -402,6 +416,47 @@ function DayDetail({
         </p>
       )}
     </section>
+  );
+}
+
+/** The team's view of a day's evening text: sent, or (today) a switch to skip it. */
+function DayText({ d, isToday, people }: { d: DaySummary; isToday: boolean; people: number }) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  if (d.text.sentAt) {
+    const n = d.text.sentTo ?? 0;
+    return (
+      <p className="flex items-center gap-1.5 text-xs text-muted-foreground" data-print-hide>
+        <MessageSquare className="size-3.5" />
+        {n > 0 ? `Texted to ${n} ${n === 1 ? "person" : "people"} at ${time(d.text.sentAt)}` : "Nobody was signed up for texts when this day's update went out"}
+      </p>
+    );
+  }
+  if (!isToday) return null;
+  return (
+    <label className="flex items-start gap-2 text-sm" data-print-hide>
+      <Checkbox
+        checked={!d.text.skip}
+        disabled={isPending}
+        className="mt-0.5"
+        onCheckedChange={(v) =>
+          startTransition(async () => {
+            const r = await setDayTextSkipAction(d.date, !v);
+            if (!r.ok) return void toast.error(r.error);
+            toast.success(v ? "Tonight's text is back on" : "No text tonight");
+            router.refresh();
+          })
+        }
+      />
+      <span>
+        Text today&apos;s update to the client tonight
+        <span className="block text-xs text-muted-foreground">
+          {people === 0
+            ? "Nobody has signed up for texts yet. The client's people turn them on in their Account settings."
+            : `Around 8 pm, to ${people} ${people === 1 ? "person" : "people"}, with the note above (or a short list if there's no note). Skipped if nothing happened.`}
+        </span>
+      </span>
+    </label>
   );
 }
 
@@ -554,6 +609,17 @@ function SettingsDialog({ settings }: { settings: Settings }) {
             <span>
               Monday email to the client
               <span className="block text-xs text-muted-foreground">Last week&apos;s summary, sent Monday morning. Quiet weeks are skipped.</span>
+            </span>
+          </label>
+          <label className="flex items-start gap-3 text-sm">
+            <Checkbox checked={settings.dailyText} disabled={isPending} onCheckedChange={(v) => set({ dailyText: Boolean(v) })} className="mt-0.5" />
+            <span>
+              Evening text to the client
+              <span className="block text-xs text-muted-foreground">
+                {!settings.smsConfigured
+                  ? "Texting isn't set up on this server yet, so no texts are sent."
+                  : `Around 8 pm on days with updates, the day's note goes by text to the client's people who signed up in their Account settings (${settings.textPeople} so far). You can skip any day.`}
+              </span>
             </span>
           </label>
         </div>

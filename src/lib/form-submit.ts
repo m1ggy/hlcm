@@ -3,7 +3,7 @@ import { saveUploadedFile } from "@/lib/storage";
 import { UserFacingError } from "@/lib/user-facing-error";
 import { getEmailBranding, renderEmailLayout, sendEmail } from "@/lib/email";
 import { orgAppUrl } from "@/lib/tenant-host";
-import { fitSms, textStaff } from "@/lib/sms";
+import { fitSms, textUser } from "@/lib/sms";
 import {
   cleanAnswers,
   firstNameFrom,
@@ -149,7 +149,7 @@ export async function alertForSubmission(submissionId: string) {
     });
     const body = fitSms(`Carenela: ${message} at ${org.name}. Review: ${link}`, 320);
     for (const u of texters) {
-      const r = await textStaff(u, body, { purpose: "FORM_SUBMITTED", entityId: submission.id });
+      const r = await textUser(u, body, { purpose: "FORM_SUBMITTED", entityId: submission.id });
       if (r.ok) result.texted.push(u.id);
     }
   }

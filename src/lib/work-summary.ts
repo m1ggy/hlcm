@@ -34,6 +34,8 @@ export type DaySummary = {
   updates: (SummaryTaskRef & { by: string; at: Date; text: string })[];
   hours: number | null;
   note: { body: string; source: "AI" | "HUMAN" | "EDITED"; authorName: string | null } | null;
+  /** The evening text to the client: switched off by the team, or sent (when, to how many). */
+  text: { skip: boolean; sentAt: Date | null; sentTo: number | null };
 };
 
 export type WeekSummary = {
@@ -105,6 +107,7 @@ export async function getWeekSummary(opts: { monday: string; timeZone: string; o
     updates: [],
     hours: withHours ? 0 : null,
     note: null,
+    text: { skip: false, sentAt: null, sentTo: null },
   }));
   const dayOf = (at: Date) => days.find((d) => d.date === toDateInputValue(at, timeZone));
   const ref = (t: { id: string; title: string; project: { id: string; name: string } }): SummaryTaskRef => ({
@@ -142,6 +145,7 @@ export async function getWeekSummary(opts: { monday: string; timeZone: string; o
     if (n.period === "DAY") {
       const day = days.find((d) => d.date === n.date.toISOString().slice(0, 10));
       if (day && n.body.trim()) day.note = note;
+      if (day) day.text = { skip: n.textSkip, sentAt: n.textedAt, sentTo: n.textedCount };
     }
   }
   const weekNote = notes.find((n) => n.period === "WEEK" && n.body.trim());

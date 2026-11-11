@@ -154,6 +154,15 @@ One helper `workScope(session)` used by every query; tests that internal comment
 
 ---
 
+## Evening text to the client
+
+**Built 2026-11-11** (migration `20261111120000_work_daily_text`, tests in `tests/work-summary.test.ts`). A text of the day's note to the client's people, from the shared number (`src/lib/sms.ts`):
+- **Per client:** `Organization.workDailyText`, off by default; Summary → Settings, team managers only. Shows how many people signed up and whether texting works on the server.
+- **Consent:** each client-side person opts in on Account → Notifications (`User.smsDailyUpdates`, with their mobile). Linked accounts, support users and caregivers never get it. STOP replies mark them opted out (Twilio 21610), as with form alerts.
+- **When:** the hourly job, 8–10 pm workspace time (an hour after the day's note is written at 7 pm, so the team can check it); once per day (`WorkSummaryNote.textedAt`, marked before sending); quiet days skipped; no late catch-up.
+- **Per day:** the team can untick "Text today's update to the client tonight" in the day panel (`textSkip`); after sending it shows "Texted to N people at …".
+- **Body:** "<managing company> update, <date>: <note, or the plain headline> <link to the day> Reply STOP to opt out.", at most three segments. Logged in `SmsLog` (purpose `WORK_DAY_TEXT`).
+
 ## Cross-cutting
 - Hand-written migrations; local rehearsal on main-schema copy; `TEST_RLS=1` suite.
 - `WorkspaceAssignment` is the only cross-org table: system client only; unit tests that the app role can't read it and that a linked account can't reach another org's rows.

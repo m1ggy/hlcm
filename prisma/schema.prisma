@@ -90,6 +90,9 @@ model Organization {
   workAiSummaries       Boolean @default(true)
   // Monday email of last week to the client's people.
   workWeeklyEmail       Boolean @default(true)
+  // Evening text of the day's note to the client's people who signed up
+  // for it (smsDailyUpdates). Off until the team turns it on.
+  workDailyText         Boolean @default(false)
 
   orgCounters              OrgCounter[]
   picklistOptions          PicklistOption[]
@@ -464,6 +467,9 @@ model User {
   // Texted (from the shared Carenela number) when a form they're picked for
   // is filled in (docs/forms-plan.md). Set when they reply STOP.
   smsFormAlerts             Boolean      @default(false)
+  // A client-side user's own opt-in to the evening text of their workspace's
+  // day note (Organization.workDailyText).
+  smsDailyUpdates           Boolean      @default(false)
   smsOptedOutAt             DateTime?
   smsLogs                   SmsLog[]
   // Developer-only switch (Admin > Users > Logins): when on, sign-in from a
@@ -3096,6 +3102,11 @@ model WorkSummaryNote {
   author         User?             @relation(fields: [authorId], references: [id], onDelete: SetNull)
   authorId       String?
   emailedAt      DateTime?
+  // Day notes only: the team switched off tonight's text, and when it went
+  // out and to how many people.
+  textSkip       Boolean           @default(false)
+  textedAt       DateTime?
+  textedCount    Int?
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
 
