@@ -8,6 +8,7 @@ import { signIn } from "@/auth";
 import { db } from "@/lib/db";
 import { getHostOrg } from "@/lib/tenant";
 import { PLATFORM_SLUG } from "@/lib/tenant-host";
+import { homePathFor } from "@/lib/workspace-kind";
 import { createMfaChallenge } from "@/lib/mfa-challenge";
 import { getClientIp } from "@/lib/rate-limit";
 import { isLoginThrottled, recordLoginFailure, THROTTLED_MESSAGE } from "@/lib/login-throttle";
@@ -65,7 +66,7 @@ export async function loginAction(
   }
 
   try {
-    await signIn("credentials", { email, password, redirectTo: org.slug === PLATFORM_SLUG ? "/platform" : "/" });
+    await signIn("credentials", { email, password, redirectTo: org.slug === PLATFORM_SLUG ? "/platform" : homePathFor(org.kind) });
   } catch (error) {
     if (isMobileBlocked(error)) return { error: MOBILE_BLOCKED_MESSAGE };
     if (error instanceof AuthError) return { error: "Invalid email or password." };
@@ -86,7 +87,7 @@ export async function verifyMfaAction(
   try {
     // Platform admins land on the console, everyone else on their dashboard.
     const org = await getHostOrg();
-    await signIn("credentials", { challenge, otp, redirectTo: org?.slug === PLATFORM_SLUG ? "/platform" : "/" });
+    await signIn("credentials", { challenge, otp, redirectTo: org?.slug === PLATFORM_SLUG ? "/platform" : homePathFor(org?.kind) });
   } catch (error) {
     if (isMobileBlocked(error)) return { error: MOBILE_BLOCKED_MESSAGE };
     if (error instanceof AuthError) return { error: "Invalid MFA code." };

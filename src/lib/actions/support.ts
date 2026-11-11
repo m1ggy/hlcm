@@ -3,6 +3,8 @@
 import { redirect } from "next/navigation";
 import { AuthError } from "next-auth";
 import { signIn } from "@/auth";
+import { getHostOrg } from "@/lib/tenant";
+import { homePathFor } from "@/lib/workspace-kind";
 
 // The workspace side of a platform admin entering it (src/lib/support-access.ts):
 // the one-time link from the console signs them in.
@@ -11,7 +13,7 @@ import { signIn } from "@/auth";
 export async function enterAsSupport(formData: FormData) {
   const token = String(formData.get("token") ?? "");
   try {
-    await signIn("credentials", { supportToken: token, redirectTo: "/" });
+    await signIn("credentials", { supportToken: token, redirectTo: homePathFor((await getHostOrg())?.kind) });
   } catch (error) {
     if (error instanceof AuthError) redirect("/support/enter?error=1");
     throw error;

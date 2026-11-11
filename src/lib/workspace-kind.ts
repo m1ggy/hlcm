@@ -7,6 +7,16 @@
 /** A tasks-only workspace's home page: the client's weekly summary. */
 export const TASKS_HOME = "/work/summary";
 
+/**
+ * Where to land after signing in. Sign-in redirects come from server
+ * actions, which render the target page directly instead of going through
+ * the proxy, so "/" in a tasks-only workspace would show the licensing
+ * dashboard's 404 rather than being sent on to TASKS_HOME.
+ */
+export function homePathFor(kind: "FULL" | "TASKS" | null | undefined): string {
+  return kind === "TASKS" ? TASKS_HOME : "/";
+}
+
 const TASKS_PATHS = [
   "/work",
   "/account",

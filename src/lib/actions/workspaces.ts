@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { AuthError } from "next-auth";
 import { signIn } from "@/auth";
+import { getHostOrg } from "@/lib/tenant";
+import { homePathFor } from "@/lib/workspace-kind";
 import { requireSession } from "@/lib/rbac";
 import { toActionResult } from "@/lib/action-result";
 import { safeSwitchPath, startWorkspaceSwitch } from "@/lib/workspace-switch";
@@ -29,7 +31,7 @@ export async function switchWorkspace(slug: string, next?: string) {
 /** /switch/enter: trades the one-time link for a session in this workspace. */
 export async function enterSwitchedWorkspace(formData: FormData) {
   const token = String(formData.get("token") ?? "");
-  const next = safeSwitchPath(String(formData.get("next") ?? "")) ?? "/";
+  const next = safeSwitchPath(String(formData.get("next") ?? "")) ?? homePathFor((await getHostOrg())?.kind);
   try {
     await signIn("credentials", { switchToken: token, redirectTo: next });
   } catch (error) {
