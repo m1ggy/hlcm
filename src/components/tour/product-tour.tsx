@@ -97,6 +97,26 @@ function buildStaffSteps(role: string | undefined): TourStep[] {
     },
     {
       data: { path: "/applications" },
+      element: '[data-tour="nav-work"]',
+      popover: {
+        title: "Projects & tasks",
+        description: "General projects and to-dos, kept apart from licensing work. Use a board or a list; each task has comments, files and a timer. The menu is grouped: Licensing, Tasks, Time & billing, and Workspace.",
+        side: "right",
+      },
+      ...optional,
+    } satisfies TourStep,
+    {
+      data: { path: "/applications" },
+      element: '[data-tour="nav-client-work"]',
+      popover: {
+        title: "Client work",
+        description: "Your open tasks in every client workspace you're assigned to, in one list. Click one to open it in that workspace.",
+        side: "right",
+      },
+      ...optional,
+    } satisfies TourStep,
+    {
+      data: { path: "/applications" },
       element: '[data-tour="nav-eod"]',
       popover: {
         title: "End of day",
@@ -480,7 +500,7 @@ function buildTasksClientSteps(): TourStep[] {
       element: '[data-tour="nav-settings"]',
       popover: {
         title: "Settings",
-        description: "Password, two-factor sign-in, email notifications and your timezone.",
+        description: "Password, two-factor sign-in, email notifications and your timezone, plus a daily text update if your team has turned those on.",
         side: "right",
       },
     },
@@ -514,7 +534,7 @@ function buildTasksTeamSteps(): TourStep[] {
       element: '[data-tour="summary-settings"]',
       popover: {
         title: "Summary settings",
-        description: "Managers choose whether the client sees hours, whether Claude drafts the daily and weekly notes, and whether the client gets the Monday email. You can edit or rewrite any note on the page.",
+        description: "Managers choose whether the client sees hours, whether Claude drafts the daily and weekly notes, whether the client gets the Monday email, and whether the client's people who sign up get the day's note by text around 8 pm. You can edit or rewrite any note on the page, and skip any day's text from that day's panel.",
         side: "left",
       },
       ...optional,
