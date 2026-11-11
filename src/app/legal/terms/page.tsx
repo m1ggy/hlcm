@@ -174,7 +174,9 @@ export default function TermsPage() {
           <li>Neither party is responsible for delays caused by events beyond its reasonable control.</li>
           <li>If any part of these Terms can&apos;t be enforced, the rest still applies. Not enforcing a right isn&apos;t a waiver of it.</li>
           <li>These Terms, with the documents they include, are the whole agreement between us about the Service. If they conflict, the Business Associate Agreement controls for protected health information.</li>
-          <li>Notices to us: {e.email}, {e.address}. Notices to you go to the workspace owner&apos;s email address.</li>
+          <li>
+            Notices to us: {e.email}
+            {e.address ? `, ${e.address}` : ""}. Notices to you go to the workspace owner&apos;s email address.</li>
         </UL>
       </Section>
     </>

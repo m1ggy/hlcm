@@ -13,7 +13,8 @@ export function legalEntity() {
     product: PRODUCT_NAME,
     name: name || "[Company legal name]",
     state: process.env.LEGAL_ENTITY_STATE?.trim() || "[State]",
-    address: process.env.LEGAL_ENTITY_ADDRESS?.trim() || "[Mailing address]",
+    // Optional: left out of the pages when not set.
+    address: process.env.LEGAL_ENTITY_ADDRESS?.trim() || null,
     email: process.env.LEGAL_CONTACT_EMAIL?.trim() || "[legal contact email]",
     privacyEmail: process.env.PRIVACY_CONTACT_EMAIL?.trim() || process.env.LEGAL_CONTACT_EMAIL?.trim() || "[privacy contact email]",
     isDraft: !name,

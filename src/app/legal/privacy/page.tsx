@@ -109,7 +109,8 @@ export default function PrivacyPage() {
       <Section n="11" title="Changes and contact">
         <P>
           We will post changes here and update the date below; for a material change we will also notify workspace owners.
-          Contact: {e.privacyEmail}, {e.address}.
+          Contact: {e.privacyEmail}
+          {e.address ? `, ${e.address}` : ""}.
         </P>
       </Section>
     </>
