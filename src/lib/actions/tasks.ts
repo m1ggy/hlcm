@@ -8,6 +8,9 @@ import { requireRole, requireSession, assertApplicationAccess, ForbiddenError, A
 import { recordFieldChanges, recordAudit } from "@/lib/audit";
 import { notify } from "@/lib/notifications";
 import { TASK_CLOSED_STATUSES, TASK_PRIORITIES } from "@/lib/task-status";
+import { toActionResult } from "@/lib/action-result";
+import { UserFacingError } from "@/lib/user-facing-error";
+import { licensingTaskUpdateDefaults, reportLicensingTaskUpdate, type TaskUpdateInput } from "@/lib/task-updates";
 
 const TASK_STATUSES = ["NOT_STARTED", "IN_PROGRESS", "BLOCKED", "COMPLETED", "NA", "CLOSED"] as const;
 
@@ -647,4 +650,30 @@ export async function restoreTask(taskId: string) {
   if (task.applicationId) revalidatePath(`/applications/${task.applicationId}`);
   else revalidatePath("/tasks");
   return task;
+}
+
+// ---- Ticking a task done with what was done (docs/task-updates-plan.md) ----------
+
+/** The checkbox: marks the task Completed and puts what was done on your end-of-day report. */
+export async function completeTaskWithUpdate(taskId: string, input: TaskUpdateInput) {
+  return toActionResult(async () => {
+    const session = await requireSession();
+    const text = input.text.trim();
+    if (!text) throw new UserFacingError("Say what you did");
+    if (text.length > 4000) throw new UserFacingError("Keep the update under 4,000 characters");
+    const formData = new FormData();
+    formData.set("status", "COMPLETED");
+    const task = await updateTask(taskId, formData);
+    const hasClient = Boolean(task.applicationId || task.clientServiceId);
+    const r = await reportLicensingTaskUpdate(session.user.id, { id: task.id, status: "COMPLETED", hasClient }, { ...input, text });
+    revalidatePath("/eod");
+    return r;
+  });
+}
+
+export async function licensingTaskUpdateDefaultsAction(taskId: string) {
+  return toActionResult(async () => {
+    const session = await requireSession();
+    return licensingTaskUpdateDefaults(session.user.id, taskId);
+  });
 }

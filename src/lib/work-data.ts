@@ -173,7 +173,8 @@ export async function listMyWorkTasks(scope: WorkScope, userId: string) {
       status: true,
       priority: true,
       dueDate: true,
-      project: { select: { id: true, name: true, color: true } },
+      clientVisible: true,
+      project: { select: { id: true, name: true, color: true, clientVisible: true } },
       parent: { select: { title: true } },
     },
   });

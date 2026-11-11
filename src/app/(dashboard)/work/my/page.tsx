@@ -6,6 +6,7 @@ import { listMyWorkTasks, workspaceToday } from "@/lib/work-data";
 import { isOverdue, projectColorClass, type WorkTaskPriority, type WorkTaskStatus } from "@/lib/work";
 import { cn } from "@/lib/utils";
 import { PriorityLabel, WorkStatusPill, formatDay } from "@/components/work/work-status";
+import { TaskCheck } from "@/components/work/task-update-dialog";
 
 // My tasks in this workspace: open, assigned to me, soonest due first.
 export default async function MyWorkTasksPage() {
@@ -28,8 +29,9 @@ export default async function MyWorkTasksPage() {
           {tasks.map((t) => {
             const overdue = isOverdue({ status: t.status as WorkTaskStatus, dueDate: t.dueDate }, today);
             return (
-              <li key={t.id}>
-                <Link href={`/work/projects/${t.project.id}?task=${t.id}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 hover:bg-muted/60">
+              <li key={t.id} className="flex items-center hover:bg-muted/60">
+                <TaskCheck className="ml-4" task={{ id: t.id, title: t.title, status: t.status, clientCanSee: t.clientVisible && t.project.clientVisible }} />
+                <Link href={`/work/projects/${t.project.id}?task=${t.id}`} className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3">
                   <span className={cn("size-2 shrink-0 rounded-full", projectColorClass(t.project.color))} aria-hidden />
                   <span className="min-w-0 flex-1">
                     <span className="block text-sm font-medium">{t.title}</span>

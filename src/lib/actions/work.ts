@@ -13,6 +13,7 @@ import { workScope, type WorkTaskStatus } from "@/lib/work";
 import { getTaskDetail } from "@/lib/work-data";
 import * as work from "@/lib/work-service";
 import { startTaskTimer } from "@/lib/actions/task-time-entries";
+import { linkedWorkTaskUpdateDefaults, postLinkedWorkTaskUpdate, postWorkTaskUpdate, workTaskUpdateDefaults, type TaskUpdateInput } from "@/lib/task-updates";
 
 // Server actions for projects and tasks (docs/workspace-tasks-plan.md,
 // Phase 2). The rules live in src/lib/work-service.ts; these build the actor
@@ -226,5 +227,43 @@ export async function startWorkTimerAction(taskId: string) {
     const entry = await startTaskTimer({ workTaskId: taskId });
     refresh();
     return { clockedIn: entry.clockedIn };
+  });
+}
+
+// ---- Updates written on a task (docs/task-updates-plan.md) -----------------
+
+/** "What did you do?" on a task here: posts it on the task (finishing it when ticked) and adds it to your end-of-day report. */
+export async function postTaskUpdateAction(taskId: string, input: TaskUpdateInput) {
+  return toActionResult(async () => {
+    const [a, org] = await Promise.all([actor(), currentOrganization()]);
+    const r = await postWorkTaskUpdate(a, { id: org.id, name: org.name }, taskId, input);
+    refresh();
+    revalidatePath("/eod");
+    return { addedToReport: r.addedToReport, afterSubmit: r.afterSubmit };
+  });
+}
+
+export async function taskUpdateDefaultsAction(taskId: string) {
+  return toActionResult(async () => {
+    const session = await requireSession();
+    return workTaskUpdateDefaults(session.user.id, taskId);
+  });
+}
+
+/** The same from the Client work page, for a task in one of your client workspaces. */
+export async function postClientWorkUpdateAction(orgId: string, taskId: string, input: TaskUpdateInput) {
+  return toActionResult(async () => {
+    const session = await requireSession();
+    const r = await postLinkedWorkTaskUpdate(session.user.id, orgId, taskId, input);
+    revalidatePath("/client-work");
+    revalidatePath("/eod");
+    return { addedToReport: r.addedToReport, afterSubmit: r.afterSubmit };
+  });
+}
+
+export async function clientWorkUpdateDefaultsAction(orgId: string, taskId: string) {
+  return toActionResult(async () => {
+    const session = await requireSession();
+    return linkedWorkTaskUpdateDefaults(session.user.id, orgId, taskId);
   });
 }

@@ -276,6 +276,41 @@ export async function listLinkedWorkspaces(homeUserId: string): Promise<LinkedWo
   return rows.map((r) => ({ orgId: r.org.id, slug: r.org.slug, name: r.org.name, linkedUserId: r.userId, role: r.role }));
 }
 
+/**
+ * Where a person's end-of-day report lives (docs/task-updates-plan.md): their
+ * home account and workspace, whether they're signed in there or through a
+ * linked account in a client workspace. Null for people who don't write one
+ * (support accounts, or someone whose home is itself a tasks-only workspace).
+ */
+export type EodHome = { userId: string; role: string; timeZone: string | null; org: { id: string; slug: string; name: string; timezone: string | null } };
+
+export async function eodHomeOf(userId: string): Promise<EodHome | null> {
+  const me = await prisma.user.findUnique({ where: { id: userId }, select: { assignedFromUserId: true } });
+  if (!me) return null;
+  const home = await prisma.user.findUnique({
+    where: { id: me.assignedFromUserId ?? userId },
+    select: { id: true, role: true, active: true, isSupport: true, timezone: true, organization: { select: { id: true, slug: true, name: true, kind: true, timezone: true, status: true } } },
+  });
+  if (!home?.active || home.isSupport || home.organization.kind !== "FULL" || home.organization.status !== "ACTIVE") return null;
+  const o = home.organization;
+  return { userId: home.id, role: home.role, timeZone: home.timezone, org: { id: o.id, slug: o.slug, name: o.name, timezone: o.timezone } };
+}
+
+/**
+ * The person's own workspace as one more place their tasks live, alongside
+ * listLinkedWorkspaces — for end-of-day lines on the home workspace's own
+ * Projects & tasks. Null unless it's a full workspace.
+ */
+export async function ownWorkspace(homeUserId: string): Promise<(LinkedWorkspace & { own: true }) | null> {
+  const home = await prisma.user.findUnique({
+    where: { id: homeUserId },
+    select: { role: true, active: true, organization: { select: { id: true, slug: true, name: true, kind: true, status: true } } },
+  });
+  if (!home?.active || home.organization.kind !== "FULL" || home.organization.status !== "ACTIVE") return null;
+  const o = home.organization;
+  return { orgId: o.id, slug: o.slug, name: o.name, linkedUserId: homeUserId, role: home.role, own: true };
+}
+
 export async function managingOrgName(orgId: string): Promise<string | null> {
   const org = await prisma.organization.findUnique({ where: { id: orgId }, select: { managedBy: { select: { name: true } } } });
   return org?.managedBy?.name ?? null;

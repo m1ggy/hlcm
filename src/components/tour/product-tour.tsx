@@ -120,7 +120,7 @@ function buildStaffSteps(role: string | undefined): TourStep[] {
       element: '[data-tour="nav-eod"]',
       popover: {
         title: "End of day",
-        description: "Your end-of-day report. Start your day and it lists your open tasks and anything you timed; write what you did on each, move tasks along, and submit before you clock out. Managers see everyone's on the Team page.",
+        description: "Your end-of-day report. Tick tasks off as you finish them and say what you did: each one lands here on its own. Start your day to list your open tasks and anything you timed, fill in the rest, and submit before you clock out. Managers see everyone's on the Team page.",
         side: "right",
       },
       skipMissingElement: true,

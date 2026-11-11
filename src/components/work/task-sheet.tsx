@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { BookmarkPlus, Check, Download, Lock, Paperclip, Play, Repeat, Trash2, Users } from "lucide-react";
+import { BookmarkPlus, Check, Download, Lock, MessageSquarePlus, Paperclip, Play, Repeat, Trash2, Users } from "lucide-react";
 import {
   addCommentAction,
   approveRequestAction,
@@ -47,6 +47,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { MultiUserSelect } from "@/components/ui/multi-user-select";
 import { AvatarInitials } from "@/components/ui/avatar-initials";
 import { StatusDot, WorkStatusPill, formatDay } from "./work-status";
+import { TaskUpdateDialog } from "./task-update-dialog";
 import { useUpload } from "@/components/files/use-upload";
 import { MAX_FILE_BYTES, fileTooLargeMessage } from "@/lib/file-limits";
 import { UploadProgress } from "@/components/files/upload-progress";
@@ -199,6 +200,8 @@ function TaskBody({
   const [declining, setDeclining] = useState(false);
   const [reason, setReason] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // "What did you do?" (docs/task-updates-plan.md): for this task, or a subtask being ticked.
+  const [updating, setUpdating] = useState<{ id: string; title: string; mode: "complete" | "update"; subtask: boolean } | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const { status: uploadStatus, uploadMany, cancel: cancelUpload, uploading } = useUpload();
 
@@ -226,6 +229,19 @@ function TaskBody({
 
   return (
     <div className="flex flex-col gap-5 p-6">
+      {updating && (
+        <TaskUpdateDialog
+          open
+          onOpenChange={(o) => !o && setUpdating(null)}
+          target={{ taskId: updating.id }}
+          taskTitle={updating.title}
+          mode={updating.mode}
+          clientCanSee={task.clientVisible && task.project.clientVisible}
+          currentStatus={updating.subtask ? "TODO" : status}
+          allowSkip={updating.subtask}
+          onDone={() => run(async () => ({ ok: true as const, data: undefined }))}
+        />
+      )}
       <SheetHeader className="gap-1 p-0 pr-8">
         <SheetDescription className="flex flex-wrap items-center gap-x-1 text-xs">
           <span>{task.project.name}</span>
@@ -295,7 +311,16 @@ function TaskBody({
         <div className="space-y-1">
           <Label>Status</Label>
           {edit ? (
-            <Select items={WORK_TASK_STATUS_LABELS} value={status} onValueChange={(v) => v && v !== status && run(() => updateTaskAction(task.id, { status: v as WorkTaskStatus }))}>
+            <Select
+              items={WORK_TASK_STATUS_LABELS}
+              value={status}
+              onValueChange={(v) => {
+                if (!v || v === status) return;
+                // Finishing a task asks what was done, like its checkbox.
+                if (v === "DONE" && !task.parent) return setUpdating({ id: task.id, title: task.title, mode: "complete", subtask: false });
+                run(() => updateTaskAction(task.id, { status: v as WorkTaskStatus }));
+              }}
+            >
               <SelectTrigger className="w-full" disabled={isPending || pending}>
                 <SelectValue />
               </SelectTrigger>
@@ -406,8 +431,11 @@ function TaskBody({
             <Checkbox checked={task.clientVisible} disabled={isPending || !task.project.clientVisible} onCheckedChange={(v) => run(() => updateTaskAction(task.id, { clientVisible: Boolean(v) }))} />
             Client can see this task
           </label>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             {task.trackedHours !== null && <span className="font-mono text-xs tabular-nums text-muted-foreground">{task.trackedHours}h tracked</span>}
+            <Button size="sm" variant="outline" disabled={isPending || pending} onClick={() => setUpdating({ id: task.id, title: task.title, mode: "update", subtask: false })}>
+              <MessageSquarePlus className="size-3.5" /> Post update
+            </Button>
             <Button
               size="sm"
               variant="outline"
@@ -457,7 +485,9 @@ function TaskBody({
                     checked={s.status === "DONE"}
                     disabled={isPending}
                     aria-label={`Mark "${s.title}" done`}
-                    onCheckedChange={(v) => run(() => updateTaskAction(s.id, { status: v ? "DONE" : "TODO" }))}
+                    onCheckedChange={(v) =>
+                      v ? setUpdating({ id: s.id, title: s.title, mode: "complete", subtask: true }) : run(() => updateTaskAction(s.id, { status: "TODO" }))
+                    }
                   />
                 ) : (
                   <StatusDot status={s.status as WorkTaskStatus} />

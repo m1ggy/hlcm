@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { TaskCheck } from "./task-update-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AvatarInitials } from "@/components/ui/avatar-initials";
@@ -44,6 +45,7 @@ const UNASSIGNED = "__none__";
 
 export function ProjectView({
   projectId,
+  projectClientVisible,
   tasks,
   activity,
   scope,
@@ -53,6 +55,8 @@ export function ProjectView({
   initialTaskId,
 }: {
   projectId: string;
+  /** The client can see this project (and so a visible task's updates). */
+  projectClientVisible: boolean;
   tasks: ProjectTask[];
   activity: Activity[];
   scope: WorkScope;
@@ -121,10 +125,10 @@ export function ProjectView({
         </div>
 
         <TabsContent value="list">
-          <TaskList projectId={projectId} tasks={filtered} scope={scope} today={today} onOpen={openTask} showEmptyGroups={!hideDone && assignee === ANYONE} />
+          <TaskList projectId={projectId} projectClientVisible={projectClientVisible} tasks={filtered} scope={scope} today={today} onOpen={openTask} showEmptyGroups={!hideDone && assignee === ANYONE} />
         </TabsContent>
         <TabsContent value="board">
-          <TaskBoard key={filtered.map((t) => `${t.id}:${t.status}:${t.sortOrder}`).join(",")} tasks={filtered} scope={scope} today={today} onOpen={openTask} />
+          <TaskBoard key={filtered.map((t) => `${t.id}:${t.status}:${t.sortOrder}`).join(",")} tasks={filtered} scope={scope} today={today} onOpen={openTask} projectClientVisible={projectClientVisible} />
         </TabsContent>
         <TabsContent value="activity">
           <ActivityList activity={activity} onOpen={openTask} />
@@ -170,6 +174,7 @@ function TaskMeta({ task, today }: { task: ProjectTask; today: string }) {
 
 function TaskList({
   projectId,
+  projectClientVisible,
   tasks,
   scope,
   today,
@@ -177,6 +182,7 @@ function TaskList({
   showEmptyGroups,
 }: {
   projectId: string;
+  projectClientVisible: boolean;
   tasks: ProjectTask[];
   scope: WorkScope;
   today: string;
@@ -196,8 +202,14 @@ function TaskList({
           </h2>
           <ul className="divide-y rounded-lg border bg-card">
             {g.tasks.map((t) => (
-              <li key={t.id}>
-                <button type="button" onClick={() => onOpen(t.id)} className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5 text-left hover:bg-muted/60 focus-visible:bg-muted/60">
+              <li key={t.id} className="flex items-center hover:bg-muted/60">
+                {scope.canEditTasks && (
+                  <TaskCheck
+                    className="ml-3"
+                    task={{ id: t.id, title: t.title, status: t.status, clientCanSee: projectClientVisible && t.clientVisible, needsApproval: t.needsApproval }}
+                  />
+                )}
+                <button type="button" onClick={() => onOpen(t.id)} className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5 text-left focus-visible:bg-muted/60">
                   <span className={cn("min-w-0 flex-1 text-sm", (t.status === "DONE" || t.status === "CANCELLED") && "text-muted-foreground")}>
                     {t.title}
                     {t.isClientRequest && (
@@ -251,15 +263,21 @@ function QuickAdd({ projectId }: { projectId: string }) {
 
 // ---- Board ------------------------------------------------------------------
 
-function BoardCard({ task, today, onOpen, draggable }: { task: ProjectTask; today: string; onOpen: (id: string) => void; draggable: boolean }) {
+function BoardCard({ task, today, onOpen, draggable, projectClientVisible }: { task: ProjectTask; today: string; onOpen: (id: string) => void; draggable: boolean; projectClientVisible: boolean }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id, disabled: !draggable });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : undefined };
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="relative">
+      {draggable && (
+        <TaskCheck
+          className="absolute top-3.5 left-3"
+          task={{ id: task.id, title: task.title, status: task.status, clientCanSee: projectClientVisible && task.clientVisible, needsApproval: task.needsApproval }}
+        />
+      )}
       <button
         type="button"
         onClick={() => onOpen(task.id)}
-        className={cn("flex w-full flex-col gap-2 rounded-lg border bg-card p-3 text-left shadow-xs hover:border-ring/50", draggable && "cursor-grab active:cursor-grabbing")}
+        className={cn("flex w-full flex-col gap-2 rounded-lg border bg-card p-3 text-left shadow-xs hover:border-ring/50", draggable && "cursor-grab pl-9 active:cursor-grabbing")}
       >
         <span className="text-sm font-medium">{task.title}</span>
         {task.isClientRequest && (
@@ -273,7 +291,21 @@ function BoardCard({ task, today, onOpen, draggable }: { task: ProjectTask; toda
   );
 }
 
-function BoardColumn({ status, tasks, today, onOpen, draggable }: { status: WorkTaskStatus; tasks: ProjectTask[]; today: string; onOpen: (id: string) => void; draggable: boolean }) {
+function BoardColumn({
+  status,
+  tasks,
+  today,
+  onOpen,
+  draggable,
+  projectClientVisible,
+}: {
+  status: WorkTaskStatus;
+  tasks: ProjectTask[];
+  today: string;
+  onOpen: (id: string) => void;
+  draggable: boolean;
+  projectClientVisible: boolean;
+}) {
   const { setNodeRef } = useDroppable({ id: `column:${status}` });
   return (
     <div className="flex w-64 shrink-0 flex-col gap-2">
@@ -284,7 +316,7 @@ function BoardColumn({ status, tasks, today, onOpen, draggable }: { status: Work
         <div ref={setNodeRef} className="flex min-h-24 flex-col gap-2 rounded-lg bg-muted/50 p-2">
           {tasks.length === 0 && <p className="px-1 py-3 text-center text-xs text-muted-foreground">{draggable ? "Drop tasks here" : "Nothing here"}</p>}
           {tasks.map((t) => (
-            <BoardCard key={t.id} task={t} today={today} onOpen={onOpen} draggable={draggable} />
+            <BoardCard key={t.id} task={t} today={today} onOpen={onOpen} draggable={draggable} projectClientVisible={projectClientVisible} />
           ))}
         </div>
       </SortableContext>
@@ -292,7 +324,19 @@ function BoardColumn({ status, tasks, today, onOpen, draggable }: { status: Work
   );
 }
 
-function TaskBoard({ tasks, scope, today, onOpen }: { tasks: ProjectTask[]; scope: WorkScope; today: string; onOpen: (id: string) => void }) {
+function TaskBoard({
+  tasks,
+  scope,
+  today,
+  onOpen,
+  projectClientVisible,
+}: {
+  tasks: ProjectTask[];
+  scope: WorkScope;
+  today: string;
+  onOpen: (id: string) => void;
+  projectClientVisible: boolean;
+}) {
   const router = useRouter();
   const [items, setItems] = useState(tasks);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
@@ -332,7 +376,7 @@ function TaskBoard({ tasks, scope, today, onOpen }: { tasks: ProjectTask[]; scop
     <DndContext id="work-board" sensors={sensors} collisionDetection={closestCorners} onDragEnd={handleDragEnd}>
       <div className="flex gap-4 overflow-x-auto pb-4">
         {columns.map((c) => (
-          <BoardColumn key={c.status} status={c.status} tasks={c.tasks} today={today} onOpen={onOpen} draggable={draggable} />
+          <BoardColumn key={c.status} status={c.status} tasks={c.tasks} today={today} onOpen={onOpen} draggable={draggable} projectClientVisible={projectClientVisible} />
         ))}
       </div>
     </DndContext>

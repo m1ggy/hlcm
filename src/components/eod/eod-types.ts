@@ -19,6 +19,9 @@ export type EodLine = {
   work: { orgId: string; taskId: string; workspaceName: string } | null;
   workStatusBefore: WorkTaskStatus | null;
   workStatusAfter: WorkTaskStatus | null;
+  /** Written as an update on the task (already posted there), and whether it came in after submitting. */
+  fromTaskUpdate: boolean;
+  addedAfterSubmit: boolean;
 };
 
 /** Correspondence a line points at ("sent the follow-up email"). */

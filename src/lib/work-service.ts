@@ -572,6 +572,35 @@ export async function declineRequest(actor: WorkActor, taskId: string, reason: s
 
 // ---- End-of-day lines (Phase 5) ------------------------------------------------
 
+/**
+ * An update written on the task itself (docs/task-updates-plan.md): what was
+ * done, optionally finishing the task or moving its status. Posted as a
+ * REPORTED activity (the client sees it when shared and the task is visible
+ * to them); the caller adds it to the person's end-of-day report.
+ */
+export async function postUpdate(
+  actor: WorkActor,
+  taskId: string,
+  input: { text: string; shareWithClient?: boolean; status?: WorkTaskStatus | null; complete?: boolean }
+) {
+  requireTeam(actor);
+  const text = input.text.trim();
+  if (!text) throw new UserFacingError("Say what you did");
+  if (text.length > 4000) throw new UserFacingError("Keep the update under 4,000 characters");
+  const before = await findVisibleTask(actor, taskId);
+  const target = input.complete ? "DONE" : (input.status ?? before.status);
+  if (target !== before.status) await updateTask(actor, taskId, { status: target });
+  // Only something the client can see at all is shared: the task and its project both visible to them.
+  const shared = before.clientVisible && before.project.clientVisible && input.shareWithClient !== false;
+  await logActivity(before, actor.userId, "REPORTED", { to: text, clientVisible: shared });
+  return {
+    task: { id: before.id, title: before.title, clientVisible: before.clientVisible, parentId: before.parentId },
+    statusBefore: before.status as WorkTaskStatus,
+    statusAfter: target as WorkTaskStatus,
+    shared,
+  };
+}
+
 /** What someone reported doing on the task in their end-of-day report; shown on the client's day card when shared. */
 export async function recordReport(actor: WorkActor, taskId: string, text: string, shareWithClient: boolean) {
   requireTeam(actor);

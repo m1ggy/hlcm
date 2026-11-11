@@ -75,6 +75,7 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
 
       <ProjectView
         projectId={project.id}
+        projectClientVisible={project.clientVisible}
         tasks={tasks}
         activity={activity}
         scope={scope}

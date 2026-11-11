@@ -3182,6 +3182,11 @@ model EodReportItem {
   // Shared with the client (decided D5: on for a line on a client's task).
   clientVisible    Boolean                 @default(false)
   sortOrder        Int                     @default(0)
+  // Written as updates on the task itself (docs/task-updates-plan.md): already
+  // posted there, so submitting the report doesn't post the text again.
+  fromTaskUpdate   Boolean                 @default(false)
+  // Came in from a task update after the report was submitted.
+  addedAfterSubmit Boolean                 @default(false)
   createdAt        DateTime                @default(now())
   updatedAt        DateTime                @updatedAt
   correspondence   EodItemCorrespondence[]

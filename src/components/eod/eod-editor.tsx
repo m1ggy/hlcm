@@ -161,6 +161,8 @@ export function EodEditor({
           work: { orgId: work.orgId, taskId: work.taskId, workspaceName: work.workspaceName },
           workStatusBefore: null,
           workStatusAfter: null,
+          fromTaskUpdate: false,
+          addedAfterSubmit: false,
         },
       ]);
       touch();
@@ -170,7 +172,7 @@ export function EodEditor({
     if (!task) return;
     setLines((current) => [
       ...current,
-      { key: `new-${nextKey++}`, taskId: task.id, title: task.label, clientId: null, statusBefore: null, statusAfter: null, workDone: "", internalNote: null, minutes: null, clientVisible: false, correspondence: [], work: null, workStatusBefore: null, workStatusAfter: null },
+      { key: `new-${nextKey++}`, taskId: task.id, title: task.label, clientId: null, statusBefore: null, statusAfter: null, workDone: "", internalNote: null, minutes: null, clientVisible: false, correspondence: [], work: null, workStatusBefore: null, workStatusAfter: null, fromTaskUpdate: false, addedAfterSubmit: false },
     ]);
     touch();
   }
@@ -179,7 +181,7 @@ export function EodEditor({
     if (!title) return;
     setLines((current) => [
       ...current,
-      { key: `new-${nextKey++}`, taskId: null, title, clientId: null, statusBefore: null, statusAfter: null, workDone: "", internalNote: null, minutes: null, clientVisible: false, correspondence: [], work: null, workStatusBefore: null, workStatusAfter: null },
+      { key: `new-${nextKey++}`, taskId: null, title, clientId: null, statusBefore: null, statusAfter: null, workDone: "", internalNote: null, minutes: null, clientVisible: false, correspondence: [], work: null, workStatusBefore: null, workStatusAfter: null, fromTaskUpdate: false, addedAfterSubmit: false },
     ]);
     setExtraTitle("");
     setAdding(null);
@@ -314,6 +316,9 @@ function LineCard({
             <p className="text-xs text-muted-foreground">In {line.work.workspaceName}</p>
           ) : (
             !line.taskId && <p className="text-xs text-muted-foreground">Not on a task</p>
+          )}
+          {line.fromTaskUpdate && (
+            <p className="text-xs text-muted-foreground">From your updates on the task{line.addedAfterSubmit ? " · added after submitting" : ""}</p>
           )}
         </div>
         <div className="flex items-center gap-2">

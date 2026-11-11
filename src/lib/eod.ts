@@ -384,9 +384,11 @@ export async function submitReport(actor: EodActor, reportId: string, now = new 
     await applyEodLine(actor.userId, {
       orgId: item.workOrgId!,
       taskId: item.workTaskId!,
-      statusAfter: (item.workStatusAfter as WorkTaskStatus | null) ?? null,
+      // Only a status the report itself changed: the task may have moved on since.
+      statusAfter: item.workStatusAfter && item.workStatusAfter !== item.workStatusBefore ? (item.workStatusAfter as WorkTaskStatus) : null,
       workDone: item.workDone,
       clientVisible: item.clientVisible,
+      fromTaskUpdate: item.fromTaskUpdate,
     });
   }
 
@@ -422,6 +424,61 @@ export async function submitReport(actor: EodActor, reportId: string, now = new 
   });
   await recordAudit({ entityType: "EodReport", entityId: reportId, action: "submit", actorId: actor.userId, newValue: `${kept.length} lines` });
   return { report: await loadReport(reportId), notifications };
+}
+
+// ---- Updates written on the task (docs/task-updates-plan.md) -------------------
+
+export type TaskUpdateLine =
+  | { kind: "work"; orgId: string; workspaceName: string; taskId: string; title: string; status: WorkTaskStatus; text: string; minutes: number | null; clientVisible: boolean }
+  | { kind: "task"; taskId: string; status: TaskStatusValue; text: string; minutes: number | null; clientVisible: boolean };
+
+/**
+ * Puts an update someone just wrote on a task into their report for today
+ * (call in their home workspace): starting the report if there isn't one,
+ * adding to the task's line if it already has one from updates (or an
+ * untouched one from Start day), else a new line. The update is already on
+ * the task, so the line is marked and submitting won't post it again; its
+ * status is recorded as unchanged for the same reason. Lands in a submitted
+ * report too, marked as added after submitting.
+ */
+export async function addTaskUpdateLine(actor: EodActor, line: TaskUpdateLine, now = new Date()) {
+  if (!canWriteEod(actor.role)) return null;
+  const day = eodToday(actor.timeZone, now);
+  const report = (await getReportFor(actor.userId, day)) ?? (await startDay(actor, now));
+  const afterSubmit = report.status === "SUBMITTED";
+  const text = line.text.trim();
+  const minutes = checkMinutes(line.minutes);
+  const sameTask = (i: (typeof report.items)[number]) =>
+    line.kind === "work" ? i.workOrgId === line.orgId && i.workTaskId === line.taskId : i.taskId === line.taskId;
+  // Join a line only if nothing hand-written would be swallowed by the merge.
+  const existing = report.items.find((i) => sameTask(i) && (i.fromTaskUpdate || !i.workDone.trim()));
+  const status =
+    line.kind === "work" ? { workStatusBefore: line.status, workStatusAfter: line.status } : { statusBefore: line.status, statusAfter: line.status };
+
+  if (existing) {
+    await db.eodReportItem.update({
+      where: { id: existing.id },
+      data: {
+        workDone: existing.workDone.trim() ? `${existing.workDone.trim()}
+${text}` : text,
+        // Start day's timer minutes are replaced; minutes from earlier updates add up.
+        minutes: existing.fromTaskUpdate ? (existing.minutes ?? 0) + (minutes ?? 0) || null : (minutes ?? existing.minutes),
+        clientVisible: existing.clientVisible || line.clientVisible,
+        fromTaskUpdate: true,
+        addedAfterSubmit: existing.addedAfterSubmit || afterSubmit,
+        ...status,
+      },
+    });
+  } else {
+    const base = { reportId: report.id, workDone: text, minutes, clientVisible: line.clientVisible, fromTaskUpdate: true, addedAfterSubmit: afterSubmit, sortOrder: report.items.length };
+    if (line.kind === "work") {
+      await db.eodReportItem.create({ data: { ...base, workOrgId: line.orgId, workTaskId: line.taskId, workspaceName: line.workspaceName, title: line.title, ...status } });
+    } else {
+      const task = await assertCanReport(actor, line.taskId);
+      await db.eodReportItem.create({ data: { ...base, taskId: task.id, title: task.label, applicationId: task.applicationId, clientId: clientOf(task), ...status } });
+    }
+  }
+  return { reportId: report.id, afterSubmit };
 }
 
 /** Back to draft: the author on the report's own day, managers any time (audited). */

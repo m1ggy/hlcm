@@ -72,6 +72,12 @@ export function EodReportView({ report, canReopen, showAuthor }: { report: EodRe
                 <div>
                   <p className="font-medium">{l.title}</p>
                   {l.work && <p className="text-xs text-muted-foreground">In {l.work.workspaceName}</p>}
+                  {l.fromTaskUpdate && (
+                    <p className="text-xs text-muted-foreground">
+                      From updates on the task
+                      {l.addedAfterSubmit && <span className="font-medium text-foreground"> · added after submitting</span>}
+                    </p>
+                  )}
                 </div>
                 <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                   {workMoved ? (

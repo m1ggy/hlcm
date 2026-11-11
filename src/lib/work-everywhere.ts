@@ -1,4 +1,4 @@
-import { listLinkedWorkspaces, type LinkedWorkspace } from "@/lib/workspace-assignments";
+import { listLinkedWorkspaces, ownWorkspace, type LinkedWorkspace } from "@/lib/workspace-assignments";
 import { runAsTenant, tenantDb } from "@/lib/db";
 import { UserFacingError } from "@/lib/user-facing-error";
 import { dayRangeToInstants } from "@/lib/time-entries";
@@ -18,13 +18,36 @@ export type { LinkedWorkspace };
 /** The client workspaces `homeUserId` is actively assigned to. */
 export const linkedWorkspaces = (homeUserId: string): Promise<LinkedWorkspace[]> => listLinkedWorkspaces(homeUserId);
 
+/** A workspace where the person has tasks: a client workspace, or their own (own = true). */
+export type TaskWorkspace = LinkedWorkspace & { own?: boolean };
+
+/**
+ * Every workspace whose tasks can go on the person's end-of-day report: their
+ * own workspace's Projects & tasks first (docs/task-updates-plan.md), then the
+ * client workspaces they're assigned to.
+ */
+export async function eodWorkspaces(homeUserId: string): Promise<TaskWorkspace[]> {
+  const [own, linked] = await Promise.all([ownWorkspace(homeUserId), linkedWorkspaces(homeUserId)]);
+  return own ? [own, ...linked] : linked;
+}
+
 async function linkedWorkspace(homeUserId: string, orgId: string) {
-  const ws = (await linkedWorkspaces(homeUserId)).find(
+  const ws = (await eodWorkspaces(homeUserId)).find(
     (w) => w.orgId === orgId,
   );
   if (!ws)
     throw new UserFacingError("You're no longer assigned to that workspace");
   return ws;
+}
+
+/** The person as a work actor in `ws`: their linked account there, or themselves at home. */
+export function actorIn(ws: TaskWorkspace): WorkActor {
+  const orgKind = ws.own ? "FULL" : "TASKS";
+  return {
+    userId: ws.linkedUserId,
+    scope: workScope({ userId: ws.linkedUserId, role: ws.role, isAssigned: !ws.own, orgKind }),
+    orgKind,
+  };
 }
 
 const OPEN = { in: OPEN_WORK_STATUSES };
@@ -35,7 +58,7 @@ const taskSelect = {
   priority: true,
   dueDate: true,
   clientVisible: true,
-  project: { select: { id: true, name: true, color: true } },
+  project: { select: { id: true, name: true, color: true, clientVisible: true } },
   parent: { select: { title: true } },
 } as const;
 
@@ -55,7 +78,7 @@ export async function listMyWorkEverywhere(homeUserId: string) {
       ],
       select: taskSelect,
     });
-    out.push({ workspace: { slug: ws.slug, name: ws.name }, tasks });
+    out.push({ workspace: { orgId: ws.orgId, slug: ws.slug, name: ws.name }, tasks });
   }
   return out;
 }
@@ -82,7 +105,7 @@ export async function workTasksForDay(
 ): Promise<WorkLineSeed[]> {
   const range = dayRangeToInstants(day, day, timeZone);
   const out: WorkLineSeed[] = [];
-  for (const ws of await linkedWorkspaces(homeUserId)) {
+  for (const ws of await eodWorkspaces(homeUserId)) {
     const t = tenantDb(ws.orgId);
     const [entries, assigned] = await Promise.all([
       t.taskTimeEntry.findMany({
@@ -143,19 +166,18 @@ export async function workTasksForDay(
 
 /** Tasks the person could add to their report: open ones assigned to them in each workspace. */
 export async function workTaskOptions(homeUserId: string) {
-  const groups = await listMyWorkEverywhere(homeUserId);
-  const spaces = await linkedWorkspaces(homeUserId);
-  return groups.flatMap((g) => {
-    const orgId = spaces.find((s) => s.slug === g.workspace.slug)!.orgId;
-    return g.tasks.map((t) => ({
-      orgId,
-      taskId: t.id,
-      title: t.title,
-      workspaceName: g.workspace.name,
-      projectName: t.project.name,
-      clientVisible: t.clientVisible,
-    }));
-  });
+  const out = [];
+  for (const ws of await eodWorkspaces(homeUserId)) {
+    const tasks = await tenantDb(ws.orgId).workTask.findMany({
+      where: { assignees: { some: { userId: ws.linkedUserId } }, status: OPEN, project: { status: { not: "ARCHIVED" } } },
+      orderBy: [{ dueDate: { sort: "asc", nulls: "last" } }, { createdAt: "asc" }],
+      select: taskSelect,
+    });
+    for (const t of tasks) {
+      out.push({ orgId: ws.orgId, taskId: t.id, title: t.title, workspaceName: ws.name, projectName: t.project.name, clientVisible: t.clientVisible });
+    }
+  }
+  return out;
 }
 
 /** One task for a new EOD line — the person must still be assigned to its workspace. */
@@ -194,19 +216,12 @@ export async function applyEodLine(
     statusAfter: WorkTaskStatus | null;
     workDone: string;
     clientVisible: boolean;
+    /** Already posted on the task as it happened (docs/task-updates-plan.md). */
+    fromTaskUpdate?: boolean;
   },
 ) {
   const ws = await linkedWorkspace(homeUserId, line.orgId);
-  const actor: WorkActor = {
-    userId: ws.linkedUserId,
-    scope: workScope({
-      userId: ws.linkedUserId,
-      role: ws.role,
-      isAssigned: true,
-      orgKind: "TASKS",
-    }),
-    orgKind: "TASKS",
-  };
+  const actor = actorIn(ws);
   await runAsTenant({ id: ws.orgId, slug: ws.slug }, async () => {
     const task = await tenantDb(ws.orgId).workTask.findUnique({
       where: { id: line.taskId },
@@ -215,6 +230,7 @@ export async function applyEodLine(
     if (!task) return; // deleted since — the report still records what was done
     if (line.statusAfter && line.statusAfter !== task.status)
       await updateTask(actor, line.taskId, { status: line.statusAfter });
+    if (line.fromTaskUpdate) return;
     const text = line.workDone.trim();
     // A reopened report submitted again doesn't post the same update twice.
     const already = await tenantDb(ws.orgId).workTaskActivity.findFirst({

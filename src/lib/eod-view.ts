@@ -31,6 +31,8 @@ export function toReportData(r: EodReportFull): EodReportData {
       work: i.workOrgId && i.workTaskId ? { orgId: i.workOrgId, taskId: i.workTaskId, workspaceName: i.workspaceName ?? "Client workspace" } : null,
       workStatusBefore: i.workStatusBefore,
       workStatusAfter: i.workStatusAfter,
+      fromTaskUpdate: i.fromTaskUpdate,
+      addedAfterSubmit: i.addedAfterSubmit,
     })),
     comments: r.comments.map((c) => ({ id: c.id, body: c.body, createdAt: c.createdAt, author: c.author })),
   };

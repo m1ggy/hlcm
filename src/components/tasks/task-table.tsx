@@ -28,6 +28,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
+import { TaskCheck } from "@/components/work/task-update-dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { MultiUserSelect } from "@/components/ui/multi-user-select";
@@ -332,6 +333,13 @@ function InlineRow({
       <TableCell className={indent ? "pl-10" : undefined}>
         <div className="flex items-center gap-1">
           {expandControl}
+          <TaskCheck
+            licensing
+            className="mx-1"
+            task={{ id: task.id, title: task.label, status, clientCanSee: true }}
+            allowSkip={Boolean(indent)}
+            onChanged={(s) => setStatus(s as typeof status)}
+          />
           <Input
             value={label}
             onChange={(e) => setLabel(e.target.value)}

@@ -14,6 +14,7 @@ import { TASK_STATUSES, isTaskOverdue, type TaskPriorityValue } from "@/lib/task
 import { TaskPriorityBadge } from "./task-priority-badge";
 import { TaskStatusSelect } from "./task-status-select";
 import { TaskDetailDialog } from "./task-detail-dialog";
+import { TaskCheck } from "@/components/work/task-update-dialog";
 import { Option, TaskUserRef } from "./task-types";
 
 type Subtask = {
@@ -130,6 +131,13 @@ export function MyTaskRow({
           </button>
         ) : (
           <span className="inline-block w-4" />
+        )}
+        {!isCaregiver && (
+          <TaskCheck
+            licensing
+            task={{ id: task.id, title: task.label, status, clientCanSee: Boolean(task.application || task.clientService) }}
+            onChanged={(s) => setStatus(s as typeof status)}
+          />
         )}
         <span className="min-w-[10rem] flex-1 font-medium">{task.label}</span>
         {task.application ? (
@@ -299,6 +307,14 @@ function SubtaskRow({
 
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-lg bg-muted/30 p-2 pl-8 text-sm">
+      {!isCaregiver && (
+        <TaskCheck
+          licensing
+          task={{ id: subtask.id, title: subtask.label, status, clientCanSee: false }}
+          allowSkip
+          onChanged={(s) => setStatus(s as typeof status)}
+        />
+      )}
       <span className="min-w-[9rem] flex-1">{subtask.label}</span>
       {overdue && <Badge variant="destructive">Overdue</Badge>}
       <TaskDetailDialog
