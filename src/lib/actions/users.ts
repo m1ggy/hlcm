@@ -5,7 +5,10 @@ import { sendInviteEmail, sendPasswordResetEmail } from "@/lib/auth-emails";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
-import { db } from "@/lib/db";
+import { currentOrganization, db } from "@/lib/db";
+import { normalizePhone } from "@/lib/form-logic";
+import { UserFacingError } from "@/lib/user-facing-error";
+import { toActionResult } from "@/lib/action-result";
 import { requireRole, ForbiddenError, isAdmin, isSuperuser } from "@/lib/rbac";
 import { recordAudit, recordFieldChanges } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
@@ -48,6 +51,8 @@ export async function listUsers() {
       hourlyRate: true,
       phone: true,
       smsRemindersEnabled: true,
+      smsDailyUpdates: true,
+      smsOptedOutAt: true,
       assignedFromUserId: true,
     },
   });
@@ -70,6 +75,8 @@ export async function setHourlyRate(input: { userId: string; hourlyRate: number 
   const user = await db.user.update({
     where: { id: parsed.userId },
     data: { hourlyRate: parsed.hourlyRate },
+    // Returned to the browser: never the whole row (passwordHash, MFA secret).
+    select: { id: true, hourlyRate: true },
   });
 
   await recordAudit({
@@ -181,16 +188,36 @@ const updateSchema = z.object({
   // src/lib/meeting-reminders.ts) — not a self-service preference like
   // emailNotificationsEnabled on /account.
   smsRemindersEnabled: z.boolean(),
+  // The evening text in a client's tasks workspace (src/lib/work-summary-notes.ts).
+  // People normally opt in themselves on /account; staff can sign someone up
+  // only after confirming that person agreed (smsConsent), which is audited.
+  // Absent = unchanged.
+  smsDailyUpdates: z.boolean().optional(),
+  smsConsent: z.boolean().optional(),
 });
 
+/** Returns its readable failures ({ ok: false, error }) so they survive production builds. */
 export async function updateUser(input: z.infer<typeof updateSchema>) {
+  return toActionResult(() => updateUserUnwrapped(input));
+}
+
+async function updateUserUnwrapped(input: z.infer<typeof updateSchema>) {
   const session = await requireRole(["ADMIN"]);
   const parsed = updateSchema.parse(input);
   await assertNotLinkedAccount(parsed.userId);
 
   const before = await db.user.findUniqueOrThrow({
     where: { id: parsed.userId },
-    select: { name: true, email: true, role: true, active: true, phone: true, smsRemindersEnabled: true },
+    select: {
+      name: true,
+      email: true,
+      role: true,
+      active: true,
+      phone: true,
+      smsRemindersEnabled: true,
+      smsDailyUpdates: true,
+      smsOptedOutAt: true,
+    },
   });
 
   // DEVELOPER (superadmin) is never assignable here — ROLE_VALUES above
@@ -208,23 +235,45 @@ export async function updateUser(input: z.infer<typeof updateSchema>) {
   }
 
   if (isSelfEdit && (!parsed.active || parsed.role !== before.role)) {
-    throw new Error("You can't deactivate or change your own role — have another admin do it");
+    throw new UserFacingError("You can't deactivate or change your own role — have another admin do it");
   }
 
   const existing = await db.user.findFirst({ where: { email: parsed.email } });
   if (existing && existing.id !== parsed.userId) {
-    throw new Error("Another user already has that email");
+    throw new UserFacingError("Another user already has that email");
   }
 
-  const user = await db.user.update({
+  // Evening text sign-up. Only offered where the workspace sends it, never
+  // to caregivers, and never over a STOP reply: that person has to opt back
+  // in themselves.
+  let phone = parsed.phone?.trim() || null;
+  const dailyChange = parsed.smsDailyUpdates !== undefined && parsed.smsDailyUpdates !== before.smsDailyUpdates;
+  const signingUp = dailyChange && parsed.smsDailyUpdates === true;
+  if (dailyChange) {
+    const org = await currentOrganization();
+    if (org.kind !== "TASKS" || !org.workDailyText) throw new UserFacingError("This workspace doesn't send the evening text");
+    if (parsed.role === "CAREGIVER") throw new UserFacingError("Caregivers don't get the evening text");
+  }
+  if (signingUp) {
+    if (before.smsOptedOutAt) {
+      throw new UserFacingError("They replied STOP to our texts. Only they can turn texts back on, from their Account page");
+    }
+    if (!parsed.smsConsent) throw new UserFacingError("Confirm they agreed to get the evening text");
+    phone = phone ? normalizePhone(phone) : null;
+    if (!phone) throw new UserFacingError("Enter a valid mobile number, like (555) 123-4567");
+  }
+  const smsDailyUpdates = dailyChange ? parsed.smsDailyUpdates! : before.smsDailyUpdates;
+
+  await db.user.update({
     where: { id: parsed.userId },
     data: {
       name: parsed.name,
       email: parsed.email,
       role: parsed.role,
       active: parsed.active,
-      phone: parsed.phone || null,
+      phone,
       smsRemindersEnabled: parsed.smsRemindersEnabled,
+      smsDailyUpdates,
       ...(parsed.password ? { passwordHash: await bcrypt.hash(parsed.password, 12) } : {}),
     },
   });
@@ -234,16 +283,27 @@ export async function updateUser(input: z.infer<typeof updateSchema>) {
     entityId: parsed.userId,
     actorId: session.user.id,
     action: "update",
-    before,
+    before: { ...before, smsOptedOutAt: undefined },
     after: {
       name: parsed.name,
       email: parsed.email,
       role: parsed.role,
       active: parsed.active,
-      phone: parsed.phone || null,
+      phone,
       smsRemindersEnabled: parsed.smsRemindersEnabled,
+      smsDailyUpdates,
     },
   });
+  if (signingUp) {
+    await recordAudit({
+      entityType: "User",
+      entityId: parsed.userId,
+      action: "sms_consent",
+      actorId: session.user.id,
+      field: "smsDailyUpdates",
+      newValue: `Staff confirmed this person agreed to the evening text at ${phone}`,
+    });
+  }
   if (parsed.password) {
     await recordAudit({
       entityType: "User",
@@ -256,5 +316,4 @@ export async function updateUser(input: z.infer<typeof updateSchema>) {
   if (before.active && !parsed.active) await endAssignmentsForHomeUser(parsed.userId);
 
   revalidatePath("/admin/users");
-  return user;
 }

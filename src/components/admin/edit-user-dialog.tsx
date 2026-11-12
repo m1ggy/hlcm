@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Pencil } from "lucide-react";
 import { sendSetPasswordLink, updateUser } from "@/lib/actions/users";
+import { unexpectedErrorMessage } from "@/lib/action-result";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -41,16 +42,21 @@ type EditableUser = {
   active: boolean;
   phone: string | null;
   smsRemindersEnabled: boolean;
+  smsDailyUpdates?: boolean;
+  smsOptedOutAt?: Date | null;
 };
 
 export function EditUserDialog({
   user,
   isSelf = false,
   canManageAdmins = false,
+  dailyTextAvailable = false,
 }: {
   user: EditableUser;
   isSelf?: boolean;
   canManageAdmins?: boolean;
+  /** The workspace sends the evening text: offer signing this person up, with their consent. */
+  dailyTextAvailable?: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -65,7 +71,13 @@ export function EditUserDialog({
   const [password, setPassword] = useState("");
   const [phone, setPhone] = useState(user.phone ?? "");
   const [smsRemindersEnabled, setSmsRemindersEnabled] = useState(user.smsRemindersEnabled);
+  const wasDaily = user.smsDailyUpdates ?? false;
+  const [smsDailyUpdates, setSmsDailyUpdates] = useState(wasDaily);
+  const [smsConsent, setSmsConsent] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const showDailyText = dailyTextAvailable && role !== "CAREGIVER";
+  const optedOut = Boolean(user.smsOptedOutAt);
+  const signingUp = showDailyText && smsDailyUpdates && !wasDaily;
   const [isSendingLink, startSendingLink] = useTransition();
 
   function handleSendLink() {
@@ -94,6 +106,8 @@ export function EditUserDialog({
     setPassword("");
     setPhone(user.phone ?? "");
     setSmsRemindersEnabled(user.smsRemindersEnabled);
+    setSmsDailyUpdates(wasDaily);
+    setSmsConsent(false);
   }
 
   function handleSave() {
@@ -109,9 +123,17 @@ export function EditUserDialog({
       toast.error("Add a phone number to enable SMS/call reminders");
       return;
     }
+    if (signingUp && !phone.trim()) {
+      toast.error("Add their mobile number to send the evening text");
+      return;
+    }
+    if (signingUp && !smsConsent) {
+      toast.error("Confirm they agreed to get the evening text");
+      return;
+    }
     startTransition(async () => {
       try {
-        await updateUser({
+        const result = await updateUser({
           userId: user.id,
           name,
           email,
@@ -120,12 +142,17 @@ export function EditUserDialog({
           password: password || undefined,
           phone: phone || undefined,
           smsRemindersEnabled,
+          ...(showDailyText && { smsDailyUpdates, smsConsent }),
         });
+        if (!result.ok) {
+          toast.error(result.error);
+          return;
+        }
         toast.success("User updated");
         setOpen(false);
         router.refresh();
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Failed to update user");
+        toast.error(unexpectedErrorMessage(error, "Failed to update user"));
       }
     });
   }
@@ -208,6 +235,36 @@ export function EditUserDialog({
             <Checkbox checked={smsRemindersEnabled} onCheckedChange={(c) => setSmsRemindersEnabled(c === true)} />
             Send this person a text/call before every upcoming meeting
           </label>
+          {showDailyText && (
+            <div className="space-y-2 rounded-md border p-3">
+              {optedOut && !wasDaily ? (
+                <p className="text-sm text-muted-foreground">
+                  They replied STOP to our texts, so only they can turn the evening text back on, from their Account page.
+                </p>
+              ) : (
+                <>
+                  <label className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={smsDailyUpdates}
+                      onCheckedChange={(c) => {
+                        setSmsDailyUpdates(c === true);
+                        if (c !== true) setSmsConsent(false);
+                      }}
+                    />
+                    Text this person the evening update
+                  </label>
+                  {signingUp && (
+                    <label className="flex items-start gap-2 text-sm">
+                      <Checkbox className="mt-0.5" checked={smsConsent} onCheckedChange={(c) => setSmsConsent(c === true)} />
+                      <span>
+                        They agreed to get these texts at the number above. They can reply STOP at any time.
+                      </span>
+                    </label>
+                  )}
+                </>
+              )}
+            </div>
+          )}
           <label className={`flex items-center gap-2 text-sm ${isSelf ? "opacity-50" : ""}`}>
             <Checkbox checked={active} onCheckedChange={(c) => setActive(c === true)} disabled={isSelf} />
             Active — deactivating blocks sign-in without deleting their account

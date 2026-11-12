@@ -1,0 +1,99 @@
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { systemPrisma as prisma } from "@/lib/prisma";
+import { runAsTenant } from "@/lib/db";
+import { forgetOrg } from "@/lib/tenant";
+
+// Staff can sign a client's person up for the evening text from Admin → Users
+// (the person normally opts in on /account): only where the workspace sends
+// it, only with their recorded consent, and never over a STOP reply.
+
+const ORG = { id: "org_daily_signup", slug: "daily-signup", name: "Daily Signup Client" };
+let adminId = "";
+let personId = "";
+
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("@/lib/auth-emails", () => ({ sendInviteEmail: vi.fn(), sendPasswordResetEmail: vi.fn() }));
+// Not importOriginal — the real module pulls in next-auth, which doesn't load outside Next.
+vi.mock("@/lib/rbac", () => ({
+  requireRole: vi.fn(async () => ({ user: { id: adminId, role: "OWNER" } })),
+  requireSession: vi.fn(async () => ({ user: { id: adminId, role: "OWNER" } })),
+  isAdmin: (role: string) => ["OWNER", "ADMIN", "ACCOUNTANT", "DEVELOPER"].includes(role),
+  isSuperuser: (role: string) => role === "OWNER" || role === "DEVELOPER",
+  ForbiddenError: class extends Error {},
+  UnauthorizedError: class extends Error {},
+}));
+
+const { updateUser } = await import("@/lib/actions/users");
+
+const inOrg = <T,>(fn: () => Promise<T>) => runAsTenant(ORG, fn);
+const base = () => ({
+  userId: personId,
+  name: "Pat Person",
+  email: "pat@daily-signup.test",
+  role: "STAFF" as const,
+  active: true,
+  smsRemindersEnabled: false,
+});
+const person = () => prisma.user.findUniqueOrThrow({ where: { id: personId } });
+
+beforeAll(async () => {
+  await prisma.organization.deleteMany({ where: { id: ORG.id } });
+  await prisma.organization.create({ data: { ...ORG, kind: "TASKS", workDailyText: true, timezone: "UTC" } });
+  forgetOrg(ORG.slug);
+  const admin = await prisma.user.create({
+    data: { organizationId: ORG.id, name: "Owner", email: "owner@daily-signup.test", passwordHash: "x", role: "OWNER" },
+  });
+  adminId = admin.id;
+  const p = await prisma.user.create({
+    data: { organizationId: ORG.id, name: "Pat Person", email: "pat@daily-signup.test", passwordHash: "x", role: "STAFF" },
+  });
+  personId = p.id;
+});
+
+beforeEach(async () => {
+  await prisma.user.update({ where: { id: personId }, data: { phone: null, smsDailyUpdates: false, smsOptedOutAt: null } });
+  await prisma.organization.update({ where: { id: ORG.id }, data: { workDailyText: true } });
+  forgetOrg(ORG.slug);
+});
+
+afterAll(async () => {
+  await prisma.$disconnect();
+});
+
+describe("staff signing someone up for the evening text", () => {
+  it("needs their consent, then saves the number in texting format and audits the consent", async () => {
+    const without = await inOrg(() => updateUser({ ...base(), phone: "(555) 123-4567", smsDailyUpdates: true, smsConsent: false }));
+    expect(without).toEqual({ ok: false, error: "Confirm they agreed to get the evening text" });
+    expect((await person()).smsDailyUpdates).toBe(false);
+
+    const ok = await inOrg(() => updateUser({ ...base(), phone: "(555) 123-4567", smsDailyUpdates: true, smsConsent: true }));
+    expect(ok.ok).toBe(true);
+    const after = await person();
+    expect(after.smsDailyUpdates).toBe(true);
+    expect(after.phone).toBe("+15551234567");
+    const consent = await prisma.auditLog.findFirst({ where: { entityId: personId, action: "sms_consent" } });
+    expect(consent?.actorId).toBe(adminId);
+  });
+
+  it("refuses a bad number and never overrides a STOP reply", async () => {
+    const bad = await inOrg(() => updateUser({ ...base(), phone: "12", smsDailyUpdates: true, smsConsent: true }));
+    expect(bad.ok).toBe(false);
+
+    await prisma.user.update({ where: { id: personId }, data: { smsOptedOutAt: new Date() } });
+    const stopped = await inOrg(() => updateUser({ ...base(), phone: "5551234567", smsDailyUpdates: true, smsConsent: true }));
+    expect(stopped.ok).toBe(false);
+    expect((await person()).smsDailyUpdates).toBe(false);
+  });
+
+  it("isn't available when the workspace doesn't send the evening text, and leaves it alone when not sent", async () => {
+    await prisma.organization.update({ where: { id: ORG.id }, data: { workDailyText: false } });
+    forgetOrg(ORG.slug);
+    const off = await inOrg(() => updateUser({ ...base(), phone: "5551234567", smsDailyUpdates: true, smsConsent: true }));
+    expect(off).toEqual({ ok: false, error: "This workspace doesn't send the evening text" });
+
+    await prisma.user.update({ where: { id: personId }, data: { smsDailyUpdates: true } });
+    const untouched = await inOrg(() => updateUser({ ...base(), phone: "5551234567" }));
+    expect(untouched.ok).toBe(true);
+    expect((await person()).smsDailyUpdates).toBe(true);
+  });
+});

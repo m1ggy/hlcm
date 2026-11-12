@@ -26,6 +26,8 @@ type ListedUser = {
   hourlyRate: number | null;
   phone: string | null;
   smsRemindersEnabled: boolean;
+  smsDailyUpdates: boolean;
+  smsOptedOutAt: Date | null;
   /** Set for a managing company's assigned person — read-only here. */
   assignedFromUserId?: string | null;
 };
@@ -37,7 +39,10 @@ export function UsersTable({
   loginSummaries,
   viewerTimezone = null,
   managedByName = null,
+  dailyTextAvailable = false,
 }: {
+  /** The workspace sends the evening text (a client's tasks workspace) — the edit dialog offers signing people up. */
+  dailyTextAvailable?: boolean;
   users: ListedUser[];
   currentUserId: string | undefined;
   canManageAdmins: boolean;
@@ -125,6 +130,7 @@ export function UsersTable({
                     user={user}
                     isSelf={user.id === currentUserId}
                     canManageAdmins={canManageAdmins}
+                    dailyTextAvailable={dailyTextAvailable}
                   />
                 )}
               </TableCell>

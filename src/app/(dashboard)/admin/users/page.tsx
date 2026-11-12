@@ -4,7 +4,7 @@ import { ArrowUpRight } from "lucide-react";
 import { auth } from "@/auth";
 import { listUsers } from "@/lib/actions/users";
 import { listLoginSummaries } from "@/lib/actions/login-activity";
-import { currentOrgId, db } from "@/lib/db";
+import { currentOrganization, currentOrgId, db } from "@/lib/db";
 import { managingOrgName } from "@/lib/workspace-assignments";
 import { NewUserDialog } from "@/components/admin/new-user-dialog";
 import { UsersTable } from "@/components/admin/users-table";
@@ -27,6 +27,9 @@ export default async function UsersPage() {
   }
 
   const managedByName = users.some((u) => u.assignedFromUserId) ? await managingOrgName(await currentOrgId()) : null;
+  // A client's tasks workspace with the evening text on: staff can sign the client's people up (with their consent).
+  const org = await currentOrganization();
+  const dailyTextAvailable = org.kind === "TASKS" && org.workDailyText;
 
   // Sign-in history + the mobile-login switch are DEVELOPER-only (not OWNER).
   const showLogins = isDeveloper(session?.user?.role);
@@ -62,6 +65,7 @@ export default async function UsersPage() {
         canManageAdmins={canManageAdmins}
         loginSummaries={loginSummaries}
         managedByName={managedByName}
+        dailyTextAvailable={dailyTextAvailable}
         viewerTimezone={viewer?.timezone ?? null}
       />
     </div>
