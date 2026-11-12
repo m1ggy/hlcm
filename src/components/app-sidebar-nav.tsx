@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
-import { LayoutList, KanbanSquare, CalendarDays, Building2, FolderKanban, Users, ClipboardList, UserCog, CheckSquare, Clock, Timer, Receipt, Settings, Inbox, MapPin, CalendarCheck, BarChart3, Sun, Wallet, NotebookPen } from "lucide-react";
+import { LayoutList, KanbanSquare, CalendarDays, Building2, FolderKanban, Users, ClipboardList, UserCog, CheckSquare, Clock, Timer, Receipt, Settings, Inbox, MapPin, CalendarCheck, BarChart3, Sun, Wallet, NotebookPen, BookMarked } from "lucide-react";
 import {
   SidebarGroup,
   SidebarGroupLabel,
@@ -80,6 +80,8 @@ export function AppSidebarNav({
       { href: "/work/summary", label: "This week", icon: CalendarDays, tour: "nav-work-summary" },
       { href: "/work", label: "Projects", icon: LayoutList, tour: "nav-work" },
       ...(isWorkTeam ? [{ href: "/work/my", label: "My tasks", icon: CheckSquare, tour: "nav-work-my" }] : []),
+      // Our staff guide (docs/staff-guide.md) — for our team here, never the client's people.
+      ...(isWorkTeam ? [{ href: "/staff-guide", label: "Staff guide", icon: BookMarked, tour: "nav-staff-guide" }] : []),
     ];
     const general: NavLink[] = [{ href: "/account", label: "Settings", icon: Settings, tour: "nav-settings" }];
     if (isAdmin) general.push({ href: "/admin/users", label: "Users", icon: UserCog, tour: "nav-admin" });
@@ -92,6 +94,8 @@ export function AppSidebarNav({
     if (showClientWork) tasks.push({ href: "/client-work", label: "Client work", icon: Building2, tour: "nav-client-work" });
     // End-of-day reports (docs/client-portal-eod-plan.md, Phase C).
     tasks.push({ href: "/eod", label: "End of day", icon: NotebookPen, tour: "nav-eod" });
+    // The staff guide to client workspaces, tasks and EOD (docs/staff-guide.md).
+    tasks.push({ href: "/staff-guide", label: "Staff guide", icon: BookMarked, tour: "nav-staff-guide" });
 
     const money: NavLink[] = [
       { href: "/time", label: "Time", icon: Clock, tour: "nav-time" },

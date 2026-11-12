@@ -2,6 +2,11 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // The staff guide page reads its text from docs/ at runtime; the
+  // standalone build only ships files it traces, so name it here.
+  outputFileTracingIncludes: {
+    "/staff-guide": ["./docs/staff-guide.md"],
+  },
   devIndicators: {
     position: "bottom-right",
   },
