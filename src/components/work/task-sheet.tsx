@@ -48,12 +48,16 @@ import { MultiUserSelect } from "@/components/ui/multi-user-select";
 import { AvatarInitials } from "@/components/ui/avatar-initials";
 import { StatusDot, WorkStatusPill, formatDay } from "./work-status";
 import { TaskUpdateDialog } from "./task-update-dialog";
+import { OpenInWorkspace } from "@/components/workspaces/open-in-workspace";
 import { useUpload } from "@/components/files/use-upload";
 import { MAX_FILE_BYTES, fileTooLargeMessage } from "@/lib/file-limits";
 import { UploadProgress } from "@/components/files/upload-progress";
 import { reportBatch } from "@/components/files/report-batch";
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string };
+
+/** The client workspace a task lives in, when it's opened from Client work in the home workspace. */
+export type LinkedTaskWorkspace = { orgId: string; slug: string; name: string };
 
 function dayValue(d: Date | string | null) {
   if (!d) return "";
@@ -76,6 +80,7 @@ export function TaskSheet({
   scope,
   currentUserId,
   people,
+  workspace,
 }: {
   taskId: string | null;
   onOpenChange: (open: boolean) => void;
@@ -84,27 +89,30 @@ export function TaskSheet({
   scope: WorkScope;
   currentUserId: string;
   people: { id: string; name: string }[];
+  /** A client workspace's task, shown from Client work in the home workspace: every change goes to that workspace. */
+  workspace?: LinkedTaskWorkspace;
 }) {
   const router = useRouter();
+  const o = workspace?.orgId;
   const [loaded, setTask] = useState<TaskDetail | null>(null);
   // Showing a different task than asked for means it's still loading.
   const task = loaded && loaded.id === taskId ? loaded : null;
   const [isPending, startTransition] = useTransition();
 
   const load = useCallback(async (id: string) => {
-    const result = await getTaskDetailAction(id);
+    const result = await getTaskDetailAction(id, o);
     if (!result.ok) {
       toast.error(result.error);
       onOpenChange(false);
       return;
     }
     setTask(result.data);
-  }, [onOpenChange]);
+  }, [onOpenChange, o]);
 
   useEffect(() => {
     if (!taskId) return;
     let cancelled = false;
-    getTaskDetailAction(taskId).then((result) => {
+    getTaskDetailAction(taskId, o).then((result) => {
       if (cancelled) return;
       if (!result.ok) {
         toast.error(result.error);
@@ -116,7 +124,7 @@ export function TaskSheet({
     return () => {
       cancelled = true;
     };
-  }, [taskId, onOpenChange]);
+  }, [taskId, onOpenChange, o]);
 
   /** Runs a change, then reloads the panel and the page behind it. */
   function run<T>(fn: () => Promise<Result<T>>, success?: string) {
@@ -159,6 +167,7 @@ export function TaskSheet({
             isPending={isPending}
             run={run}
             onOpenTask={onOpenTask}
+            workspace={workspace}
             onDeleted={() => {
               onOpenChange(false);
               router.refresh();
@@ -179,6 +188,7 @@ function TaskBody({
   isPending,
   run,
   onOpenTask,
+  workspace,
   onDeleted,
 }: {
   task: TaskDetail;
@@ -189,8 +199,10 @@ function TaskBody({
   isPending: boolean;
   run: <T>(fn: () => Promise<Result<T>>, success?: string) => void;
   onOpenTask: (id: string) => void;
+  workspace?: LinkedTaskWorkspace;
   onDeleted: () => void;
 }) {
+  const o = workspace?.orgId;
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description ?? "");
   const [assignees, setAssignees] = useState(task.assignees.map((a) => a.user.id));
@@ -233,7 +245,7 @@ function TaskBody({
         <TaskUpdateDialog
           open
           onOpenChange={(o) => !o && setUpdating(null)}
-          target={{ taskId: updating.id }}
+          target={{ taskId: updating.id, orgId: o }}
           taskTitle={updating.title}
           mode={updating.mode}
           clientCanSee={task.clientVisible && task.project.clientVisible}
@@ -261,7 +273,7 @@ function TaskBody({
               aria-label="Title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              onBlur={() => title.trim() && title !== task.title && run(() => updateTaskAction(task.id, { title }))}
+              onBlur={() => title.trim() && title !== task.title && run(() => updateTaskAction(task.id, { title }, o))}
               className="h-auto border-transparent px-1 font-heading text-xl font-semibold shadow-none hover:border-input focus-visible:border-input md:text-xl"
             />
           </>
@@ -292,7 +304,7 @@ function TaskBody({
               : "The client asked for this. A manager needs to accept it before work starts."}
           </p>
           {scope.canManageProjects && (
-            <Button size="sm" disabled={isPending} onClick={() => run(() => approveRequestAction(task.id, assignees), "Request accepted")}>
+            <Button size="sm" disabled={isPending} onClick={() => run(() => approveRequestAction(task.id, assignees, o), "Request accepted")}>
               <Check className="size-3.5" /> Accept request
             </Button>
           )}
@@ -318,7 +330,7 @@ function TaskBody({
                 if (!v || v === status) return;
                 // Finishing a task asks what was done, like its checkbox.
                 if (v === "DONE" && !task.parent) return setUpdating({ id: task.id, title: task.title, mode: "complete", subtask: false });
-                run(() => updateTaskAction(task.id, { status: v as WorkTaskStatus }));
+                run(() => updateTaskAction(task.id, { status: v as WorkTaskStatus }, o));
               }}
             >
               <SelectTrigger className="w-full" disabled={isPending || pending}>
@@ -344,7 +356,7 @@ function TaskBody({
             <Select
               items={WORK_TASK_PRIORITY_LABELS}
               value={task.priority}
-              onValueChange={(v) => v && v !== task.priority && run(() => updateTaskAction(task.id, { priority: v as WorkTaskPriority }))}
+              onValueChange={(v) => v && v !== task.priority && run(() => updateTaskAction(task.id, { priority: v as WorkTaskPriority }, o))}
             >
               <SelectTrigger className="w-full" disabled={isPending}>
                 <SelectValue />
@@ -364,7 +376,7 @@ function TaskBody({
         <div className="space-y-1">
           <Label htmlFor="task-start">Start</Label>
           {edit ? (
-            <Input id="task-start" type="date" defaultValue={dayValue(task.startDate)} onChange={(e) => run(() => updateTaskAction(task.id, { startDate: e.target.value }))} />
+            <Input id="task-start" type="date" defaultValue={dayValue(task.startDate)} onChange={(e) => run(() => updateTaskAction(task.id, { startDate: e.target.value }, o))} />
           ) : (
             <p className="text-sm">{formatDay(task.startDate, { month: "short", day: "numeric", year: "numeric" }) ?? "—"}</p>
           )}
@@ -372,7 +384,7 @@ function TaskBody({
         <div className="space-y-1">
           <Label htmlFor="task-due">Due</Label>
           {edit ? (
-            <Input id="task-due" type="date" defaultValue={dayValue(task.dueDate)} onChange={(e) => run(() => updateTaskAction(task.id, { dueDate: e.target.value }))} />
+            <Input id="task-due" type="date" defaultValue={dayValue(task.dueDate)} onChange={(e) => run(() => updateTaskAction(task.id, { dueDate: e.target.value }, o))} />
           ) : (
             <p className="text-sm">{formatDay(task.dueDate, { month: "short", day: "numeric", year: "numeric" }) ?? "—"}</p>
           )}
@@ -383,7 +395,7 @@ function TaskBody({
             <Select
               items={repeatItems}
               value={task.repeat ?? "NONE"}
-              onValueChange={(v) => v && v !== (task.repeat ?? "NONE") && run(() => updateTaskAction(task.id, { repeat: v === "NONE" ? null : (v as WorkRepeat) }))}
+              onValueChange={(v) => v && v !== (task.repeat ?? "NONE") && run(() => updateTaskAction(task.id, { repeat: v === "NONE" ? null : (v as WorkRepeat) }, o))}
             >
               <SelectTrigger className="w-full" disabled={isPending}>
                 <SelectValue />
@@ -407,7 +419,7 @@ function TaskBody({
               value={assignees}
               onValueChange={(next) => {
                 setAssignees(next);
-                run(() => setAssigneesAction(task.id, next));
+                run(() => setAssigneesAction(task.id, next, o));
               }}
               placeholder="Add people..."
             />
@@ -428,7 +440,7 @@ function TaskBody({
       {edit && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border px-3 py-2">
           <label className="flex items-center gap-2 text-sm">
-            <Checkbox checked={task.clientVisible} disabled={isPending || !task.project.clientVisible} onCheckedChange={(v) => run(() => updateTaskAction(task.id, { clientVisible: Boolean(v) }))} />
+            <Checkbox checked={task.clientVisible} disabled={isPending || !task.project.clientVisible} onCheckedChange={(v) => run(() => updateTaskAction(task.id, { clientVisible: Boolean(v) }, o))} />
             Client can see this task
           </label>
           <div className="flex flex-wrap items-center gap-3">
@@ -442,7 +454,7 @@ function TaskBody({
               disabled={isPending}
               onClick={() =>
                 run(async () => {
-                  const r = await startWorkTimerAction(task.id);
+                  const r = await startWorkTimerAction(task.id, o);
                   if (r.ok) toast.success(r.data.clockedIn ? "Timer started. You're clocked in." : "Timer started");
                   return r;
                 })
@@ -463,7 +475,7 @@ function TaskBody({
             rows={4}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            onBlur={() => description !== (task.description ?? "") && run(() => updateTaskAction(task.id, { description }))}
+            onBlur={() => description !== (task.description ?? "") && run(() => updateTaskAction(task.id, { description }, o))}
             placeholder="Add details"
           />
         ) : (
@@ -486,7 +498,7 @@ function TaskBody({
                     disabled={isPending}
                     aria-label={`Mark "${s.title}" done`}
                     onCheckedChange={(v) =>
-                      v ? setUpdating({ id: s.id, title: s.title, mode: "complete", subtask: true }) : run(() => updateTaskAction(s.id, { status: "TODO" }))
+                      v ? setUpdating({ id: s.id, title: s.title, mode: "complete", subtask: true }) : run(() => updateTaskAction(s.id, { status: "TODO" }, o))
                     }
                   />
                 ) : (
@@ -506,7 +518,7 @@ function TaskBody({
                 const t = newSubtask.trim();
                 if (!t) return;
                 setNewSubtask("");
-                run(() => createTaskAction({ projectId: task.project.id, parentId: task.id, title: t, clientVisible: task.clientVisible }));
+                run(() => createTaskAction({ projectId: task.project.id, parentId: task.id, title: t, clientVisible: task.clientVisible }, o));
               }}
             >
               <Input value={newSubtask} onChange={(e) => setNewSubtask(e.target.value)} placeholder="Add a subtask and press Enter" aria-label="New subtask" />
@@ -521,14 +533,21 @@ function TaskBody({
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
           e.preventDefault();
-          upload(Array.from(e.dataTransfer.files ?? []));
+          if (!workspace) upload(Array.from(e.dataTransfer.files ?? []));
         }}
       >
         <div className="flex items-center justify-between">
           <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Files</h3>
-          <Button size="sm" variant="ghost" disabled={isPending || uploading} onClick={() => fileInput.current?.click()}>
-            <Paperclip className="size-3.5" /> Attach
-          </Button>
+          {workspace ? (
+            // Files are stored with the client's workspace: opened and added there.
+            <OpenInWorkspace slug={workspace.slug} path={`/work/projects/${task.project.id}?task=${task.id}`} className="w-auto gap-1 text-xs text-muted-foreground hover:text-foreground">
+              Open in {workspace.name} for files
+            </OpenInWorkspace>
+          ) : (
+            <Button size="sm" variant="ghost" disabled={isPending || uploading} onClick={() => fileInput.current?.click()}>
+              <Paperclip className="size-3.5" /> Attach
+            </Button>
+          )}
           <input
             ref={fileInput}
             type="file"
@@ -542,17 +561,24 @@ function TaskBody({
         </div>
         <UploadProgress status={uploadStatus} onCancel={cancelUpload} />
         {task.files.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Drop files here or use Attach.</p>
+          <p className="text-sm text-muted-foreground">{workspace ? "No files yet." : "Drop files here or use Attach."}</p>
         ) : (
           <ul className="divide-y rounded-lg border">
             {task.files.map((f) => (
               <li key={f.id} className="flex items-center gap-2 px-3 py-2 text-sm">
-                <a href={`/api/files/${f.id}`} className="flex min-w-0 flex-1 items-center gap-2 hover:underline">
-                  <Download className="size-3.5 shrink-0 text-muted-foreground" />
-                  <span className="truncate">{f.fileName}</span>
-                </a>
+                {workspace ? (
+                  <span className="flex min-w-0 flex-1 items-center gap-2">
+                    <Paperclip className="size-3.5 shrink-0 text-muted-foreground" />
+                    <span className="truncate">{f.fileName}</span>
+                  </span>
+                ) : (
+                  <a href={`/api/files/${f.id}`} className="flex min-w-0 flex-1 items-center gap-2 hover:underline">
+                    <Download className="size-3.5 shrink-0 text-muted-foreground" />
+                    <span className="truncate">{f.fileName}</span>
+                  </a>
+                )}
                 <span className="shrink-0 text-xs text-muted-foreground">{f.uploadedBy.name}</span>
-                {(f.uploadedBy.id === currentUserId || scope.canManageProjects) && (
+                {!workspace && (f.uploadedBy.id === currentUserId || scope.canManageProjects) && (
                   <Button size="icon-sm" variant="ghost" aria-label={`Remove ${f.fileName}`} disabled={isPending} onClick={() => run(() => deleteWorkTaskFileAction(f.id), "File removed")}>
                     <Trash2 className="size-3.5" />
                   </Button>
@@ -582,7 +608,7 @@ function TaskBody({
                   </span>
                 )}
                 {(c.author.id === currentUserId || scope.canManageProjects) && (
-                  <button type="button" className="ml-auto hover:text-destructive" aria-label="Delete comment" onClick={() => run(() => deleteCommentAction(c.id))}>
+                  <button type="button" className="ml-auto hover:text-destructive" aria-label="Delete comment" onClick={() => run(() => deleteCommentAction(c.id, o))}>
                     <Trash2 className="size-3.5" />
                   </button>
                 )}
@@ -599,7 +625,7 @@ function TaskBody({
               const body = comment.trim();
               if (!body) return;
               setComment("");
-              run(() => addCommentAction(task.id, { body, visibility: internal ? "INTERNAL" : "CLIENT" }));
+              run(() => addCommentAction(task.id, { body, visibility: internal ? "INTERNAL" : "CLIENT" }, o));
             }}
           >
             <Textarea value={comment} onChange={(e) => setComment(e.target.value)} rows={3} placeholder={internal ? "Internal note: only the team sees this" : "Write a comment"} aria-label="Comment" />
@@ -647,7 +673,7 @@ function TaskBody({
           <Separator />
           <div className="space-y-3">
             {edit && !task.parent && (
-              <Button size="sm" variant="outline" disabled={isPending} onClick={() => run(() => saveTemplateAction(task.id), "Saved as a template for this project")}>
+              <Button size="sm" variant="outline" disabled={isPending} onClick={() => run(() => saveTemplateAction(task.id, o), "Saved as a template for this project")}>
                 <BookmarkPlus className="size-3.5" /> Save as template
               </Button>
             )}
@@ -657,7 +683,7 @@ function TaskBody({
                   className="space-y-2"
                   onSubmit={(e) => {
                     e.preventDefault();
-                    run(() => declineRequestAction(task.id, reason), "Request declined");
+                    run(() => declineRequestAction(task.id, reason, o), "Request declined");
                   }}
                 >
                   <Label htmlFor="decline-reason">Why are you declining it? The client sees this.</Label>
@@ -686,7 +712,7 @@ function TaskBody({
                     variant="destructive"
                     loading={isPending}
                     onClick={async () => {
-                      const r = await deleteTaskAction(task.id);
+                      const r = await deleteTaskAction(task.id, o);
                       if (!r.ok) {
                         toast.error(r.error);
                         return;

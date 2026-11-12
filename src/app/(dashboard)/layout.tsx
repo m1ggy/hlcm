@@ -93,7 +93,10 @@ export default async function DashboardLayout({
                 // from the Time tracking page's bar), so both stay in sync.
                 key={`${openTimer?.id ?? "idle"}:${openTimer?.description ?? ""}`}
                 initialTaskId={openTimer?.taskId ?? null}
-                initialTaskLabel={openTimer?.task?.label ?? openTimer?.workTask?.title ?? null}
+                initialTaskLabel={
+                  openTimer?.task?.label ??
+                  (openTimer?.workTask ? `${openTimer.workTask.title}${openTimer.workspaceName ? ` · ${openTimer.workspaceName}` : ""}` : null)
+                }
                 initialStartedAt={openTimer ? openTimer.startedAt.toISOString() : null}
                 initialDescription={openTimer?.description ?? null}
                 tasks={myTasks}

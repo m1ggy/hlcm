@@ -1,7 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { db, currentOrganization } from "@/lib/db";
+import { db, currentOrganization, runAsTenant } from "@/lib/db";
+import { actorIn, linkedWorkspaces } from "@/lib/work-everywhere";
 import { requireSession } from "@/lib/rbac";
 import { toActionResult } from "@/lib/action-result";
 import { notify } from "@/lib/notifications";
@@ -10,9 +11,9 @@ import { saveUploadedFile, deleteStoredFile } from "@/lib/storage";
 import { MAX_FILE_BYTES, fileTooLargeMessage } from "@/lib/file-limits";
 import { UserFacingError } from "@/lib/user-facing-error";
 import { workScope, type WorkTaskStatus } from "@/lib/work";
-import { getTaskDetail } from "@/lib/work-data";
+import { getTaskDetail, listAssignableUsers } from "@/lib/work-data";
 import * as work from "@/lib/work-service";
-import { startTaskTimer } from "@/lib/actions/task-time-entries";
+import { startClientTaskTimer, startTaskTimer, stopTaskTimer } from "@/lib/actions/task-time-entries";
 import { linkedWorkTaskUpdateDefaults, postLinkedWorkTaskUpdate, postWorkTaskUpdate, workTaskUpdateDefaults, type TaskUpdateInput } from "@/lib/task-updates";
 
 // Server actions for projects and tasks (docs/workspace-tasks-plan.md,
@@ -32,6 +33,23 @@ async function send(notifications: work.WorkNotification[], actorId: string) {
 
 function refresh() {
   revalidatePath("/work", "layout");
+  revalidatePath("/client-work");
+}
+
+/**
+ * Runs `fn` as the caller's work actor: here, or — with `orgId`, from the
+ * Client work page in their home workspace — as their linked account inside
+ * that client workspace (the same rules as switching in; nothing extra is
+ * allowed). Notifications are sent inside `fn`, so they land in that
+ * workspace.
+ */
+async function inWorkspace<T>(orgId: string | undefined, fn: (a: work.WorkActor) => Promise<T>): Promise<T> {
+  const session = await requireSession();
+  if (!orgId || orgId === session.user.organizationId) return fn(await actor());
+  if (session.user.isAssigned) throw new UserFacingError("Open that task from its own workspace");
+  const ws = (await linkedWorkspaces(session.user.id)).find((w) => w.orgId === orgId);
+  if (!ws) throw new UserFacingError("You're no longer assigned to that workspace");
+  return runAsTenant({ id: ws.orgId, slug: ws.slug }, () => fn(actorIn(ws)));
 }
 
 export async function createProjectAction(input: work.ProjectInput) {
@@ -49,19 +67,21 @@ export async function updateProjectAction(projectId: string, input: Partial<work
   });
 }
 
-export async function createTaskAction(input: work.TaskInput) {
+export async function createTaskAction(input: work.TaskInput, orgId?: string) {
   return toActionResult(async () => {
-    const a = await actor();
-    const { task, notifications } = await work.createTask(a, input);
-    await send(notifications, a.userId);
+    const id = await inWorkspace(orgId, async (a) => {
+      const { task, notifications } = await work.createTask(a, input);
+      await send(notifications, a.userId);
+      return task.id;
+    });
     refresh();
-    return { id: task.id };
+    return { id };
   });
 }
 
-export async function updateTaskAction(taskId: string, patch: work.TaskPatch) {
+export async function updateTaskAction(taskId: string, patch: work.TaskPatch, orgId?: string) {
   return toActionResult(async () => {
-    await work.updateTask(await actor(), taskId, patch);
+    await inWorkspace(orgId, (a) => work.updateTask(a, taskId, patch));
     refresh();
   });
 }
@@ -73,37 +93,40 @@ export async function moveTaskAction(taskId: string, status: WorkTaskStatus, ord
   });
 }
 
-export async function setAssigneesAction(taskId: string, userIds: string[]) {
+export async function setAssigneesAction(taskId: string, userIds: string[], orgId?: string) {
   return toActionResult(async () => {
-    const a = await actor();
-    const { notifications } = await work.setAssignees(a, taskId, userIds);
-    await send(notifications, a.userId);
+    await inWorkspace(orgId, async (a) => {
+      const { notifications } = await work.setAssignees(a, taskId, userIds);
+      await send(notifications, a.userId);
+    });
     refresh();
   });
 }
 
-export async function deleteTaskAction(taskId: string) {
+export async function deleteTaskAction(taskId: string, orgId?: string) {
   return toActionResult(async () => {
-    const a = await actor();
-    const files = await db.fileAsset.findMany({ where: { OR: [{ workTaskId: taskId }, { workTask: { parentId: taskId } }] }, select: { storageKey: true } });
-    await work.deleteTask(a, taskId);
-    for (const f of files) await deleteStoredFile(f.storageKey);
+    await inWorkspace(orgId, async (a) => {
+      const files = await db.fileAsset.findMany({ where: { OR: [{ workTaskId: taskId }, { workTask: { parentId: taskId } }] }, select: { storageKey: true } });
+      await work.deleteTask(a, taskId);
+      for (const f of files) await deleteStoredFile(f.storageKey);
+    });
     refresh();
   });
 }
 
-export async function addCommentAction(taskId: string, input: { body: string; visibility?: "INTERNAL" | "CLIENT" }) {
+export async function addCommentAction(taskId: string, input: { body: string; visibility?: "INTERNAL" | "CLIENT" }, orgId?: string) {
   return toActionResult(async () => {
-    const a = await actor();
-    const { notifications } = await work.addComment(a, taskId, input);
-    await send(notifications, a.userId);
+    await inWorkspace(orgId, async (a) => {
+      const { notifications } = await work.addComment(a, taskId, input);
+      await send(notifications, a.userId);
+    });
     refresh();
   });
 }
 
-export async function deleteCommentAction(commentId: string) {
+export async function deleteCommentAction(commentId: string, orgId?: string) {
   return toActionResult(async () => {
-    await work.deleteComment(await actor(), commentId);
+    await inWorkspace(orgId, (a) => work.deleteComment(a, commentId));
     refresh();
   });
 }
@@ -118,29 +141,31 @@ export async function requestTaskAction(input: work.RequestInput) {
   });
 }
 
-export async function declineRequestAction(taskId: string, reason: string) {
+export async function declineRequestAction(taskId: string, reason: string, orgId?: string) {
   return toActionResult(async () => {
-    const a = await actor();
-    const { notifications } = await work.declineRequest(a, taskId, reason);
-    await send(notifications, a.userId);
+    await inWorkspace(orgId, async (a) => {
+      const { notifications } = await work.declineRequest(a, taskId, reason);
+      await send(notifications, a.userId);
+    });
     refresh();
   });
 }
 
 // ---- Phase 5: approval queue and templates ----------------------------------
 
-export async function approveRequestAction(taskId: string, assigneeIds: string[] = []) {
+export async function approveRequestAction(taskId: string, assigneeIds: string[] = [], orgId?: string) {
   return toActionResult(async () => {
-    const a = await actor();
-    const { notifications } = await work.approveRequest(a, taskId, { assigneeIds });
-    await send(notifications, a.userId);
+    await inWorkspace(orgId, async (a) => {
+      const { notifications } = await work.approveRequest(a, taskId, { assigneeIds });
+      await send(notifications, a.userId);
+    });
     refresh();
   });
 }
 
-export async function saveTemplateAction(taskId: string) {
+export async function saveTemplateAction(taskId: string, orgId?: string) {
   return toActionResult(async () => {
-    const template = await work.saveTemplate(await actor(), taskId);
+    const template = await inWorkspace(orgId, (a) => work.saveTemplate(a, taskId));
     refresh();
     return { id: template.id, title: template.title };
   });
@@ -171,10 +196,9 @@ export async function deleteTemplateAction(templateId: string) {
 }
 
 /** The task panel's data, filtered for whoever is looking. */
-export async function getTaskDetailAction(taskId: string) {
+export async function getTaskDetailAction(taskId: string, orgId?: string) {
   return toActionResult(async () => {
-    const a = await actor();
-    const detail = await getTaskDetail(a.scope, taskId);
+    const detail = await inWorkspace(orgId, (a) => getTaskDetail(a.scope, taskId));
     if (!detail) throw new UserFacingError("That task doesn't exist or you can't see it");
     return detail;
   });
@@ -222,12 +246,35 @@ export async function deleteWorkTaskFileAction(fileId: string) {
 }
 
 /** "Start timer" on a project task: the regular task timer, pointed at it. */
-export async function startWorkTimerAction(taskId: string) {
+export async function startWorkTimerAction(taskId: string, orgId?: string) {
   return toActionResult(async () => {
-    const entry = await startTaskTimer({ workTaskId: taskId });
+    const session = await requireSession();
+    const entry =
+      orgId && orgId !== session.user.organizationId
+        ? await startClientTaskTimer(orgId, taskId)
+        : await startTaskTimer({ workTaskId: taskId });
     refresh();
     return { clockedIn: entry.clockedIn };
   });
+}
+
+/** Stops whatever task timer the caller has running, in any of their workspaces. */
+export async function stopWorkTimerAction() {
+  return toActionResult(async () => {
+    await stopTaskTimer();
+    refresh();
+  });
+}
+
+/** What the task panel needs to show a client workspace's task from Client work: you there, and its team. */
+export async function linkedTaskContextAction(orgId: string) {
+  return toActionResult(() =>
+    inWorkspace(orgId, async (a) => ({
+      scope: a.scope,
+      currentUserId: a.userId,
+      people: a.scope.side === "team" ? await listAssignableUsers("TASKS") : [],
+    }))
+  );
 }
 
 // ---- Updates written on a task (docs/task-updates-plan.md) -----------------

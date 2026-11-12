@@ -355,6 +355,27 @@ export async function listLinkedWorkspaces(homeUserId: string): Promise<LinkedWo
 }
 
 /**
+ * Every workspace where a person's task timer can run: their home workspace
+ * (as themselves) and each client workspace they're assigned to (as their
+ * linked account there). `userId` may be either account. Used to keep one
+ * timer running at a time across all of them.
+ */
+export type TimerPlace = { orgId: string; slug: string; name: string; userId: string };
+
+export async function timerPlaces(userId: string): Promise<TimerPlace[]> {
+  const me = await prisma.user.findUnique({ where: { id: userId }, select: { assignedFromUserId: true } });
+  if (!me) return [];
+  const homeId = me.assignedFromUserId ?? userId;
+  const home = await prisma.user.findUnique({ where: { id: homeId }, select: { organization: { select: { id: true, slug: true, name: true } } } });
+  if (!home) return [];
+  const linked = await listLinkedWorkspaces(homeId);
+  return [
+    { orgId: home.organization.id, slug: home.organization.slug, name: home.organization.name, userId: homeId },
+    ...linked.map((l) => ({ orgId: l.orgId, slug: l.slug, name: l.name, userId: l.linkedUserId })),
+  ];
+}
+
+/**
  * Where a person's end-of-day report lives (docs/task-updates-plan.md): their
  * home account and workspace, whether they're signed in there or through a
  * linked account in a client workspace. Null for people who don't write one

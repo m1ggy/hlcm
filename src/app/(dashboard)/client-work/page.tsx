@@ -1,30 +1,29 @@
 import { redirect } from "next/navigation";
 import { requireSession } from "@/lib/rbac";
 import { listMyWorkEverywhere } from "@/lib/work-everywhere";
-import { isOverdue, projectColorClass, type WorkTaskPriority, type WorkTaskStatus } from "@/lib/work";
 import { currentWorkspaceTimezone } from "@/lib/db";
 import { toDateInputValue } from "@/lib/time-entries";
-import { cn } from "@/lib/utils";
-import { PriorityLabel, WorkStatusPill, formatDay } from "@/components/work/work-status";
-import { OpenInWorkspace } from "@/components/workspaces/open-in-workspace";
-import { TaskCheck } from "@/components/work/task-update-dialog";
+import { getMyOpenTaskTimer } from "@/lib/actions/task-time-entries";
+import { ClientWorkList } from "@/components/work/client-work-list";
 
 // My open tasks in every client workspace I'm assigned to, from my home
-// workspace (docs/workspace-tasks-plan.md, Phase 5). Clicking one switches
-// to that workspace and opens the task.
+// workspace (docs/workspace-tasks-plan.md, Phase 5). Each task ticks off,
+// times and opens right here; nothing needs a switch into the workspace.
 export default async function ClientWorkPage() {
   const session = await requireSession();
   if (session.user.isAssigned) redirect("/work/my"); // a linked account: this is a client workspace
-  const [groups, timeZone] = await Promise.all([listMyWorkEverywhere(session.user.id), currentWorkspaceTimezone()]);
+  const [groups, timeZone, timer] = await Promise.all([listMyWorkEverywhere(session.user.id), currentWorkspaceTimezone(), getMyOpenTaskTimer()]);
   const today = toDateInputValue(new Date(), timeZone);
   const total = groups.reduce((n, g) => n + g.tasks.length, 0);
+  const runningTimer = timer?.workTaskId ? { orgId: timer.orgId, workTaskId: timer.workTaskId } : null;
 
   return (
     <div className="max-w-4xl space-y-6">
       <div>
         <h1 className="font-heading text-2xl font-semibold tracking-tight">Client work</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Your open tasks in the client workspaces you&apos;re assigned to. Tick one when it&apos;s done and say what you did; it goes on your end-of-day report. Click a task to open it there.
+          Your open tasks in the client workspaces you&apos;re assigned to. Click a task to open it, start its timer, and tick it when it&apos;s done
+          to say what you did; it goes on your end-of-day report.
         </p>
       </div>
       {groups.length === 0 ? (
@@ -32,46 +31,11 @@ export default async function ClientWorkPage() {
       ) : total === 0 ? (
         <p className="rounded-xl border border-dashed px-6 py-12 text-center text-sm text-muted-foreground">Nothing assigned to you in your client workspaces right now.</p>
       ) : (
-        groups.map((g) => (
-          <section key={g.workspace.slug} className="space-y-2">
-            <h2 className="text-sm font-semibold">
-              {g.workspace.name} <span className="font-normal text-muted-foreground">· {g.tasks.length}</span>
-            </h2>
-            {g.tasks.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Nothing open.</p>
-            ) : (
-              <ul className="divide-y rounded-lg border bg-card">
-                {g.tasks.map((t) => {
-                  const overdue = isOverdue({ status: t.status as WorkTaskStatus, dueDate: t.dueDate }, today);
-                  return (
-                    <li key={t.id} className="flex items-center hover:bg-muted/60">
-                      <TaskCheck
-                        className="ml-4"
-                        orgId={g.workspace.orgId}
-                        task={{ id: t.id, title: t.title, status: t.status, clientCanSee: t.clientVisible && t.project.clientVisible }}
-                      />
-                      <OpenInWorkspace slug={g.workspace.slug} path={`/work/projects/${t.project.id}?task=${t.id}`} className="min-w-0 flex-1 flex-wrap gap-y-1 px-4 py-3">
-                        <span className={cn("size-2 shrink-0 rounded-full", projectColorClass(t.project.color))} aria-hidden />
-                        <span className="min-w-0 flex-1">
-                          <span className="block text-sm font-medium">{t.title}</span>
-                          <span className="block text-xs text-muted-foreground">
-                            {t.project.name}
-                            {t.parent && ` / ${t.parent.title}`}
-                          </span>
-                        </span>
-                        <PriorityLabel priority={t.priority as WorkTaskPriority} />
-                        <WorkStatusPill status={t.status as WorkTaskStatus} />
-                        <span className={cn("w-28 text-right text-xs tabular-nums", overdue ? "font-semibold text-destructive" : "text-muted-foreground")}>
-                          {t.dueDate ? (overdue ? `Overdue · ${formatDay(t.dueDate)}` : formatDay(t.dueDate)) : "No due date"}
-                        </span>
-                      </OpenInWorkspace>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </section>
-        ))
+        <ClientWorkList
+          groups={groups.map((g) => ({ workspace: { orgId: g.workspace.orgId, slug: g.workspace.slug, name: g.workspace.name }, tasks: g.tasks }))}
+          today={today}
+          runningTimer={runningTimer}
+        />
       )}
     </div>
   );

@@ -2,7 +2,9 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { db, currentOrganization } from "@/lib/db";
+import { db, currentOrganization, runAsTenant, tenantDb } from "@/lib/db";
+import { timerPlaces } from "@/lib/workspace-assignments";
+import { actorIn, linkedWorkspaces } from "@/lib/work-everywhere";
 import { requireSession, requireRole, isManagement } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
@@ -17,15 +19,96 @@ const entryInclude = {
   workTask: { select: { id: true, title: true, project: { select: { id: true, name: true } } } },
 } as const;
 
+// ---- One timer across workspaces --------------------------------------------
+//
+// A person's task timer can run in their home workspace or, on a client's
+// task, in that client workspace as their linked account (the time belongs to
+// that workspace: its tasks' hours, the client's summary, the EOD minutes).
+// Only one runs at a time across all of them.
+
+/** Closes the person's running timers in every workspace they work in. */
+async function closeTimersEverywhere(userId: string, at: Date) {
+  for (const place of await timerPlaces(userId)) {
+    await tenantDb(place.orgId).taskTimeEntry.updateMany({ where: { userId: place.userId, endedAt: null }, data: { endedAt: at } });
+  }
+}
+
+/** The person's running timer in one of their other workspaces, if any. */
+async function openTimerElsewhere(userId: string, currentOrgId: string) {
+  for (const place of await timerPlaces(userId)) {
+    if (place.orgId === currentOrgId) continue;
+    const entry = await tenantDb(place.orgId).taskTimeEntry.findFirst({
+      where: { userId: place.userId, endedAt: null },
+      include: entryInclude,
+      orderBy: { startedAt: "desc" },
+    });
+    if (entry) return { entry, place };
+  }
+  return null;
+}
+
 /** The signed-in user's running timer, or null — for the nav widget's
- * page-load hydration, same shape as getMyActiveEntry in time-entries.ts. */
+ * page-load hydration, same shape as getMyActiveEntry in time-entries.ts.
+ * A timer running on a client's task (started from Client work) shows here
+ * too, with that workspace's name. */
 export async function getMyOpenTaskTimer() {
   const session = await requireSession();
-  return db.taskTimeEntry.findFirst({
+  const here = await db.taskTimeEntry.findFirst({
     where: { userId: session.user.id, endedAt: null },
     include: entryInclude,
     orderBy: { startedAt: "desc" },
   });
+  if (here) return { ...here, orgId: session.user.organizationId, workspaceName: null as string | null };
+  const other = await openTimerElsewhere(session.user.id, session.user.organizationId);
+  return other ? { ...other.entry, orgId: other.place.orgId, workspaceName: other.place.name as string | null } : null;
+}
+
+/** Clocks the person in at home (or ends their break) when they start timing work. */
+async function startWorking(role: string, orgKind: string) {
+  // Caregivers are left alone — their clock-in is a visit to a chosen
+  // recipient, which a task timer can't pick. Not in a client's tasks-only
+  // workspace either: the shift clock (and payroll) belongs to the home one.
+  if (role === "CAREGIVER" || orgKind === "TASKS") return false;
+  const session = await requireSession();
+  const [openShift, openBreak] = await Promise.all([
+    db.timeEntry.findFirst({ where: { userId: session.user.id, clockOut: null }, select: { id: true } }),
+    db.breakEntry.findFirst({ where: { userId: session.user.id, breakEnd: null }, select: { id: true } }),
+  ]);
+  if (openBreak) await endBreak();
+  else if (!openShift) await clockIn();
+  return Boolean(openBreak || !openShift);
+}
+
+/**
+ * Client work → Start timer on a client's task: times it in that workspace
+ * as the person's linked account, from their home workspace. Clocks them in
+ * at home, and stops any other timer of theirs first.
+ */
+export async function startClientTaskTimer(orgId: string, workTaskId: string) {
+  const session = await requireSession();
+  if (session.user.isAssigned) throw new UserFacingError("Start the timer from the task's own workspace");
+  const ws = (await linkedWorkspaces(session.user.id)).find((w) => w.orgId === orgId);
+  if (!ws) throw new UserFacingError("You're no longer assigned to that workspace");
+  const actor = actorIn(ws);
+  if (actor.scope.side !== "team") throw new UserFacingError("Only the team can track time on tasks");
+  const tenant = { id: ws.orgId, slug: ws.slug };
+  const visible = await runAsTenant(tenant, () => db.workTask.findFirst({ where: { id: workTaskId, ...taskWhere(actor.scope) }, select: { id: true } }));
+  if (!visible) throw new UserFacingError("That task doesn't exist or you can't see it");
+
+  const org = await currentOrganization();
+  const clockedIn = await startWorking(session.user.role, org.kind);
+  const now = new Date();
+  await closeTimersEverywhere(session.user.id, now);
+  const entry = await runAsTenant(tenant, async () => {
+    const e = await db.taskTimeEntry.create({
+      data: { userId: ws.linkedUserId, workTaskId, startedAt: now, source: "TIMER" },
+      include: entryInclude,
+    });
+    await recordAudit({ entityType: "TaskTimeEntry", entityId: e.id, action: "start_timer", actorId: ws.linkedUserId });
+    return e;
+  });
+  revalidatePath("/", "layout");
+  return { ...entry, clockedIn, orgId: ws.orgId, workspaceName: ws.name };
 }
 
 /**
@@ -49,27 +132,17 @@ export async function startTaskTimer(input: { taskId?: string; workTaskId?: stri
   }
 
   // Working on a task means you're working: clock in first if you aren't,
-  // or come back from a break. Caregivers are left alone — their clock-in
-  // is a visit to a chosen recipient, which a task timer can't pick.
-  let clockedIn = false;
-  // Not in a client's tasks-only workspace either: the shift clock (and
-  // payroll) belongs to the person's home workspace.
-  if (session.user.role !== "CAREGIVER" && org.kind !== "TASKS") {
-    const [openShift, openBreak] = await Promise.all([
-      db.timeEntry.findFirst({ where: { userId: session.user.id, clockOut: null }, select: { id: true } }),
-      db.breakEntry.findFirst({ where: { userId: session.user.id, breakEnd: null }, select: { id: true } }),
-    ]);
-    if (openBreak) await endBreak();
-    else if (!openShift) await clockIn();
-    clockedIn = Boolean(openBreak || !openShift);
-  }
+  // or come back from a break.
+  const clockedIn = await startWorking(session.user.role, org.kind);
 
   const now = new Date();
 
+  // One timer at a time — here and in every other workspace the person works in.
   await db.taskTimeEntry.updateMany({
     where: { userId: session.user.id, endedAt: null },
     data: { endedAt: now },
   });
+  await closeTimersEverywhere(session.user.id, now);
 
   const entry = await db.taskTimeEntry.create({
     data: {
@@ -96,7 +169,18 @@ export async function stopTaskTimer() {
     where: { userId: session.user.id, endedAt: null },
     orderBy: { startedAt: "desc" },
   });
-  if (!open) throw new TaskTimeError("No timer is running");
+  if (!open) {
+    // Running on a client's task, started from Client work.
+    const other = await openTimerElsewhere(session.user.id, session.user.organizationId);
+    if (!other) throw new TaskTimeError("No timer is running");
+    const entry = await runAsTenant({ id: other.place.orgId, slug: other.place.slug }, async () => {
+      const e = await db.taskTimeEntry.update({ where: { id: other.entry.id }, data: { endedAt: new Date() }, include: entryInclude });
+      await recordAudit({ entityType: "TaskTimeEntry", entityId: e.id, action: "stop_timer", actorId: other.place.userId });
+      return e;
+    });
+    revalidatePath("/", "layout");
+    return entry;
+  }
 
   const entry = await db.taskTimeEntry.update({ where: { id: open.id }, data: { endedAt: new Date() }, include: entryInclude });
 
@@ -114,8 +198,14 @@ export async function setOpenTaskTimerDescription(description: string) {
     where: { userId: session.user.id, endedAt: null },
     orderBy: { startedAt: "desc" },
   });
-  if (!open) throw new TaskTimeError("No timer is running");
-  await db.taskTimeEntry.update({ where: { id: open.id }, data: { description: description.trim() || null } });
+  const note = description.trim() || null;
+  if (!open) {
+    const other = await openTimerElsewhere(session.user.id, session.user.organizationId);
+    if (!other) throw new TaskTimeError("No timer is running");
+    await tenantDb(other.place.orgId).taskTimeEntry.update({ where: { id: other.entry.id }, data: { description: note } });
+    return;
+  }
+  await db.taskTimeEntry.update({ where: { id: open.id }, data: { description: note } });
   revalidatePath("/time-tracking");
 }
 
