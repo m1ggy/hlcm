@@ -9,7 +9,14 @@ import { homePathFor } from "@/lib/workspace-kind";
 import { requireSession } from "@/lib/rbac";
 import { toActionResult } from "@/lib/action-result";
 import { safeSwitchPath, startWorkspaceSwitch } from "@/lib/workspace-switch";
-import { assignToWorkspace, endAssignment, type AssignableRole, type AssignmentActor } from "@/lib/workspace-assignments";
+import {
+  assignToWorkspace,
+  endAssignment,
+  saveClientTextSignup,
+  type AssignableRole,
+  type AssignmentActor,
+  type ClientTextInput,
+} from "@/lib/workspace-assignments";
 
 // Switching workspaces and assigning a managing company's people to client
 // workspaces (docs/workspace-tasks-plan.md, Phase 1). The rules live in
@@ -43,6 +50,14 @@ export async function enterSwitchedWorkspace(formData: FormData) {
 export async function assignStaff(input: { orgId: string; homeUserId: string; role: AssignableRole; canAssign: boolean }) {
   return toActionResult(async () => {
     await assignToWorkspace(await actor(), input);
+    revalidatePath("/client-workspaces");
+  });
+}
+
+/** A client person's mobile number and evening-text sign-up, from Client workspaces. */
+export async function saveClientText(input: ClientTextInput) {
+  return toActionResult(async () => {
+    await saveClientTextSignup(await actor(), input);
     revalidatePath("/client-workspaces");
   });
 }

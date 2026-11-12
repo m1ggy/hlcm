@@ -5,6 +5,7 @@ import { runAsTenant } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
 import { forgetOrg } from "@/lib/tenant";
 import { UserFacingError } from "@/lib/user-facing-error";
+import { normalizePhone } from "@/lib/form-logic";
 
 // A managing company (e.g. CTK) putting its own people to work in its client
 // companies' workspaces (docs/workspace-tasks-plan.md, Phase 1).
@@ -227,6 +228,83 @@ export async function assignToWorkspace(actor: AssignmentActor, input: AssignInp
   const detail = { workspace: org.slug, person: home.email, role: input.role, accountManager: input.canAssign };
   await auditBoth(actor, org, assignmentId.userId, existing ? "workspace_assignment_updated" : "workspace_assigned", detail, home.id);
   return assignmentId.id;
+}
+
+// ---- The client's own people: mobile numbers and the evening text ---------
+//
+// The client's people normally sign up for the evening text on their own
+// Settings page (src/lib/work-summary-notes.ts sends it). The managing
+// company can also add their number and sign them up from Client workspaces,
+// after confirming they agreed — recorded in both workspaces' audit logs.
+// Never over a STOP reply: that person has to opt back in themselves.
+
+export type ClientPerson = {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  phone: string | null;
+  smsDailyUpdates: boolean;
+  optedOut: boolean;
+};
+
+/** The client's own active people (not our assigned staff, not caregivers), and whether the workspace sends the evening text. */
+export async function listClientPeople(actor: AssignmentActor, orgId: string) {
+  await accessTo(actor, orgId);
+  const [org, people] = await Promise.all([
+    prisma.organization.findUniqueOrThrow({ where: { id: orgId }, select: { kind: true, workDailyText: true } }),
+    prisma.user.findMany({
+      where: { organizationId: orgId, active: true, isSupport: false, assignedFromUserId: null, role: { not: "CAREGIVER" } },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, email: true, role: true, phone: true, smsDailyUpdates: true, smsOptedOutAt: true },
+    }),
+  ]);
+  return {
+    dailyTextOn: org.kind === "TASKS" && org.workDailyText,
+    people: people.map(({ smsOptedOutAt, ...p }): ClientPerson => ({ ...p, optedOut: Boolean(smsOptedOutAt) })),
+  };
+}
+
+export type ClientTextInput = { orgId: string; userId: string; phone: string; enabled: boolean; consent: boolean };
+
+/** Saves a client person's mobile number and evening-text sign-up. */
+export async function saveClientTextSignup(actor: AssignmentActor, input: ClientTextInput) {
+  const { org } = await accessTo(actor, input.orgId);
+  const person = await prisma.user.findFirst({
+    where: { id: input.userId, organizationId: org.id, active: true, isSupport: false, assignedFromUserId: null, role: { not: "CAREGIVER" } },
+    select: { id: true, phone: true, smsDailyUpdates: true, smsOptedOutAt: true },
+  });
+  if (!person) throw new UserFacingError("That person isn't one of the client's people");
+
+  const raw = input.phone.trim();
+  const phone = raw ? normalizePhone(raw) : null;
+  if (raw && !phone) throw new UserFacingError("Enter a valid mobile number, like (555) 123-4567");
+
+  const signingUp = input.enabled && !person.smsDailyUpdates;
+  if (input.enabled) {
+    if (!phone) throw new UserFacingError("Add their mobile number to send the evening text");
+    if (signingUp) {
+      const settings = await prisma.organization.findUniqueOrThrow({ where: { id: org.id }, select: { kind: true, workDailyText: true } });
+      if (settings.kind !== "TASKS" || !settings.workDailyText) {
+        throw new UserFacingError("Turn on the evening text in the workspace's This week settings first");
+      }
+      if (person.smsOptedOutAt) {
+        throw new UserFacingError("They replied STOP to our texts. Only they can turn texts back on, from their Settings page");
+      }
+      if (!input.consent) throw new UserFacingError("Confirm they agreed to get the evening text");
+    }
+  }
+
+  if (phone === person.phone && input.enabled === person.smsDailyUpdates) return;
+  await prisma.user.update({ where: { id: person.id }, data: { phone, smsDailyUpdates: input.enabled } });
+
+  const detail = {
+    workspace: org.slug,
+    phone,
+    eveningText: input.enabled,
+    ...(signingUp && { consent: "Confirmed by the managing company that this person agreed to the evening text" }),
+  };
+  await auditBoth(actor, org, person.id, signingUp ? "sms_consent" : "client_contact_updated", detail);
 }
 
 /** Ends an assignment: the linked account is deactivated (its history stays). */

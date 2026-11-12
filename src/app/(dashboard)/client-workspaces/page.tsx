@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { blockCaregiverRoute, requireSession } from "@/lib/rbac";
-import { listAssignableStaff, listAssignments, listManagedWorkspaces } from "@/lib/workspace-assignments";
+import { listAssignableStaff, listAssignments, listClientPeople, listManagedWorkspaces } from "@/lib/workspace-assignments";
+import { ClientTextSignups } from "@/components/workspaces/client-text-signups";
 import { switchingAvailable } from "@/lib/workspace-switch";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,7 +25,11 @@ export default async function ClientWorkspacesPage({ searchParams }: { searchPar
 
   const { w } = await searchParams;
   const selected = workspaces.find((x) => x.slug === w) ?? workspaces[0];
-  const [assignments, staff] = await Promise.all([listAssignments(actor, selected.id), listAssignableStaff(actor)]);
+  const [assignments, staff, clientPeople] = await Promise.all([
+    listAssignments(actor, selected.id),
+    listAssignableStaff(actor),
+    selected.kind === "TASKS" ? listClientPeople(actor, selected.id) : null,
+  ]);
   const active = assignments.filter((a) => a.active);
   const ended = assignments.filter((a) => !a.active);
   const assignedIds = new Set(active.map((a) => a.homeUserId));
@@ -127,6 +132,19 @@ export default async function ClientWorkspacesPage({ searchParams }: { searchPar
             )}
           </CardContent>
         </Card>
+        {clientPeople && (
+          <Card className="min-w-0 md:col-start-2">
+            <CardHeader>
+              <CardTitle>{selected.name}&apos;s people</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Mobile numbers and the evening text update. Sign someone up only after they&apos;ve agreed to get texts.
+              </p>
+            </CardHeader>
+            <CardContent>
+              <ClientTextSignups key={selected.id} orgId={selected.id} people={clientPeople.people} dailyTextOn={clientPeople.dailyTextOn} />
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );
