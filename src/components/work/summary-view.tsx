@@ -17,6 +17,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { TaskSheet } from "./task-sheet";
 
+/** Small uppercase labels (header, stats, days, sections): closer to the text color than muted, so they read in both themes. */
+const SUBTITLE = "text-[0.8125rem] font-semibold tracking-wide text-foreground/80 uppercase";
+
 type Settings = {
   showHoursToClient: boolean;
   aiSummaries: boolean;
@@ -101,7 +104,7 @@ export function SummaryView({
       {/* Header */}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div data-tour="summary-header">
-          <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">{workspaceName} · Weekly summary</p>
+          <p className={SUBTITLE}>{workspaceName} · Weekly summary</p>
           <h1 className="font-heading text-3xl font-semibold tracking-tight">Week of {title}</h1>
         </div>
         <div className="flex flex-wrap items-center gap-2" data-print-hide>
@@ -231,7 +234,7 @@ function Stat({ label, value, days, mono, hint }: { label: string; value: number
   const max = Math.max(...days, 0);
   return (
     <div className="rounded-xl border bg-card p-4">
-      <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">{label}</p>
+      <p className={SUBTITLE}>{label}</p>
       <p className={cn("mt-1 font-heading text-2xl font-semibold tabular-nums", mono && "font-mono text-xl")}>{mono ? `${value}h` : value}</p>
       <div className="mt-2 flex h-6 items-end gap-0.5" aria-hidden>
         {days.map((n, i) => (
@@ -264,7 +267,7 @@ function DayCard({ d, today, selected, onSelect }: { d: DaySummary; today: strin
         (!active || future) && "bg-muted/40"
       )}
     >
-      <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+      <span className={SUBTITLE}>
         {fmt(d.date, { weekday: "short", month: "short", day: "numeric" })}
         {isToday && " · Today"}
       </span>
@@ -340,7 +343,7 @@ function DayDetail({
         <DetailList title="Finished">
           {byProject(d.completed).map(([project, items]) => (
             <li key={project}>
-              <p className="text-xs text-muted-foreground">{project}</p>
+              <p className="text-xs font-medium text-foreground/75">{project}</p>
               <ul className="space-y-1">
                 {items.map((c) => (
                   <li key={c.taskId + c.at.toString()} className="text-sm">
@@ -463,7 +466,7 @@ function DayText({ d, isToday, people }: { d: DaySummary; isToday: boolean; peop
 function DetailList({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="space-y-2">
-      <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">{title}</h3>
+      <h3 className={SUBTITLE}>{title}</h3>
       <ul className="space-y-2">{children}</ul>
     </div>
   );
