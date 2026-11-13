@@ -7,18 +7,31 @@ import { issueAuthToken } from "@/lib/auth-tokens";
 
 type Recipient = { id: string; name: string; email: string };
 
-export async function sendInviteEmail(user: Recipient, invitedBy?: string) {
+// Says what they're joining as, so a staff invite and an owner invite don't
+// read the same.
+const INVITE_ROLE: Record<string, string> = {
+  OWNER: "an owner",
+  ADMIN: "an admin",
+  ACCOUNTANT: "an accountant",
+  MANAGER: "a manager",
+  STAFF: "a member of staff",
+  CAREGIVER: "a caregiver",
+  CLIENT: "a client",
+};
+
+export async function sendInviteEmail(user: Recipient & { role: string }, invitedBy?: string) {
   const token = await issueAuthToken(user.id, "INVITE");
   const { appUrl, brand } = await getEmailBranding();
   const link = `${appUrl}/set-password?token=${encodeURIComponent(token)}`;
+  const as = INVITE_ROLE[user.role];
   await sendEmail({
     to: user.email,
-    subject: `You're invited to ${brand}`,
+    subject: user.role === "OWNER" ? `You're invited to run ${brand}` : `You're invited to ${brand}`,
     html: renderEmailLayout({
       heading: `Welcome to ${brand}`,
       bodyHtml: `<p style="margin:0 0 8px">Hi ${escapeHtml(user.name)},</p><p style="margin:0">${
         invitedBy ? `${escapeHtml(invitedBy)} invited you` : "You've been invited"
-      } to ${escapeHtml(brand)}. Choose a password to finish setting up your account — this link works once and expires in 7 days.</p>`,
+      } to ${escapeHtml(brand)}${as ? ` as ${as}` : ""}. Choose a password to finish setting up your account — this link works once and expires in 7 days.</p>`,
       ctaLabel: "Set your password",
       ctaUrl: link,
       preheader: `Set your password for ${brand}`,

@@ -85,9 +85,23 @@ describe("inviteOwner", () => {
     expect((await t.user.findUnique({ where: { id: fresh.userId } }))).toMatchObject({ role: "OWNER", email: "second@sunrise.test" });
 
     const staff = await t.user.create({ data: { name: "Stu", email: "stu@sunrise.test", passwordHash: "x", role: "STAFF", active: false } });
-    const promoted = await inviteOwner(org.id, { name: "ignored", email: "stu@sunrise.test" });
+    // An existing account is only promoted when asked to.
+    await expect(inviteOwner(org.id, { name: "ignored", email: "stu@sunrise.test" })).rejects.toThrow(/already has a staff account/);
+    expect(await t.user.findUnique({ where: { id: staff.id } })).toMatchObject({ role: "STAFF", active: false });
+    const promoted = await inviteOwner(org.id, { name: "ignored", email: "stu@sunrise.test", promoteExisting: true });
     expect(promoted).toMatchObject({ created: false, userId: staff.id });
     expect(await t.user.findUnique({ where: { id: staff.id } })).toMatchObject({ role: "OWNER", active: true, name: "Stu" });
+  });
+
+  it("never promotes a managing company's assigned staff", async () => {
+    const { inviteOwner } = await import("@/lib/platform");
+    const org = await prisma.organization.findUniqueOrThrow({ where: { slug: "sunrise" } });
+    const t = tenantDb(org.id);
+    const linked = await t.user.create({
+      data: { name: "Vee", email: "vee@manager.test", passwordHash: "x", role: "STAFF", assignedFromUserId: "home-user-id" },
+    });
+    await expect(inviteOwner(org.id, { name: "Vee", email: "vee@manager.test", promoteExisting: true })).rejects.toThrow(/assigned staff/);
+    expect((await t.user.findUnique({ where: { id: linked.id } }))?.role).toBe("STAFF");
   });
 
   it("refuses the platform org and bad emails", async () => {
@@ -95,5 +109,33 @@ describe("inviteOwner", () => {
     await expect(inviteOwner("org_platform", { name: "X", email: "x@y.test" })).rejects.toThrow(/create-platform-admin/);
     const org = await prisma.organization.findUniqueOrThrow({ where: { slug: "sunrise" } });
     await expect(inviteOwner(org.id, { name: "X", email: "nope" })).rejects.toThrow(/valid email/);
+  });
+});
+
+describe("createOrganization with assigned staff", () => {
+  it("refuses an owner email that belongs to one of the picked staff, before creating anything", async () => {
+    const { org: home } = await createOrganization(input("mgr-home"));
+    const va = await tenantDb(home.id).user.create({ data: { name: "Val", email: "val@mgr-home.test", passwordHash: "x", role: "STAFF" } });
+    await expect(
+      createOrganization(
+        { ...input("client-co"), ownerEmail: "VAL@mgr-home.test", kind: "TASKS", managedByOrgId: home.id, assign: [{ homeUserId: va.id, role: "STAFF", canAssign: false }] },
+        { id: "platform-admin", name: "Pat" }
+      )
+    ).rejects.toThrow(/one of the staff you picked/);
+    expect(await getOrgBySlug("client-co")).toBeNull();
+  });
+});
+
+describe("getOrganizationDetail", () => {
+  it("lists the workspace's own users with their invite state, and leaves out support accounts", async () => {
+    const { getOrganizationDetail } = await import("@/lib/platform");
+    const org = await prisma.organization.findUniqueOrThrow({ where: { slug: "sunrise" } });
+    await tenantDb(org.id).user.create({ data: { name: "Support", email: "support@x.test", passwordHash: "x", role: "DEVELOPER", isSupport: true } });
+    const detail = await getOrganizationDetail(org.id);
+    expect(detail.slug).toBe("sunrise");
+    expect(detail.users.some((u) => u.email === "support@x.test")).toBe(false);
+    expect(detail.users.some((u) => u.email === "vee@manager.test")).toBe(false);
+    expect(detail.users.find((u) => u.email === "owner@sunrise.test")).toMatchObject({ role: "OWNER", invite: "PENDING" });
+    await expect(getOrganizationDetail("org_platform")).rejects.toThrow(/not found/);
   });
 });

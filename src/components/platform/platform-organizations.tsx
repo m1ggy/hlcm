@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -15,6 +16,7 @@ import {
 import type { PlatformOrganization } from "@/lib/platform";
 import { unexpectedErrorMessage } from "@/lib/action-result";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -367,15 +369,17 @@ function InviteOwnerDialog({ org }: { org: Org }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [promoteExisting, setPromoteExisting] = useState(false);
   const { isPending, run } = useAction();
 
   function handleInvite() {
-    run(() => inviteOwnerFromPlatform(org.id, { name, email }), ({ inviteSent }) => {
+    run(() => inviteOwnerFromPlatform(org.id, { name, email, promoteExisting }), ({ inviteSent }) => {
       if (inviteSent) toast.success(`Invited ${email} as an owner of ${org.name}`);
       else toast.warning(`${email} is now an owner, but the invite email couldn't be sent — try "Resend owner invite".`);
       setOpen(false);
       setName("");
       setEmail("");
+      setPromoteExisting(false);
     });
   }
 
@@ -394,8 +398,8 @@ function InviteOwnerDialog({ org }: { org: Org }) {
           }}
         >
           <p className="text-sm text-muted-foreground">
-            If this email already has an account in the workspace it becomes an owner (and is reactivated); otherwise a new
-            owner account is created. Either way they get a link to set their password.
+            A new owner account is created and emailed a link to set their password. Staff assigned from the managing company
+            can&apos;t be made owners.
           </p>
           <div className="space-y-1">
             <Label htmlFor={`invite-name-${org.id}`}>Name</Label>
@@ -405,6 +409,15 @@ function InviteOwnerDialog({ org }: { org: Org }) {
             <Label htmlFor={`invite-email-${org.id}`}>Email</Label>
             <Input id={`invite-email-${org.id}`} type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
           </div>
+          <label className="flex items-start gap-2 text-sm">
+            <Checkbox checked={promoteExisting} onCheckedChange={(c) => setPromoteExisting(c === true)} className="mt-0.5" />
+            <span>
+              Make an existing account an owner
+              <span className="block text-xs text-muted-foreground">
+                If this email already has an account in {org.name}, promote it to owner (and reactivate it).
+              </span>
+            </span>
+          </label>
           <Button type="submit" className="w-full" loading={isPending}>
             Invite owner
           </Button>
@@ -414,7 +427,8 @@ function InviteOwnerDialog({ org }: { org: Org }) {
   );
 }
 
-function OrganizationRow({ org, organizations }: { org: Org; organizations: Org[] }) {
+/** The console's actions on one workspace — its row in the list and its details page. */
+export function WorkspaceActions({ org, organizations }: { org: Org; organizations: Org[] }) {
   const { isPending, run } = useAction();
   const suspended = org.status === "SUSPENDED";
 
@@ -448,9 +462,30 @@ function OrganizationRow({ org, organizations }: { org: Org; organizations: Org[
   }
 
   return (
+    <>
+      <Button variant="ghost" size="sm" disabled={isPending || suspended} onClick={openSupport} title={suspended ? "Reactivate it to open it" : undefined}>
+        Open workspace
+      </Button>
+      <SetupDialog org={org} organizations={organizations} />
+      <InviteOwnerDialog org={org} />
+      <Button variant="ghost" size="sm" disabled={isPending || suspended} onClick={resendInvite}>
+        Resend owner invite
+      </Button>
+      <Button variant="ghost" size="sm" loading={isPending} onClick={toggleStatus}>
+        {suspended ? "Reactivate" : "Suspend"}
+      </Button>
+    </>
+  );
+}
+
+function OrganizationRow({ org, organizations }: { org: Org; organizations: Org[] }) {
+  const suspended = org.status === "SUSPENDED";
+  return (
     <TableRow>
       <TableCell>
-        <div className="font-medium">{org.name}</div>
+        <Link href={`/platform/workspaces/${org.id}`} className="font-medium hover:underline">
+          {org.name}
+        </Link>
         <a href={org.url} className="font-mono text-xs text-muted-foreground underline" target="_blank" rel="noreferrer">
           {org.slug}
         </a>
@@ -473,21 +508,16 @@ function OrganizationRow({ org, organizations }: { org: Org; organizations: Org[
         )}
       </TableCell>
       <TableCell className="space-x-1 whitespace-nowrap text-right">
-        <Button variant="ghost" size="sm" disabled={isPending || suspended} onClick={openSupport} title={suspended ? "Reactivate it to open it" : undefined}>
-          Open workspace
+        <Button variant="ghost" size="sm" nativeButton={false} render={<Link href={`/platform/workspaces/${org.id}`} />}>
+          Details
         </Button>
-        <SetupDialog org={org} organizations={organizations} />
-        <InviteOwnerDialog org={org} />
-        <Button variant="ghost" size="sm" disabled={isPending || suspended} onClick={resendInvite}>
-          Resend owner invite
-        </Button>
-        <Button variant="ghost" size="sm" loading={isPending} onClick={toggleStatus}>
-          {suspended ? "Reactivate" : "Suspend"}
-        </Button>
+        <WorkspaceActions org={org} organizations={organizations} />
       </TableCell>
     </TableRow>
   );
 }
+
+export type { Org as PlatformOrg };
 
 export function PlatformOrganizations({ organizations }: { organizations: Org[] }) {
   return (

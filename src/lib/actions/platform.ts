@@ -9,6 +9,7 @@ import { toActionResult, type ActionResult } from "@/lib/action-result";
 import { isPlatformAdmin, orgAppUrl } from "@/lib/tenant-host";
 import {
   createOrganization,
+  getOrganizationDetail,
   getTenantOrganization,
   inviteOwner,
   listOrganizations,
@@ -17,6 +18,7 @@ import {
   setOrganizationStatus,
   type CreateOrganizationInput,
   type PlatformOrganization,
+  type PlatformOrganizationDetail,
 } from "@/lib/platform";
 import { startSupportSession } from "@/lib/support-access";
 import { setWorkspaceSetup } from "@/lib/workspace-assignments";
@@ -44,6 +46,16 @@ export async function platformAdminHasMfa(): Promise<boolean> {
 export async function listOrganizationsForPlatform(): Promise<(PlatformOrganization & { url: string })[]> {
   await requirePlatformAdmin();
   return (await listOrganizations()).map((org) => ({ ...org, url: orgAppUrl(org.slug) }));
+}
+
+/** One workspace's details page on the console. */
+export async function getOrganizationDetailForPlatform(orgId: string): Promise<(PlatformOrganizationDetail & { url: string }) | null> {
+  await requirePlatformAdmin();
+  const org = await getOrganizationDetail(orgId).catch((error) => {
+    if (error instanceof UserFacingError) return null;
+    throw error;
+  });
+  return org && { ...org, url: orgAppUrl(org.slug) };
 }
 
 export async function createOrganizationFromPlatform(
@@ -98,7 +110,10 @@ export async function resendOwnerInvitesFromPlatform(orgId: string): Promise<Act
   });
 }
 
-export async function inviteOwnerFromPlatform(orgId: string, input: { name: string; email: string }): Promise<ActionResult<{ inviteSent: boolean }>> {
+export async function inviteOwnerFromPlatform(
+  orgId: string,
+  input: { name: string; email: string; promoteExisting?: boolean }
+): Promise<ActionResult<{ inviteSent: boolean }>> {
   return toActionResult(async () => {
     const session = await requirePlatformAdmin();
     const result = await inviteOwner(orgId, input, session.user.name ?? undefined);

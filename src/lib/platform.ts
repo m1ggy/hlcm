@@ -46,9 +46,11 @@ function byOrg<T>(rows: OrgGroup<T>[], pick: (row: OrgGroup<T>) => number) {
   return new Map(rows.map((row) => [row.organizationId, pick(row)]));
 }
 
-export async function listOrganizations(): Promise<PlatformOrganization[]> {
+export async function listOrganizations(onlyOrgId?: string): Promise<PlatformOrganization[]> {
+  // One workspace (its details page) or all of them.
+  const scope = onlyOrgId ? { organizationId: onlyOrgId } : {};
   const orgs = await prisma.organization.findMany({
-    where: { slug: { not: PLATFORM_SLUG } },
+    where: { slug: { not: PLATFORM_SLUG }, ...(onlyOrgId && { id: onlyOrgId }) },
     orderBy: { createdAt: "asc" },
     select: {
       id: true,
@@ -66,12 +68,12 @@ export async function listOrganizations(): Promise<PlatformOrganization[]> {
     },
   });
   const [clients, applications, versions, attachments, formFiles, activity] = await Promise.all([
-    prisma.client.groupBy({ by: ["organizationId"], where: { active: true }, _count: { _all: true } }),
-    prisma.application.groupBy({ by: ["organizationId"], where: { active: true }, _count: { _all: true } }),
-    prisma.fileVersion.groupBy({ by: ["organizationId"], _sum: { sizeBytes: true } }),
-    prisma.invoiceAttachment.groupBy({ by: ["organizationId"], _sum: { sizeBytes: true } }),
-    prisma.formSubmissionFile.groupBy({ by: ["organizationId"], _sum: { sizeBytes: true } }),
-    prisma.auditLog.groupBy({ by: ["organizationId"], _max: { createdAt: true } }),
+    prisma.client.groupBy({ by: ["organizationId"], where: { ...scope, active: true }, _count: { _all: true } }),
+    prisma.application.groupBy({ by: ["organizationId"], where: { ...scope, active: true }, _count: { _all: true } }),
+    prisma.fileVersion.groupBy({ by: ["organizationId"], where: scope, _sum: { sizeBytes: true } }),
+    prisma.invoiceAttachment.groupBy({ by: ["organizationId"], where: scope, _sum: { sizeBytes: true } }),
+    prisma.formSubmissionFile.groupBy({ by: ["organizationId"], where: scope, _sum: { sizeBytes: true } }),
+    prisma.auditLog.groupBy({ by: ["organizationId"], where: scope, _max: { createdAt: true } }),
   ]);
   const clientCounts = byOrg(clients, (r) => r._count._all);
   const applicationCounts = byOrg(applications, (r) => r._count._all);
@@ -87,6 +89,177 @@ export async function listOrganizations(): Promise<PlatformOrganization[]> {
     storageBytes: storage.reduce((sum, m) => sum + (m.get(org.id) ?? 0), 0),
     lastActivityAt: lastActivity.get(org.id) ?? null,
   }));
+}
+
+export type PlatformUser = {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  active: boolean;
+  mfaEnabled: boolean;
+  createdAt: Date;
+  /** PENDING = invited, link not used yet; ACCEPTED = set their password from an invite; NONE = created with a password. */
+  invite: "PENDING" | "ACCEPTED" | "NONE";
+  lastSignInAt: Date | null;
+};
+
+export type PlatformOrganizationDetail = PlatformOrganization & {
+  timezone: string | null;
+  replyToEmail: string | null;
+  updatedAt: Date;
+  termsAcceptedBy: string | null;
+  setupChecklistDismissedAt: Date | null;
+  managedBySlug: string | null;
+  settings: { workShowHoursToClient: boolean; workAiSummaries: boolean; workWeeklyEmail: boolean; workDailyText: boolean };
+  integrations: { provider: string; connectedAt: Date }[];
+  managedWorkspaces: { id: string; name: string; slug: string; status: "ACTIVE" | "SUSPENDED"; assignedCount: number }[];
+  users: PlatformUser[];
+  /** The managing company's people working here through linked accounts. */
+  assigned: { id: string; name: string; email: string; homeOrgName: string; role: string; canAssign: boolean; active: boolean; since: Date; lastSignInAt: Date | null }[];
+  counts: Record<
+    "clients" | "applications" | "leads" | "careRecipients" | "invoices" | "projects" | "workProjects" | "openWorkTasks" | "formSubmissions" | "eodReports",
+    number
+  >;
+  storage: { files: number; invoiceAttachments: number; formUploads: number };
+  recentSignIns: { userName: string; success: boolean; reason: string | null; deviceType: string; browser: string | null; os: string | null; ipAddress: string | null; at: Date }[];
+  /** The workspace's own audit log — what kind of change, by whom, never the values. */
+  recentActivity: { action: string; entityType: string; actorName: string; at: Date }[];
+  /** What platform admins did to this workspace (the platform org's audit log). */
+  consoleHistory: { action: string; actorName: string; newValue: string | null; at: Date }[];
+};
+
+/**
+ * Everything the console shows about one workspace. Like listOrganizations,
+ * it reads account metadata, counts and audit actions — never clients',
+ * cases' or invoices' contents.
+ */
+export async function getOrganizationDetail(orgId: string): Promise<PlatformOrganizationDetail> {
+  const [base] = await listOrganizations(orgId);
+  if (!base) throw new UserFacingError("Workspace not found");
+  const organizationId = orgId;
+  const org = await prisma.organization.findUniqueOrThrow({
+    where: { id: orgId },
+    select: {
+      timezone: true,
+      replyToEmail: true,
+      updatedAt: true,
+      termsAcceptedBy: true,
+      setupChecklistDismissedAt: true,
+      workShowHoursToClient: true,
+      workAiSummaries: true,
+      workWeeklyEmail: true,
+      workDailyText: true,
+      managedBy: { select: { slug: true } },
+      integrations: { select: { provider: true, createdAt: true }, orderBy: { provider: "asc" } },
+      managedWorkspaces: {
+        orderBy: { name: "asc" },
+        select: { id: true, name: true, slug: true, status: true, _count: { select: { assignmentsIn: { where: { active: true } } } } },
+      },
+    },
+  });
+
+  const [users, assignments, logins, tokens, counts, storage, activity, history] = await Promise.all([
+    prisma.user.findMany({
+      where: { organizationId, isSupport: false, assignedFromUserId: null },
+      orderBy: [{ active: "desc" }, { role: "asc" }, { name: "asc" }],
+      select: { id: true, name: true, email: true, role: true, active: true, mfaEnabled: true, createdAt: true },
+    }),
+    prisma.workspaceAssignment.findMany({
+      where: { orgId },
+      orderBy: [{ active: "desc" }, { createdAt: "asc" }],
+      select: {
+        userId: true,
+        role: true,
+        canAssign: true,
+        active: true,
+        createdAt: true,
+        homeUser: { select: { name: true, email: true } },
+        homeOrg: { select: { name: true } },
+      },
+    }),
+    prisma.loginEvent.groupBy({ by: ["userId"], where: { organizationId, success: true }, _max: { createdAt: true } }),
+    prisma.authToken.findMany({ where: { organizationId, kind: "INVITE" }, select: { userId: true, usedAt: true } }),
+    Promise.all([
+      prisma.client.count({ where: { organizationId, active: true } }),
+      prisma.application.count({ where: { organizationId, active: true } }),
+      prisma.lead.count({ where: { organizationId } }),
+      prisma.careRecipient.count({ where: { organizationId, active: true } }),
+      prisma.invoice.count({ where: { organizationId } }),
+      prisma.project.count({ where: { organizationId, active: true } }),
+      prisma.workProject.count({ where: { organizationId } }),
+      prisma.workTask.count({ where: { organizationId, status: { notIn: ["DONE", "CANCELLED"] } } }),
+      prisma.formSubmission.count({ where: { organizationId } }),
+      prisma.eodReport.count({ where: { organizationId } }),
+    ]),
+    Promise.all([
+      prisma.fileVersion.aggregate({ where: { organizationId }, _sum: { sizeBytes: true } }),
+      prisma.invoiceAttachment.aggregate({ where: { organizationId }, _sum: { sizeBytes: true } }),
+      prisma.formSubmissionFile.aggregate({ where: { organizationId }, _sum: { sizeBytes: true } }),
+    ]),
+    prisma.auditLog.findMany({
+      where: { organizationId },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+      select: { action: true, entityType: true, createdAt: true, actor: { select: { name: true } } },
+    }),
+    prisma.auditLog.findMany({
+      where: { organization: { slug: PLATFORM_SLUG }, entityType: "Organization", entityId: orgId },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+      select: { action: true, newValue: true, createdAt: true, actor: { select: { name: true } } },
+    }),
+  ]);
+  const recentSignIns = await prisma.loginEvent.findMany({
+    where: { organizationId },
+    orderBy: { createdAt: "desc" },
+    take: 15,
+    select: { success: true, reason: true, deviceType: true, browser: true, os: true, ipAddress: true, createdAt: true, user: { select: { name: true } } },
+  });
+
+  const lastSignIn = new Map(logins.map((l) => [l.userId, l._max.createdAt]));
+  const inviteOf = (userId: string): PlatformUser["invite"] => {
+    const mine = tokens.filter((t) => t.userId === userId);
+    if (mine.some((t) => t.usedAt)) return "ACCEPTED";
+    return mine.length ? "PENDING" : "NONE";
+  };
+  const [clients, applications, leads, careRecipients, invoices, projects, workProjects, openWorkTasks, formSubmissions, eodReports] = counts;
+  const [files, invoiceAttachments, formUploads] = storage.map((s) => s._sum.sizeBytes ?? 0);
+
+  return {
+    ...base,
+    timezone: org.timezone,
+    replyToEmail: org.replyToEmail,
+    updatedAt: org.updatedAt,
+    termsAcceptedBy: org.termsAcceptedBy,
+    setupChecklistDismissedAt: org.setupChecklistDismissedAt,
+    managedBySlug: org.managedBy?.slug ?? null,
+    settings: {
+      workShowHoursToClient: org.workShowHoursToClient,
+      workAiSummaries: org.workAiSummaries,
+      workWeeklyEmail: org.workWeeklyEmail,
+      workDailyText: org.workDailyText,
+    },
+    integrations: org.integrations.map((i) => ({ provider: i.provider, connectedAt: i.createdAt })),
+    managedWorkspaces: org.managedWorkspaces.map(({ _count, ...w }) => ({ ...w, assignedCount: _count.assignmentsIn })),
+    users: users.map((u) => ({ ...u, invite: inviteOf(u.id), lastSignInAt: lastSignIn.get(u.id) ?? null })),
+    assigned: assignments.map((a) => ({
+      id: a.userId,
+      name: a.homeUser.name,
+      email: a.homeUser.email,
+      homeOrgName: a.homeOrg.name,
+      role: a.role,
+      canAssign: a.canAssign,
+      active: a.active,
+      since: a.createdAt,
+      lastSignInAt: lastSignIn.get(a.userId) ?? null,
+    })),
+    counts: { clients, applications, leads, careRecipients, invoices, projects, workProjects, openWorkTasks, formSubmissions, eodReports },
+    storage: { files, invoiceAttachments, formUploads },
+    recentSignIns: recentSignIns.map(({ user, createdAt, ...e }) => ({ ...e, userName: user.name, at: createdAt })),
+    recentActivity: activity.map((a) => ({ action: a.action, entityType: a.entityType, actorName: a.actor.name, at: a.createdAt })),
+    consoleHistory: history.map((h) => ({ action: h.action, newValue: h.newValue, actorName: h.actor.name, at: h.createdAt })),
+  };
 }
 
 /** A tenant workspace by id (never the platform org), for acting on it from the console. */
@@ -133,6 +306,17 @@ export async function createOrganization(input: CreateOrganizationInput, by?: Pl
   if (await prisma.organization.findUnique({ where: { slug }, select: { id: true } })) {
     throw new UserFacingError(`The address "${slug}" is already taken`);
   }
+  // Checked before anything is created: the owner would otherwise get the
+  // owner invite and that person's staff assignment would then fail.
+  if (input.managedByOrgId && input.assign?.length) {
+    const clash = await prisma.user.findFirst({
+      where: { id: { in: input.assign.map((a) => a.homeUserId) }, organizationId: input.managedByOrgId, email: { equals: ownerEmail, mode: "insensitive" } },
+      select: { name: true },
+    });
+    if (clash) {
+      throw new UserFacingError(`${ownerEmail} is ${clash.name}, one of the staff you picked — use the client company's own owner email, or don't assign them`);
+    }
+  }
 
   const org = await prisma.organization.create({ data: { name, slug }, select: { id: true, slug: true, name: true } });
   const owner = await tenantDb(org.id).user.create({
@@ -163,7 +347,7 @@ export async function createOrganization(input: CreateOrganizationInput, by?: Pl
 
   let inviteSent = true;
   try {
-    await runAsTenant({ id: org.id, slug: org.slug }, () => sendInviteEmail(owner, invitedBy));
+    await runAsTenant({ id: org.id, slug: org.slug }, () => sendInviteEmail({ ...owner, role: "OWNER" }, invitedBy));
   } catch (error) {
     console.error(`Failed to send the owner invite for new org ${org.slug}:`, error);
     inviteSent = false;
@@ -186,9 +370,15 @@ export async function listStaffOf(orgId: string) {
  * Makes `email` an OWNER of an existing workspace and emails them an invite
  * (a set-password link) — the way back in when an owner's email was mistyped
  * at creation or the only owner deactivated themselves. An existing account
- * with that email is promoted and reactivated; otherwise one is created.
+ * with that email is promoted and reactivated, but only with
+ * `promoteExisting` (the console asks first); otherwise one is created.
+ * A managing company's assigned staff and support accounts are never promoted.
  */
-export async function inviteOwner(orgId: string, input: { name: string; email: string }, invitedBy?: string) {
+export async function inviteOwner(
+  orgId: string,
+  input: { name: string; email: string; promoteExisting?: boolean },
+  invitedBy?: string
+) {
   const name = input.name.trim();
   const email = input.email.trim().toLowerCase();
   if (!name) throw new UserFacingError("Name is required");
@@ -197,7 +387,19 @@ export async function inviteOwner(orgId: string, input: { name: string; email: s
   if (org.slug === PLATFORM_SLUG) throw new UserFacingError("Add platform admins with scripts/create-platform-admin.ts");
 
   const t = tenantDb(org.id);
-  const existing = await t.user.findFirst({ where: { email: { equals: email, mode: "insensitive" } }, select: { id: true } });
+  const existing = await t.user.findFirst({
+    where: { email: { equals: email, mode: "insensitive" } },
+    select: { id: true, name: true, role: true, isSupport: true, assignedFromUserId: true },
+  });
+  if (existing?.assignedFromUserId) {
+    throw new UserFacingError(`${email} is assigned staff from the managing company — they can't be made an owner here`);
+  }
+  if (existing?.isSupport) throw new UserFacingError(`${email} is a platform support account`);
+  if (existing && existing.role !== "OWNER" && !input.promoteExisting) {
+    throw new UserFacingError(
+      `${existing.name} already has a ${existing.role.toLowerCase()} account with ${email} — tick "Make an existing account an owner" to promote them`
+    );
+  }
   const owner = existing
     ? await t.user.update({ where: { id: existing.id }, data: { role: "OWNER", active: true }, select: { id: true, name: true, email: true } })
     : await t.user.create({
@@ -206,7 +408,7 @@ export async function inviteOwner(orgId: string, input: { name: string; email: s
       });
   let inviteSent = true;
   try {
-    await runAsTenant(org, () => sendInviteEmail(owner, invitedBy));
+    await runAsTenant(org, () => sendInviteEmail({ ...owner, role: "OWNER" }, invitedBy));
   } catch (error) {
     console.error(`Failed to send owner invite for ${org.slug}:`, error);
     inviteSent = false;
@@ -218,14 +420,14 @@ export async function inviteOwner(orgId: string, input: { name: string; email: s
 export async function resendOwnerInvites(orgId: string, invitedBy?: string) {
   const org = await prisma.organization.findUniqueOrThrow({ where: { id: orgId }, select: { id: true, slug: true } });
   const t = tenantDb(org.id);
-  const owners = await t.user.findMany({ where: { role: "OWNER", active: true }, select: { id: true, name: true, email: true } });
+  const owners = await t.user.findMany({ where: { role: "OWNER", active: true, isSupport: false, assignedFromUserId: null }, select: { id: true, name: true, email: true } });
   const pending: typeof owners = [];
   for (const owner of owners) {
     const accepted = await t.authToken.count({ where: { userId: owner.id, kind: "INVITE", usedAt: { not: null } } });
     if (accepted === 0) pending.push(owner);
   }
   await runAsTenant(org, async () => {
-    for (const owner of pending) await sendInviteEmail(owner, invitedBy);
+    for (const owner of pending) await sendInviteEmail({ ...owner, role: "OWNER" }, invitedBy);
   });
   return pending.length;
 }
