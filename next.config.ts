@@ -2,6 +2,9 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // Version skew protection: the deployed commit, set by the Docker build
+  // (deploy.yml). Unset locally, which turns it off.
+  deploymentId: process.env.NEXT_DEPLOYMENT_ID || undefined,
   // The staff guide page reads its text from docs/ at runtime; the
   // standalone build only ships files it traces, so name it here.
   outputFileTracingIncludes: {

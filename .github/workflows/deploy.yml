@@ -108,6 +108,8 @@ jobs:
           context: .
           target: runner
           push: true
+          build-args: |
+            NEXT_DEPLOYMENT_ID=${{ github.sha }}
           tags: |
             ${{ steps.vars.outputs.image_base }}:${{ needs.resolve-environment.outputs.environment }}-latest
             ${{ steps.vars.outputs.image_base }}:${{ steps.vars.outputs.env_tag }}
@@ -120,6 +122,8 @@ jobs:
           context: .
           target: migrator
           push: true
+          build-args: |
+            NEXT_DEPLOYMENT_ID=${{ github.sha }}
           tags: |
             ${{ steps.vars.outputs.image_base }}:migrate-${{ needs.resolve-environment.outputs.environment }}-latest
             ${{ steps.vars.outputs.image_base }}:migrate-${{ steps.vars.outputs.env_tag }}

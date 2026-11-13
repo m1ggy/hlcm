@@ -48,6 +48,8 @@ export function isPublicPath(pathname: string) {
     pathname.startsWith("/api/webhooks") ||
     // Caddy's certificate gate — asked with no session (src/app/api/tls-check).
     pathname.startsWith("/api/tls-check") ||
+    // Which build the server is running, asked by open tabs (src/components/shared/version-watcher.tsx).
+    pathname.startsWith("/api/version") ||
     // The public intake-form fill/submit page — the one place in the
     // app anyone can write to with no session at all (see
     // src/lib/actions/public-forms.ts). The admin builder (/admin/forms)

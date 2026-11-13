@@ -4,6 +4,7 @@ import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SessionProvider } from "@/components/auth/session-provider";
+import { VersionWatcher } from "@/components/shared/version-watcher";
 import { getHostOrg } from "@/lib/tenant";
 import { PRODUCT_NAME } from "@/lib/branding";
 import "./globals.css";
@@ -52,6 +53,7 @@ export default function RootLayout({
             <TooltipProvider>
               {children}
               <Toaster />
+              <VersionWatcher />
             </TooltipProvider>
           </SessionProvider>
         </ThemeProvider>

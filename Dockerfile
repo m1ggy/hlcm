@@ -9,6 +9,11 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npx prisma generate
+# The commit being deployed (deploy.yml). Next stamps it on every page and
+# asset; a tab still running an older build gets a full page load on its next
+# navigation instead of broken buttons (next.config.ts deploymentId).
+ARG NEXT_DEPLOYMENT_ID=""
+ENV NEXT_DEPLOYMENT_ID=$NEXT_DEPLOYMENT_ID
 RUN npm run build
 
 # Standalone output only traces files actually imported at runtime, so the
@@ -22,6 +27,9 @@ CMD ["npx", "prisma", "migrate", "deploy"]
 FROM node:22-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
+# Same ID at runtime, for /api/version (src/components/shared/version-watcher.tsx).
+ARG NEXT_DEPLOYMENT_ID=""
+ENV NEXT_DEPLOYMENT_ID=$NEXT_DEPLOYMENT_ID
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
 
 COPY --from=builder /app/public ./public
