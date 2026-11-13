@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState, useTransition } from "react";
+import { useCallback, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { CornerDownLeft, Lock, MessageSquare, Paperclip, Plus } from "lucide-react";
@@ -294,40 +294,73 @@ function TaskList({
   );
 }
 
-/** Fast entry: type a title, Enter (or Add). Assigned to you; the toast offers the task's panel for the rest. */
+/**
+ * Fast entry: type a title, then Enter, the + or Add. Assigned to you; the
+ * toast offers the task's panel for the rest. The field keeps focus so a list
+ * can be typed in one go; Escape clears it.
+ */
 function QuickAdd({ projectId, assignTo, onCreated }: { projectId: string; assignTo: string | null; onCreated: (task: CreatedTask, openIt: boolean) => void }) {
   const router = useRouter();
+  const inputRef = useRef<HTMLInputElement>(null);
   const [title, setTitle] = useState("");
   const [isPending, startTransition] = useTransition();
   const typed = title.trim().length > 0;
+
+  function add() {
+    const t = title.trim();
+    if (!t) {
+      inputRef.current?.focus();
+      return;
+    }
+    if (isPending) return;
+    startTransition(async () => {
+      const assigneeIds = assignTo ? [assignTo] : [];
+      const r = await createTaskAction({ projectId, title: t, assigneeIds });
+      if (!r.ok) {
+        toast.error(r.error);
+        return;
+      }
+      setTitle("");
+      inputRef.current?.focus();
+      router.refresh();
+      const created = { id: r.data.id, title: t, assigneeIds };
+      onCreated(created, false);
+      toast.success(`Added "${t}" to To do${assignTo ? ", assigned to you" : ""}`, { action: { label: "Add details", onClick: () => onCreated(created, true) } });
+    });
+  }
+
   return (
     <li>
       <form
-        className="flex items-center gap-2 px-3 py-1.5"
+        className="flex items-center gap-2 px-2 py-1.5"
         onSubmit={(e) => {
           e.preventDefault();
-          const t = title.trim();
-          if (!t) return;
-          startTransition(async () => {
-            const assigneeIds = assignTo ? [assignTo] : [];
-            const r = await createTaskAction({ projectId, title: t, assigneeIds });
-            if (!r.ok) {
-              toast.error(r.error);
-              return;
-            }
-            setTitle("");
-            router.refresh();
-            const created = { id: r.data.id, title: t, assigneeIds };
-            onCreated(created, false);
-            toast.success(`Added "${t}" to To do${assignTo ? ", assigned to you" : ""}`, { action: { label: "Add details", onClick: () => onCreated(created, true) } });
-          });
+          add();
         }}
       >
-        <Plus className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+        <Button
+          type="button"
+          size="icon-sm"
+          variant={typed ? "default" : "ghost"}
+          onClick={add}
+          disabled={isPending}
+          aria-label={typed ? "Add this task" : "Quick add a task"}
+          title={typed ? "Add this task" : "Quick add a task"}
+          className={cn("shrink-0", !typed && "text-muted-foreground")}
+        >
+          <Plus className="size-4" aria-hidden />
+        </Button>
         <Input
+          ref={inputRef}
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          disabled={isPending}
+          onKeyDown={(e) => {
+            if (e.key === "Escape" && title) {
+              e.preventDefault();
+              setTitle("");
+            }
+          }}
+          readOnly={isPending}
           placeholder="Quick add: type a task title"
           aria-label="Quick add a task"
           className="h-8 border-dashed px-2 shadow-none"
