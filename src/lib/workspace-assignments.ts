@@ -265,7 +265,48 @@ export async function listClientPeople(actor: AssignmentActor, orgId: string) {
   };
 }
 
-export type ClientTextInput = { orgId: string; userId: string; phone: string; enabled: boolean; consent: boolean };
+export type EveningTextRecipient = { name: string | null; toNumber: string; ok: boolean; error: string | null };
+
+export type EveningText = {
+  /** The client's day the text was about (YYYY-MM-DD). */
+  day: string;
+  sentAt: Date;
+  /** The day's note as it stood; empty when the text used the day's headline instead. */
+  note: string;
+  sentCount: number;
+  recipients: EveningTextRecipient[];
+};
+
+/** The evening texts that went out to a client's people, newest first, with who got each one. */
+export async function listEveningTexts(actor: AssignmentActor, orgId: string, limit = 60): Promise<{ timeZone: string | null; texts: EveningText[] }> {
+  await accessTo(actor, orgId);
+  const { timezone } = await prisma.organization.findUniqueOrThrow({ where: { id: orgId }, select: { timezone: true } });
+  const notes = await prisma.workSummaryNote.findMany({
+    where: { organizationId: orgId, period: "DAY", textedAt: { not: null } },
+    orderBy: { date: "desc" },
+    take: limit,
+    select: { id: true, date: true, body: true, textedAt: true, textedCount: true },
+  });
+  const logs = notes.length
+    ? await prisma.smsLog.findMany({
+        where: { organizationId: orgId, purpose: "WORK_DAY_TEXT", entityId: { in: notes.map((n) => n.id) } },
+        orderBy: { createdAt: "asc" },
+        select: { entityId: true, toNumber: true, ok: true, error: true, user: { select: { name: true } } },
+      })
+    : [];
+  const texts = notes.map((n) => ({
+    day: n.date.toISOString().slice(0, 10),
+    sentAt: n.textedAt!,
+    note: n.body.trim(),
+    sentCount: n.textedCount ?? 0,
+    recipients: logs
+      .filter((l) => l.entityId === n.id)
+      .map((l) => ({ name: l.user?.name ?? null, toNumber: l.toNumber, ok: l.ok, error: l.error })),
+  }));
+  return { timeZone: timezone, texts };
+}
+
+export type ClientTextInput ={ orgId: string; userId: string; phone: string; enabled: boolean; consent: boolean };
 
 /** Saves a client person's mobile number and evening-text sign-up. */
 export async function saveClientTextSignup(actor: AssignmentActor, input: ClientTextInput) {

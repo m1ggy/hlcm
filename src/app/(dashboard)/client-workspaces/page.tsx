@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { blockCaregiverRoute, requireSession } from "@/lib/rbac";
-import { listAssignableStaff, listAssignments, listClientPeople, listManagedWorkspaces } from "@/lib/workspace-assignments";
+import { listAssignableStaff, listAssignments, listClientPeople, listEveningTexts, listManagedWorkspaces } from "@/lib/workspace-assignments";
 import { ClientTextSignups } from "@/components/workspaces/client-text-signups";
 import { switchingAvailable } from "@/lib/workspace-switch";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +12,10 @@ import { AssignStaffDialog } from "@/components/workspaces/assign-staff-dialog";
 import { RemoveAssignmentButton } from "@/components/workspaces/remove-assignment-button";
 
 const formatDate = (d: Date) => d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+const formatDay = (day: string) =>
+  new Date(`${day}T12:00:00Z`).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
+const formatTime = (d: Date, timeZone: string | null) =>
+  d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short", ...(timeZone ? { timeZone } : {}) });
 
 // The managing company's side of docs/workspace-tasks-plan.md, Phase 1:
 // which of its people work in which client workspace. Admins see every
@@ -25,15 +29,17 @@ export default async function ClientWorkspacesPage({ searchParams }: { searchPar
 
   const { w } = await searchParams;
   const selected = workspaces.find((x) => x.slug === w) ?? workspaces[0];
-  const [assignments, staff, clientPeople] = await Promise.all([
+  const [assignments, staff, clientPeople, evening] = await Promise.all([
     listAssignments(actor, selected.id),
     listAssignableStaff(actor),
     selected.kind === "TASKS" ? listClientPeople(actor, selected.id) : null,
+    selected.kind === "TASKS" ? listEveningTexts(actor, selected.id) : null,
   ]);
   const active = assignments.filter((a) => a.active);
   const ended = assignments.filter((a) => !a.active);
   const assignedIds = new Set(active.map((a) => a.homeUserId));
   const isAdmin = selected.level === "admin";
+  const eveningTexts = evening?.texts ?? null;
 
   return (
     <div className="space-y-6">
@@ -142,6 +148,66 @@ export default async function ClientWorkspacesPage({ searchParams }: { searchPar
             </CardHeader>
             <CardContent>
               <ClientTextSignups key={selected.id} orgId={selected.id} people={clientPeople.people} dailyTextOn={clientPeople.dailyTextOn} />
+            </CardContent>
+          </Card>
+        )}
+        {eveningTexts && (
+          <Card className="min-w-0 md:col-start-2">
+            <CardHeader>
+              <CardTitle>Evening texts sent</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Each evening text that went out to {selected.name}&apos;s people, newest first, with who got each one. Shows the last 60.
+              </p>
+            </CardHeader>
+            <CardContent className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Day</TableHead>
+                    <TableHead>Sent</TableHead>
+                    <TableHead>Text</TableHead>
+                    <TableHead>Recipients</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {eveningTexts.map((t) => (
+                    <TableRow key={t.day} className="align-top">
+                      <TableCell className="whitespace-nowrap font-medium">{formatDay(t.day)}</TableCell>
+                      <TableCell className="whitespace-nowrap">{formatTime(t.sentAt, evening?.timeZone ?? null)}</TableCell>
+                      <TableCell className="max-w-md whitespace-normal text-sm">
+                        {t.note || <span className="text-muted-foreground">The day&apos;s headline (no note written)</span>}
+                      </TableCell>
+                      <TableCell className="whitespace-normal text-sm">
+                        {t.recipients.length === 0 ? (
+                          <span className="text-muted-foreground">Nobody signed up</span>
+                        ) : (
+                          <ul className="space-y-0.5">
+                            {t.recipients.map((r, i) => (
+                              <li key={i}>
+                                {r.name ?? "Removed person"} <span className="text-muted-foreground">{r.toNumber}</span>{" "}
+                                {r.ok ? (
+                                  <Badge variant="secondary">Sent</Badge>
+                                ) : (
+                                  <Badge variant="destructive" title={r.error ?? undefined}>
+                                    Failed
+                                  </Badge>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {eveningTexts.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center text-sm text-muted-foreground">
+                        No evening texts have gone out yet.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
         )}

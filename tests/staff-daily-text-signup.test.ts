@@ -108,6 +108,42 @@ describe("the managing company signing a client's person up, from Client workspa
       saveClientTextSignup(staffActor, { orgId: ORG.id, userId: personId, phone: "5559876543", enabled: false, consent: false })
     ).rejects.toThrow("Only admins");
   });
+
+  it("lists the evening texts that went out, newest first, with who got each one", async () => {
+    const { listEveningTexts } = await import("@/lib/workspace-assignments");
+    await prisma.smsLog.deleteMany({ where: { organizationId: ORG.id } });
+    await prisma.workSummaryNote.deleteMany({ where: { organizationId: ORG.id } });
+    const sent = await prisma.workSummaryNote.create({
+      data: { organizationId: ORG.id, period: "DAY", date: new Date("2026-11-10"), body: "Filed the renewal.", source: "AI", textedAt: new Date("2026-11-10T20:00:00Z"), textedCount: 1 },
+    });
+    await prisma.workSummaryNote.create({
+      data: { organizationId: ORG.id, period: "DAY", date: new Date("2026-11-11"), body: "", source: "AI", textedAt: new Date("2026-11-11T20:00:00Z"), textedCount: 0 },
+    });
+    // A day that wasn't texted stays off the list.
+    await prisma.workSummaryNote.create({ data: { organizationId: ORG.id, period: "DAY", date: new Date("2026-11-12"), body: "Quiet", source: "AI" } });
+    await prisma.smsLog.createMany({
+      data: [
+        { organizationId: ORG.id, userId: personId, toNumber: "+15551234567", purpose: "WORK_DAY_TEXT", entityId: sent.id, ok: true },
+        { organizationId: ORG.id, userId: null, toNumber: "+15550000000", purpose: "WORK_DAY_TEXT", entityId: sent.id, ok: false, error: "Invalid number" },
+        { organizationId: ORG.id, userId: personId, toNumber: "+15551234567", purpose: "FORM_SUBMITTED", entityId: sent.id, ok: true },
+      ],
+    });
+
+    const { timeZone, texts } = await listEveningTexts(actor(), ORG.id);
+    expect(timeZone).toBe("UTC");
+    expect(texts.map((t) => t.day)).toEqual(["2026-11-11", "2026-11-10"]);
+    expect(texts[0]).toMatchObject({ note: "", sentCount: 0, recipients: [] });
+    expect(texts[1]).toMatchObject({
+      note: "Filed the renewal.",
+      sentCount: 1,
+      recipients: [
+        { name: "Pat Person", toNumber: "+15551234567", ok: true, error: null },
+        { name: null, toNumber: "+15550000000", ok: false, error: "Invalid number" },
+      ],
+    });
+
+    await expect(listEveningTexts({ userId: homeStaff, orgId: HOME.id, role: "STAFF" }, ORG.id)).rejects.toThrow("Only admins");
+  });
 });
 
 describe("staff signing someone up for the evening text", () => {
