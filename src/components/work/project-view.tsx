@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Lock, MessageSquare, Paperclip, Plus } from "lucide-react";
+import { CornerDownLeft, Lock, MessageSquare, Paperclip, Plus } from "lucide-react";
 import {
   DndContext,
   PointerSensor,
@@ -19,6 +19,8 @@ import { createTaskAction, moveTaskAction } from "@/lib/actions/work";
 import { WORK_TASK_STATUSES, WORK_TASK_STATUS_LABELS, describeActivity, isOverdue, type WorkScope, type WorkTaskStatus, type WorkTaskPriority } from "@/lib/work";
 import type { ProjectTask } from "@/lib/work-data";
 import { TemplateMenu } from "./template-menu";
+import { NewTaskDialog, type CreatedTask } from "./new-task-dialog";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -68,6 +70,7 @@ export function ProjectView({
   const [openTaskId, setOpenTaskId] = useState<string | null>(initialTaskId);
   const [assignee, setAssignee] = useState(ANYONE);
   const [hideDone, setHideDone] = useState(false);
+  const [creating, setCreating] = useState(false);
 
   // Keep ?task= in the address so a task can be linked to (no server round trip).
   const openTask = useCallback((id: string | null) => {
@@ -78,6 +81,19 @@ export function ProjectView({
     window.history.replaceState(null, "", url);
   }, []);
   const onSheetOpenChange = useCallback((open: boolean) => !open && openTask(null), [openTask]);
+
+  // A task someone just made must never vanish behind a filter.
+  const onCreated = useCallback(
+    (task: CreatedTask, openIt: boolean) => {
+      setHideDone(false);
+      setAssignee((current) => {
+        const stillShown = current === ANYONE || (current === UNASSIGNED ? task.assigneeIds.length === 0 : task.assigneeIds.includes(current));
+        return stillShown ? current : ANYONE;
+      });
+      if (openIt) openTask(task.id);
+    },
+    [openTask]
+  );
 
   const filtered = useMemo(
     () =>
@@ -102,6 +118,11 @@ export function ProjectView({
             <TabsTrigger value="activity">Activity</TabsTrigger>
           </TabsList>
           <div className="flex flex-wrap items-center gap-3">
+            {scope.canEditTasks && (
+              <Button size="sm" onClick={() => setCreating(true)} data-tour="new-task">
+                <Plus className="size-4" /> New task
+              </Button>
+            )}
             {scope.canEditTasks && <TemplateMenu projectId={projectId} onCreated={openTask} />}
             {scope.side === "team" && (
               <Select items={assigneeItems} value={assignee} onValueChange={(v) => setAssignee(v ?? ANYONE)}>
@@ -125,7 +146,20 @@ export function ProjectView({
         </div>
 
         <TabsContent value="list">
-          <TaskList projectId={projectId} projectClientVisible={projectClientVisible} tasks={filtered} scope={scope} today={today} onOpen={openTask} showEmptyGroups={!hideDone && assignee === ANYONE} />
+          {tasks.length === 0 && scope.canEditTasks ? (
+            <EmptyProject onNew={() => setCreating(true)} />
+          ) : (
+            <TaskList
+              projectId={projectId}
+              projectClientVisible={projectClientVisible}
+              tasks={filtered}
+              scope={scope}
+              today={today}
+              onOpen={openTask}
+              onCreated={onCreated}
+              showEmptyGroups={!hideDone && assignee === ANYONE}
+            />
+          )}
         </TabsContent>
         <TabsContent value="board">
           <TaskBoard key={filtered.map((t) => `${t.id}:${t.status}:${t.sortOrder}`).join(",")} tasks={filtered} scope={scope} today={today} onOpen={openTask} projectClientVisible={projectClientVisible} />
@@ -135,8 +169,31 @@ export function ProjectView({
         </TabsContent>
       </Tabs>
 
+      {scope.canEditTasks && (
+        <NewTaskDialog
+          open={creating}
+          onOpenChange={setCreating}
+          projectId={projectId}
+          projectClientVisible={projectClientVisible}
+          people={people}
+          currentUserId={currentUserId}
+          onCreated={onCreated}
+        />
+      )}
       <TaskSheet taskId={openTaskId} onOpenChange={onSheetOpenChange} onOpenTask={openTask} scope={scope} currentUserId={currentUserId} people={people} />
     </>
+  );
+}
+
+function EmptyProject({ onNew }: { onNew: () => void }) {
+  return (
+    <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed px-6 py-12 text-center">
+      <p className="font-medium">No tasks in this project yet</p>
+      <p className="max-w-sm text-sm text-muted-foreground">Add the first one: give it a title, pick who does it and when it&apos;s due.</p>
+      <Button onClick={onNew}>
+        <Plus className="size-4" /> New task
+      </Button>
+    </div>
   );
 }
 
@@ -179,6 +236,7 @@ function TaskList({
   scope,
   today,
   onOpen,
+  onCreated,
   showEmptyGroups,
 }: {
   projectId: string;
@@ -187,6 +245,7 @@ function TaskList({
   scope: WorkScope;
   today: string;
   onOpen: (id: string) => void;
+  onCreated: (task: CreatedTask, openIt: boolean) => void;
   showEmptyGroups: boolean;
 }) {
   const groups = WORK_TASK_STATUSES.map((status) => ({ status, tasks: tasks.filter((t) => t.status === status) })).filter(
@@ -223,7 +282,7 @@ function TaskList({
                 </button>
               </li>
             ))}
-            {g.status === "TODO" && scope.canEditTasks && <QuickAdd projectId={projectId} />}
+            {g.status === "TODO" && scope.canEditTasks && <QuickAdd projectId={projectId} onCreated={onCreated} />}
           </ul>
         </section>
       ))}
@@ -231,10 +290,12 @@ function TaskList({
   );
 }
 
-function QuickAdd({ projectId }: { projectId: string }) {
+/** Fast entry: type a title, Enter (or Add). The toast offers the task's panel for the rest. */
+function QuickAdd({ projectId, onCreated }: { projectId: string; onCreated: (task: CreatedTask, openIt: boolean) => void }) {
   const router = useRouter();
   const [title, setTitle] = useState("");
   const [isPending, startTransition] = useTransition();
+  const typed = title.trim().length > 0;
   return (
     <li>
       <form
@@ -251,11 +312,26 @@ function QuickAdd({ projectId }: { projectId: string }) {
             }
             setTitle("");
             router.refresh();
+            const created = { id: r.data.id, title: t, assigneeIds: [] };
+            onCreated(created, false);
+            toast.success(`Added "${t}" to To do`, { action: { label: "Add details", onClick: () => onCreated(created, true) } });
           });
         }}
       >
-        <Plus className="size-4 text-muted-foreground" aria-hidden />
-        <Input value={title} onChange={(e) => setTitle(e.target.value)} disabled={isPending} placeholder="Add a task and press Enter" aria-label="New task" className="h-8 border-transparent px-1 shadow-none focus-visible:border-input" />
+        <Plus className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+        <Input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          disabled={isPending}
+          placeholder="Quick add: type a task title"
+          aria-label="Quick add a task"
+          className="h-8 border-dashed px-2 shadow-none"
+        />
+        {typed && (
+          <Button type="submit" size="sm" variant="secondary" loading={isPending} className="shrink-0">
+            Add <CornerDownLeft className="size-3.5" aria-hidden />
+          </Button>
+        )}
       </form>
     </li>
   );

@@ -46,6 +46,8 @@ Managers create projects; everyone works the tasks inside them, on a board or a 
 
 ![A client project's task list, grouped by To do, In progress and Done, with due dates, priority and assignees](/staff-guide/project-list.png)
 
+**Adding a task.** On the project page, click **New task**. Give it a title, pick who does it (you're filled in), a due date and priority if it has them, and whether the client can see it, then **Create task**. **Create and add another** keeps the people and due date for the next one. For a quick list, type titles into **Quick add** at the bottom of To do and press Enter; each one starts unassigned, and **Add details** in the confirmation opens it.
+
 **Working a task.** Open it from the project board, the list, **My tasks** (everything assigned to you in that workspace) or **Client work** in our workspace. In its panel you can:
 
 - change its status, assignees and due date
@@ -166,6 +168,8 @@ The client's home page is **This week**: Monday to Sunday, what was finished, mo
 ![Client workspaces page: the client's people card with a mobile number, an Evening text box and the consent box for a new sign-up](/staff-guide/client-people.png)
 
 Only sign someone up after they've agreed to get texts. Anyone can reply STOP; after that, only they can turn texts back on.
+
+**What went out.** Admins and the client's account manager can see every evening text sent to a client under **Client workspaces** → pick the client → **Evening texts sent**: the day, when it went, the text, and each person it went to, marked Sent or Failed.
 
 ## Your daily routine
 
