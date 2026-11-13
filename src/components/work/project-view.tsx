@@ -157,6 +157,7 @@ export function ProjectView({
               today={today}
               onOpen={openTask}
               onCreated={onCreated}
+              quickAddAssignee={people.some((p) => p.id === currentUserId) ? currentUserId : null}
               showEmptyGroups={!hideDone && assignee === ANYONE}
             />
           )}
@@ -237,6 +238,7 @@ function TaskList({
   today,
   onOpen,
   onCreated,
+  quickAddAssignee,
   showEmptyGroups,
 }: {
   projectId: string;
@@ -246,6 +248,8 @@ function TaskList({
   today: string;
   onOpen: (id: string) => void;
   onCreated: (task: CreatedTask, openIt: boolean) => void;
+  /** Quick-added tasks go to whoever adds them, when they can hold tasks here. */
+  quickAddAssignee: string | null;
   showEmptyGroups: boolean;
 }) {
   const groups = WORK_TASK_STATUSES.map((status) => ({ status, tasks: tasks.filter((t) => t.status === status) })).filter(
@@ -282,7 +286,7 @@ function TaskList({
                 </button>
               </li>
             ))}
-            {g.status === "TODO" && scope.canEditTasks && <QuickAdd projectId={projectId} onCreated={onCreated} />}
+            {g.status === "TODO" && scope.canEditTasks && <QuickAdd projectId={projectId} assignTo={quickAddAssignee} onCreated={onCreated} />}
           </ul>
         </section>
       ))}
@@ -290,8 +294,8 @@ function TaskList({
   );
 }
 
-/** Fast entry: type a title, Enter (or Add). The toast offers the task's panel for the rest. */
-function QuickAdd({ projectId, onCreated }: { projectId: string; onCreated: (task: CreatedTask, openIt: boolean) => void }) {
+/** Fast entry: type a title, Enter (or Add). Assigned to you; the toast offers the task's panel for the rest. */
+function QuickAdd({ projectId, assignTo, onCreated }: { projectId: string; assignTo: string | null; onCreated: (task: CreatedTask, openIt: boolean) => void }) {
   const router = useRouter();
   const [title, setTitle] = useState("");
   const [isPending, startTransition] = useTransition();
@@ -305,16 +309,17 @@ function QuickAdd({ projectId, onCreated }: { projectId: string; onCreated: (tas
           const t = title.trim();
           if (!t) return;
           startTransition(async () => {
-            const r = await createTaskAction({ projectId, title: t });
+            const assigneeIds = assignTo ? [assignTo] : [];
+            const r = await createTaskAction({ projectId, title: t, assigneeIds });
             if (!r.ok) {
               toast.error(r.error);
               return;
             }
             setTitle("");
             router.refresh();
-            const created = { id: r.data.id, title: t, assigneeIds: [] };
+            const created = { id: r.data.id, title: t, assigneeIds };
             onCreated(created, false);
-            toast.success(`Added "${t}" to To do`, { action: { label: "Add details", onClick: () => onCreated(created, true) } });
+            toast.success(`Added "${t}" to To do${assignTo ? ", assigned to you" : ""}`, { action: { label: "Add details", onClick: () => onCreated(created, true) } });
           });
         }}
       >
