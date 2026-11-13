@@ -153,6 +153,6 @@ describe("what the page shows", () => {
     expect(data.clientName).toBe("Sunrise Care");
     // Internal fields never reach the payload.
     const json = JSON.stringify(data);
-    for (const secret of ["SECRET", "42", "Val VA", "Mo Manager"]) expect(json).not.toContain(secret);
+    for (const secret of ["SECRET", "\"minutes\"", "Val VA", "Mo Manager"]) expect(json).not.toContain(secret);
   });
 });
