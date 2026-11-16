@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useEffectEvent, useRef, useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Bell } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -29,12 +30,28 @@ export function NotificationBell({ variant = "staff" }: { variant?: EntityLinkVa
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const router = useRouter();
+  // Ids already seen in this tab, so only notifications that arrive while it's
+  // open pop up (null until the first load: nothing pops up on page load).
+  const seen = useRef<Set<string> | null>(null);
 
   async function refresh(options?: { silent?: boolean }) {
     try {
       const res = await fetch("/api/notifications");
       if (!res.ok) throw new Error("Failed to load notifications");
-      const { count, notifications } = await res.json();
+      const { count, notifications } = (await res.json()) as { count: number; notifications: NotificationRow[] };
+      if (seen.current) {
+        const fresh = notifications.filter((n) => !n.read && !seen.current!.has(n.id));
+        // A burst (several at once) becomes one pop-up instead of a stack.
+        if (fresh.length === 1) {
+          const n = fresh[0];
+          const href = entityLinks[n.entityType]?.(n.entityId);
+          toast(n.message, href ? { action: { label: "Open", onClick: () => handleClickNotification(n.id, href) } } : undefined);
+        } else if (fresh.length > 1) {
+          toast(`${fresh.length} new notifications`, { action: { label: "Show", onClick: () => setOpen(true) } });
+        }
+      }
+      seen.current = new Set([...(seen.current ?? []), ...notifications.map((n) => n.id)]);
       setUnread(count);
       setNotifications(notifications);
     } catch (error) {
@@ -44,9 +61,10 @@ export function NotificationBell({ variant = "staff" }: { variant?: EntityLinkVa
     }
   }
 
+  const poll = useEffectEvent(() => refresh({ silent: true }));
   useEffect(() => {
-    const initial = setTimeout(() => refresh({ silent: true }), 0);
-    const interval = setInterval(() => refresh({ silent: true }), 30000);
+    const initial = setTimeout(poll, 0);
+    const interval = setInterval(poll, 30000);
     return () => {
       clearTimeout(initial);
       clearInterval(interval);
@@ -58,7 +76,8 @@ export function NotificationBell({ variant = "staff" }: { variant?: EntityLinkVa
     if (next) refresh();
   }
 
-  function handleClickNotification(id: string) {
+  function handleClickNotification(id: string, goTo?: string) {
+    if (goTo) router.push(goTo);
     startTransition(async () => {
       try {
         await markNotificationRead(id);

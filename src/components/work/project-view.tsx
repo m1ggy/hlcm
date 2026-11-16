@@ -29,7 +29,7 @@ import { TaskCheck } from "./task-update-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AvatarInitials } from "@/components/ui/avatar-initials";
-import { PriorityLabel, StatusDot, formatDay } from "./work-status";
+import { PriorityLabel, StatusDot, SubtaskProgress, formatDay } from "./work-status";
 import { TaskSheet } from "./task-sheet";
 
 type Activity = {
@@ -203,11 +203,7 @@ function TaskMeta({ task, today }: { task: ProjectTask; today: string }) {
   return (
     <div className="flex shrink-0 items-center gap-3 text-xs text-muted-foreground">
       <PriorityLabel priority={task.priority as WorkTaskPriority} />
-      {task.subtaskCount > 0 && (
-        <span className="tabular-nums">
-          {task.subtasksDone}/{task.subtaskCount}
-        </span>
-      )}
+      {task.subtaskCount > 0 && <SubtaskProgress done={task.subtasksDone} total={task.subtaskCount} />}
       {task.commentCount > 0 && (
         <span className="inline-flex items-center gap-0.5 tabular-nums">
           <MessageSquare className="size-3" aria-label="Comments" /> {task.commentCount}

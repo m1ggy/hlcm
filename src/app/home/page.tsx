@@ -39,22 +39,22 @@ const FEATURES = [
   {
     icon: Inbox,
     title: "Ask for work anytime",
-    body: "Need something done? Send a request right from your workspace. You'll see it when the team picks it up.",
+    body: "Need something done? Send a request right from your workspace. You'll see when a manager accepts it.",
   },
   {
     icon: CheckSquare,
     title: "Updates as the work happens",
-    body: "Your team checks off steps and notes what they did as they go, so you can see progress without asking.",
+    body: "Your team checks off steps and notes what they did as they go. Each task shows how far along it is.",
   },
   {
     icon: MessageSquare,
     title: "Questions on the task",
-    body: "Comment on any task and get answers right there, not lost in a long email thread.",
+    body: "Comment on any task and get answers right there. You'll get a pop-up and a notification when someone replies.",
   },
   {
     icon: Sparkles,
     title: "Your weekly summary",
-    body: "A plain-language recap of what got done, what's next and anything waiting on you, with a copy by email every Monday.",
+    body: "A recap of what got finished, what moved forward and what's new, day by day, with a copy by email every Monday.",
   },
   {
     icon: Users,

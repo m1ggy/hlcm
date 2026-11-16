@@ -53,3 +53,23 @@ export function formatDay(day: string | Date | null, opts: Intl.DateTimeFormatOp
   const iso = typeof day === "string" ? day.slice(0, 10) : day.toISOString().slice(0, 10);
   return new Date(`${iso}T12:00:00Z`).toLocaleDateString("en-US", { ...opts, timeZone: "UTC" });
 }
+
+/** How far along a task is, from its subtasks: a small bar plus "2/5". */
+export function SubtaskProgress({ done, total }: { done: number; total: number }) {
+  const pct = Math.round((done / total) * 100);
+  return (
+    <span className="inline-flex items-center gap-1.5 tabular-nums" title={`${done} of ${total} subtasks done`}>
+      <span
+        role="progressbar"
+        aria-label="Subtasks done"
+        aria-valuemin={0}
+        aria-valuemax={total}
+        aria-valuenow={done}
+        className="h-1.5 w-12 overflow-hidden rounded-full bg-muted"
+      >
+        <span className={cn("block h-full rounded-full transition-[width]", done === total ? "bg-emerald-500" : "bg-primary/70")} style={{ width: `${pct}%` }} />
+      </span>
+      {done}/{total}
+    </span>
+  );
+}

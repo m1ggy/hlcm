@@ -1,56 +1,70 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Check, MessageSquare, MousePointer2, Plus, Sparkles } from "lucide-react";
+import { Bell, MessageSquare, MousePointer2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { WORK_TASK_STATUS_LABELS, type WorkTaskStatus } from "@/lib/work";
+import { WORK_TASK_STATUS_LABELS, WORK_TASK_STATUSES, type WorkTaskStatus } from "@/lib/work";
+import { AvatarInitials } from "@/components/ui/avatar-initials";
+import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
+import { StatusDot, SubtaskProgress } from "@/components/work/work-status";
 
 // The home page's "video": a looping walk-through of a client's workspace,
-// made of ordinary elements rather than a recording, so it stays sharp, follows
-// the theme and weighs nothing. Made-up data only. With reduced motion turned
-// on it shows the last frame and stays still.
+// made of elements rather than a recording. It uses the app's own pieces
+// (status dots, badges, subtask progress) and its real wording, so it shows
+// what a client actually gets — keep it in step with src/components/work.
+// Made-up data only. With reduced motion on it shows the last frame, still.
 //
-// The story, one beat per step: the client opens their board, clicks
-// "Request a task", the request lands, the team moves work along and leaves a
-// comment, then the weekly summary writes itself. Then it starts over.
+// The story, one beat per step: the client clicks "Request a task", the
+// request waits for approval, the team moves work along and a manager
+// accepts it, a comment pops up, then the week's numbers come in.
 
-const STEP_MS = 1700;
+const STEP_MS = 1800;
 const STEPS = 10;
 const LAST = STEPS - 1;
 
-type Row = { id: string; title: string; who: string; status: WorkTaskStatus; progress: number };
+type Row = {
+  id: string;
+  title: string;
+  who: string;
+  status: WorkTaskStatus;
+  done?: number;
+  total?: number;
+  comments?: number;
+  request?: "waiting" | "accepted";
+};
 
 const START: Row[] = [
-  { id: "vendors", title: "Update the vendor list", who: "MR", status: "DONE", progress: 100 },
-  { id: "newsletter", title: "Draft March newsletter", who: "JL", status: "IN_PROGRESS", progress: 60 },
-  { id: "invoices", title: "Reconcile February invoices", who: "MR", status: "TODO", progress: 0 },
-  { id: "venue", title: "Book venue for team day", who: "AK", status: "BLOCKED", progress: 20 },
+  { id: "newsletter", title: "Draft March newsletter", who: "Jamie Lee", status: "IN_PROGRESS", done: 2, total: 4 },
+  { id: "invoices", title: "Reconcile February invoices", who: "Maria Ruiz", status: "TODO", done: 0, total: 3 },
+  { id: "venue", title: "Book venue for team day", who: "Alex Kim", status: "BLOCKED", comments: 2 },
+  { id: "vendors", title: "Update the vendor list", who: "Maria Ruiz", status: "DONE", done: 3, total: 3 },
 ];
 
-const REQUEST: Row = { id: "cards", title: "Order new business cards", who: "AK", status: "TODO", progress: 0 };
+const REQUEST: Row = { id: "cards", title: "Order new business cards", who: "Alex Kim", status: "TODO", request: "waiting" };
 
-const SUMMARY =
-  "6 tasks done this week. The March newsletter is ready for your review, invoices are being reconciled and your business cards are next.";
-
-/** What the board looks like at a given step. */
+/** What the project looks like at a given step. */
 function rowsAt(step: number): Row[] {
   const rows = START.map((r) => ({ ...r }));
   const set = (id: string, patch: Partial<Row>) => Object.assign(rows.find((r) => r.id === id)!, patch);
   if (step >= 3) rows.push({ ...REQUEST });
-  if (step >= 4) set("invoices", { status: "IN_PROGRESS", progress: 45 });
-  if (step >= 5) set("newsletter", { status: "IN_REVIEW", progress: 100 });
-  if (step >= 6) set("cards", { who: "AK", status: "IN_PROGRESS", progress: 25 });
+  if (step >= 4) {
+    set("invoices", { status: "IN_PROGRESS", done: 1 });
+    set("newsletter", { done: 3 });
+  }
+  if (step >= 5) {
+    set("newsletter", { status: "IN_REVIEW", done: 4, comments: 1 });
+    set("cards", { request: "accepted" });
+  }
   return rows;
 }
 
-const STATUS_STYLE: Record<WorkTaskStatus, { dot: string; badge: string }> = {
-  TODO: { dot: "bg-muted-foreground/50", badge: "bg-muted text-muted-foreground" },
-  IN_PROGRESS: { dot: "bg-primary", badge: "bg-primary/10 text-primary" },
-  IN_REVIEW: { dot: "bg-violet-500", badge: "bg-violet-500/10 text-violet-700 dark:text-violet-300" },
-  BLOCKED: { dot: "bg-destructive", badge: "bg-destructive/10 text-destructive" },
-  DONE: { dot: "bg-emerald-500", badge: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" },
-  CANCELLED: { dot: "bg-muted-foreground/30", badge: "bg-muted text-muted-foreground" },
-};
+const STATS = [
+  { label: "Finished", value: 6 },
+  { label: "Moved forward", value: 4 },
+  { label: "New tasks", value: 2 },
+  { label: "Comments", value: 3 },
+];
 
 function usePrefersReducedMotion() {
   const [reduced, setReduced] = useState(false);
@@ -86,199 +100,165 @@ export function WorkspaceDemo() {
     return () => clearInterval(id);
   }, [reduced, visible]);
 
-  // The pointer glides between real elements, measured, so it lands on them
-  // at any width.
+  // The pointer glides between real elements, measured, so it lands on them at any width.
   const buttonRef = useRef<HTMLSpanElement>(null);
-  const newRowRef = useRef<HTMLLIElement>(null);
+  const requestRef = useRef<HTMLLIElement>(null);
+  const commentToastRef = useRef<HTMLDivElement>(null);
   const summaryRef = useRef<HTMLDivElement>(null);
   const [pointer, setPointer] = useState({ x: 70, y: 70 });
   useLayoutEffect(() => {
     const root = rootRef.current;
-    const target =
-      step === 1 || step === 2 ? buttonRef.current : step === 3 || step === 4 ? newRowRef.current : step >= 7 ? summaryRef.current : null;
     if (!root) return;
+    const target =
+      step === 1 || step === 2
+        ? buttonRef.current
+        : step === 3 || step === 4
+          ? requestRef.current
+          : step === 5 || step === 6
+            ? commentToastRef.current
+            : step >= 7
+              ? summaryRef.current
+              : null;
     if (!target) {
       setPointer({ x: root.clientWidth * 0.55, y: root.clientHeight * 0.45 });
       return;
     }
     const r = root.getBoundingClientRect();
     const t = target.getBoundingClientRect();
-    setPointer({ x: t.left - r.left + Math.min(t.width * 0.5, 60), y: t.top - r.top + t.height * 0.6 });
+    setPointer({ x: t.left - r.left + Math.min(t.width * 0.5, 70), y: t.top - r.top + t.height * 0.6 });
   }, [step]);
 
   const rows = rowsAt(step);
-  const openCount = rows.filter((r) => r.status !== "DONE" && r.status !== "CANCELLED").length;
+  const groups = WORK_TASK_STATUSES.map((status) => ({ status, tasks: rows.filter((t) => t.status === status) })).filter((g) => g.tasks.length > 0);
   const clicking = step === 2;
+  const unread = step >= 5 ? 1 : 0;
+  const animateIn = !reduced && "animate-in fade-in slide-in-from-top-1 duration-500";
 
   return (
     <div
       ref={rootRef}
       role="img"
-      aria-label="Animated example of a client workspace: a task request is sent, tasks move from to do to in review, a comment arrives and a weekly summary appears."
+      aria-label="Animated example of a client workspace: the client requests a task, the team moves tasks forward and accepts the request, a comment notification pops up and the week's numbers appear."
       className="relative select-none"
     >
       {/* Soft glow behind the window. */}
       <div aria-hidden className="absolute -inset-6 -z-10 rounded-[2rem] bg-gradient-to-br from-primary/25 via-marigold/15 to-transparent blur-2xl" />
 
-      <div aria-hidden className="overflow-hidden rounded-2xl border bg-card shadow-xl shadow-primary/10">
+      <div aria-hidden className="overflow-hidden rounded-2xl border bg-background shadow-xl shadow-primary/10">
         {/* Window chrome */}
         <div className="flex items-center gap-2 border-b bg-muted/60 px-4 py-2.5">
           <span className="size-2.5 rounded-full bg-[#ff5f57]" />
           <span className="size-2.5 rounded-full bg-[#febc2e]" />
           <span className="size-2.5 rounded-full bg-[#28c840]" />
-          <span className="ml-3 truncate rounded-md bg-background px-3 py-0.5 font-mono text-[0.7rem] text-muted-foreground">
+          <span className="ml-3 min-w-0 flex-1 truncate rounded-md bg-background px-3 py-0.5 font-mono text-[0.7rem] text-muted-foreground">
             yourbusiness.carenela.com/work
+          </span>
+          <span className="relative">
+            <Bell className="size-4 text-muted-foreground" />
+            {unread > 0 && (
+              <Badge variant="destructive" className="absolute -top-1.5 -right-2 h-4 min-w-4 px-1 text-[0.6rem]">
+                {unread}
+              </Badge>
+            )}
           </span>
         </div>
 
-        <div className="p-5">
+        <div className="space-y-4 p-4">
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2">
               <span className="size-3 shrink-0 rounded-sm bg-primary" />
               <span className="truncate font-heading font-semibold">Office operations</span>
-              <span className="font-mono text-xs text-muted-foreground tabular-nums">{openCount} open</span>
             </div>
-            <span
-              ref={buttonRef}
-              className={cn(
-                "inline-flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium transition-all duration-200",
-                step >= 1 && step <= 2 ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground",
-                clicking && "scale-95"
-              )}
-            >
-              <Plus className="size-3.5" />
+            <span ref={buttonRef} className={cn(buttonVariants({ size: "sm" }), "pointer-events-none transition-transform", clicking && "scale-95")}>
               Request a task
             </span>
           </div>
 
-          <ul className="mt-4 divide-y">
-            {rows.map((t) => {
-              const isNew = t.id === REQUEST.id;
-              const style = STATUS_STYLE[t.status];
-              return (
-                <li
-                  key={t.id}
-                  ref={isNew ? newRowRef : undefined}
-                  className={cn(
-                    "relative py-2.5",
-                    isNew && !reduced && "animate-in fade-in slide-in-from-top-2 duration-500",
-                    isNew && step <= 4 && "-mx-2 rounded-md bg-marigold-tint/70 px-2"
-                  )}
-                >
-                  <div className="flex items-center gap-3">
-                    <span
-                      className={cn(
-                        "flex size-4 shrink-0 items-center justify-center rounded-full transition-colors duration-500",
-                        t.status === "DONE" ? "bg-emerald-500 text-white" : style.dot
-                      )}
-                    >
-                      {t.status === "DONE" && <Check className="size-2.5" strokeWidth={3} />}
-                    </span>
-                    <span className={cn("flex-1 truncate text-sm transition-colors", t.status === "DONE" && "text-muted-foreground line-through")}>
-                      {t.title}
-                    </span>
-                    {isNew && step <= 4 && (
-                      <span className="hidden rounded-full bg-marigold px-2 py-0.5 text-[0.65rem] font-semibold text-on-marigold sm:inline">
-                        New request
+          <div className="space-y-3">
+            {groups.map((g) => (
+              <section key={g.status} className="space-y-1">
+                <h3 className="flex items-center gap-2 px-1 text-[0.65rem] font-semibold tracking-wide text-muted-foreground uppercase">
+                  <StatusDot status={g.status} /> {WORK_TASK_STATUS_LABELS[g.status]} <span className="font-normal tabular-nums">{g.tasks.length}</span>
+                </h3>
+                <ul className="divide-y rounded-lg border bg-card">
+                  {g.tasks.map((t) => (
+                    <li key={t.id} ref={t.id === REQUEST.id ? requestRef : undefined} className={cn("flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2", animateIn)}>
+                      <span className={cn("min-w-0 flex-1 text-sm", t.status === "DONE" && "text-muted-foreground")}>
+                        {t.title}
+                        {t.request && (
+                          <Badge key={t.request} variant={t.request === "waiting" ? "outline" : "secondary"} className={cn("ml-2 align-middle", !reduced && "animate-in zoom-in-95 fade-in duration-300")}>
+                            {t.request === "waiting" ? "Waiting for approval" : "Client request"}
+                          </Badge>
+                        )}
                       </span>
-                    )}
-                    <span
-                      key={t.status}
-                      className={cn(
-                        "hidden rounded-full px-2 py-0.5 text-xs transition-colors duration-500 sm:inline",
-                        style.badge,
-                        !reduced && "animate-in zoom-in-90 fade-in duration-300"
-                      )}
-                    >
-                      {WORK_TASK_STATUS_LABELS[t.status]}
-                    </span>
-                    <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-secondary font-mono text-[0.6rem]">
-                      {t.who}
-                    </span>
-                  </div>
-                  <div className="ml-7 mt-1.5 h-1 overflow-hidden rounded-full bg-muted">
-                    <div
-                      className={cn("h-full rounded-full transition-[width] duration-700 ease-out", t.status === "DONE" ? "bg-emerald-500" : "bg-primary/70")}
-                      style={{ width: `${t.progress}%` }}
-                    />
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
+                      <span className="flex shrink-0 items-center gap-3 text-xs text-muted-foreground">
+                        {t.total ? <SubtaskProgress done={t.done ?? 0} total={t.total} /> : null}
+                        {t.comments ? (
+                          <span className="inline-flex items-center gap-0.5 tabular-nums">
+                            <MessageSquare className="size-3" /> {t.comments}
+                          </span>
+                        ) : null}
+                        <AvatarInitials name={t.who} className="size-5 text-[0.6rem] ring-2 ring-card" />
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </div>
 
-          <div
-            ref={summaryRef}
-            className={cn(
-              "mt-4 min-h-[5.5rem] rounded-lg p-3 text-sm transition-colors duration-500",
-              step >= 7 ? "bg-marigold-tint text-marigold-ink" : "bg-muted/50 text-muted-foreground"
-            )}
-          >
-            <div className="flex items-center gap-1.5 font-semibold">
-              <Sparkles className="size-3.5" />
-              This week
-            </div>
-            {/* Writes itself word by word once its step comes up (CSS delays, no timers). */}
-            <p className="mt-1">
-              {step >= 7
-                ? SUMMARY.split(" ").map((word, i) => (
-                    <span
-                      key={i}
-                      className={cn(!reduced && "animate-in fade-in fill-mode-backwards duration-300")}
-                      style={reduced ? undefined : { animationDelay: `${i * 70}ms` }}
-                    >
-                      {word}{" "}
-                    </span>
-                  ))
-                : "Your summary will appear here."}
-            </p>
+          {/* The weekly summary's numbers, as on /work/summary. */}
+          <div ref={summaryRef} className="grid grid-cols-4 gap-2">
+            {STATS.map((s, i) => (
+              <div key={s.label} className="rounded-lg border bg-card px-2 py-1.5">
+                <div className="truncate text-[0.65rem] text-muted-foreground">{s.label}</div>
+                <div
+                  key={step >= 7 ? "on" : "off"}
+                  className={cn("font-heading text-lg font-semibold tabular-nums", step >= 7 && !reduced && "animate-in fade-in slide-in-from-bottom-1 fill-mode-backwards duration-500")}
+                  style={step >= 7 && !reduced ? { animationDelay: `${i * 120}ms` } : undefined}
+                >
+                  {step >= 7 ? s.value : "–"}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </div>
 
-      {/* A comment from the team pops up over the window. */}
-      <div
-        aria-hidden
-        className={cn(
-          "absolute -right-2 top-1/3 w-56 rounded-xl border bg-popover p-3 text-popover-foreground shadow-lg transition-all duration-500 sm:-right-6",
-          step >= 5 && step <= 7 ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-3 opacity-0"
-        )}
-      >
-        <div className="flex items-center gap-2 text-xs">
-          <span className="flex size-5 items-center justify-center rounded-full bg-secondary font-mono text-[0.55rem]">JL</span>
-          <span className="font-semibold">Jamie</span>
-          <MessageSquare className="ml-auto size-3.5 text-muted-foreground" />
-        </div>
-        <p className="mt-1.5 text-xs text-muted-foreground">The newsletter draft is ready for you to look over.</p>
-      </div>
-
-      {/* Toast when the request is sent. */}
-      <div
-        aria-hidden
-        className={cn(
-          "absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-foreground px-3 py-1.5 text-xs text-background shadow-lg transition-all duration-300",
-          step === 3 ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-2 opacity-0"
-        )}
-      >
-        <Check className="size-3.5" /> Request sent to your team
+      {/* Pop-ups, styled like the app's toasts. */}
+      <div aria-hidden className="pointer-events-none absolute right-3 bottom-3 left-3 flex flex-col items-end gap-2 sm:left-auto sm:w-80">
+        <DemoToast show={step === 3 || step === 4}>Request sent. A manager will accept it or get back to you.</DemoToast>
+        <DemoToast ref={commentToastRef} show={step === 5 || step === 6} action="Open">
+          New comment on &ldquo;Draft March newsletter&rdquo;
+        </DemoToast>
       </div>
 
       {/* Pointer */}
       {!reduced && (
         <div
           aria-hidden
-          className="pointer-events-none absolute left-0 top-0 transition-transform duration-[900ms] ease-in-out"
+          className="pointer-events-none absolute top-0 left-0 transition-transform duration-[900ms] ease-in-out"
           style={{ transform: `translate(${pointer.x}px, ${pointer.y}px)` }}
         >
-          <span
-            className={cn(
-              "absolute -left-2 -top-2 size-8 rounded-full bg-primary/30 transition-all duration-300",
-              clicking ? "scale-100 opacity-100" : "scale-50 opacity-0"
-            )}
-          />
+          <span className={cn("absolute -top-2 -left-2 size-8 rounded-full bg-primary/30 transition-all duration-300", clicking ? "scale-100 opacity-100" : "scale-50 opacity-0")} />
           <MousePointer2 className="relative size-5 fill-foreground text-background drop-shadow" />
         </div>
       )}
+    </div>
+  );
+}
+
+function DemoToast({ show, action, children, ref }: { show: boolean; action?: string; children: React.ReactNode; ref?: React.Ref<HTMLDivElement> }) {
+  return (
+    <div
+      ref={ref}
+      className={cn(
+        "flex w-full items-center gap-3 rounded-lg border bg-popover px-3 py-2.5 text-xs text-popover-foreground shadow-lg transition-all duration-300",
+        show ? "translate-y-0 opacity-100" : "absolute translate-y-2 opacity-0"
+      )}
+    >
+      <span className="flex-1">{children}</span>
+      {action && <span className="rounded-md bg-primary px-2 py-1 text-[0.65rem] font-medium text-primary-foreground">{action}</span>}
     </div>
   );
 }
