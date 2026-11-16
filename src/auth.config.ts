@@ -34,6 +34,8 @@ export function isPublicPath(pathname: string) {
     pathname.startsWith("/forgot-password") ||
     // "Find your workspace" on the bare root domain (no org, no session).
     pathname.startsWith("/find-workspace") ||
+    // The product's public home page (src/app/home), shown on the bare root domain.
+    pathname === "/home" ||
     pathname.startsWith("/set-password") ||
     // Platform support's one-time sign-in link (src/lib/support-access.ts).
     pathname.startsWith("/support/enter") ||

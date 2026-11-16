@@ -1,4 +1,5 @@
 import NextAuth, { CredentialsSignin } from "next-auth";
+import { NextResponse } from "next/server";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { getDb, tenantDb } from "@/lib/db";
@@ -12,7 +13,15 @@ import { clearLoginFailures, isLoginThrottled, recordLoginFailure } from "@/lib/
 import { isMobileDevice, parseLoginDevice, recordLoginEvent, refuseIfMobileBlocked } from "@/lib/login-device";
 import { isLinkedAccountActive } from "@/lib/workspace-switch";
 import { isTasksWorkspacePath, TASKS_HOME } from "@/lib/workspace-kind";
-import { requestHost } from "@/lib/tenant-host";
+import { orgSlugFromHost, requestHost } from "@/lib/tenant-host";
+
+// The address the browser used, for the proxy's redirects: built from the
+// forwarded host (the request URL here is the app's internal one) — the same
+// trusted header that picks the workspace.
+function browserOrigin(headers: Headers, url: URL): string {
+  const proto = headers.get("x-forwarded-proto")?.split(",")[0]?.trim() || url.protocol.replace(":", "");
+  return `${proto}://${requestHost(headers)}`;
+}
 
 /** Thrown from authorize so the login actions can show the right message. */
 export class MobileLoginBlockedError extends CredentialsSignin {
@@ -171,17 +180,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     // organization is ACTIVE — suspending a workspace signs everyone out of
     // it at once instead of leaving open sessions on pages that can't load.
     async authorized(params) {
+      const { pathname } = params.request.nextUrl;
+      // The bare root domain isn't a workspace: "/" there shows the product's home page (src/app/home).
+      if (pathname === "/" && process.env.ROOT_DOMAIN && !orgSlugFromHost(requestHost(params.request.headers))) {
+        return NextResponse.rewrite(new URL("/home", params.request.nextUrl));
+      }
       const allowed = authConfig.callbacks.authorized(params);
       if (!allowed || !params.auth?.user || isPublicPath(params.request.nextUrl.pathname)) return allowed;
       const org = await getOrgBySlug(params.auth.user.orgSlug);
       if (org?.status !== "ACTIVE") return false;
       // A tasks-only workspace has no licensing CRM: those addresses go to its home page.
       if (org.kind === "TASKS" && !isTasksWorkspacePath(params.request.nextUrl.pathname)) {
-        // Built from the browser's host (the request URL here is the app's
-        // internal one) — the same trusted header that picked the workspace.
-        const headers = params.request.headers;
-        const proto = headers.get("x-forwarded-proto")?.split(",")[0]?.trim() || params.request.nextUrl.protocol.replace(":", "");
-        return Response.redirect(`${proto}://${requestHost(headers)}${TASKS_HOME}`);
+        return Response.redirect(`${browserOrigin(params.request.headers, params.request.nextUrl)}${TASKS_HOME}`);
       }
       return true;
     },
