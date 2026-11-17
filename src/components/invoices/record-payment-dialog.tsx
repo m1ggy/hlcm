@@ -244,7 +244,7 @@ export function RecordPaymentDialog({
             </div>
           </div>
 
-          <InvoiceLineItemsEditor lineItems={lineItems} onChange={setLineItems} quantityLabel="Hours" rateLabel="Rate" />
+          <InvoiceLineItemsEditor lineItems={lineItems} onChange={setLineItems} amountOnly />
 
           <div className="space-y-1">
             <Label htmlFor="notes">Notes</Label>

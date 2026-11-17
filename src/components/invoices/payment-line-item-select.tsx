@@ -9,7 +9,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-export type PaymentLineItemOption = { id: string; description: string };
+import { formatMoney } from "@/lib/money";
+
+/** `due` (what's still owed on the line, see lineBalances) is shown next to its name when given. */
+export type PaymentLineItemOption = { id: string; description: string; due?: number };
+
+const optionLabel = (li: PaymentLineItemOption) => (li.due === undefined ? li.description : `${li.description} — ${formatMoney(li.due)} due`);
 
 const WHOLE_INVOICE = "__whole_invoice__";
 
@@ -30,7 +35,7 @@ export function PaymentLineItemSelect({
 }) {
   const items = {
     [WHOLE_INVOICE]: "Whole invoice",
-    ...Object.fromEntries(lineItems.map((li) => [li.id, li.description])),
+    ...Object.fromEntries(lineItems.map((li) => [li.id, optionLabel(li)])),
   };
 
   return (
@@ -46,7 +51,7 @@ export function PaymentLineItemSelect({
           <SelectItem value={WHOLE_INVOICE}>Whole invoice</SelectItem>
           {lineItems.map((li) => (
             <SelectItem key={li.id} value={li.id}>
-              {li.description}
+              {optionLabel(li)}
             </SelectItem>
           ))}
         </SelectContent>

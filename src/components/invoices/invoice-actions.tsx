@@ -13,6 +13,7 @@ import { SendInvoiceDialog } from "./send-invoice-dialog";
 import { isManualInvoice } from "./invoice-status-badge";
 import { PdfPreviewDialog } from "./pdf-preview-dialog";
 import { formatMoney } from "@/lib/money";
+import { lineBalances } from "@/lib/invoice-format";
 
 type LineItem = { id: string; description: string; quantity: number; unitPrice: number };
 
@@ -37,6 +38,7 @@ export function InvoiceActions({
     total: number | null;
     amountPaid: number | null;
     lineItems: LineItem[];
+    payments?: { amount: number; lineItemId: string | null }[];
     importedAt: Date | null;
     businessEmail: string | null;
     ownerEmail: string | null;
@@ -154,7 +156,10 @@ export function InvoiceActions({
         <AddManualPaymentDialog
           invoiceId={invoice.id}
           remaining={remaining}
-          lineItems={invoice.lineItems.map((li) => ({ id: li.id, description: li.description }))}
+          lineItems={(() => {
+            const balances = lineBalances(invoice.lineItems, invoice.amountPaid, invoice.payments);
+            return invoice.lineItems.map((li, i) => ({ id: li.id, description: li.description, due: balances[i].due }));
+          })()}
         />
       )}
       {canSendPdf && (

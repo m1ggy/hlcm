@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { systemPrisma as prisma } from "@/lib/prisma";
 import { runAsTenant, tenantDb } from "@/lib/db";
 import { forgetOrg } from "@/lib/tenant";
+import { lineBalances } from "@/lib/invoice-format";
 
 // A manual invoice's payment can be recorded against one of its line items
 // (Payment.lineItemId), and that link survives editing the invoice.
@@ -123,5 +124,62 @@ describe("payment line item binding", () => {
       )
     ).rejects.toThrow("That line item isn't on this invoice");
     expect(await prisma.payment.count({ where: { invoiceId: invoice.id } })).toBe(0);
+  });
+});
+
+describe("running invoice", () => {
+  it("takes a new line on a paid invoice, back to partly paid, and never below what's been paid", async () => {
+    const invoice = await makeInvoice(ORG.id, userId);
+    const [consulting, filing] = invoice.lineItems;
+    await runAsTenant(ORG, () => addManualPayment(invoice.id, { amount: 300, paidAt: "2026-09-01", paymentMethod: "Zelle", lineItemId: null }));
+    expect((await prisma.invoice.findUniqueOrThrow({ where: { id: invoice.id } })).status).toBe("PAID");
+
+    // Next month's charge goes on the same invoice.
+    const lines = [
+      { id: consulting.id, description: "Consulting", quantity: 2, unitPrice: 100 },
+      { id: filing.id, description: "Filing", quantity: 1, unitPrice: 100 },
+    ];
+    await runAsTenant(ORG, () =>
+      updateManualInvoiceDraft(invoice.id, { lineItems: [...lines, { description: "2nd Monthly Retainer", quantity: 1, unitPrice: 1000 }] })
+    );
+    const after = await prisma.invoice.findUniqueOrThrow({ where: { id: invoice.id } });
+    expect(after.total).toBe(1300);
+    expect(after.status).toBe("PARTIALLY_PAID");
+
+    await expect(
+      runAsTenant(ORG, () => updateManualInvoiceDraft(invoice.id, { lineItems: [{ id: filing.id, description: "Filing", quantity: 1, unitPrice: 100 }] }))
+    ).rejects.toThrow(/can't be less than/);
+  });
+});
+
+describe("lineBalances", () => {
+  it("fills lines oldest first, after payments made for a specific line", () => {
+    const lines = [
+      { id: "a", quantity: 1, unitPrice: 1000 },
+      { id: "b", quantity: 1, unitPrice: 1000 },
+      { id: "c", quantity: 1, unitPrice: 1000 },
+    ];
+    expect(lineBalances(lines, 1000)).toEqual([
+      { amount: 1000, paid: 1000, due: 0 },
+      { amount: 1000, paid: 0, due: 1000 },
+      { amount: 1000, paid: 0, due: 1000 },
+    ]);
+    // 500 for line c, 700 for the invoice as a whole.
+    expect(
+      lineBalances(lines, 1200, [
+        { amount: 500, lineItemId: "c" },
+        { amount: 700, lineItemId: null },
+      ])
+    ).toEqual([
+      { amount: 1000, paid: 700, due: 300 },
+      { amount: 1000, paid: 0, due: 1000 },
+      { amount: 1000, paid: 500, due: 500 },
+    ]);
+    // A line overpaid spills the rest onto the others.
+    expect(lineBalances(lines.slice(0, 2), 1500, [{ amount: 1500, lineItemId: "b" }])).toEqual([
+      { amount: 1000, paid: 500, due: 500 },
+      { amount: 1000, paid: 1000, due: 0 },
+    ]);
+    expect(lineBalances([{ quantity: 2.5, unitPrice: 40 }], null)).toEqual([{ amount: 100, paid: 0, due: 100 }]);
   });
 });

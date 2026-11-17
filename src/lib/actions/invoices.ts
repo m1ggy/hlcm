@@ -470,12 +470,13 @@ const updateManualInvoiceDraftSchema = z.object({
 
 // A manual invoice is created straight to "awaiting payment" — there's no
 // Draft state to hide it behind while it's being put together. Line items,
-// notes, and dates stay editable right through SENT and PARTIALLY_PAID —
-// including after the client's already been emailed a copy (lastSentAt
-// set) — so a mistake spotted after the fact doesn't have to become a
-// voided invoice and a new one. Once PAID or VOID, it locks: money's been
-// fully reconciled against the numbers as they stood, and changing them
-// now would make that record wrong. Editing after lastSentAt is already
+// notes, and dates stay editable right through SENT, PARTIALLY_PAID and
+// PAID — including after the client's already been emailed a copy
+// (lastSentAt set) — so a mistake spotted after the fact doesn't have to
+// become a voided invoice and a new one. PAID stays open because a manual
+// invoice is a running invoice: next month's charge is a new line on the
+// same invoice, which takes it from PAID back to PARTIALLY_PAID. The total
+// can never drop below what's already been paid. Only VOID locks it. Editing after lastSentAt is already
 // set stamps editedAfterSendAt, which drives the "edited after sending"
 // indicator on the invoice list/detail pages — see sendManualInvoicePdf,
 // which clears it again once a fresh copy actually goes out.
@@ -489,11 +490,13 @@ export async function updateManualInvoiceDraft(id: string, input: z.input<typeof
 
   const before = await db.invoice.findUniqueOrThrow({ where: { id } });
   if (!isManual(before)) throw new Error("This invoice isn't a manually-recorded one");
-  if (before.status !== "SENT" && before.status !== "PARTIALLY_PAID") {
-    throw new Error("This invoice can no longer be edited — it's already been paid in full or voided");
+  if (before.status !== "SENT" && before.status !== "PARTIALLY_PAID" && before.status !== "PAID") {
+    throw new Error("This invoice can no longer be edited — it's been voided");
   }
 
   const total = subtotalOf(parsed.lineItems);
+  const paidSoFar = before.amountPaid ?? 0;
+  const status = paidSoFar <= 0 ? before.status : paidSoFar >= total ? "PAID" : "PARTIALLY_PAID";
   if (total < (before.amountPaid ?? 0)) {
     throw new Error(
       `The new total (${formatMoney(total)}) can't be less than the ${formatMoney((before.amountPaid ?? 0))} already recorded as paid`
@@ -540,6 +543,7 @@ export async function updateManualInvoiceDraft(id: string, input: z.input<typeof
         periodStart: parsed.periodStart ? new Date(parsed.periodStart) : null,
         periodEnd: parsed.periodEnd ? new Date(parsed.periodEnd) : null,
         total,
+        status,
         editedAfterSendAt: before.lastSentAt ? new Date() : undefined,
       },
       include: invoiceInclude,
