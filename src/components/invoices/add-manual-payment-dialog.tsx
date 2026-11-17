@@ -47,9 +47,18 @@ export function AddManualPaymentDialog({
   const [paidAt, setPaidAt] = useState(todayInputValue());
   const [paymentMethod, setPaymentMethod] = useState("");
   const [lineItemId, setLineItemId] = useState("");
+  const value = Number(amount);
+  const over = value > 0 ? Math.round((value - remaining) * 100) / 100 : 0;
+
+  // Picking a line fills in what's still owed on it; back to the whole
+  // invoice fills in the invoice's balance.
+  function pickLine(id: string) {
+    setLineItemId(id);
+    const due = id ? lineItems.find((li) => li.id === id)?.due : remaining;
+    if (due !== undefined && due > 0) setAmount(due.toFixed(2));
+  }
 
   function handleSubmit() {
-    const value = Number(amount);
     if (!(value > 0)) {
       toast.error("Amount must be greater than 0");
       return;
@@ -82,13 +91,19 @@ export function AddManualPaymentDialog({
           <div className="space-y-1">
             <Label htmlFor="add-amount">Amount received</Label>
             <Input id="add-amount" type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />
+            {over > 0 && (
+              <p className="text-xs text-amber-700 dark:text-amber-400">
+                That&apos;s {formatMoney(over)} more than what&apos;s owed. Check the amount — if it&apos;s a prepayment, the extra
+                counts toward lines added later.
+              </p>
+            )}
           </div>
           <div className="space-y-1">
             <Label htmlFor="add-paidAt">Payment date</Label>
             <Input id="add-paidAt" type="date" value={paidAt} onChange={(e) => setPaidAt(e.target.value)} />
           </div>
           <PaymentMethodSelect value={paymentMethod} onChange={setPaymentMethod} />
-          {lineItems.length > 0 && <PaymentLineItemSelect lineItems={lineItems} value={lineItemId} onChange={setLineItemId} />}
+          {lineItems.length > 0 && <PaymentLineItemSelect lineItems={lineItems} value={lineItemId} onChange={pickLine} />}
           <Button onClick={handleSubmit} className="w-full" loading={isPending}>
             {isPending ? "Recording..." : "Record payment"}
           </Button>
