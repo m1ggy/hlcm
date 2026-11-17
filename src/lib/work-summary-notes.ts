@@ -6,6 +6,7 @@ import { recordAudit } from "@/lib/audit";
 import { renderEmailLayout, getEmailBranding, sendEmail } from "@/lib/email";
 import { DEFAULT_TIMEZONE, toDateInputValue } from "@/lib/time-entries";
 import type { WorkActor } from "@/lib/work-service";
+import { noteBullets } from "@/lib/work";
 import { addDays, dayHasActivity, dayHeadline, getWeekSummary, weekStartOf, type WeekSummary } from "@/lib/work-summary";
 import { aiSummariesConfigured, writeDayNote, writeWeekNote } from "@/lib/work-ai";
 
@@ -212,6 +213,13 @@ function dayLabel(day: string) {
 }
 
 /** The Monday email of last week, once, to the client's own people. Quiet weeks are skipped. */
+/** The week's note in the Monday email: a bulleted list when it's written as one. */
+function weekNoteHtml(body: string) {
+  const bullets = noteBullets(body);
+  if (!bullets) return `<p style="margin:0 0 16px">${escapeHtml(body)}</p>`;
+  return `<ul style="margin:0 0 16px;padding-left:20px">${bullets.map((b) => `<li style="margin:0 0 4px">${escapeHtml(b)}</li>`).join("")}</ul>`;
+}
+
 async function sendWeeklyEmail(org: { name: string; kind: "FULL" | "TASKS"; workShowHoursToClient: boolean }, monday: string, timeZone: string) {
   const marker = await db.workSummaryNote.findFirst({ where: { period: "WEEK", date: asDate(monday) } });
   if (marker?.emailedAt) return;
@@ -248,7 +256,7 @@ async function sendWeeklyEmail(org: { name: string; kind: "FULL" | "TASKS"; work
   const bodyHtml =
     `<p style="margin:0 0 12px;font-weight:600">Week of ${dayLabel(monday)} to ${dayLabel(week.to)}</p>` +
     `<p style="margin:0 0 12px;color:#4a5668">${escapeHtml(stats)}</p>` +
-    (week.note ? `<p style="margin:0 0 16px">${escapeHtml(week.note.body)}</p>` : "") +
+    (week.note ? weekNoteHtml(week.note.body) : "") +
     `<table role="presentation" cellpadding="0" cellspacing="0" style="font-size:14px;line-height:1.5">${dayRows}</table>`;
 
   await sendEmail({
@@ -259,7 +267,7 @@ async function sendWeeklyEmail(org: { name: string; kind: "FULL" | "TASKS"; work
       bodyHtml,
       ctaLabel: "See the full week",
       ctaUrl: link,
-      preheader: week.note?.body.slice(0, 140) ?? stats,
+      preheader: week.note ? (noteBullets(week.note.body)?.join(" · ") ?? week.note.body).slice(0, 140) : stats,
       appUrl,
       brand,
     }),

@@ -108,7 +108,7 @@ function GivenPasswordStep({ given, onDone }: { given: GivenPassword; onDone: ()
     </div>
   );
 }
-const KIND_LABELS: Record<Kind, string> = { FULL: "Full (licensing CRM)", TASKS: "Tasks only (client company)" };
+const KIND_LABELS: Record<Kind, string> = { FULL: "Licensing CRM", TASKS: "Full Operations Management System (client company)" };
 const NO_MANAGER = "none";
 
 // Type + managing company (docs/workspace-tasks-plan.md). Managers: any
@@ -629,7 +629,7 @@ function OrganizationRow({ org, organizations }: { org: Org; organizations: Org[
           {org.slug}
         </a>
         <div className="text-xs text-muted-foreground">
-          {org.kind === "TASKS" ? (org.careEnabled ? "Tasks + care" : "Tasks only") : "Full"}
+          {org.kind === "TASKS" ? (org.careEnabled ? "Full Operations Management System + care" : "Full Operations Management System") : "Licensing CRM"}
           {org.managedByName && ` · managed by ${org.managedByName}`}
         </div>
       </TableCell>

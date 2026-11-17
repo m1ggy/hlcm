@@ -6,6 +6,7 @@ import { EditUserDialog } from "@/components/admin/edit-user-dialog";
 import { RateCell } from "@/components/admin/rate-cell";
 import { LoginActivityCell } from "@/components/admin/login-activity-cell";
 import type { LoginSummary } from "@/lib/actions/login-activity";
+import { formatPhone } from "@/lib/form-logic";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
@@ -83,6 +84,7 @@ export function UsersTable({
           <TableRow>
             <TableHead>Name</TableHead>
             <TableHead>Email</TableHead>
+            <TableHead>Phone</TableHead>
             <TableHead>Role</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Rate</TableHead>
@@ -101,7 +103,8 @@ export function UsersTable({
                   </Badge>
                 )}
               </TableCell>
-              <TableCell>{user.email ?? <span className="text-muted-foreground">{user.phone} (phone sign-in)</span>}</TableCell>
+              <TableCell>{user.email ?? <span className="text-muted-foreground">Signs in by phone</span>}</TableCell>
+              <TableCell className="whitespace-nowrap">{user.phone ? formatPhone(user.phone) : <span className="text-muted-foreground">—</span>}</TableCell>
               <TableCell>{user.role}</TableCell>
               <TableCell>
                 <Badge variant={user.active ? "default" : "outline"}>
@@ -139,7 +142,7 @@ export function UsersTable({
           ))}
           {filtered.length === 0 && (
             <TableRow>
-              <TableCell colSpan={showLogins ? 7 : 6} className="text-center text-sm text-muted-foreground">
+              <TableCell colSpan={showLogins ? 8 : 7} className="text-center text-sm text-muted-foreground">
                 No users match &quot;{query}&quot;.
               </TableCell>
             </TableRow>

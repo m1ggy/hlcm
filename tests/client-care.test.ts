@@ -4,6 +4,7 @@ import { runAsTenant, tenantDb } from "@/lib/db";
 import { forgetOrg } from "@/lib/tenant";
 import { parseLoginIdentifier, pickLoginUser, loginKeyOf } from "@/lib/login-identifier";
 import { generatePassword } from "@/lib/generated-password";
+import { formatPhone } from "@/lib/form-logic";
 import { hasCare, homePathForRole, isWorkspacePathAllowed } from "@/lib/workspace-kind";
 import { resolveSignInFields } from "@/lib/user-identity";
 import { setWorkspaceSetup } from "@/lib/workspace-assignments";
@@ -207,5 +208,14 @@ describe("a new workspace's owner with a made-up password", () => {
     await prisma.organization.deleteMany({ where: { slug: "cc-invited" } });
     const { ownerPassword } = await createOrganization({ name: "Invited Co", slug: "cc-invited", ownerName: "Ivy", ownerEmail: "ivy@invited.test" });
     expect(ownerPassword).toBeUndefined();
+  });
+});
+
+describe("phone display", () => {
+  it("shows a US number the readable way and anything else as stored", () => {
+    expect(formatPhone("+15551112222")).toBe("(555) 111-2222");
+    expect(formatPhone("+447700900123")).toBe("+447700900123");
+    expect(formatPhone("call the office")).toBe("call the office");
+    expect(formatPhone(null)).toBe("");
   });
 });

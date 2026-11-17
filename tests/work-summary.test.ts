@@ -25,7 +25,7 @@ import { systemPrisma as prisma } from "@/lib/prisma";
 import { runAsTenant, tenantDb } from "@/lib/db";
 import { forgetOrg } from "@/lib/tenant";
 import { assignToWorkspace } from "@/lib/workspace-assignments";
-import { workScope } from "@/lib/work";
+import { noteBullets, workScope } from "@/lib/work";
 import { addComment, createProject, createTask, updateTask, type WorkActor } from "@/lib/work-service";
 import { addDays, getWeekSummary, weekStartOf } from "@/lib/work-summary";
 import { runSummaryJob, saveSummaryNote, setDayTextSkip } from "@/lib/work-summary-notes";
@@ -92,7 +92,7 @@ const busy = (d: { completed: unknown[]; progressed: unknown[]; added: unknown[]
   d.completed.length + d.progressed.length + d.added.length + d.comments.length + d.files.length > 0;
 beforeEach(() => {
   ai.day.mockReset().mockImplementation(async (d) => (busy(d) ? "We finished collecting the logo files." : null));
-  ai.week.mockReset().mockImplementation(async (days: Parameters<typeof busy>[0][]) => (days.some(busy) ? "A good week on the website relaunch." : null));
+  ai.week.mockReset().mockImplementation(async (days: Parameters<typeof busy>[0][]) => (days.some(busy) ? "- A good week on the website relaunch.\n- Still testing the new form." : null));
   mail.send.mockReset().mockResolvedValue(undefined);
   sms.text.mockReset().mockImplementation(async (u: { id: string }) => ({ userId: u.id, ok: true }));
 });
@@ -163,7 +163,7 @@ describe("notes", () => {
 });
 
 describe("the Monday email", () => {
-  it("goes to the client's own people once, with last week's paragraph", async () => {
+  it("goes to the client's own people once, with last week's points as a list", async () => {
     await inClient(async () => {
       // Earlier runs this session already sent it (they ran after 8am); start over.
       await tenantDb(CLIENT.id).workSummaryNote.deleteMany({ where: { period: "WEEK" } });
@@ -173,7 +173,8 @@ describe("the Monday email", () => {
       const sent = mail.send.mock.calls[0][0];
       expect(sent.to).toEqual(["cat@ws-client.test"]); // not the managing company's linked accounts
       expect(sent.subject).toContain("1 finished");
-      expect(sent.html).toContain("A good week on the website relaunch.");
+      expect(sent.html).toContain("<li style=\"margin:0 0 4px\">A good week on the website relaunch.</li>");
+      expect(sent.html).toContain("Still testing the new form.</li>");
 
       await runSummaryJob(CLIENT.slug, new Date(`${today}T10:00:00Z`));
       expect(mail.send).toHaveBeenCalledTimes(1);
@@ -261,5 +262,15 @@ describe("the evening text", () => {
       expect(note.source).toBe("HUMAN");
       expect(note.textSkip).toBe(true);
     });
+  });
+});
+
+describe("bulleted notes", () => {
+  it("reads a note written as a list as its points, and leaves plain text alone", () => {
+    expect(noteBullets("- Finished the intake form\n- Started on payroll\n")).toEqual(["Finished the intake form", "Started on payroll"]);
+    expect(noteBullets("• One\n* Two")).toEqual(["One", "Two"]);
+    expect(noteBullets("A good week.\n- but then a list")).toBeNull();
+    expect(noteBullets("A good week on the website relaunch.")).toBeNull();
+    expect(noteBullets("   ")).toBeNull();
   });
 });
