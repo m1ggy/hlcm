@@ -3,7 +3,7 @@ import Link from "next/link";
 import { TriangleAlert, PenLine, Download } from "lucide-react";
 import { getInvoice, getInvoiceAuditLog } from "@/lib/actions/invoices";
 import { listInvoiceAttachments } from "@/lib/actions/invoice-attachments";
-import { displayInvoiceNumber, displayReceiptNumber, formatCalendarDate } from "@/lib/invoice-format";
+import { displayInvoiceNumber, displayReceiptNumber, formatCalendarDate, lineBalances } from "@/lib/invoice-format";
 import { listClients } from "@/lib/actions/clients";
 import { listApplications } from "@/lib/actions/applications";
 import { InvoiceStatusBadge, isInvoiceOverdue, isManualInvoice } from "@/components/invoices/invoice-status-badge";
@@ -57,10 +57,14 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   const number = displayInvoiceNumber(invoice);
   const subtotal = invoice.lineItems.reduce((sum, li) => sum + li.quantity * li.unitPrice, 0);
   // Line items, notes, and dates stay editable inline right on this page
-  // through SENT and PARTIALLY_PAID — including after the client's
-  // already been emailed a copy — and lock once PAID or VOID. See
-  // updateManualInvoiceDraft in src/lib/actions/invoices.ts.
-  const canEditManual = isManualInvoice(invoice) && (invoice.status === "SENT" || invoice.status === "PARTIALLY_PAID");
+  // through SENT, PARTIALLY_PAID and PAID (a running invoice gets a new
+  // line each month) — including after the client's already been emailed
+  // a copy — and lock once VOID. See updateManualInvoiceDraft in
+  // src/lib/actions/invoices.ts.
+  const canEditManual =
+    isManualInvoice(invoice) && (invoice.status === "SENT" || invoice.status === "PARTIALLY_PAID" || invoice.status === "PAID");
+  const balances = lineBalances(invoice.lineItems, invoice.amountPaid, invoice.payments);
+  const isVoid = invoice.status === "VOID";
   // Once VOID (whether from the plain Void or voidInvoiceWithPayments —
   // see invoice-actions.tsx), a payment is history, not something left to
   // correct — updatePayment/deletePayment both refuse it server-side too.
@@ -144,6 +148,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                   periodStart={invoice.periodStart}
                   periodEnd={invoice.periodEnd}
                   lineItems={invoice.lineItems}
+                  amountPaid={invoice.amountPaid ?? 0}
                   isCareRecipientInvoice={!!invoice.careRecipient}
                 />
               ) : (
@@ -152,18 +157,26 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                     <thead>
                       <tr className="border-b text-left text-muted-foreground">
                         <th className="pb-2 font-normal">Description</th>
-                        <th className="pb-2 font-normal">{isManualInvoice(invoice) ? "Hours" : "Quantity"}</th>
-                        <th className="pb-2 text-right font-normal">{isManualInvoice(invoice) ? "Rate" : "Unit Price"}</th>
                         <th className="pb-2 text-right font-normal">Amount</th>
+                        <th className="pb-2 text-right font-normal">Amount Due</th>
+                        <th className="pb-2 text-right font-normal">Amount Paid</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {invoice.lineItems.map((li) => (
+                      {invoice.lineItems.map((li, i) => (
                         <tr key={li.id} className="border-b last:border-0">
-                          <td className="py-2 pr-3 [overflow-wrap:anywhere]">{li.description}</td>
-                          <td className="py-2 pr-3 whitespace-nowrap tabular-nums">{li.quantity}</td>
-                          <td className="py-2 pl-3 text-right whitespace-nowrap tabular-nums">{formatMoney(li.unitPrice)}</td>
-                          <td className="py-2 pl-3 text-right whitespace-nowrap tabular-nums">{formatMoney((li.quantity * li.unitPrice))}</td>
+                          <td className="py-2 pr-3 [overflow-wrap:anywhere]">
+                            {li.description}
+                            {li.quantity !== 1 && (
+                              <span className="text-muted-foreground">
+                                {" "}
+                                ({li.quantity} × {formatMoney(li.unitPrice)})
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-2 pl-3 text-right whitespace-nowrap tabular-nums">{formatMoney(balances[i].amount)}</td>
+                          <td className="py-2 pl-3 text-right font-medium whitespace-nowrap tabular-nums">{isVoid ? "—" : formatMoney(balances[i].due)}</td>
+                          <td className="py-2 pl-3 text-right whitespace-nowrap tabular-nums">{formatMoney(balances[i].paid)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -179,10 +192,20 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                         <span className="tabular-nums">{formatMoney(invoice.taxAmount)}</span>
                       </div>
                     )}
-                    <div className="flex w-48 justify-between font-medium">
+                    <div className="flex w-48 justify-between text-muted-foreground">
                       <span>Total</span>
                       <span className="tabular-nums">
                         {invoice.total != null ? `${formatMoney(invoice.total)}` : `~${formatMoney(subtotal)} (tax not yet calculated)`}
+                      </span>
+                    </div>
+                    <div className="flex w-48 justify-between text-muted-foreground">
+                      <span>Amount paid</span>
+                      <span className="tabular-nums">{formatMoney(invoice.amountPaid ?? 0)}</span>
+                    </div>
+                    <div className="flex w-48 justify-between font-medium">
+                      <span>Total amount due</span>
+                      <span className="tabular-nums">
+                        {isVoid ? "Void" : formatMoney(Math.max(0, (invoice.total ?? subtotal) - (invoice.amountPaid ?? 0)))}
                       </span>
                     </div>
                   </div>

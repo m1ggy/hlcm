@@ -7,9 +7,8 @@
 // the emailed copy and the downloaded copy are always identical.
 import { currentOrganization } from "@/lib/db";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
-import { displayInvoiceNumber, formatCalendarDate } from "@/lib/invoice-format";
-import { isManual } from "@/lib/invoice-shared";
-import { QUANTITY_LABELS, type QuantityLabelId, type SenderDetails } from "@/lib/pdf-templates/options";
+import { displayInvoiceNumber, formatCalendarDate, lineBalances } from "@/lib/invoice-format";
+import { type QuantityLabelId, type SenderDetails } from "@/lib/pdf-templates/options";
 import { formatMoney } from "@/lib/money";
 
 // Exported for receipt-pdf.ts to share — a receipt uses the same page
@@ -195,7 +194,9 @@ export type InvoicePdfInput = {
     address: string | null;
     billingContactName: string | null;
   } | null;
-  lineItems: { description: string; quantity: number; unitPrice: number }[];
+  lineItems: { id?: string; description: string; quantity: number; unitPrice: number }[];
+  /** Recorded payments, for each line's paid/due (see lineBalances). */
+  payments?: { amount: number; lineItemId: string | null }[];
   /** Which InvoiceProfile this invoice was billed under — see src/lib/invoice-profiles.ts. */
   logo?: { bytes: Uint8Array; mimeType: string } | null;
   footerText?: string | null;
@@ -346,22 +347,19 @@ export async function generateInvoicePdf(invoice: InvoicePdfInput): Promise<Uint
   }
   cursor.y = Math.min(cursor.y, ry) - 30;
 
-  // Line items table — Description / Quantity (Hours on a manual invoice)
-  // / Amount. Unit price isn't a separate column here (kept simple); it's
-  // still stored and used to compute Amount, same convention already used
-  // when a line item is sent to Stripe (see createInvoiceItem in
-  // src/lib/stripe.ts, which folds it into the description text there too).
-  // Descriptions wrap and each row is as tall as its text; the header
-  // repeats at the top of a continuation page.
+  // Line items table — Description / Amount / Amount Due / Amount Paid: a
+  // running invoice, where each line shows what's still owed on it (see
+  // lineBalances). QTY isn't a column; a line with a quantity other than
+  // one keeps it in its description. Descriptions wrap and each row is as
+  // tall as its text; the header repeats at the top of a continuation page.
   const cols = [
-    { label: "Description", x: MARGIN, width: 330 },
-    {
-      label: invoice.quantityLabel ? QUANTITY_LABELS[invoice.quantityLabel] : isManual(invoice) ? "Hours" : "Quantity",
-      x: MARGIN + 340,
-      width: 70,
-    },
-    { label: "Amount", x: MARGIN + 420, width: right - MARGIN - 420 },
+    { label: "Description", x: MARGIN, width: 236 },
+    { label: "Amount", x: MARGIN + 246, width: 80 },
+    { label: "Amount Due", x: MARGIN + 336, width: 80 },
+    { label: "Amount Paid", x: MARGIN + 426, width: right - MARGIN - 426 },
   ];
+  const isVoid = invoice.status === "VOID";
+  const balances = lineBalances(invoice.lineItems, invoice.amountPaid, invoice.payments);
   const drawHeader = () => {
     for (const col of cols) cursor.page.drawText(col.label, { x: col.x, y: cursor.y, size: 10, font: boldFont });
     cursor.y -= 6;
@@ -371,19 +369,24 @@ export async function generateInvoicePdf(invoice: InvoicePdfInput): Promise<Uint
   cursor.ensure(40);
   drawHeader();
 
-  for (const li of invoice.lineItems) {
-    const lines = wrapText(li.description, font, 10, cols[0].width);
+  invoice.lineItems.forEach((li, i) => {
+    const label = li.quantity === 1 ? li.description : `${li.description} (${li.quantity} × ${money(li.unitPrice)})`;
+    const lines = wrapText(label, font, 10, cols[0].width);
     const height = lines.length * 13 + 7;
     if (cursor.ensure(height)) drawHeader();
-    lines.forEach((line, i) => cursor.page.drawText(line, { x: cols[0].x, y: cursor.y - i * 13, size: 10, font }));
-    drawFitted(cursor.page, String(li.quantity), { x: cols[1].x, y: cursor.y, size: 10, font, maxWidth: cols[1].width });
-    drawFitted(cursor.page, money(li.quantity * li.unitPrice), { x: cols[2].x, y: cursor.y, size: 10, font, maxWidth: cols[2].width });
+    lines.forEach((line, n) => cursor.page.drawText(line, { x: cols[0].x, y: cursor.y - n * 13, size: 10, font }));
+    const b = balances[i];
+    drawFitted(cursor.page, money(b.amount), { x: cols[1].x, y: cursor.y, size: 10, font, maxWidth: cols[1].width });
+    drawFitted(cursor.page, isVoid ? "—" : money(b.due), { x: cols[2].x, y: cursor.y, size: 10, font: boldFont, maxWidth: cols[2].width });
+    drawFitted(cursor.page, money(b.paid), { x: cols[3].x, y: cursor.y, size: 10, font, maxWidth: cols[3].width });
     cursor.y -= height;
-  }
+  });
 
   const subtotal = invoice.lineItems.reduce((sum, li) => sum + li.quantity * li.unitPrice, 0);
   const total = invoice.total ?? subtotal;
-  cursor.ensure(70);
+  const paid = invoice.amountPaid ?? 0;
+  const balance = Math.max(0, total - paid);
+  cursor.ensure(100);
   cursor.page.drawLine({
     start: { x: cols[1].x, y: cursor.y + 10 },
     end: { x: right, y: cursor.y + 10 },
@@ -394,25 +397,26 @@ export async function generateInvoicePdf(invoice: InvoicePdfInput): Promise<Uint
     const f = bold ? boldFont : font;
     const size = bold ? 11 : 10;
     cursor.page.drawText(label, { x: cols[1].x, y: cursor.y, size, font: f, color: bold ? undefined : rgb(0.4, 0.4, 0.4) });
-    drawFitted(cursor.page, value, { x: cols[2].x, y: cursor.y, size, font: f, maxWidth: cols[2].width });
+    drawFitted(cursor.page, value, { x: cols[3].x, y: cursor.y, size, font: f, maxWidth: cols[3].width });
     cursor.y -= 16;
   };
   totalRow("Subtotal", money(subtotal), false);
   if (invoice.taxAmount) totalRow("Tax", money(invoice.taxAmount), false);
-  totalRow("Total", money(total), true);
+  totalRow("Total", money(total), false);
+  totalRow("Amount paid", money(paid), false);
+  totalRow("Total amount due", isVoid ? "VOID" : money(balance), true);
   cursor.y -= 14;
 
   // Payment status
-  const paid = invoice.amountPaid ?? 0;
   let statusLine: string;
   if (invoice.status === "PAID") {
     statusLine = invoice.paidAt ? `Paid in full on ${formatCalendarDate(invoice.paidAt)}` : "Paid in full";
   } else if (invoice.status === "PARTIALLY_PAID") {
-    statusLine = `Partially paid: ${money(paid)} of ${money(total)} received — ${money(total - paid)} remaining`;
-  } else if (invoice.status === "VOID") {
+    statusLine = `Partially paid: ${money(paid)} of ${money(total)} received — ${money(balance)} remaining`;
+  } else if (isVoid) {
     statusLine = "Void";
   } else {
-    statusLine = `Amount due: ${money(total)}`;
+    statusLine = `Amount due: ${money(balance)}`;
   }
   drawWrappedTextPaged(cursor, statusLine, {
     x: MARGIN,

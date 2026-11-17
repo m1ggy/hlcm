@@ -30,6 +30,7 @@ export function ManualInvoiceEditor({
   periodStart,
   periodEnd,
   lineItems,
+  amountPaid = 0,
   isCareRecipientInvoice = false,
 }: {
   invoiceId: string;
@@ -40,6 +41,8 @@ export function ManualInvoiceEditor({
   periodStart: Date | null;
   periodEnd: Date | null;
   lineItems: LineItem[];
+  /** Already paid on this invoice — the balance shown is the total less this. */
+  amountPaid?: number;
   /** Shows the Service period fields — see Invoice.periodStart in
    * prisma/schema.prisma. */
   isCareRecipientInvoice?: boolean;
@@ -83,7 +86,13 @@ export function ManualInvoiceEditor({
 
   return (
     <div className="space-y-4">
-      <InvoiceLineItemsEditor lineItems={items} onChange={setItems} quantityLabel="Hours" rateLabel="Rate" />
+      <InvoiceLineItemsEditor
+        lineItems={items}
+        onChange={setItems}
+        quantityLabel="Hours"
+        rateLabel="Rate"
+        amountOnly={!isCareRecipientInvoice}
+      />
 
       <div className="grid sm:grid-cols-2 gap-4">
         <div className="space-y-1">
@@ -134,9 +143,21 @@ export function ManualInvoiceEditor({
         />
       </div>
 
-      <div className="flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2 text-sm">
-        <span className="text-muted-foreground">Subtotal (tax not calculated)</span>
-        <span className="font-medium">{formatMoney(subtotal)}</span>
+      <div className="space-y-1 rounded-lg bg-muted/50 px-3 py-2 text-sm">
+        <div className="flex items-center justify-between">
+          <span className="text-muted-foreground">Total (tax not calculated)</span>
+          <span className="tabular-nums">{formatMoney(subtotal)}</span>
+        </div>
+        {amountPaid > 0 && (
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Amount paid</span>
+            <span className="tabular-nums">{formatMoney(amountPaid)}</span>
+          </div>
+        )}
+        <div className="flex items-center justify-between font-medium">
+          <span>Total amount due</span>
+          <span className="tabular-nums">{formatMoney(Math.max(0, subtotal - amountPaid))}</span>
+        </div>
       </div>
 
       <Button onClick={handleSave} loading={isPending}>

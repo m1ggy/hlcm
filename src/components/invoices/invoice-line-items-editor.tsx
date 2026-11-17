@@ -22,16 +22,23 @@ export function emptyLineItem(): LineItem {
 // invoices (RecordPaymentDialog, ManualInvoiceEditor, CareRecipientInvoiceForm)
 // bill time, so they pass "Hours"/"Rate"; the Stripe-bound InvoiceFormDialog
 // keeps the defaults, since its lines aren't always hourly.
+//
+// `amountOnly` (a regular manual invoice) drops the quantity column: each
+// line is just a description and an amount, saved as quantity 1 at that
+// price. An older line with another quantity shows its total until it's
+// changed.
 export function InvoiceLineItemsEditor({
   lineItems,
   onChange,
   quantityLabel = "Quantity",
   rateLabel = "Unit Price",
+  amountOnly = false,
 }: {
   lineItems: LineItem[];
   onChange: (next: LineItem[]) => void;
   quantityLabel?: string;
   rateLabel?: string;
+  amountOnly?: boolean;
 }) {
   function updateLineItem(index: number, patch: Partial<LineItem>) {
     onChange(lineItems.map((item, i) => (i === index ? { ...item, ...patch } : item)));
@@ -51,8 +58,8 @@ export function InvoiceLineItemsEditor({
       <div className="space-y-2">
         <div className="flex items-center gap-2 px-0.5 text-xs text-muted-foreground">
           <span className="min-w-0 flex-1">Description</span>
-          <span className="w-16 sm:w-20">{quantityLabel}</span>
-          <span className="w-24 sm:w-28">{rateLabel}</span>
+          {!amountOnly && <span className="w-16 sm:w-20">{quantityLabel}</span>}
+          <span className="w-24 sm:w-28">{amountOnly ? "Amount" : rateLabel}</span>
           <span className="w-7" />
         </div>
         {lineItems.map((item, index) => (
@@ -63,26 +70,41 @@ export function InvoiceLineItemsEditor({
               onChange={(e) => updateLineItem(index, { description: e.target.value })}
               className="min-w-0 flex-1"
             />
-            <Input
-              type="number"
-              min={0.01}
-              step="0.01"
-              value={item.quantity}
-              onChange={(e) => updateLineItem(index, { quantity: Number(e.target.value) || 1 })}
-              className="w-16 sm:w-20"
-              title={quantityLabel}
-              aria-label={quantityLabel}
-            />
-            <Input
-              type="number"
-              min={0}
-              step="0.01"
-              value={item.unitPrice}
-              onChange={(e) => updateLineItem(index, { unitPrice: Number(e.target.value) || 0 })}
-              className="w-24 sm:w-28"
-              title={rateLabel}
-              aria-label={rateLabel}
-            />
+            {amountOnly ? (
+              <Input
+                type="number"
+                min={0}
+                step="0.01"
+                value={Math.round(item.quantity * item.unitPrice * 100) / 100}
+                onChange={(e) => updateLineItem(index, { quantity: 1, unitPrice: Number(e.target.value) || 0 })}
+                className="w-24 sm:w-28"
+                title="Amount"
+                aria-label="Amount"
+              />
+            ) : (
+              <>
+                <Input
+                  type="number"
+                  min={0.01}
+                  step="0.01"
+                  value={item.quantity}
+                  onChange={(e) => updateLineItem(index, { quantity: Number(e.target.value) || 1 })}
+                  className="w-16 sm:w-20"
+                  title={quantityLabel}
+                  aria-label={quantityLabel}
+                />
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={item.unitPrice}
+                  onChange={(e) => updateLineItem(index, { unitPrice: Number(e.target.value) || 0 })}
+                  className="w-24 sm:w-28"
+                  title={rateLabel}
+                  aria-label={rateLabel}
+                />
+              </>
+            )}
             <Button
               type="button"
               variant="ghost"

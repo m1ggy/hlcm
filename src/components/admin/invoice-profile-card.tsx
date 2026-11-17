@@ -19,7 +19,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   PDF_TEMPLATE_LABELS,
-  QUANTITY_LABELS,
   type PdfTemplateId,
   type QuantityLabelId,
 } from "@/lib/pdf-templates/options";
@@ -98,7 +97,9 @@ export function InvoiceProfileCard({
   const [paymentValue, setPaymentValue] = useState(profile.paymentInstructions);
   const [invoiceTemplate, setInvoiceTemplate] = useState(profile.invoiceTemplate);
   const [receiptTemplate, setReceiptTemplate] = useState(profile.receiptTemplate);
-  const [quantityLabel, setQuantityLabel] = useState(profile.quantityLabel);
+  // Invoices no longer print a quantity column (a running invoice shows
+  // Amount / Amount Due / Amount Paid), so this is just kept as stored.
+  const [quantityLabel] = useState(profile.quantityLabel);
   const [isTextPending, startTextTransition] = useTransition();
   const [isActionPending, startActionTransition] = useTransition();
   // Set the moment a file is picked, cleared once cropping is confirmed or
@@ -300,13 +301,6 @@ export function InvoiceProfileCard({
               options={PDF_TEMPLATE_LABELS}
               value={receiptTemplate}
               onChange={setReceiptTemplate}
-            />
-            <OptionSelect
-              id={`quantity-label-${profile.id}`}
-              label="Quantity column"
-              options={QUANTITY_LABELS}
-              value={quantityLabel}
-              onChange={setQuantityLabel}
             />
           </div>
           <p className="text-xs text-muted-foreground">

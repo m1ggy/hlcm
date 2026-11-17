@@ -55,3 +55,40 @@ export function outstandingBalance(invoice: { status: string; total: number | nu
   if (invoice.status !== "SENT" && invoice.status !== "PARTIALLY_PAID") return 0;
   return Math.max(0, (invoice.total ?? 0) - (invoice.amountPaid ?? 0));
 }
+
+export type LineBalance = { amount: number; paid: number; due: number };
+
+const cents = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * What's been paid and what's still owed on each line of a running invoice
+ * (one invoice that keeps growing — a new line each month — with payments
+ * coming in along the way). A payment recorded against a line counts there
+ * first, up to that line's amount; everything else paid on the invoice
+ * (payments for the invoice as a whole, any overpayment of a line, or an
+ * older amountPaid with no Payment rows behind it) fills the lines in
+ * order, oldest first.
+ */
+export function lineBalances(
+  lineItems: { id?: string; quantity: number; unitPrice: number }[],
+  amountPaid: number | null,
+  payments: { amount: number; lineItemId: string | null }[] = []
+): LineBalance[] {
+  const amounts = lineItems.map((li) => cents(li.quantity * li.unitPrice));
+  const paid = amounts.map(() => 0);
+  let pool = amountPaid ?? 0;
+  lineItems.forEach((li, i) => {
+    if (!li.id) return;
+    const linked = payments.filter((p) => p.lineItemId === li.id).reduce((sum, p) => sum + p.amount, 0);
+    const applied = Math.max(0, Math.min(linked, amounts[i]));
+    paid[i] = applied;
+    pool -= applied;
+  });
+  pool = Math.max(0, pool);
+  amounts.forEach((amount, i) => {
+    const take = Math.min(pool, Math.max(0, amount - paid[i]));
+    paid[i] += take;
+    pool -= take;
+  });
+  return amounts.map((amount, i) => ({ amount, paid: cents(paid[i]), due: cents(amount - paid[i]) }));
+}
