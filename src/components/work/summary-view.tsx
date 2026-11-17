@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ChevronLeft, ChevronRight, EyeOff, MessageSquare, Pencil, Printer, Settings2, Sparkles } from "lucide-react";
 import { regenerateSummaryNoteAction, saveSummaryNoteAction, setDayTextSkipAction, updateSummarySettingsAction } from "@/lib/actions/work-summary";
-import { WORK_TASK_STATUS_LABELS, type WorkScope, type WorkTaskStatus } from "@/lib/work";
+import { WORK_TASK_STATUS_LABELS, noteBullets, type WorkScope, type WorkTaskStatus } from "@/lib/work";
 import type { DaySummary, WeekSummary } from "@/lib/work-summary";
 import type { CareWeek } from "@/lib/care-summary";
 import { cn } from "@/lib/utils";
@@ -496,6 +496,18 @@ function DetailList({ title, children }: { title: string; children: React.ReactN
 
 const SOURCE_LABEL = { AI: "Written by AI", EDITED: "Written by AI, edited", HUMAN: null } as const;
 
+function NoteText({ body, className }: { body: string; className?: string }) {
+  const bullets = noteBullets(body);
+  if (!bullets) return <p className={cn("text-sm whitespace-pre-wrap", className)}>{body}</p>;
+  return (
+    <ul className={cn("list-disc space-y-1 pl-5 text-sm", className)}>
+      {bullets.map((b, i) => (
+        <li key={i}>{b}</li>
+      ))}
+    </ul>
+  );
+}
+
 function NoteBlock({
   period,
   day,
@@ -545,7 +557,7 @@ function NoteBlock({
     <div className={cn("space-y-2", className)}>
       {editing ? (
         <>
-          <Textarea value={text} onChange={(e) => setText(e.target.value)} rows={period === "WEEK" ? 4 : 3} aria-label={period === "WEEK" ? "Week summary" : "Day note"} />
+          <Textarea value={text} onChange={(e) => setText(e.target.value)} rows={period === "WEEK" ? 6 : 3} aria-label={period === "WEEK" ? "Week summary" : "Day note"} />
           <div className="flex gap-2">
             <Button size="sm" onClick={save} loading={isPending}>
               Save
@@ -556,7 +568,7 @@ function NoteBlock({
           </div>
         </>
       ) : note ? (
-        <p className={cn("text-sm whitespace-pre-wrap", textClassName)}>{note.body}</p>
+        <NoteText body={note.body} className={textClassName} />
       ) : (
         emptyText && <p className="text-sm text-muted-foreground">{emptyText}</p>
       )}

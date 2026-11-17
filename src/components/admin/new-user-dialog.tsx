@@ -119,13 +119,13 @@ export function NewUserDialog({ canAssignAdmin = false }: { canAssignAdmin?: boo
               </Label>
               <Input id="email" name="email" type="email" required={!isCaregiver} />
             </div>
-            {isCaregiver && (
-              <div className="space-y-1">
-                <Label htmlFor="phone">Mobile phone</Label>
-                <Input id="phone" name="phone" type="tel" placeholder="(555) 123-4567" />
-                <p className="text-xs text-muted-foreground">Without an email, they sign in with this number.</p>
-              </div>
-            )}
+            <div className="space-y-1">
+              <Label htmlFor="phone">
+                Mobile phone <span className="font-normal text-muted-foreground">(optional)</span>
+              </Label>
+              <Input id="phone" name="phone" type="tel" placeholder="(555) 123-4567" />
+              {isCaregiver && <p className="text-xs text-muted-foreground">Without an email, they sign in with this number.</p>}
+            </div>
             <div className="space-y-1">
               <Label>Password</Label>
               <Select value={mode} onValueChange={(v) => setMode(v as PasswordMode)}>

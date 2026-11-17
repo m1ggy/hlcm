@@ -186,3 +186,14 @@ export function describeActivity(a: { kind: string; from: string | null; to: str
       return "updated the task";
   }
 }
+
+/**
+ * A summary note written as a bulleted list (the AI weekly note, or one a
+ * person typed with "- " lines) → its points; null when it's ordinary text,
+ * which is shown as written.
+ */
+export function noteBullets(body: string): string[] | null {
+  const lines = body.split("\n").map((l) => l.trim()).filter(Boolean);
+  if (lines.length === 0 || !lines.every((l) => /^[-*•]\s+/.test(l))) return null;
+  return lines.map((l) => l.replace(/^[-*•]\s+/, ""));
+}

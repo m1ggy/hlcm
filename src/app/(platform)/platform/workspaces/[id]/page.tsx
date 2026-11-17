@@ -96,7 +96,7 @@ export default async function WorkspaceDetailPage({ params }: { params: Promise<
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-semibold">{org.name}</h1>
               {suspended ? <Badge variant="outline">Suspended</Badge> : <Badge variant="secondary">Active</Badge>}
-              <Badge variant="outline">{org.kind === "TASKS" ? (org.careEnabled ? "Tasks + clients & caregivers" : "Tasks only") : "Full CRM"}</Badge>
+              <Badge variant="outline">{org.kind === "TASKS" ? `Full Operations Management System${org.careEnabled ? " + clients & caregivers" : ""}` : "Licensing CRM"}</Badge>
             </div>
             <a href={org.url} target="_blank" rel="noreferrer" className="font-mono text-sm text-muted-foreground underline">
               {org.url.replace(/^https?:\/\//, "")}
@@ -122,7 +122,7 @@ export default async function WorkspaceDetailPage({ params }: { params: Promise<
                 <span className="font-mono">{org.slug}</span>
               </Field>
               <Field label="Type">
-                {org.kind === "TASKS" ? `Tasks only (client company)${org.careEnabled ? " + clients & caregivers" : ""}` : "Full (licensing CRM)"}
+                {org.kind === "TASKS" ? `Full Operations Management System (client company)${org.careEnabled ? " + clients & caregivers" : ""}` : "Licensing CRM"}
               </Field>
               <Field label="Created">{formatDate(org.createdAt)}</Field>
               <Field label="Last active">{formatDateTime(org.lastActivityAt)}</Field>
