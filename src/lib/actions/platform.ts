@@ -17,6 +17,7 @@ import {
   resendOwnerInvites,
   setOrganizationStatus,
   type CreateOrganizationInput,
+  type OwnerPasswordMode,
   type PlatformOrganization,
   type PlatformOrganizationDetail,
 } from "@/lib/platform";
@@ -60,28 +61,42 @@ export async function getOrganizationDetailForPlatform(orgId: string): Promise<(
 
 export async function createOrganizationFromPlatform(
   input: CreateOrganizationInput
-): Promise<ActionResult<{ slug: string; inviteSent: boolean; assigned: number; assignErrors: string[] }>> {
+): Promise<ActionResult<{ slug: string; url: string; inviteSent: boolean; ownerPassword?: string; assigned: number; assignErrors: string[] }>> {
   return toActionResult(async () => {
     const session = await requirePlatformAdmin();
-    const { org, inviteSent, assignErrors } = await createOrganization(input, { id: session.user.id, name: session.user.name ?? session.user.email });
-    await recordAudit({ entityType: "Organization", entityId: org.id, action: "create", actorId: session.user.id, newValue: `${org.slug}:${org.name}` });
+    const { org, inviteSent, assignErrors, ownerPassword } = await createOrganization(input, { id: session.user.id, name: session.user.name ?? session.user.email });
+    // Never the password itself — only that one was made up.
+    await recordAudit({
+      entityType: "Organization",
+      entityId: org.id,
+      action: "create",
+      actorId: session.user.id,
+      newValue: `${org.slug}:${org.name}${ownerPassword ? " (owner password made up)" : ""}`,
+    });
     revalidatePath("/platform");
-    return { slug: org.slug, inviteSent, assigned: (input.assign?.length ?? 0) - assignErrors.length, assignErrors };
+    return {
+      slug: org.slug,
+      url: orgAppUrl(org.slug),
+      inviteSent,
+      ...(ownerPassword && { ownerPassword }),
+      assigned: (input.assign?.length ?? 0) - assignErrors.length,
+      assignErrors,
+    };
   });
 }
 
 /** The create wizard's "Assign staff" step: who works at the managing company. */
-export async function listStaffForPlatform(managingOrgId: string): Promise<ActionResult<{ id: string; name: string; email: string; role: string }[]>> {
+export async function listStaffForPlatform(managingOrgId: string): Promise<ActionResult<{ id: string; name: string; email: string | null; role: string }[]>> {
   return toActionResult(async () => {
     await requirePlatformAdmin();
     return listStaffOf(managingOrgId);
   });
 }
 
-/** A workspace's type (full CRM / tasks only) and managing company. */
+/** A workspace's type (full CRM / tasks only), managing company, and (tasks only) clients and caregivers. */
 export async function setWorkspaceSetupFromPlatform(
   orgId: string,
-  input: { kind: "FULL" | "TASKS"; managedByOrgId: string | null }
+  input: { kind: "FULL" | "TASKS"; managedByOrgId: string | null; careEnabled?: boolean }
 ): Promise<ActionResult<void>> {
   return toActionResult(async () => {
     const session = await requirePlatformAdmin();
@@ -112,14 +127,22 @@ export async function resendOwnerInvitesFromPlatform(orgId: string): Promise<Act
 
 export async function inviteOwnerFromPlatform(
   orgId: string,
-  input: { name: string; email: string; promoteExisting?: boolean }
-): Promise<ActionResult<{ inviteSent: boolean }>> {
+  input: { name: string; email: string; promoteExisting?: boolean; password?: OwnerPasswordMode }
+): Promise<ActionResult<{ inviteSent: boolean; ownerPassword?: string; url: string }>> {
   return toActionResult(async () => {
     const session = await requirePlatformAdmin();
     const result = await inviteOwner(orgId, input, session.user.name ?? undefined);
-    await recordAudit({ entityType: "Organization", entityId: orgId, action: "invite_owner", actorId: session.user.id, newValue: input.email.trim().toLowerCase() });
+    const email = input.email.trim().toLowerCase();
+    await recordAudit({
+      entityType: "Organization",
+      entityId: orgId,
+      action: result.ownerPassword ? "add_owner_with_password" : "invite_owner",
+      actorId: session.user.id,
+      newValue: email,
+    });
     revalidatePath("/platform");
-    return { inviteSent: result.inviteSent };
+    const org = await getTenantOrganization(orgId);
+    return { inviteSent: result.inviteSent, url: orgAppUrl(org.slug), ...(result.ownerPassword && { ownerPassword: result.ownerPassword }) };
   });
 }
 

@@ -21,6 +21,8 @@ export const ENTITY_LINKS: Record<EntityLinkVariant, Record<string, (id: string)
     CareRecipient: () => "/care-recipients",
     // Staff side of a recipient — they live on their agency's client page.
     ClientCareRecipients: (id) => `/clients/${id}#care-recipients`,
+    // A care agency's own client, on its Clients page (tasks-only workspace, docs/client-care-plan.md).
+    CareClient: (id) => `/care-recipients?open=${id}`,
     // A concern on a recipient with no agency: the dashboard's Care visits card.
     Dashboard: () => "/",
     // A pay period on /payroll (accountant side).

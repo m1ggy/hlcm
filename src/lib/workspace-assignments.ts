@@ -109,7 +109,7 @@ export type AssignmentRow = {
   id: string;
   homeUserId: string;
   name: string;
-  email: string;
+  email: string | null;
   role: string;
   canAssign: boolean;
   active: boolean;
@@ -241,7 +241,7 @@ export async function assignToWorkspace(actor: AssignmentActor, input: AssignInp
 export type ClientPerson = {
   id: string;
   name: string;
-  email: string;
+  email: string | null;
   role: string;
   phone: string | null;
   smsDailyUpdates: boolean;
@@ -490,13 +490,15 @@ async function auditBoth(
 }
 
 /** Platform console: a workspace's kind and managing company. */
-export async function setWorkspaceSetup(orgId: string, input: { kind: "FULL" | "TASKS"; managedByOrgId: string | null }) {
+export async function setWorkspaceSetup(orgId: string, input: { kind: "FULL" | "TASKS"; managedByOrgId: string | null; careEnabled?: boolean }) {
   if (input.managedByOrgId === orgId) throw new UserFacingError("A workspace can't manage itself");
   if (input.managedByOrgId) {
     const manager = await prisma.organization.findUnique({ where: { id: input.managedByOrgId }, select: { slug: true, managedByOrgId: true } });
     if (!manager || manager.slug === "platform") throw new UserFacingError("Pick a workspace as the managing company");
     if (manager.managedByOrgId) throw new UserFacingError("A managed workspace can't manage others");
   }
-  const org = await prisma.organization.update({ where: { id: orgId }, data: input, select: { slug: true } });
+  // Clients and caregivers are a tasks-only workspace's add-on; a full one always has them.
+  const data = { ...input, ...(input.careEnabled !== undefined && { careEnabled: input.kind === "TASKS" && input.careEnabled }) };
+  const org = await prisma.organization.update({ where: { id: orgId }, data, select: { slug: true } });
   forgetOrg(org.slug);
 }

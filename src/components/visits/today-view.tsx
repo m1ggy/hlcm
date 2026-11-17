@@ -383,7 +383,8 @@ function StartButton({
   );
 }
 
-export function TodayView({ data, firstName }: { data: TodayData; firstName: string }) {
+// clientsLabel: a care agency's tasks-only workspace calls them clients (docs/client-care-plan.md).
+export function TodayView({ data, firstName, clientsLabel = false }: { data: TodayData; firstName: string; clientsLabel?: boolean }) {
   const { currentVisit, todayShifts, recipients } = data;
   // Already on the clock (visit, office work, or break) — starting another
   // visit would fail, so every Start button waits.
@@ -419,11 +420,17 @@ export function TodayView({ data, firstName }: { data: TodayData; firstName: str
           <CardContent className="space-y-1 py-6 text-center">
             <p className="font-medium">No one assigned to you yet</p>
             <p className="text-sm text-muted-foreground">
-              Once the office assigns you someone to care for, your visits show up here. Meanwhile, check{" "}
-              <Link href="/tasks" className="font-medium text-primary hover:underline">
-                My Tasks
-              </Link>
-              .
+              Once the office assigns you someone to care for, your visits show up here.
+              {!clientsLabel && (
+                <>
+                  {" "}
+                  Meanwhile, check{" "}
+                  <Link href="/tasks" className="font-medium text-primary hover:underline">
+                    My Tasks
+                  </Link>
+                  .
+                </>
+              )}
             </p>
           </CardContent>
         </Card>
@@ -505,7 +512,7 @@ export function TodayView({ data, firstName }: { data: TodayData; firstName: str
           {unscheduled.length > 0 && (
             <section className="space-y-2">
               <h2 className="text-sm font-medium tracking-wide text-muted-foreground uppercase">
-                {todayShifts.length > 0 ? "Not scheduled today" : "Your recipients"}
+                {todayShifts.length > 0 ? "Not scheduled today" : clientsLabel ? "Your clients" : "Your recipients"}
               </h2>
               <ul className="divide-y rounded-xl border">
                 {unscheduled.map((r) => {

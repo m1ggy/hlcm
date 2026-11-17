@@ -8,7 +8,8 @@ import { signIn } from "@/auth";
 import { db } from "@/lib/db";
 import { getHostOrg } from "@/lib/tenant";
 import { PLATFORM_SLUG } from "@/lib/tenant-host";
-import { homePathFor } from "@/lib/workspace-kind";
+import { homePathForRole } from "@/lib/workspace-kind";
+import { parseLoginIdentifier, pickLoginUser } from "@/lib/login-identifier";
 import { createMfaChallenge } from "@/lib/mfa-challenge";
 import { getClientIp } from "@/lib/rate-limit";
 import { isLoginThrottled, recordLoginFailure, THROTTLED_MESSAGE } from "@/lib/login-throttle";
@@ -24,9 +25,13 @@ export async function loginAction(
   _prevState: { error?: string } | undefined,
   formData: FormData
 ): Promise<{ error?: string }> {
+  // An email, or the phone number of someone who signs in with one
+  // (src/lib/login-identifier.ts). The field keeps its old name.
   const email = formData.get("email") as string | null;
   const password = formData.get("password") as string | null;
-  if (!email || !password) return { error: "Email and password are required." };
+  if (!email || !password) return { error: "Email or phone, and password, are required." };
+  const identifier = parseLoginIdentifier(email);
+  if (!identifier) return { error: "Enter your email, or the phone number on your account." };
 
   // No organization behind this host (unknown subdomain, suspended org, or
   // the bare root domain) — nothing to sign in to.
@@ -35,14 +40,14 @@ export async function loginAction(
 
   // Failed attempts are throttled per IP and per account (src/lib/login-throttle.ts).
   const ip = await getClientIp();
-  if (isLoginThrottled(ip, org.id, email)) return { error: THROTTLED_MESSAGE };
+  if (isLoginThrottled(ip, org.id, identifier.key)) return { error: THROTTLED_MESSAGE };
 
   // Scoped to the request host's org — see authorize() in src/auth.ts.
-  const user = await db.user.findFirst({ where: { email } });
+  const user = pickLoginUser(await db.user.findMany({ where: identifier.where, take: 2 }));
   const passwordValid = user?.active && !user.isSupport && !user.assignedFromUserId ? await bcrypt.compare(password, user.passwordHash) : false;
   if (!user || !passwordValid) {
-    recordLoginFailure(ip, org.id, email);
-    return { error: "Invalid email or password." };
+    recordLoginFailure(ip, org.id, identifier.key);
+    return { error: identifier.kind === "phone" ? "Invalid phone number or password." : "Invalid email or password." };
   }
 
   // Checked here too (not only in authorize) so a blocked MFA user is told
@@ -66,10 +71,10 @@ export async function loginAction(
   }
 
   try {
-    await signIn("credentials", { email, password, redirectTo: org.slug === PLATFORM_SLUG ? "/platform" : homePathFor(org.kind) });
+    await signIn("credentials", { email, password, redirectTo: org.slug === PLATFORM_SLUG ? "/platform" : homePathForRole(org, user.role) });
   } catch (error) {
     if (isMobileBlocked(error)) return { error: MOBILE_BLOCKED_MESSAGE };
-    if (error instanceof AuthError) return { error: "Invalid email or password." };
+    if (error instanceof AuthError) return { error: identifier.kind === "phone" ? "Invalid phone number or password." : "Invalid email or password." };
     throw error;
   }
   return {};
@@ -87,7 +92,7 @@ export async function verifyMfaAction(
   try {
     // Platform admins land on the console, everyone else on their dashboard.
     const org = await getHostOrg();
-    await signIn("credentials", { challenge, otp, redirectTo: org?.slug === PLATFORM_SLUG ? "/platform" : homePathFor(org?.kind) });
+    await signIn("credentials", { challenge, otp, redirectTo: org?.slug === PLATFORM_SLUG ? "/platform" : homePathForRole(org, null) });
   } catch (error) {
     if (isMobileBlocked(error)) return { error: MOBILE_BLOCKED_MESSAGE };
     if (error instanceof AuthError) return { error: "Invalid MFA code." };

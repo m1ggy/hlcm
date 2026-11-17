@@ -115,13 +115,21 @@ function toDateInputValue(date: Date | null): string {
 const CONTACT_METHOD_NONE = "__none__";
 const CONTACT_METHODS = ["Phone", "Email", "Text"];
 
-function CareRecipientFields({ defaultValues }: { defaultValues?: CareRecipientRow }) {
+// "workspace": a care agency's own clients in its tasks-only workspace
+// (docs/client-care-plan.md) — called Clients there, with no SSN and no
+// billing (invoicing them isn't offered there).
+type CardVariant = "agency" | "workspace";
+
+function CareRecipientFields({ defaultValues, variant = "agency" }: { defaultValues?: CareRecipientRow; variant?: CardVariant }) {
   const [preferredContactMethod, setPreferredContactMethod] = useState(defaultValues?.preferredContactMethod || CONTACT_METHOD_NONE);
+  const workspace = variant === "workspace";
 
   return (
     <>
       <p className="text-xs text-muted-foreground">
-        The person a Caregiver actually visits and gives hands-on care to — not a contact at the agency itself.
+        {workspace
+          ? "Someone your caregivers visit and give hands-on care to."
+          : "The person a Caregiver actually visits and gives hands-on care to — not a contact at the agency itself."}
       </p>
       <div className="space-y-1">
         <Label htmlFor="care-recipient-name">
@@ -149,6 +157,7 @@ function CareRecipientFields({ defaultValues }: { defaultValues?: CareRecipientR
           />
         </div>
       </div>
+      {!workspace && (
       <div className="space-y-1">
         <Label htmlFor="care-recipient-ssn">
           Social Security Number <span className="font-normal text-muted-foreground">(optional — printed masked on invoices)</span>
@@ -160,6 +169,7 @@ function CareRecipientFields({ defaultValues }: { defaultValues?: CareRecipientR
           defaultValue={defaultValues?.socialSecurityNumber ?? ""}
         />
       </div>
+      )}
 
       <fieldset className="space-y-2 rounded-lg border p-3">
         <legend className="px-1 text-xs font-medium text-muted-foreground">How to reach them directly</legend>
@@ -270,6 +280,7 @@ function CareRecipientFields({ defaultValues }: { defaultValues?: CareRecipientR
         />
       </div>
 
+      {!workspace && (
       <fieldset className="space-y-2 rounded-lg border p-3">
         <legend className="px-1 text-xs font-medium text-muted-foreground">Billing</legend>
         <div className="grid grid-cols-2 gap-3">
@@ -330,21 +341,23 @@ function CareRecipientFields({ defaultValues }: { defaultValues?: CareRecipientR
           />
         </div>
       </fieldset>
+      )}
     </>
   );
 }
 
-function NewCareRecipientDialog({ clientId }: { clientId: string }) {
+function NewCareRecipientDialog({ clientId, variant = "agency" }: { clientId: string | null; variant?: CardVariant }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const noun = variant === "workspace" ? "client" : "care recipient";
 
   function handleSubmit(formData: FormData) {
-    formData.set("clientId", clientId);
+    if (clientId) formData.set("clientId", clientId);
     startTransition(async () => {
       try {
         await createCareRecipient(formData);
-        toast.success("Care recipient added");
+        toast.success(variant === "workspace" ? "Client added" : "Care recipient added");
         setOpen(false);
         router.refresh();
       } catch (error) {
@@ -355,13 +368,13 @@ function NewCareRecipientDialog({ clientId }: { clientId: string }) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button variant="outline" size="sm">Add care recipient</Button>} />
+      <DialogTrigger render={<Button variant="outline" size="sm">Add {noun}</Button>} />
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Add a care recipient</DialogTitle>
+          <DialogTitle>Add a {noun}</DialogTitle>
         </DialogHeader>
         <form action={handleSubmit} className="space-y-4">
-          <CareRecipientFields />
+          <CareRecipientFields variant={variant} />
           <Button type="submit" className="w-full" loading={isPending}>
             Add
           </Button>
@@ -371,7 +384,7 @@ function NewCareRecipientDialog({ clientId }: { clientId: string }) {
   );
 }
 
-function EditCareRecipientDialog({ recipient }: { recipient: CareRecipientRow }) {
+function EditCareRecipientDialog({ recipient, variant = "agency" }: { recipient: CareRecipientRow; variant?: CardVariant }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -380,7 +393,7 @@ function EditCareRecipientDialog({ recipient }: { recipient: CareRecipientRow })
     startTransition(async () => {
       try {
         await updateCareRecipient(recipient.id, formData);
-        toast.success("Care recipient updated");
+        toast.success(variant === "workspace" ? "Client updated" : "Care recipient updated");
         setOpen(false);
         router.refresh();
       } catch (error) {
@@ -394,10 +407,10 @@ function EditCareRecipientDialog({ recipient }: { recipient: CareRecipientRow })
       <DialogTrigger render={<Button variant="ghost" size="icon" className="size-7"><Pencil className="size-3.5" /></Button>} />
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Edit care recipient</DialogTitle>
+          <DialogTitle>Edit {variant === "workspace" ? "client" : "care recipient"}</DialogTitle>
         </DialogHeader>
         <form action={handleSubmit} className="space-y-4">
-          <CareRecipientFields defaultValues={recipient} />
+          <CareRecipientFields defaultValues={recipient} variant={variant} />
           <Button type="submit" className="w-full" loading={isPending}>
             Save
           </Button>
@@ -541,14 +554,14 @@ function RestoreRecipientButton({ id, onRestored }: { id: string; onRestored: ()
 // filter: "archived") kept out of the way until someone actually needs to
 // find and restore one, same "hidden until asked for" shape the Clients
 // list page uses for its own archived view.
-function ArchivedRecipients({ clientId }: { clientId: string }) {
+function ArchivedRecipients({ clientId }: { clientId: string | null }) {
   const [archived, setArchived] = useState<CareRecipientRow[] | null>(null);
   const [isPending, startTransition] = useTransition();
 
   function load() {
     startTransition(async () => {
       try {
-        const rows = await listCareRecipients({ clientId, filter: "archived" });
+        const rows = await listCareRecipients({ clientId: clientId ?? undefined, filter: "archived" });
         setArchived(rows);
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to load archived recipients");
@@ -573,7 +586,7 @@ function ArchivedRecipients({ clientId }: { clientId: string }) {
         </Button>
       </div>
       {archived.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No archived care recipients for this client.</p>
+        <p className="text-sm text-muted-foreground">{clientId ? "No archived care recipients for this client." : "No archived clients."}</p>
       ) : (
         archived.map((r) => (
           <div key={r.id} className="flex items-center justify-between rounded-lg border border-dashed p-3">
@@ -599,8 +612,13 @@ export function CareRecipientsCard({
   profiles,
   canManageInvoices,
   isAdmin,
+  variant = "agency",
+  openId,
+  tasksByRecipient,
+  canMakeTasks = false,
 }: {
-  clientId: string;
+  /** Null in a tasks-only workspace: there's no agency client to file them under. */
+  clientId: string | null;
   recipients: CareRecipientRow[];
   caregivers: { id: string; name: string }[];
   profiles: { id: string; name: string }[];
@@ -614,26 +632,44 @@ export function CareRecipientsCard({
   // TimeEntry edit (src/lib/actions/time-entries.ts) — narrower still than
   // canManageInvoices.
   isAdmin: boolean;
+  variant?: CardVariant;
+  /** A recipient to show expanded (a notification or alert link). */
+  openId?: string;
+  /** Open project tasks tagged with each recipient (a care agency's workspace). */
+  tasksByRecipient?: Record<string, { id: string; title: string; dueDate: Date | null; caregiverName: string | null }[]>;
+  /** The viewer is on the team in a care agency's workspace: concerns can become project tasks. */
+  canMakeTasks?: boolean;
 }) {
+  const workspace = variant === "workspace";
+  const [query, setQuery] = useState("");
+  const q = query.trim().toLowerCase();
+  const shown = q ? recipients.filter((r) => r.name.toLowerCase().includes(q) || r.assignments.some((a) => a.caregiver.name.toLowerCase().includes(q))) : recipients;
   return (
     <Card id="care-recipients" className="scroll-mt-20">
       <CardContent>
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-base font-medium">Care Recipients</h2>
-          <NewCareRecipientDialog clientId={clientId} />
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-base font-medium">{workspace ? `Clients (${recipients.length})` : "Care Recipients"}</h2>
+          <div className="flex items-center gap-2">
+            {workspace && recipients.length > 5 && (
+              <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search clients or caregivers" className="h-8 w-56" />
+            )}
+            <NewCareRecipientDialog clientId={clientId} variant={variant} />
+          </div>
         </div>
         {recipients.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No care recipients added for this client yet.</p>
+          <p className="text-sm text-muted-foreground">{workspace ? "No clients yet — add the first one." : "No care recipients added for this client yet."}</p>
+        ) : shown.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nobody matches &ldquo;{query}&rdquo;.</p>
         ) : (
-          <Accordion multiple className="rounded-lg border">
-            {recipients.map((r) => {
+          <Accordion multiple defaultValue={openId ? [openId] : undefined} className="rounded-lg border">
+            {shown.map((r) => {
               const recipientAge = ageFromDob(r.dateOfBirth);
               const openConcerns = r.incidents.filter((i) => !i.resolvedAt);
               const lastVisit = r.timeEntries[0];
               const lastFinishedVisit = r.timeEntries.find((v) => v.clockOut && v.visitSegments.every((seg) => seg.clockOut));
               const recipientOutstanding = r.invoices.reduce((sum, inv) => sum + outstandingBalance(inv), 0);
               return (
-                <AccordionItem key={r.id} value={r.id} className="px-3">
+                <AccordionItem key={r.id} value={r.id} id={`care-${r.id}`} className="scroll-mt-20 px-3">
                   <AccordionTrigger>
                     <span className="flex min-w-0 flex-1 items-center justify-between gap-2 pr-2">
                       <span className="flex min-w-0 items-center gap-2.5">
@@ -683,10 +719,29 @@ export function CareRecipientsCard({
                   <AccordionContent>
                     <div className="space-y-3">
                       <div className="flex items-center justify-end gap-1">
-                        <EditCareRecipientDialog recipient={r} />
+                        <EditCareRecipientDialog recipient={r} variant={variant} />
                         <ArchiveRecipientButton id={r.id} />
                       </div>
-                      {r.incidents.length > 0 && <CareIncidents incidents={r.incidents} />}
+                      {r.incidents.length > 0 && <CareIncidents incidents={r.incidents} canMakeTask={canMakeTasks} />}
+                      {tasksByRecipient?.[r.id]?.length ? (
+                        <div className="rounded-lg border px-3 py-2">
+                          <p className="mb-1 text-xs font-medium text-muted-foreground">Open tasks</p>
+                          <ul className="space-y-0.5 text-sm">
+                            {tasksByRecipient[r.id].map((t) => (
+                              <li key={t.id} className="flex flex-wrap items-baseline justify-between gap-x-2">
+                                <Link href={`/work/tasks/${t.id}`} className="hover:underline">
+                                  {t.title}
+                                </Link>
+                                <span className="text-xs text-muted-foreground">
+                                  {[t.caregiverName, t.dueDate && `due ${new Date(t.dueDate).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" })}`]
+                                    .filter(Boolean)
+                                    .join(" · ")}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
                       <RecipientSummary recipient={r} />
                       <div className="flex flex-wrap items-center gap-1.5">
                         {r.assignments.map((a) => (
@@ -718,7 +773,7 @@ export function CareRecipientsCard({
                       <div className="border-t pt-3">
                         <RecentVisits visits={r.timeEntries} recipient={r} instructionCount={r.instructions.length} />
                       </div>
-                      {canManageInvoices && (
+                      {canManageInvoices && clientId && !workspace && (
                         <div className="border-t pt-3">
                           <div className="mb-2 flex items-center justify-between">
                             <p className="text-sm font-medium">Invoices</p>

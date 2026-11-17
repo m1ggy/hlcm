@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { CircleCheck, MapPin, Plus, TriangleAlert, X } from "lucide-react";
 import { createVisitShifts, deleteVisitShift, resolveCareIncident } from "@/lib/actions/visits";
+import { createTaskFromConcernAction } from "@/lib/actions/work";
 import { unexpectedErrorMessage, type ActionResult } from "@/lib/action-result";
 import { formatDuration, hoursBetween } from "@/lib/time-entries";
 import { formatDistance } from "@/lib/geolocation";
@@ -394,7 +395,35 @@ function ResolveIncidentDialog({ incident }: { incident: CareIncidentRow }) {
   );
 }
 
-export function CareIncidents({ incidents }: { incidents: CareIncidentRow[] }) {
+// A care agency's workspace (docs/client-care-plan.md): hand a concern to the
+// team as a project task, tagged with the client.
+function ConcernTaskButton({ incidentId }: { incidentId: string }) {
+  const router = useRouter();
+  const [isPending, start] = useTransition();
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      loading={isPending}
+      onClick={() =>
+        start(async () => {
+          try {
+            const result = await createTaskFromConcernAction(incidentId);
+            if (!result.ok) return void toast.error(result.error);
+            toast.success(result.data.created ? "Task created" : "Opening the task made earlier");
+            router.push(`/work/tasks/${result.data.taskId}`);
+          } catch (error) {
+            toast.error(unexpectedErrorMessage(error, "Couldn't make the task"));
+          }
+        })
+      }
+    >
+      Make a task
+    </Button>
+  );
+}
+
+export function CareIncidents({ incidents, canMakeTask = false }: { incidents: CareIncidentRow[]; canMakeTask?: boolean }) {
   const [showResolved, setShowResolved] = useState(false);
   const open = incidents.filter((i) => !i.resolvedAt);
   const resolved = incidents.filter((i) => i.resolvedAt);
@@ -416,7 +445,8 @@ export function CareIncidents({ incidents }: { incidents: CareIncidentRow[] }) {
             <span className="text-xs text-muted-foreground">
               {i.reportedBy.name} · {formatDay(i.createdAt)} {formatTime(i.createdAt)}
             </span>
-            <span className="ml-auto">
+            <span className="ml-auto flex items-center gap-1">
+              {canMakeTask && <ConcernTaskButton incidentId={i.id} />}
               <ResolveIncidentDialog incident={i} />
             </span>
           </div>

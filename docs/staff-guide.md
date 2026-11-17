@@ -171,6 +171,35 @@ Only sign someone up after they've agreed to get texts. Anyone can reply STOP; a
 
 **What went out.** Admins and the client's account manager can see every evening text sent to a client under **Client workspaces** → pick the client → **Evening texts sent**: the day, when it went, the text, and each person it went to, marked Sent or Failed.
 
+## Clients and caregivers (care agencies)
+
+Some client companies are care agencies with their own clients and caregivers. When a platform admin turns on **Clients and caregivers** for that workspace, its sidebar gets a **Care** section with two pages. You work there the same way the agency's office people do.
+
+**Clients.** Everyone the agency's caregivers visit. Open a client to:
+
+- assign caregivers,
+- set the weekly **Visit schedule** (who comes, which days, what time),
+- keep the **checklist** caregivers tick off at every visit,
+- see recent visits, where they clocked in, and any **concerns** a caregiver raised.
+
+Late or missed visits and open concerns show at the top of the page. On a concern, **Make a task** creates a task in the **Care follow-ups** project, tagged with the client and assigned to you; **Resolve** closes the concern itself.
+
+**Caregivers.** Everyone who visits the agency's clients: how they sign in, which clients they have, this week's hours and visits, and who's on the clock right now.
+
+**Adding a caregiver.**
+
+1. **Caregivers** → **Add caregiver**.
+2. Enter their name and mobile phone. An email is optional: without one, they sign in with their phone number.
+3. **Add and make a password.** The app makes up a password (like `maple-river-candle-42`) and shows it **once**, with the address to sign in at. Copy it and give it to them.
+
+They keep that password. If someone forgets theirs, an admin sets a new one from **Users** (edit the person → **Generate** next to New password → Save).
+
+**What caregivers see.** On their phone: **Today** (their visits, with Start and End), **My Clients**, **My Hours** and **Settings**. Starting a visit clocks them in at the client's address; they tick the checklist, can report a concern, and end the visit with a note. They don't see projects, tasks or anything else in the workspace.
+
+**Tasks about a client.** Any task in that workspace can be tagged with a **Client** and a **Caregiver** (in the task panel, under Assignees). The client's open tasks then show on their card on the Clients page.
+
+**This week.** The agency's weekly summary also shows **Care visits**: visits made, visit hours, missed visits, and concerns raised and still open.
+
 ## Your daily routine
 
 Five habits keep the client's page and your report current with almost no end-of-day writing.
@@ -196,5 +225,9 @@ Managers also: check client **Requests**, and read the day's note on each client
 **My timer stopped on its own.** You started another one somewhere else. Only one timer runs at a time, across our workspace and every client workspace.
 
 **My update shows "added after submitting".** That's fine: you ticked or updated a task after submitting, so the line was added to the submitted report.
+
+**A caregiver can't sign in.** Check they're active on **Caregivers**, and that they're typing the email or phone number shown there. Two people can't sign in with the same phone number. If they forgot their password, an admin sets a new one from **Users**.
+
+**I don't see Clients or Caregivers in a client workspace.** That company doesn't have clients and caregivers turned on. Ask a platform admin.
 
 **A client isn't getting the evening text.** Check that the evening text is on in their This week settings, that they're signed up with a mobile number (Client workspaces → their people), that the day had updates, and that the day wasn't skipped. If they replied STOP, only they can turn texts back on.

@@ -25,10 +25,10 @@ import { addAccessGrant, updateAccessGrant, removeAccessGrant } from "@/lib/acti
 type Grant = {
   id: string;
   permission: "VIEW" | "EDIT";
-  user: { id: string; name: string; email: string };
+  user: { id: string; name: string; email: string | null };
 };
 
-type GrantableUser = { id: string; name: string; email: string };
+type GrantableUser = { id: string; name: string; email: string | null };
 
 const PERMISSION_LABELS = { VIEW: "Can view", EDIT: "Can edit" } as const;
 

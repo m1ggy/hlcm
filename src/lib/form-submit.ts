@@ -135,9 +135,10 @@ export async function alertForSubmission(submissionId: string) {
   for (const u of users) {
     await db.notification.create({ data: { userId: u.id, type: "FORM_SUBMITTED", message, entityType: "FormSubmission", entityId: submission.id } });
     result.notified.push(u.id);
-    if (u.emailNotificationsEnabled) await staffEmail(u.email).then(() => result.emailed.push(u.email), (e) => console.error("form alert email failed:", e));
+    const email = u.email;
+    if (u.emailNotificationsEnabled && email) await staffEmail(email).then(() => result.emailed.push(email), (e) => console.error("form alert email failed:", e));
   }
-  for (const to of extraEmails.filter((e) => !users.some((u) => u.email.toLowerCase() === e))) {
+  for (const to of extraEmails.filter((e) => !users.some((u) => u.email?.toLowerCase() === e))) {
     await staffEmail(to).then(() => result.emailed.push(to), (e) => console.error("form alert email failed:", e));
   }
 

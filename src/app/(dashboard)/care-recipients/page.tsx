@@ -2,7 +2,11 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { CalendarClock, MessageSquareText } from "lucide-react";
 import { auth } from "@/auth";
+import { currentOrganization } from "@/lib/db";
+import { hasCare, TASKS_HOME } from "@/lib/workspace-kind";
+import { canManageCare } from "@/lib/care-access";
 import { listMyCareRecipients } from "@/lib/actions/care-recipients";
+import { CareClientsOffice } from "./care-clients-office";
 import { getAccount } from "@/lib/actions/account";
 import { effectiveTimezone } from "@/lib/time-entries";
 import { formatShiftRange, formatWeekdays } from "@/lib/visits";
@@ -35,9 +39,19 @@ function groupShifts(shifts: { weekday: number; startMinute: number; endMinute: 
 // Every other role has no sidebar link to this at all, but redirect rather
 // than let a stale bookmark hit listMyCareRecipients's own
 // requireRole(["CAREGIVER"]) and crash with an uncaught ForbiddenError.
-export default async function CareRecipientsPage() {
+//
+// In a care agency's tasks-only workspace (docs/client-care-plan.md) this is
+// also the office's Clients page — every client with their caregivers,
+// schedule, checklist, visits and concerns — for everyone but caregivers.
+export default async function CareRecipientsPage({ searchParams }: { searchParams: Promise<{ open?: string }> }) {
   const session = await auth();
-  if (session?.user?.role !== "CAREGIVER") redirect("/");
+  const org = await currentOrganization();
+  const tasksWorkspace = org.kind === "TASKS";
+  if (session?.user?.role !== "CAREGIVER") {
+    if (!tasksWorkspace || !hasCare(org)) redirect("/");
+    if (!canManageCare(session?.user?.role)) redirect(TASKS_HOME);
+    return <CareClientsOffice openId={(await searchParams).open} />;
+  }
 
   const [recipients, account] = await Promise.all([listMyCareRecipients(), getAccount()]);
   const timeZone = effectiveTimezone(account.timezone);
@@ -45,10 +59,12 @@ export default async function CareRecipientsPage() {
   return (
     <div className="space-y-6" data-tour="recipients-list">
       <div className="flex items-center gap-1.5">
-        <h1 className="text-2xl font-semibold">My Recipients</h1>
-        <PageInfoButton title="My Recipients">
+        <h1 className="text-2xl font-semibold">{tasksWorkspace ? "My Clients" : "My Recipients"}</h1>
+        <PageInfoButton title={tasksWorkspace ? "My Clients" : "My Recipients"}>
           <p>
-            The people you visit and give hands-on care to — not the same as the businesses on your Clients page.
+            {tasksWorkspace
+              ? "The people you visit and give hands-on care to. "
+              : "The people you visit and give hands-on care to — not the same as the businesses on your Clients page. "}
             Everything to know before a visit lives here; start and run the visit itself from{" "}
             <Link href="/today" className="font-medium text-primary hover:underline">
               Today
@@ -58,7 +74,7 @@ export default async function CareRecipientsPage() {
         </PageInfoButton>
       </div>
       {recipients.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No recipients assigned to you yet.</p>
+        <p className="text-sm text-muted-foreground">{tasksWorkspace ? "No clients assigned to you yet." : "No recipients assigned to you yet."}</p>
       ) : (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {recipients.map((r) => {

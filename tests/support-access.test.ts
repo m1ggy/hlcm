@@ -20,10 +20,10 @@ beforeAll(async () => {
   await prisma.user.deleteMany({ where: { email: ADMIN_EMAIL } });
   await prisma.organization.create({ data: ORG });
   await prisma.user.create({ data: { organizationId: ORG.id, name: "Owner", email: "owner@support.test", passwordHash: "x", role: "OWNER" } });
-  admin = await prisma.user.create({
+  admin = (await prisma.user.create({
     data: { organizationId: "org_platform", name: "Pat", email: ADMIN_EMAIL, passwordHash: "x", role: "DEVELOPER" },
     select: { id: true, name: true, email: true },
-  });
+  })) as typeof admin;
   forgetOrg(ORG.slug);
 });
 

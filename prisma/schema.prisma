@@ -93,6 +93,11 @@ model Organization {
   // Evening text of the day's note to the client's people who signed up
   // for it (smsDailyUpdates). Off until the team turns it on.
   workDailyText         Boolean @default(false)
+  // Clients and caregivers in a client company's tasks-only workspace
+  // (docs/client-care-plan.md): the CRM's home-care pages (care recipients,
+  // caregiver logins, schedules, visits). Set by a platform admin. FULL
+  // workspaces always have them, so it's ignored there.
+  careEnabled           Boolean @default(false)
 
   orgCounters              OrgCounter[]
   picklistOptions          PicklistOption[]
@@ -437,7 +442,10 @@ model User {
   organizationId            String       @default(dbgenerated("current_org_id()"))
   organization              Organization @relation(fields: [organizationId], references: [id])
   name                      String
-  email                     String
+  // Null only for someone who signs in with their phone number instead
+  // (a client company's caregiver, docs/client-care-plan.md). Everything
+  // that emails a user skips them.
+  email                     String?
   passwordHash              String
   role                      Role         @default(STAFF)
   mfaSecret                 String?
@@ -491,6 +499,7 @@ model User {
   workProjectsCreated   WorkProject[]          @relation("WorkProjectCreatedBy")
   workTasksCreated      WorkTask[]             @relation("WorkTaskCreatedBy")
   workTasksCompleted    WorkTask[]             @relation("WorkTaskCompletedBy")
+  workTasksAbout        WorkTask[]             @relation("WorkTaskCaregiver")
   workTaskAssignments   WorkTaskAssignee[]
   workTaskComments      WorkTaskComment[]
   workTaskActivities    WorkTaskActivity[]
@@ -1314,6 +1323,7 @@ model CareRecipient {
   instructions CareInstruction[]
   shifts       VisitShift[]
   incidents    CareIncident[]
+  workTasks    WorkTask[]
   // Manual invoices billed for this recipient's care — see
   // Invoice.careRecipientId. Always billed through their own `client`
   // above (Invoice.clientId is a hard requirement, unrelated to this).
@@ -2997,6 +3007,12 @@ model WorkTask {
   repeatedFrom    WorkTask?        @relation("WorkTaskRepeats", fields: [repeatedFromId], references: [id], onDelete: SetNull)
   repeatedFromId  String?          @unique
   repeatedBy      WorkTask?        @relation("WorkTaskRepeats")
+  // Who the task is about in a workspace with clients and caregivers
+  // (docs/client-care-plan.md, Phase 3) — optional tags, nothing more.
+  careRecipient   CareRecipient?   @relation(fields: [careRecipientId], references: [id], onDelete: SetNull)
+  careRecipientId String?
+  caregiver       User?            @relation("WorkTaskCaregiver", fields: [caregiverId], references: [id], onDelete: SetNull)
+  caregiverId     String?
   createdBy       User             @relation("WorkTaskCreatedBy", fields: [createdById], references: [id])
   createdById     String
   createdAt       DateTime         @default(now())
@@ -3011,6 +3027,8 @@ model WorkTask {
   @@index([organizationId, projectId, status])
   @@index([organizationId, isClientRequest, approvedAt])
   @@index([parentId])
+  @@index([careRecipientId])
+  @@index([caregiverId])
   @@map("work_tasks")
 }
 

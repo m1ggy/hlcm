@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Pencil } from "lucide-react";
 import { sendSetPasswordLink, updateUser } from "@/lib/actions/users";
 import { unexpectedErrorMessage } from "@/lib/action-result";
+import { generatePassword } from "@/lib/generated-password";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,7 +38,7 @@ const ADMIN_TIER_ROLES = new Set<(typeof ROLES)[number]>(["OWNER", "ADMIN", "ACC
 type EditableUser = {
   id: string;
   name: string;
-  email: string;
+  email: string | null;
   role: (typeof ROLES)[number];
   active: boolean;
   phone: string | null;
@@ -61,7 +62,7 @@ export function EditUserDialog({
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(user.name);
-  const [email, setEmail] = useState(user.email);
+  const [email, setEmail] = useState(user.email ?? "");
   // A DEVELOPER row returns null below before this state is ever read/
   // submitted — the cast just satisfies updateUser's narrower input type.
   const [role, setRole] = useState<(typeof ASSIGNABLE_ROLES)[number]>(
@@ -69,6 +70,9 @@ export function EditUserDialog({
   );
   const [active, setActive] = useState(user.active);
   const [password, setPassword] = useState("");
+  // A made-up password (src/lib/generated-password.ts) is shown in plain
+  // text so it can be passed on; a typed one stays masked.
+  const [showPassword, setShowPassword] = useState(false);
   const [phone, setPhone] = useState(user.phone ?? "");
   const [smsRemindersEnabled, setSmsRemindersEnabled] = useState(user.smsRemindersEnabled);
   const wasDaily = user.smsDailyUpdates ?? false;
@@ -100,10 +104,11 @@ export function EditUserDialog({
 
   function reset() {
     setName(user.name);
-    setEmail(user.email);
+    setEmail(user.email ?? "");
     setRole(user.role as (typeof ASSIGNABLE_ROLES)[number]);
     setActive(user.active);
     setPassword("");
+    setShowPassword(false);
     setPhone(user.phone ?? "");
     setSmsRemindersEnabled(user.smsRemindersEnabled);
     setSmsDailyUpdates(wasDaily);
@@ -136,7 +141,7 @@ export function EditUserDialog({
         const result = await updateUser({
           userId: user.id,
           name,
-          email,
+          email: email.trim(),
           role,
           active,
           password: password || undefined,
@@ -148,7 +153,7 @@ export function EditUserDialog({
           toast.error(result.error);
           return;
         }
-        toast.success("User updated");
+        toast.success(password && showPassword ? `User updated — their new password is ${password}` : "User updated");
         setOpen(false);
         router.refresh();
       } catch (error) {
@@ -182,13 +187,15 @@ export function EditUserDialog({
             <Input id="edit-name" value={name} onChange={(e) => setName(e.target.value)} required />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="edit-email">Email</Label>
+            <Label htmlFor="edit-email">
+              Email{role === "CAREGIVER" && <span className="font-normal text-muted-foreground"> (optional — or sign in by phone)</span>}
+            </Label>
             <Input
               id="edit-email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              required
+              required={role !== "CAREGIVER"}
             />
           </div>
           <div className="space-y-1">
@@ -212,14 +219,31 @@ export function EditUserDialog({
           </div>
           <div className="space-y-1">
             <Label htmlFor="edit-password">New password</Label>
-            <Input
-              id="edit-password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Leave blank to keep current password"
-              minLength={8}
-            />
+            <div className="flex gap-2">
+              <Input
+                id="edit-password"
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setShowPassword(false);
+                }}
+                placeholder="Leave blank to keep current password"
+                minLength={8}
+                className={showPassword ? "font-mono" : undefined}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setPassword(generatePassword());
+                  setShowPassword(true);
+                }}
+              >
+                Generate
+              </Button>
+            </div>
+            {showPassword && <p className="text-xs text-muted-foreground">Copy it before saving — it isn&apos;t shown again.</p>}
           </div>
           <div className="space-y-1">
             <Label htmlFor="edit-phone">Phone</Label>
@@ -277,7 +301,7 @@ export function EditUserDialog({
           <Button className="w-full" onClick={handleSave} loading={isPending}>
             {isPending ? "Saving..." : "Save changes"}
           </Button>
-          {user.active && (
+          {user.active && user.email && (
             <Button variant="outline" className="w-full" onClick={handleSendLink} loading={isSendingLink}>
               Email a set-password link
             </Button>

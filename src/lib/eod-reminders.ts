@@ -18,7 +18,7 @@ function localHour(timeZone: string, now: Date) {
   return Number(new Intl.DateTimeFormat("en-US", { timeZone, hour: "2-digit", hourCycle: "h23" }).format(now));
 }
 
-async function remind(user: { id: string; email: string; emailNotificationsEnabled: boolean }, type: $Enums.NotificationType, entityType: string, day: string, message: string, path: string) {
+async function remind(user: { id: string; email: string | null; emailNotificationsEnabled: boolean }, type: $Enums.NotificationType, entityType: string, day: string, message: string, path: string) {
   const sent = await db.notification.findFirst({ where: { userId: user.id, type, entityType, entityId: day }, select: { id: true } });
   if (sent) return false;
   await db.notification.create({ data: { userId: user.id, type, message, entityType, entityId: day } });

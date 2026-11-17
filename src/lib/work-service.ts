@@ -172,9 +172,24 @@ const taskSchema = z.object({
   estimateHours: z.number().min(0).max(10_000).optional().nullable(),
   repeat: z.enum(WORK_REPEATS).optional().nullable(),
   assigneeIds: z.array(z.string()).max(50).optional(),
+  // Who it's about, in a care agency's workspace (docs/client-care-plan.md, Phase 3).
+  careRecipientId: z.string().optional().nullable(),
+  caregiverId: z.string().optional().nullable(),
 });
 
 export type TaskInput = z.input<typeof taskSchema>;
+
+/** A client / caregiver tag must be this workspace's own (the tenant client keeps lookups in the workspace). */
+async function assertCareTags(data: { careRecipientId?: string | null; caregiverId?: string | null }) {
+  if (data.careRecipientId) {
+    const found = await db.careRecipient.findUnique({ where: { id: data.careRecipientId }, select: { id: true } });
+    if (!found) throw new UserFacingError("That client doesn't exist");
+  }
+  if (data.caregiverId) {
+    const found = await db.user.findUnique({ where: { id: data.caregiverId }, select: { role: true } });
+    if (found?.role !== "CAREGIVER") throw new UserFacingError("That caregiver doesn't exist");
+  }
+}
 
 function assignedMessage(title: string, projectName: string) {
   return `You were assigned "${title}" in ${projectName}`;
@@ -193,6 +208,7 @@ export async function createTask(actor: WorkActor, input: TaskInput) {
   }
   const assigneeIds = [...new Set(data.assigneeIds ?? [])];
   await assertAssignable(actor, assigneeIds);
+  await assertCareTags(data);
   const last = await db.workTask.aggregate({ where: { projectId: project.id, parentId: data.parentId ?? null }, _max: { sortOrder: true } });
   const status = data.status ?? "TODO";
   const task = await db.workTask.create({
@@ -208,6 +224,8 @@ export async function createTask(actor: WorkActor, input: TaskInput) {
       clientVisible: data.clientVisible ?? project.clientVisible,
       estimateHours: data.estimateHours ?? null,
       repeat: data.repeat ?? null,
+      careRecipientId: data.careRecipientId || null,
+      caregiverId: data.caregiverId || null,
       sortOrder: (last._max.sortOrder ?? 0) + 1,
       createdById: actor.userId,
       ...(status === "DONE" && { completedAt: new Date(), completedById: actor.userId }),
@@ -233,6 +251,7 @@ export async function updateTask(actor: WorkActor, taskId: string, patch: TaskPa
   const before = await findVisibleTask(actor, taskId);
   const statusChanged = data.status !== undefined && data.status !== before.status;
   if (statusChanged && isPendingRequest(before)) throw new UserFacingError("Accept or decline the client's request first");
+  await assertCareTags(data);
   const task = await db.workTask.update({
     where: { id: taskId },
     data: {
@@ -244,6 +263,8 @@ export async function updateTask(actor: WorkActor, taskId: string, patch: TaskPa
       ...(data.clientVisible !== undefined && { clientVisible: data.clientVisible }),
       ...(data.estimateHours !== undefined && { estimateHours: data.estimateHours }),
       ...(data.repeat !== undefined && { repeat: data.repeat }),
+      ...(data.careRecipientId !== undefined && { careRecipientId: data.careRecipientId || null }),
+      ...(data.caregiverId !== undefined && { caregiverId: data.caregiverId || null }),
       ...(statusChanged && {
         status: data.status,
         ...(data.status === "DONE" ? { completedAt: new Date(), completedById: actor.userId } : { completedAt: null, completedById: null }),
@@ -257,7 +278,7 @@ export async function updateTask(actor: WorkActor, taskId: string, patch: TaskPa
   if (data.dueDate !== undefined && day(before.dueDate) !== day(task.dueDate)) {
     await logActivity(task, actor.userId, "DUE_CHANGED", { from: day(before.dueDate), to: day(task.dueDate) });
   }
-  for (const field of ["title", "status", "priority", "dueDate", "clientVisible", "repeat"] as const) {
+  for (const field of ["title", "status", "priority", "dueDate", "clientVisible", "repeat", "careRecipientId", "caregiverId"] as const) {
     if (data[field] !== undefined && String(before[field]) !== String(task[field])) {
       await recordAudit({ entityType: "WorkTask", entityId: taskId, action: "update", actorId: actor.userId, field, oldValue: before[field], newValue: task[field] });
     }
@@ -294,6 +315,8 @@ async function createNextOccurrence(actor: WorkActor, taskId: string) {
       estimateHours: task.estimateHours,
       repeat: task.repeat,
       repeatedFromId: task.id,
+      careRecipientId: task.careRecipientId,
+      caregiverId: task.caregiverId,
       startDate: task.startDate && task.dueDate ? new Date(task.startDate.getTime() + shift) : null,
       dueDate: new Date(`${due}T00:00:00Z`),
       sortOrder: (last._max.sortOrder ?? 0) + 1,

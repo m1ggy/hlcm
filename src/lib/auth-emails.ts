@@ -1,11 +1,19 @@
 import { getEmailBranding, renderEmailLayout, sendEmail } from "@/lib/email";
 import { issueAuthToken } from "@/lib/auth-tokens";
+import { UserFacingError } from "@/lib/user-facing-error";
 
 // The two emails that carry a set-password link (src/lib/auth-tokens.ts):
 // an invite to a new account and a forgot-password reset. Both land on
 // /set-password on the organization's own workspace URL.
 
-type Recipient = { id: string; name: string; email: string };
+// email is null for someone who signs in with their phone number
+// (docs/client-care-plan.md) — there's nowhere to send a link to them.
+type Recipient = { id: string; name: string; email: string | null };
+
+function emailOf(user: Recipient): string {
+  if (!user.email) throw new UserFacingError(`${user.name} has no email address — they sign in with their phone number`);
+  return user.email;
+}
 
 // Says what they're joining as, so a staff invite and an owner invite don't
 // read the same.
@@ -20,12 +28,13 @@ const INVITE_ROLE: Record<string, string> = {
 };
 
 export async function sendInviteEmail(user: Recipient & { role: string }, invitedBy?: string) {
+  const to = emailOf(user);
   const token = await issueAuthToken(user.id, "INVITE");
   const { appUrl, brand } = await getEmailBranding();
   const link = `${appUrl}/set-password?token=${encodeURIComponent(token)}`;
   const as = INVITE_ROLE[user.role];
   await sendEmail({
-    to: user.email,
+    to,
     subject: user.role === "OWNER" ? `You're invited to run ${brand}` : `You're invited to ${brand}`,
     html: renderEmailLayout({
       heading: `Welcome to ${brand}`,
@@ -43,11 +52,12 @@ export async function sendInviteEmail(user: Recipient & { role: string }, invite
 }
 
 export async function sendPasswordResetEmail(user: Recipient) {
+  const to = emailOf(user);
   const token = await issueAuthToken(user.id, "PASSWORD_RESET");
   const { appUrl, brand } = await getEmailBranding();
   const link = `${appUrl}/set-password?token=${encodeURIComponent(token)}`;
   await sendEmail({
-    to: user.email,
+    to,
     subject: `Reset your ${brand} password`,
     html: renderEmailLayout({
       heading: "Reset your password",

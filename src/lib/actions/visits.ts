@@ -2,8 +2,9 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { db } from "@/lib/db";
-import { requireRole, requireSession, ForbiddenError } from "@/lib/rbac";
+import { currentOrganization, db } from "@/lib/db";
+import { requireSession, ForbiddenError } from "@/lib/rbac";
+import { requireCareRole as requireRole } from "@/lib/care-access";
 import { recordAudit } from "@/lib/audit";
 import { notify } from "@/lib/notifications";
 import { toActionResult } from "@/lib/action-result";
@@ -382,6 +383,7 @@ export async function reportCareIncident(input: z.input<typeof incidentSchema>) 
       where: { active: true, role: { in: ["OWNER", "ADMIN", "MANAGER"] } },
       select: { id: true },
     });
+    const tasksWorkspace = (await currentOrganization()).kind === "TASKS";
     const message = `${data.urgent ? "URGENT: " : ""}${session.user.name} reported ${INCIDENT_CATEGORY_LABELS[data.category].toLowerCase()} for ${recipient.name}`;
     for (const manager of managers) {
       await notify(
@@ -389,8 +391,11 @@ export async function reportCareIncident(input: z.input<typeof incidentSchema>) 
           userId: manager.id,
           type: "CARE_INCIDENT_REPORTED",
           message,
-          entityType: recipient.clientId ? "ClientCareRecipients" : "Dashboard",
-          entityId: recipient.clientId ?? incident.id,
+          // A care agency's tasks-only workspace has a Clients page to open
+          // them on (docs/client-care-plan.md); the full CRM files them under
+          // the agency's client page, or the dashboard's card.
+          entityType: tasksWorkspace ? "CareClient" : recipient.clientId ? "ClientCareRecipients" : "Dashboard",
+          entityId: tasksWorkspace ? recipient.id : (recipient.clientId ?? incident.id),
         },
         session.user.id
       );
@@ -542,7 +547,7 @@ export async function getCareVisitAlerts() {
         category: true,
         urgent: true,
         createdAt: true,
-        careRecipient: { select: { name: true, clientId: true } },
+        careRecipient: { select: { id: true, name: true, clientId: true } },
         reportedBy: { select: { name: true } },
       },
     }),
@@ -562,7 +567,16 @@ export async function getCareVisitAlerts() {
     select: { userId: true, careRecipientId: true, clockIn: true, clockOut: true },
   });
 
-  const problems: { id: string; status: ShiftStatus; caregiverName: string; recipientName: string; clientId: string | null; startMinute: number; endMinute: number }[] = [];
+  const problems: {
+    id: string;
+    status: ShiftStatus;
+    caregiverName: string;
+    recipientName: string;
+    careRecipientId: string;
+    clientId: string | null;
+    startMinute: number;
+    endMinute: number;
+  }[] = [];
   for (const s of todays) {
     const tz = effectiveTimezone(s.caregiver.timezone);
     const clock = zonedClock(now, tz);
@@ -581,6 +595,7 @@ export async function getCareVisitAlerts() {
         status,
         caregiverName: s.caregiver.name,
         recipientName: s.careRecipient.name,
+        careRecipientId: s.careRecipientId,
         clientId: s.careRecipient.clientId,
         startMinute: s.startMinute,
         endMinute: s.endMinute,

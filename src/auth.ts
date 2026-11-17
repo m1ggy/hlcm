@@ -12,7 +12,8 @@ import { getClientIp } from "@/lib/rate-limit";
 import { clearLoginFailures, isLoginThrottled, recordLoginFailure } from "@/lib/login-throttle";
 import { isMobileDevice, parseLoginDevice, recordLoginEvent, refuseIfMobileBlocked } from "@/lib/login-device";
 import { isLinkedAccountActive } from "@/lib/workspace-switch";
-import { isTasksWorkspacePath, TASKS_HOME } from "@/lib/workspace-kind";
+import { homePathForRole, isWorkspacePathAllowed } from "@/lib/workspace-kind";
+import { loginKeyOf, parseLoginIdentifier, pickLoginUser } from "@/lib/login-identifier";
 import { orgSlugFromHost, requestHost } from "@/lib/tenant-host";
 
 // The address the browser used, for the proxy's redirects: built from the
@@ -122,14 +123,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
           const user = await db.user.findUnique({ where: { id: userId } });
           if (!user || !user.active || user.isSupport || user.assignedFromUserId || !user.mfaEnabled || !user.mfaSecret) return null;
-          if (isLoginThrottled(ip, org.id, user.email)) return null;
+          const key = loginKeyOf(user);
+          if (isLoginThrottled(ip, org.id, key)) return null;
           if (!otp || !verifyTotpToken(otp, user.mfaSecret)) {
-            recordLoginFailure(ip, org.id, user.email);
+            recordLoginFailure(ip, org.id, key);
             return null;
           }
           if (await refuseIfMobileBlocked(user, device, "password+mfa")) throw new MobileLoginBlockedError();
 
-          clearLoginFailures(org.id, user.email);
+          clearLoginFailures(org.id, key);
           await recordLoginEvent({ userId: user.id, device, success: true, method: "password+mfa" });
           return {
             id: user.id,
@@ -142,15 +144,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           };
         }
 
-        const email = credentials?.email as string | undefined;
+        // Email, or a phone number (src/lib/login-identifier.ts).
+        const identifier = parseLoginIdentifier(credentials?.email as string | undefined);
         const password = credentials?.password as string | undefined;
-        if (!email || !password) return null;
-        if (isLoginThrottled(ip, org.id, email)) return null;
+        if (!identifier || !password) return null;
+        if (isLoginThrottled(ip, org.id, identifier.key)) return null;
 
-        const user = await db.user.findFirst({ where: { email } });
+        const user = pickLoginUser(await db.user.findMany({ where: identifier.where, take: 2 }));
         const passwordValid = user?.active && !user.isSupport && !user.assignedFromUserId ? await bcrypt.compare(password, user.passwordHash) : false;
         if (!user || !passwordValid) {
-          recordLoginFailure(ip, org.id, email);
+          recordLoginFailure(ip, org.id, identifier.key);
           return null;
         }
 
@@ -159,7 +162,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (user.mfaEnabled) return null;
         if (await refuseIfMobileBlocked(user, device, "password")) throw new MobileLoginBlockedError();
 
-        clearLoginFailures(org.id, email);
+        clearLoginFailures(org.id, identifier.key);
         await recordLoginEvent({ userId: user.id, device, success: true, method: "password" });
         return {
           id: user.id,
@@ -189,9 +192,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (!allowed || !params.auth?.user || isPublicPath(params.request.nextUrl.pathname)) return allowed;
       const org = await getOrgBySlug(params.auth.user.orgSlug);
       if (org?.status !== "ACTIVE") return false;
-      // A tasks-only workspace has no licensing CRM: those addresses go to its home page.
-      if (org.kind === "TASKS" && !isTasksWorkspacePath(params.request.nextUrl.pathname)) {
-        return Response.redirect(`${browserOrigin(params.request.headers, params.request.nextUrl)}${TASKS_HOME}`);
+      // A tasks-only workspace has no licensing CRM: those addresses go to its
+      // home page (care pages only when the workspace has them).
+      const role = params.auth.user.role;
+      if (!isWorkspacePathAllowed(org, params.request.nextUrl.pathname, role)) {
+        return Response.redirect(`${browserOrigin(params.request.headers, params.request.nextUrl)}${homePathForRole(org, role)}`);
       }
       return true;
     },

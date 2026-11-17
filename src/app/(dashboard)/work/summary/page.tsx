@@ -6,6 +6,8 @@ import { isPlatformSmsConfigured } from "@/lib/sms";
 import { countDailyTextRecipients } from "@/lib/work-summary-notes";
 import { DEFAULT_TIMEZONE } from "@/lib/time-entries";
 import { SummaryView } from "@/components/work/summary-view";
+import { getCareWeek } from "@/lib/care-summary";
+import { hasCare } from "@/lib/workspace-kind";
 
 // The client's weekly summary (docs/workspace-tasks-plan.md, Phase 3): what
 // was done each day, Monday to Sunday, any week back. The home page of a
@@ -19,11 +21,13 @@ export default async function WorkSummaryPage({ searchParams }: { searchParams: 
   // Hours: shown to the client only when the workspace turns that on; the
   // team always sees them, marked as hidden from the client when they are.
   const withHours = org.workShowHoursToClient || scope.side === "team";
-  const [summary, people, hasHistory, textPeople] = await Promise.all([
+  const [summary, people, hasHistory, textPeople, care] = await Promise.all([
     getWeekSummary({ monday, timeZone: org.timezone || DEFAULT_TIMEZONE, orgKind: org.kind, withHours }),
     scope.side === "team" ? listAssignableUsers(org.kind) : Promise.resolve([]),
     summaryHasHistory(org.kind),
     scope.canManageProjects ? countDailyTextRecipients() : Promise.resolve(0),
+    // A care agency's workspace: its visits and concerns (docs/client-care-plan.md).
+    org.kind === "TASKS" && hasCare(org) ? getCareWeek({ monday, timeZone: org.timezone || DEFAULT_TIMEZONE }) : Promise.resolve(null),
   ]);
   const focusedDay = valid(day);
 
@@ -37,6 +41,7 @@ export default async function WorkSummaryPage({ searchParams }: { searchParams: 
       people={people}
       workspaceName={org.name}
       isNew={!hasHistory}
+      care={care}
       settings={{
         showHoursToClient: org.workShowHoursToClient,
         aiSummaries: org.workAiSummaries,

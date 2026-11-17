@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Wallet } from "lucide-react";
 import { TodayView } from "@/components/visits/today-view";
 import { countMyUnconfirmedPayments } from "@/lib/actions/payroll";
+import { currentOrganization } from "@/lib/db";
 
 // A Caregiver's home screen: the visit in progress (checklist, end visit,
 // report a concern), then today's schedule with a Start button per visit.
@@ -13,7 +14,7 @@ export default async function TodayPage() {
   const session = await auth();
   if (session?.user?.role !== "CAREGIVER") redirect("/");
 
-  const [data, unconfirmedPay] = await Promise.all([getMyToday(), countMyUnconfirmedPayments()]);
+  const [data, unconfirmedPay, org] = await Promise.all([getMyToday(), countMyUnconfirmedPayments(), currentOrganization()]);
   const firstName = session.user.name?.split(" ")[0] ?? "";
 
   return (
@@ -30,7 +31,7 @@ export default async function TodayPage() {
           </span>
         </Link>
       )}
-      <TodayView data={data} firstName={firstName} />
+      <TodayView data={data} firstName={firstName} clientsLabel={org.kind === "TASKS"} />
     </div>
   );
 }

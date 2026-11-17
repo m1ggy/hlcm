@@ -435,6 +435,7 @@ function TaskBody({
             <p className="text-sm text-muted-foreground">Not assigned yet</p>
           )}
         </div>
+        <CareTags task={task} edit={edit} isPending={isPending} onChange={(patch) => run(() => updateTaskAction(task.id, patch, o))} />
       </div>
 
       {edit && (
@@ -741,5 +742,70 @@ function TaskBody({
         {task.completedAt && task.completedBy && ` · Done by ${task.completedBy.name} on ${formatDay(task.completedAt)}`}
       </p>
     </div>
+  );
+}
+
+const NO_TAG = "none";
+
+// Who the task is about, in a care agency's workspace (docs/client-care-plan.md,
+// Phase 3): one of its clients and/or caregivers. Editable where the panel
+// was sent the options; otherwise just shown when set.
+function CareTags({
+  task,
+  edit,
+  isPending,
+  onChange,
+}: {
+  task: TaskDetail;
+  edit: boolean;
+  isPending: boolean;
+  onChange: (patch: { careRecipientId?: string | null; caregiverId?: string | null }) => void;
+}) {
+  const options = task.careOptions;
+  if (!(edit && options) && !task.careRecipient && !task.caregiver) return null;
+  const fields = [
+    {
+      key: "careRecipientId" as const,
+      label: "Client",
+      current: task.careRecipient,
+      list: options?.clients ?? [],
+    },
+    {
+      key: "caregiverId" as const,
+      label: "Caregiver",
+      current: task.caregiver,
+      list: options?.caregivers ?? [],
+    },
+  ];
+  return (
+    <>
+      {fields.map((f) => {
+        // Keep a tag that's no longer in the list (archived client, inactive caregiver) selectable as itself.
+        const list = f.current && !f.list.some((x) => x.id === f.current!.id) ? [f.current, ...f.list] : f.list;
+        const items: Record<string, string> = { [NO_TAG]: "None", ...Object.fromEntries(list.map((x) => [x.id, x.name])) };
+        const value = f.current?.id ?? NO_TAG;
+        return (
+          <div key={f.key} className="space-y-1">
+            <Label>{f.label}</Label>
+            {edit && options ? (
+              <Select items={items} value={value} onValueChange={(v) => v && v !== value && onChange({ [f.key]: v === NO_TAG ? null : v })}>
+                <SelectTrigger className="w-full" disabled={isPending} aria-label={f.label}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(items).map(([id, name]) => (
+                    <SelectItem key={id} value={id}>
+                      {name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <p className="text-sm">{f.current?.name ?? "—"}</p>
+            )}
+          </div>
+        );
+      })}
+    </>
   );
 }

@@ -20,7 +20,7 @@ import {
 type ListedUser = {
   id: string;
   name: string;
-  email: string;
+  email: string | null;
   role: "DEVELOPER" | "OWNER" | "ADMIN" | "ACCOUNTANT" | "MANAGER" | "STAFF" | "CLIENT" | "CAREGIVER";
   active: boolean;
   hourlyRate: number | null;
@@ -61,7 +61,8 @@ export function UsersTable({
     return users.filter(
       (user) =>
         user.name.toLowerCase().includes(q) ||
-        user.email.toLowerCase().includes(q) ||
+        (user.email ?? "").toLowerCase().includes(q) ||
+        (user.phone ?? "").includes(q) ||
         user.role.toLowerCase().includes(q)
     );
   }, [users, query]);
@@ -100,7 +101,7 @@ export function UsersTable({
                   </Badge>
                 )}
               </TableCell>
-              <TableCell>{user.email}</TableCell>
+              <TableCell>{user.email ?? <span className="text-muted-foreground">{user.phone} (phone sign-in)</span>}</TableCell>
               <TableCell>{user.role}</TableCell>
               <TableCell>
                 <Badge variant={user.active ? "default" : "outline"}>

@@ -23,6 +23,8 @@ export type HostOrg = {
   workAiSummaries: boolean;
   workWeeklyEmail: boolean;
   workDailyText: boolean;
+  /** Clients and caregivers in a tasks-only workspace (docs/client-care-plan.md). */
+  careEnabled: boolean;
 };
 
 const HOST_ORG_SELECT = {
@@ -39,6 +41,7 @@ const HOST_ORG_SELECT = {
   workAiSummaries: true,
   workWeeklyEmail: true,
   workDailyText: true,
+  careEnabled: true,
 } as const;
 
 // slug → org, cached briefly: this runs on every tenant-scoped query's first

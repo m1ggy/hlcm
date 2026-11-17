@@ -355,8 +355,10 @@ function buildStaffSteps(role: string | undefined): TourStep[] {
 // app-sidebar-nav.tsx) — everything else in the staff tour above doesn't
 // exist for this role at all, so it gets its own short list rather than
 // reusing the staff one with steps skipped.
-function buildCaregiverSteps(): TourStep[] {
-  return [
+// In a care agency's tasks-only workspace (docs/client-care-plan.md) the
+// people they visit are "My Clients" and there are no licensing tasks.
+function buildCaregiverSteps(tasksWorkspace = false): TourStep[] {
+  const steps: TourStep[] = [
     {
       data: { path: "/today" },
       element: '[data-tour="today"]',
@@ -370,7 +372,7 @@ function buildCaregiverSteps(): TourStep[] {
       data: { path: "/today" },
       element: '[data-tour="nav-recipients"]',
       popover: {
-        title: "My Recipients",
+        title: tasksWorkspace ? "My Clients" : "My Recipients",
         description: "Everyone you care for — address, contacts, care needs, your visit times, and the last few visit notes from whoever went before you.",
         side: "right",
       },
@@ -431,6 +433,7 @@ function buildCaregiverSteps(): TourStep[] {
       },
     },
   ];
+  return tasksWorkspace ? steps.filter((s) => s.element !== '[data-tour="nav-tasks"]') : steps;
 }
 
 // A client company's tasks-only workspace (docs/workspace-tasks-plan.md):
@@ -590,7 +593,8 @@ function buildTasksTeamSteps(): TourStep[] {
   ];
 }
 
-function buildSteps(role: string | undefined, tasksSide?: TasksTourSide): TourStep[] {
+function buildSteps(role: string | undefined, tasksSide?: TasksTourSide, tasksWorkspace = false): TourStep[] {
+  if (role === "CAREGIVER") return buildCaregiverSteps(tasksWorkspace);
   if (tasksSide === "client") return buildTasksClientSteps();
   if (tasksSide === "team") return buildTasksTeamSteps();
   if (role === "CAREGIVER") return buildCaregiverSteps();
@@ -598,18 +602,18 @@ function buildSteps(role: string | undefined, tasksSide?: TasksTourSide): TourSt
 }
 
 function firstPathFor(role: string | undefined, tasksSide?: TasksTourSide): string {
-  if (tasksSide) return "/work/summary";
   if (role === "CAREGIVER") return "/today";
+  if (tasksSide) return "/work/summary";
   return "/applications";
 }
 
-export function ProductTour({ role, tasksSide }: { role?: string; tasksSide?: TasksTourSide }) {
+export function ProductTour({ role, tasksSide, tasksWorkspace = false }: { role?: string; tasksSide?: TasksTourSide; tasksWorkspace?: boolean }) {
   const router = useRouter();
   const pathname = usePathname();
   const driverRef = useRef<ReturnType<typeof driver> | null>(null);
   const pendingIndexRef = useRef<number | null>(null);
   const pathnameRef = useRef(pathname);
-  const steps = useMemo(() => buildSteps(role, tasksSide), [role, tasksSide]);
+  const steps = useMemo(() => buildSteps(role, tasksSide, tasksWorkspace), [role, tasksSide, tasksWorkspace]);
 
   useEffect(() => {
     pathnameRef.current = pathname;

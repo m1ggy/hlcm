@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
-import { LayoutList, KanbanSquare, CalendarDays, Building2, FolderKanban, Users, ClipboardList, UserCog, CheckSquare, Clock, Timer, Receipt, Settings, Inbox, MapPin, CalendarCheck, BarChart3, Sun, Wallet, NotebookPen, BookMarked } from "lucide-react";
+import { LayoutList, KanbanSquare, CalendarDays, Building2, FolderKanban, Users, ClipboardList, UserCog, CheckSquare, Clock, Timer, Receipt, Settings, Inbox, MapPin, CalendarCheck, BarChart3, Sun, Wallet, NotebookPen, BookMarked, HeartHandshake } from "lucide-react";
 import {
   SidebarGroup,
   SidebarGroupLabel,
@@ -44,6 +44,15 @@ const CAREGIVER_LINKS: NavLink[] = [
   { href: "/account", label: "Settings", icon: Settings, tour: "nav-settings" },
 ];
 
+// A caregiver in a care agency's tasks-only workspace (docs/client-care-plan.md):
+// the people they visit are "clients" there, and there are no licensing tasks.
+const TASKS_CAREGIVER_LINKS: NavLink[] = [
+  { href: "/today", label: "Today", icon: Sun, tour: "nav-today" },
+  { href: "/care-recipients", label: "My Clients", icon: MapPin, tour: "nav-recipients" },
+  { href: "/hours", label: "My Hours", icon: Clock, tour: "nav-hours" },
+  { href: "/account", label: "Settings", icon: Settings, tour: "nav-settings" },
+];
+
 export function AppSidebarNav({
   isAdmin,
   canManageInvoices,
@@ -52,6 +61,7 @@ export function AppSidebarNav({
   showCaregiverClients = true,
   showClientWorkspaces = false,
   isTasksWorkspace = false,
+  showCare = false,
   isWorkTeam = false,
   showClientWork = false,
   newSubmissions = 0,
@@ -65,6 +75,8 @@ export function AppSidebarNav({
   showClientWorkspaces?: boolean;
   /** A client company's tasks-only workspace: no licensing pages. */
   isTasksWorkspace?: boolean;
+  /** Clients and caregivers in a tasks-only workspace, for the office side (docs/client-care-plan.md). */
+  showCare?: boolean;
   /** On the team side of a tasks-only workspace (a managing company's assigned staff). */
   isWorkTeam?: boolean;
   /** Assigned to client workspaces: "Client work", my tasks in all of them (workspace tasks Phase 5). */
@@ -75,7 +87,9 @@ export function AppSidebarNav({
   const pathname = usePathname();
 
   let groups: NavGroup[];
-  if (isTasksWorkspace) {
+  if (isTasksWorkspace && isCaregiver) {
+    groups = [{ links: TASKS_CAREGIVER_LINKS }];
+  } else if (isTasksWorkspace) {
     const links: NavLink[] = [
       { href: "/work/summary", label: "This week", icon: CalendarDays, tour: "nav-work-summary" },
       { href: "/work", label: "Projects", icon: LayoutList, tour: "nav-work" },
@@ -85,7 +99,11 @@ export function AppSidebarNav({
     ];
     const general: NavLink[] = [{ href: "/account", label: "Settings", icon: Settings, tour: "nav-settings" }];
     if (isAdmin) general.push({ href: "/admin/users", label: "Users", icon: UserCog, tour: "nav-admin" });
-    groups = [{ links }, { label: "Workspace", links: general }];
+    const care: NavLink[] = [
+      { href: "/care-recipients", label: "Clients", icon: Users, tour: "nav-care-clients" },
+      { href: "/caregivers", label: "Caregivers", icon: HeartHandshake, tour: "nav-caregivers" },
+    ];
+    groups = [{ links }, ...(showCare ? [{ label: "Care", links: care }] : []), { label: "Workspace", links: general }];
   } else if (isCaregiver) {
     groups = [{ links: showCaregiverClients ? CAREGIVER_LINKS : CAREGIVER_LINKS.filter((l) => l.href !== "/clients") }];
   } else {

@@ -13,6 +13,8 @@ import { requireRole, ForbiddenError, isAdmin, isSuperuser } from "@/lib/rbac";
 import { recordAudit, recordFieldChanges } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
 import { endAssignmentsForHomeUser } from "@/lib/workspace-assignments";
+import { resolveSignInFields } from "@/lib/user-identity";
+import { generatePassword } from "@/lib/generated-password";
 
 // A managing company's linked account (User.assignedFromUserId, see
 // src/lib/workspace-assignments.ts) belongs to that company: this
@@ -28,12 +30,19 @@ async function assertNotLinkedAccount(userId: string) {
 // enum value stays in the database until it's dropped.
 const ROLE_VALUES = ["OWNER", "ADMIN", "ACCOUNTANT", "MANAGER", "STAFF", "CAREGIVER"] as const;
 
+const optionalEmail = z.string().trim().email("Enter a valid email").optional().or(z.literal("").transform(() => undefined));
+
 const userSchema = z.object({
   name: z.string().min(1),
-  email: z.string().email(),
+  // Optional for a caregiver who signs in with their phone number
+  // (src/lib/user-identity.ts).
+  email: optionalEmail,
+  phone: z.string().optional(),
   // Absent when inviting: the person picks their own via the emailed link.
+  // Also absent when generating one (`generate`): made up here and returned once.
   password: z.string().min(8, "Password must be at least 8 characters").optional(),
   invite: z.boolean(),
+  generate: z.boolean(),
   role: z.enum(ROLE_VALUES),
 });
 
@@ -99,30 +108,38 @@ export async function setHourlyRate(input: { userId: string; hourlyRate: number 
  * one (src/lib/auth-emails.ts). Returns whether the invite actually went
  * out, so a mail problem doesn't masquerade as a failed create.
  */
-export async function createUser(formData: FormData): Promise<{ inviteSent: boolean | null }> {
+export async function createUser(formData: FormData): Promise<{ inviteSent: boolean | null; password?: string }> {
   const session = await requireRole(["ADMIN"]);
   const invite = formData.get("invite") === "true";
+  const generate = !invite && formData.get("generate") === "true";
   const parsed = userSchema.parse({
     name: formData.get("name"),
-    email: formData.get("email"),
-    password: invite ? undefined : formData.get("password"),
+    email: formData.get("email") ?? undefined,
+    phone: formData.get("phone") || undefined,
+    password: invite || generate ? undefined : formData.get("password"),
     invite,
+    generate,
     role: formData.get("role"),
   });
-  if (!parsed.invite && !parsed.password) throw new Error("Set a temporary password or send an invite");
+  if (!parsed.invite && !parsed.generate && !parsed.password) throw new Error("Set a temporary password or send an invite");
+  if (parsed.invite && !parsed.email) throw new UserFacingError("An invite needs an email — generate a password instead");
 
   if (isAdmin(parsed.role) && !isSuperuser(session.user.role)) {
     throw new ForbiddenError("Only an Owner can create an Admin, Accountant, or Owner account");
   }
 
+  const { email, phone } = await resolveSignInFields({ role: parsed.role, email: parsed.email, phone: parsed.phone });
+  const generated = parsed.generate ? generatePassword() : undefined;
+
   // An invited user's stored hash is of random bytes nobody knows — the
   // account can't be signed in to until they use the invite link.
-  const passwordHash = await bcrypt.hash(parsed.password ?? randomBytes(32).toString("hex"), 12);
+  const passwordHash = await bcrypt.hash(generated ?? parsed.password ?? randomBytes(32).toString("hex"), 12);
   const user = await db.user
     .create({
       data: {
         name: parsed.name,
-        email: parsed.email,
+        email,
+        phone,
         passwordHash,
         role: parsed.role,
       },
@@ -148,7 +165,7 @@ export async function createUser(formData: FormData): Promise<{ inviteSent: bool
   }
 
   revalidatePath("/admin/users");
-  return { inviteSent };
+  return { inviteSent, ...(generated ? { password: generated } : {}) };
 }
 
 /**
@@ -179,7 +196,7 @@ export async function sendSetPasswordLink(userId: string): Promise<{ sent: boole
 const updateSchema = z.object({
   userId: z.string().min(1),
   name: z.string().min(1),
-  email: z.string().email(),
+  email: optionalEmail,
   role: z.enum(ROLE_VALUES),
   active: z.boolean(),
   password: z.string().min(8, "Password must be at least 8 characters").optional().or(z.literal("")),
@@ -238,15 +255,18 @@ async function updateUserUnwrapped(input: z.infer<typeof updateSchema>) {
     throw new UserFacingError("You can't deactivate or change your own role — have another admin do it");
   }
 
-  const existing = await db.user.findFirst({ where: { email: parsed.email } });
-  if (existing && existing.id !== parsed.userId) {
-    throw new UserFacingError("Another user already has that email");
+  if (parsed.email) {
+    const existing = await db.user.findFirst({ where: { email: parsed.email } });
+    if (existing && existing.id !== parsed.userId) {
+      throw new UserFacingError("Another user already has that email");
+    }
   }
+  const signIn = await resolveSignInFields({ userId: parsed.userId, role: parsed.role, email: parsed.email, phone: parsed.phone });
 
   // Evening text sign-up. Only offered where the workspace sends it, never
   // to caregivers, and never over a STOP reply: that person has to opt back
   // in themselves.
-  let phone = parsed.phone?.trim() || null;
+  let phone = signIn.phone;
   const dailyChange = parsed.smsDailyUpdates !== undefined && parsed.smsDailyUpdates !== before.smsDailyUpdates;
   const signingUp = dailyChange && parsed.smsDailyUpdates === true;
   if (dailyChange) {
@@ -268,7 +288,7 @@ async function updateUserUnwrapped(input: z.infer<typeof updateSchema>) {
     where: { id: parsed.userId },
     data: {
       name: parsed.name,
-      email: parsed.email,
+      email: signIn.email,
       role: parsed.role,
       active: parsed.active,
       phone,
@@ -286,7 +306,7 @@ async function updateUserUnwrapped(input: z.infer<typeof updateSchema>) {
     before: { ...before, smsOptedOutAt: undefined },
     after: {
       name: parsed.name,
-      email: parsed.email,
+      email: signIn.email,
       role: parsed.role,
       active: parsed.active,
       phone,

@@ -10,6 +10,8 @@ import { recordAudit } from "@/lib/audit";
 import { saveUploadedFile, deleteStoredFile } from "@/lib/storage";
 import { MAX_FILE_BYTES, fileTooLargeMessage } from "@/lib/file-limits";
 import { UserFacingError } from "@/lib/user-facing-error";
+import { hasCare } from "@/lib/workspace-kind";
+import { INCIDENT_CATEGORY_LABELS } from "@/lib/visits";
 import { workScope, type WorkTaskStatus } from "@/lib/work";
 import { getTaskDetail, listAssignableUsers } from "@/lib/work-data";
 import * as work from "@/lib/work-service";
@@ -312,5 +314,53 @@ export async function clientWorkUpdateDefaultsAction(orgId: string, taskId: stri
   return toActionResult(async () => {
     const session = await requireSession();
     return linkedWorkTaskUpdateDefaults(session.user.id, orgId, taskId);
+  });
+}
+
+// ---- Care follow-ups (docs/client-care-plan.md, Phase 3) -----------------------
+
+const CARE_PROJECT = "Care follow-ups";
+
+/**
+ * Turns a caregiver's concern into a task for the team, tagged with the
+ * client (and the caregiver who raised it), in a "Care follow-ups" project
+ * made on first use. Once per concern: asking again opens the same task.
+ */
+export async function createTaskFromConcernAction(incidentId: string) {
+  return toActionResult(async () => {
+    const a = await actor();
+    if (!a.scope.canEditTasks) throw new UserFacingError("Only your team can turn a concern into a task");
+    const org = await currentOrganization();
+    if (org.kind !== "TASKS" || !hasCare(org)) throw new UserFacingError("Clients and caregivers aren't turned on for this workspace");
+    const incident = await db.careIncident.findUnique({
+      where: { id: incidentId },
+      include: { careRecipient: { select: { id: true, name: true } }, reportedBy: { select: { id: true, role: true } } },
+    });
+    if (!incident) throw new UserFacingError("That concern doesn't exist");
+
+    const marker = `From a caregiver's concern (${incident.id})`;
+    const existing = await db.workTask.findFirst({ where: { careRecipientId: incident.careRecipientId, description: { contains: marker } }, select: { id: true } });
+    if (existing) return { taskId: existing.id, created: false };
+
+    const project =
+      (await db.workProject.findFirst({ where: { name: CARE_PROJECT, status: { not: "ARCHIVED" } }, select: { id: true } })) ??
+      (await db.workProject.create({
+        data: { name: CARE_PROJECT, description: "Follow-ups on concerns caregivers raise.", color: "rose", createdById: a.userId },
+        select: { id: true },
+      }));
+    const category = INCIDENT_CATEGORY_LABELS[incident.category];
+    const { task, notifications } = await work.createTask(a, {
+      projectId: project.id,
+      title: `Follow up: ${category.toLowerCase()} — ${incident.careRecipient.name}`,
+      description: `${incident.description}\n\n${marker}`,
+      priority: incident.urgent ? "URGENT" : "HIGH",
+      careRecipientId: incident.careRecipientId,
+      caregiverId: incident.reportedBy.role === "CAREGIVER" ? incident.reportedBy.id : null,
+      assigneeIds: [a.userId],
+    });
+    await send(notifications, a.userId);
+    refresh();
+    revalidatePath("/care-recipients");
+    return { taskId: task.id, created: true };
   });
 }

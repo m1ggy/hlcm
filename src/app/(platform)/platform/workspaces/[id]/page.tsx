@@ -65,7 +65,7 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 const INVITE_BADGE = {
   PENDING: <Badge variant="outline">Invite pending</Badge>,
   ACCEPTED: <Badge variant="secondary">Joined</Badge>,
-  NONE: <span className="text-xs text-muted-foreground">Temporary password</span>,
+  NONE: <span className="text-xs text-muted-foreground">Password given to them</span>,
 };
 
 export default async function WorkspaceDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -96,7 +96,7 @@ export default async function WorkspaceDetailPage({ params }: { params: Promise<
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-semibold">{org.name}</h1>
               {suspended ? <Badge variant="outline">Suspended</Badge> : <Badge variant="secondary">Active</Badge>}
-              <Badge variant="outline">{org.kind === "TASKS" ? "Tasks only" : "Full CRM"}</Badge>
+              <Badge variant="outline">{org.kind === "TASKS" ? (org.careEnabled ? "Tasks + clients & caregivers" : "Tasks only") : "Full CRM"}</Badge>
             </div>
             <a href={org.url} target="_blank" rel="noreferrer" className="font-mono text-sm text-muted-foreground underline">
               {org.url.replace(/^https?:\/\//, "")}
@@ -121,7 +121,9 @@ export default async function WorkspaceDetailPage({ params }: { params: Promise<
               <Field label="Address">
                 <span className="font-mono">{org.slug}</span>
               </Field>
-              <Field label="Type">{org.kind === "TASKS" ? "Tasks only (client company)" : "Full (licensing CRM)"}</Field>
+              <Field label="Type">
+                {org.kind === "TASKS" ? `Tasks only (client company)${org.careEnabled ? " + clients & caregivers" : ""}` : "Full (licensing CRM)"}
+              </Field>
               <Field label="Created">{formatDate(org.createdAt)}</Field>
               <Field label="Last active">{formatDateTime(org.lastActivityAt)}</Field>
               <Field label="Settings changed">{formatDate(org.updatedAt)}</Field>
@@ -162,7 +164,7 @@ export default async function WorkspaceDetailPage({ params }: { params: Promise<
                   ))}
                 </ul>
               ) : (
-                <p className="text-amber-600 dark:text-amber-400">No active owner — use Invite owner.</p>
+                <p className="text-amber-600 dark:text-amber-400">No active owner — use Add owner.</p>
               )}
             </div>
             <div>
@@ -203,6 +205,7 @@ export default async function WorkspaceDetailPage({ params }: { params: Promise<
             <Stat label="Form submissions" value={org.counts.formSubmissions} />
           </>
         ) : null}
+        {org.kind === "TASKS" && org.careEnabled && <Stat label="Clients (care)" value={org.counts.careRecipients} />}
         <Stat label="Work projects" value={org.counts.workProjects} />
         <Stat label="Open work tasks" value={org.counts.openWorkTasks} />
         <Stat label="EOD reports" value={org.counts.eodReports} />

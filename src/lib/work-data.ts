@@ -1,4 +1,4 @@
-import { db, currentWorkspaceTimezone } from "@/lib/db";
+import { db, currentOrganization, currentWorkspaceTimezone } from "@/lib/db";
 import {
   activityWhere,
   commentWhere,
@@ -9,6 +9,7 @@ import {
   type WorkScope,
   type WorkTaskStatus,
 } from "@/lib/work";
+import { hasCare } from "@/lib/workspace-kind";
 
 // Reads for projects and tasks (docs/workspace-tasks-plan.md, Phase 2). Every
 // query goes through the viewer's WorkScope (src/lib/work.ts), so client-side
@@ -136,6 +137,8 @@ export async function getTaskDetail(scope: WorkScope, taskId: string) {
       parent: { select: { id: true, title: true } },
       createdBy: userName,
       completedBy: userName,
+      careRecipient: { select: { id: true, name: true } },
+      caregiver: userName,
       assignees: { select: { user: userName } },
       subtasks: {
         where: taskWhere(scope),
@@ -159,7 +162,18 @@ export async function getTaskDetail(scope: WorkScope, taskId: string) {
     const ms = entries.reduce((sum, e) => sum + ((e.endedAt ?? new Date()).getTime() - e.startedAt.getTime()), 0);
     trackedHours = Math.round((ms / 3_600_000) * 100) / 100;
   }
-  return { ...task, trackedHours };
+  // A care agency's workspace (docs/client-care-plan.md): who the task can be
+  // tagged with. Null where there are no clients and caregivers.
+  let careOptions: { clients: { id: string; name: string }[]; caregivers: { id: string; name: string }[] } | null = null;
+  const org = await currentOrganization();
+  if (org.kind === "TASKS" && hasCare(org) && scope.canEditTasks) {
+    const [clients, caregivers] = await Promise.all([
+      db.careRecipient.findMany({ where: { active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+      db.user.findMany({ where: { role: "CAREGIVER", active: true, isSupport: false, assignedFromUserId: null }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    ]);
+    careOptions = { clients, caregivers };
+  }
+  return { ...task, trackedHours, careOptions };
 }
 
 export async function listMyWorkTasks(scope: WorkScope, userId: string) {
@@ -205,4 +219,24 @@ export async function listRequestableProjects(scope: WorkScope) {
     orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
     select: { id: true, name: true },
   });
+}
+
+/**
+ * Open project tasks tagged with a client (docs/client-care-plan.md, Phase 3),
+ * by client id — for the Clients page. Through the viewer's scope, like every
+ * other task read.
+ */
+export async function listOpenTasksByCareRecipient(scope: WorkScope) {
+  if (scope.side === "none") return {};
+  const tasks = await db.workTask.findMany({
+    where: { ...taskWhere(scope), careRecipientId: { not: null }, status: { notIn: ["DONE", "CANCELLED"] } },
+    orderBy: [{ dueDate: { sort: "asc", nulls: "last" } }, { createdAt: "asc" }],
+    select: { id: true, title: true, dueDate: true, careRecipientId: true, caregiver: { select: { name: true } } },
+    take: 500,
+  });
+  const byRecipient: Record<string, { id: string; title: string; dueDate: Date | null; caregiverName: string | null }[]> = {};
+  for (const t of tasks) {
+    (byRecipient[t.careRecipientId!] ??= []).push({ id: t.id, title: t.title, dueDate: t.dueDate, caregiverName: t.caregiver?.name ?? null });
+  }
+  return byRecipient;
 }

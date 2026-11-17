@@ -13,7 +13,8 @@ import {
   setOrganizationStatusFromPlatform,
   setWorkspaceSetupFromPlatform,
 } from "@/lib/actions/platform";
-import type { PlatformOrganization } from "@/lib/platform";
+import type { OwnerPasswordMode, PlatformOrganization } from "@/lib/platform";
+import { PasswordReveal } from "@/components/shared/password-reveal";
 import { unexpectedErrorMessage } from "@/lib/action-result";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -69,6 +70,44 @@ function formatDate(date: Date | string | null) {
 }
 
 type Kind = "FULL" | "TASKS";
+
+// How a new owner gets in (src/lib/platform.ts OwnerPasswordMode). Making one
+// up is the default: many clients won't follow an invite link.
+const PASSWORD_LABELS: Record<OwnerPasswordMode, string> = {
+  generate: "Make one up — I'll give it to them",
+  invite: "Email them an invite to choose their own",
+};
+
+function OwnerPasswordField({ id, value, onChange }: { id: string; value: OwnerPasswordMode; onChange: (v: OwnerPasswordMode) => void }) {
+  return (
+    <div className="space-y-1">
+      <Label htmlFor={id}>Owner&apos;s password</Label>
+      <Select value={value} onValueChange={(v) => onChange(v as OwnerPasswordMode)}>
+        <SelectTrigger id={id} className="w-full">
+          <SelectValue>{(v: OwnerPasswordMode) => PASSWORD_LABELS[v]}</SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="generate">{PASSWORD_LABELS.generate}</SelectItem>
+          <SelectItem value="invite">{PASSWORD_LABELS.invite}</SelectItem>
+        </SelectContent>
+      </Select>
+      {value === "generate" && <p className="text-xs text-muted-foreground">You&apos;ll see it once, with the address to sign in at.</p>}
+    </div>
+  );
+}
+
+type GivenPassword = { name: string; email: string; password: string; url: string };
+
+function GivenPasswordStep({ given, onDone }: { given: GivenPassword; onDone: () => void }) {
+  return (
+    <div className="space-y-3">
+      <PasswordReveal name={given.name} signIn={given.email} password={given.password} address={given.url.replace(/^https?:\/\//, "")} />
+      <Button className="w-full" onClick={onDone}>
+        Done
+      </Button>
+    </div>
+  );
+}
 const KIND_LABELS: Record<Kind, string> = { FULL: "Full (licensing CRM)", TASKS: "Tasks only (client company)" };
 const NO_MANAGER = "none";
 
@@ -80,12 +119,16 @@ function SetupFields({
   onKind,
   onManagedBy,
   managers,
+  care,
+  onCare,
 }: {
   kind: Kind;
   managedBy: string;
   onKind: (k: Kind) => void;
   onManagedBy: (id: string) => void;
   managers: { id: string; name: string }[];
+  care: boolean;
+  onCare: (on: boolean) => void;
 }) {
   const names = new Map(managers.map((m) => [m.id, m.name]));
   return (
@@ -119,6 +162,18 @@ function SetupFields({
         </Select>
         <p className="text-xs text-muted-foreground">The company whose people work here — its admins assign them.</p>
       </div>
+      {kind === "TASKS" && (
+        // docs/client-care-plan.md: a care agency's own clients and caregivers.
+        <label className="flex items-start gap-2 rounded-lg border p-3 text-sm">
+          <Checkbox className="mt-0.5" checked={care} onCheckedChange={(c) => onCare(c === true)} />
+          <span>
+            <span className="font-medium">Clients and caregivers</span>
+            <span className="block text-xs text-muted-foreground">
+              For a care agency: their clients, caregiver logins, visit schedules and clock-in. Off for other companies.
+            </span>
+          </span>
+        </label>
+      )}
     </>
   );
 }
@@ -131,11 +186,12 @@ function SetupDialog({ org, organizations }: { org: Org; organizations: Org[] })
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<Kind>(org.kind);
   const [managedBy, setManagedBy] = useState(org.managedByOrgId ?? NO_MANAGER);
+  const [care, setCare] = useState(org.careEnabled);
   const { isPending, run } = useAction();
 
   function save() {
     run(
-      () => setWorkspaceSetupFromPlatform(org.id, { kind, managedByOrgId: managedBy === NO_MANAGER ? null : managedBy }),
+      () => setWorkspaceSetupFromPlatform(org.id, { kind, managedByOrgId: managedBy === NO_MANAGER ? null : managedBy, careEnabled: care }),
       () => {
         toast.success(`${org.name} updated`);
         setOpen(false);
@@ -151,7 +207,15 @@ function SetupDialog({ org, organizations }: { org: Org; organizations: Org[] })
           <DialogTitle>{org.name} setup</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          <SetupFields kind={kind} managedBy={managedBy} onKind={setKind} onManagedBy={setManagedBy} managers={managersFor(organizations, org.id)} />
+          <SetupFields
+            kind={kind}
+            managedBy={managedBy}
+            onKind={setKind}
+            onManagedBy={setManagedBy}
+            managers={managersFor(organizations, org.id)}
+            care={care}
+            onCare={setCare}
+          />
           <Button className="w-full" onClick={save} loading={isPending}>
             Save
           </Button>
@@ -172,13 +236,16 @@ const PICK_LABELS: Record<PickOption, string> = {
   MANAGER: "Manager",
   ACCOUNT_MANAGER: "Account manager",
 };
-type Staff = { id: string; name: string; email: string; role: string };
+type Staff = { id: string; name: string; email: string | null; role: string };
 
 // Creating a workspace (docs/workspace-tasks-plan.md, Phase 4): details,
 // type and managing company, then — for a managed workspace — which of the
 // managing company's people work there from day one.
 function NewOrganizationDialog({ organizations }: { organizations: Org[] }) {
   const [kind, setKind] = useState<Kind>("TASKS");
+  const [care, setCare] = useState(false);
+  const [passwordMode, setPasswordMode] = useState<OwnerPasswordMode>("generate");
+  const [given, setGiven] = useState<GivenPassword | null>(null);
   const [managedBy, setManagedBy] = useState(NO_MANAGER);
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<"details" | "staff">("details");
@@ -200,6 +267,8 @@ function NewOrganizationDialog({ organizations }: { organizations: Org[] }) {
     setForm(EMPTY_FORM);
     setSlugEdited(false);
     setPicks({});
+    setGiven(null);
+    setPasswordMode("generate");
   }
 
   function chooseManager(id: string) {
@@ -239,12 +308,25 @@ function NewOrganizationDialog({ organizations }: { organizations: Org[] }) {
         }))
       : [];
     run(
-      () => createOrganizationFromPlatform({ ...form, kind, managedByOrgId: managed ? managedBy : null, assign }),
-      ({ slug, inviteSent, assigned, assignErrors }) => {
+      () =>
+        createOrganizationFromPlatform({
+          ...form,
+          kind,
+          careEnabled: kind === "TASKS" && care,
+          managedByOrgId: managed ? managedBy : null,
+          assign,
+          ownerPassword: passwordMode,
+        }),
+      ({ slug, url, inviteSent, ownerPassword, assigned, assignErrors }) => {
         const people = assigned ? `, assigned ${assigned} ${assigned === 1 ? "person" : "people"}` : "";
+        for (const error of assignErrors) toast.error(error);
+        if (ownerPassword) {
+          toast.success(`Created ${slug}${people}`);
+          setGiven({ name: form.ownerName.trim(), email: form.ownerEmail.trim().toLowerCase(), password: ownerPassword, url });
+          return;
+        }
         if (inviteSent) toast.success(`Created ${slug}${people} and invited its owner`);
         else toast.warning(`Created ${slug}${people}, but the owner invite couldn't be sent — use "Resend owner invite".`);
-        for (const error of assignErrors) toast.error(error);
         setOpen(false);
         reset();
       }
@@ -259,16 +341,26 @@ function NewOrganizationDialog({ organizations }: { organizations: Org[] }) {
       open={open}
       onOpenChange={(o) => {
         setOpen(o);
-        if (!o) setStep("details");
+        // Once the password has been shown, closing starts over: it isn't shown again.
+        if (!o && given) reset();
+        else if (!o) setStep("details");
       }}
     >
       <DialogTrigger render={<Button>New organization</Button>} />
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{step === "details" ? "New organization" : `Who from ${managerName} works here?`}</DialogTitle>
-          {managed && <p className="text-xs text-muted-foreground">Step {step === "details" ? 1 : 2} of 2</p>}
+          <DialogTitle>{given ? `${form.name || "Workspace"} is ready` : step === "details" ? "New organization" : `Who from ${managerName} works here?`}</DialogTitle>
+          {managed && !given && <p className="text-xs text-muted-foreground">Step {step === "details" ? 1 : 2} of 2</p>}
         </DialogHeader>
-        {step === "details" ? (
+        {given ? (
+          <GivenPasswordStep
+            given={given}
+            onDone={() => {
+              setOpen(false);
+              reset();
+            }}
+          />
+        ) : step === "details" ? (
           <form
             className="space-y-4"
             onSubmit={(e) => {
@@ -302,15 +394,25 @@ function NewOrganizationDialog({ organizations }: { organizations: Org[] }) {
             <div className="space-y-1">
               <Label htmlFor="owner-email">Owner email</Label>
               <Input id="owner-email" type="email" value={form.ownerEmail} onChange={(e) => set("ownerEmail", e.target.value)} required />
+              <p className="text-xs text-muted-foreground">How they sign in.</p>
             </div>
-            <SetupFields kind={kind} managedBy={managedBy} onKind={setKind} onManagedBy={chooseManager} managers={managersFor(organizations)} />
+            <OwnerPasswordField id="owner-password" value={passwordMode} onChange={setPasswordMode} />
+            <SetupFields
+              kind={kind}
+              managedBy={managedBy}
+              onKind={setKind}
+              onManagedBy={chooseManager}
+              managers={managersFor(organizations)}
+              care={care}
+              onCare={setCare}
+            />
             {kind === "TASKS" && (
               <p className="rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
                 Starts with a &ldquo;Getting started&rdquo; project for the client instead of the licensing setup.
               </p>
             )}
             <Button type="submit" className="w-full" loading={isPending}>
-              {managed ? "Next: assign staff" : "Create and invite owner"}
+              {managed ? "Next: assign staff" : passwordMode === "generate" ? "Create and make a password" : "Create and invite owner"}
             </Button>
           </form>
         ) : (
@@ -353,7 +455,13 @@ function NewOrganizationDialog({ organizations }: { organizations: Org[] }) {
                 Back
               </Button>
               <Button className="flex-1" onClick={handleCreate} loading={isPending} disabled={loadingStaff}>
-                {pickedCount ? `Create, assign ${pickedCount}, invite owner` : "Create and invite owner"}
+                {passwordMode === "generate"
+                  ? pickedCount
+                    ? `Create, assign ${pickedCount}, make a password`
+                    : "Create and make a password"
+                  : pickedCount
+                    ? `Create, assign ${pickedCount}, invite owner`
+                    : "Create and invite owner"}
               </Button>
             </div>
           </div>
@@ -370,26 +478,54 @@ function InviteOwnerDialog({ org }: { org: Org }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [promoteExisting, setPromoteExisting] = useState(false);
+  const [passwordMode, setPasswordMode] = useState<OwnerPasswordMode>("generate");
+  const [given, setGiven] = useState<GivenPassword | null>(null);
   const { isPending, run } = useAction();
 
+  function clear() {
+    setName("");
+    setEmail("");
+    setPromoteExisting(false);
+    setPasswordMode("generate");
+    setGiven(null);
+  }
+
   function handleInvite() {
-    run(() => inviteOwnerFromPlatform(org.id, { name, email, promoteExisting }), ({ inviteSent }) => {
+    run(() => inviteOwnerFromPlatform(org.id, { name, email, promoteExisting, password: passwordMode }), ({ inviteSent, ownerPassword, url }) => {
+      if (ownerPassword) {
+        toast.success(`${email} is now an owner of ${org.name}`);
+        setGiven({ name: name.trim(), email: email.trim().toLowerCase(), password: ownerPassword, url });
+        return;
+      }
       if (inviteSent) toast.success(`Invited ${email} as an owner of ${org.name}`);
       else toast.warning(`${email} is now an owner, but the invite email couldn't be sent — try "Resend owner invite".`);
       setOpen(false);
-      setName("");
-      setEmail("");
-      setPromoteExisting(false);
+      clear();
     });
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button variant="ghost" size="sm" disabled={org.status === "SUSPENDED"}>Invite owner</Button>} />
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o);
+        if (!o && given) clear();
+      }}
+    >
+      <DialogTrigger render={<Button variant="ghost" size="sm" disabled={org.status === "SUSPENDED"}>Add owner</Button>} />
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Invite an owner to {org.name}</DialogTitle>
+          <DialogTitle>{given ? "Owner added" : `Add an owner to ${org.name}`}</DialogTitle>
         </DialogHeader>
+        {given ? (
+          <GivenPasswordStep
+            given={given}
+            onDone={() => {
+              setOpen(false);
+              clear();
+            }}
+          />
+        ) : (
         <form
           className="space-y-4"
           onSubmit={(e) => {
@@ -398,8 +534,8 @@ function InviteOwnerDialog({ org }: { org: Org }) {
           }}
         >
           <p className="text-sm text-muted-foreground">
-            A new owner account is created and emailed a link to set their password. Staff assigned from the managing company
-            can&apos;t be made owners.
+            A new owner account is created — with a password you give them, or an emailed link to set their own. Staff assigned
+            from the managing company can&apos;t be made owners.
           </p>
           <div className="space-y-1">
             <Label htmlFor={`invite-name-${org.id}`}>Name</Label>
@@ -415,13 +551,16 @@ function InviteOwnerDialog({ org }: { org: Org }) {
               Make an existing account an owner
               <span className="block text-xs text-muted-foreground">
                 If this email already has an account in {org.name}, promote it to owner (and reactivate it).
+                {passwordMode === "generate" && " Their password is replaced by the new one."}
               </span>
             </span>
           </label>
+          <OwnerPasswordField id={`invite-password-${org.id}`} value={passwordMode} onChange={setPasswordMode} />
           <Button type="submit" className="w-full" loading={isPending}>
-            Invite owner
+            {passwordMode === "generate" ? "Add owner and make a password" : "Invite owner"}
           </Button>
         </form>
+        )}
       </DialogContent>
     </Dialog>
   );
@@ -490,7 +629,7 @@ function OrganizationRow({ org, organizations }: { org: Org; organizations: Org[
           {org.slug}
         </a>
         <div className="text-xs text-muted-foreground">
-          {org.kind === "TASKS" ? "Tasks only" : "Full"}
+          {org.kind === "TASKS" ? (org.careEnabled ? "Tasks + care" : "Tasks only") : "Full"}
           {org.managedByName && ` · managed by ${org.managedByName}`}
         </div>
       </TableCell>

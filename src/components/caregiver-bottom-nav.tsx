@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CheckSquare, Clock, MapPin, Sun } from "lucide-react";
+import { CheckSquare, Clock, MapPin, Settings, Sun } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // Phone-only tab bar for Caregivers. Their screens are built for phones, but
@@ -16,8 +16,18 @@ const TABS = [
   { href: "/tasks", label: "Tasks", icon: CheckSquare },
 ];
 
-export function CaregiverBottomNav() {
+// In a care agency's tasks-only workspace (docs/client-care-plan.md) there
+// are no licensing tasks, and the people they visit are called clients.
+const TASKS_TABS = [
+  { href: "/today", label: "Today", icon: Sun },
+  { href: "/care-recipients", label: "Clients", icon: MapPin },
+  { href: "/hours", label: "Hours", icon: Clock },
+  { href: "/account", label: "Settings", icon: Settings },
+];
+
+export function CaregiverBottomNav({ tasksWorkspace = false }: { tasksWorkspace?: boolean }) {
   const pathname = usePathname();
+  const tabs = tasksWorkspace ? TASKS_TABS : TABS;
   return (
     <nav
       aria-label="Main"
@@ -27,7 +37,7 @@ export function CaregiverBottomNav() {
           never moves toasts for other roles. */}
       <style>{`@media (max-width: 767px) { [data-sonner-toaster][data-y-position="bottom"] { bottom: calc(4.5rem + env(safe-area-inset-bottom)) !important; } }`}</style>
       <ul className="grid grid-cols-4">
-        {TABS.map((tab) => {
+        {tabs.map((tab) => {
           const active = pathname === tab.href || pathname.startsWith(`${tab.href}/`);
           return (
             <li key={tab.href}>

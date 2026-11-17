@@ -22,8 +22,9 @@ export function LoginForm({ title }: { title: string }) {
         <CardContent>
           <form action={formAction} className="space-y-4">
             <div className="space-y-1">
-              <Label htmlFor="email">Email</Label>
-              <Input id="email" name="email" type="email" required autoComplete="email" />
+              <Label htmlFor="email">Email or phone</Label>
+              {/* Caregivers without an email sign in with their phone number (docs/client-care-plan.md). */}
+              <Input id="email" name="email" type="text" inputMode="email" required autoComplete="username" autoCapitalize="none" spellCheck={false} />
             </div>
             <div className="space-y-1">
               <Label htmlFor="password">Password</Label>

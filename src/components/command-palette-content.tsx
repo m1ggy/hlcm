@@ -47,13 +47,13 @@ export default function CommandPaletteContent({
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<SearchResults>({ applications: [], clients: [], tasks: [] });
+  const [results, setResults] = useState<SearchResults>({ applications: [], clients: [], tasks: [], careClients: [], caregivers: [] });
   const [isSearching, startTransition] = useTransition();
 
   useEffect(() => {
     const id = setTimeout(() => {
       if (!query.trim()) {
-        setResults({ applications: [], clients: [], tasks: [] });
+        setResults({ applications: [], clients: [], tasks: [], careClients: [], caregivers: [] });
         return;
       }
       startTransition(async () => {
@@ -127,6 +127,28 @@ export default function CommandPaletteContent({
                 <CommandItem key={client.id} value={`client-${client.name}`} onSelect={() => go("/clients")}>
                   <Users />
                   {client.name}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          )}
+
+          {results.careClients.length > 0 && (
+            <CommandGroup heading="Clients">
+              {results.careClients.map((c) => (
+                <CommandItem key={c.id} value={`care-client-${c.name}`} onSelect={() => go(`/care-recipients?open=${c.id}`)}>
+                  <Users />
+                  {c.name}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          )}
+
+          {results.caregivers.length > 0 && (
+            <CommandGroup heading="Caregivers">
+              {results.caregivers.map((c) => (
+                <CommandItem key={c.id} value={`caregiver-${c.name}`} onSelect={() => go("/caregivers")}>
+                  <Users />
+                  {c.name}
                 </CommandItem>
               ))}
             </CommandGroup>

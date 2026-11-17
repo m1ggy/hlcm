@@ -13,7 +13,7 @@ import { OverdueTaskActions } from "@/components/tasks/overdue-task-actions";
 import { SetupChecklist } from "@/components/dashboard/setup-checklist";
 import { getSetupChecklist } from "@/lib/setup-checklist";
 import { getCareVisitAlerts } from "@/lib/actions/visits";
-import { formatShiftRange, INCIDENT_CATEGORY_LABELS, SHIFT_STATUS_LABELS } from "@/lib/visits";
+import { CareVisitsTodayCard } from "@/components/visits/care-visits-today-card";
 
 function StatCard({ href, label, count }: { href: string; label: string; count: number }) {
   return (
@@ -114,57 +114,7 @@ export default async function HomePage() {
 
       {/* Home-care agencies only — hidden entirely until visits are scheduled
           or a caregiver reports something. */}
-      {showCareCard && (
-        <Card id="care-visits">
-          <CardHeader>
-            <CardTitle>Care Visits Today</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {careAlerts.openIncidents.map((incident) => (
-              <div key={incident.id} className="flex items-start justify-between gap-2 border-b pb-2 text-sm last:border-b-0">
-                <div>
-                  {incident.careRecipient.clientId ? (
-                    <Link href={`/clients/${incident.careRecipient.clientId}#care-recipients`} className="font-medium hover:underline">
-                      {incident.careRecipient.name}
-                    </Link>
-                  ) : (
-                    <span className="font-medium">{incident.careRecipient.name}</span>
-                  )}
-                  <p className="text-xs text-muted-foreground">
-                    {INCIDENT_CATEGORY_LABELS[incident.category]} · reported by {incident.reportedBy.name}{" "}
-                    {new Date(incident.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
-                  </p>
-                </div>
-                <Badge variant={incident.urgent ? "destructive" : "outline"}>{incident.urgent ? "Urgent concern" : "Concern"}</Badge>
-              </div>
-            ))}
-            {careAlerts.problems.map((p) => (
-              <div key={p.id} className="flex items-start justify-between gap-2 border-b pb-2 text-sm last:border-b-0">
-                <div>
-                  {p.clientId ? (
-                    <Link href={`/clients/${p.clientId}#care-recipients`} className="font-medium hover:underline">
-                      {p.recipientName}
-                    </Link>
-                  ) : (
-                    <span className="font-medium">{p.recipientName}</span>
-                  )}
-                  <p className="text-xs text-muted-foreground">
-                    {p.caregiverName} · {formatShiftRange(p.startMinute, p.endMinute)}
-                  </p>
-                </div>
-                <span className={`text-xs font-medium ${p.status === "missed" ? "text-destructive" : "text-amber-600 dark:text-amber-500"}`}>
-                  {p.status === "missed" ? "Missed" : `${SHIFT_STATUS_LABELS.late} — not started`}
-                </span>
-              </div>
-            ))}
-            {careAlerts.problems.length === 0 && careAlerts.openIncidents.length === 0 && (
-              <p className="text-sm text-muted-foreground">
-                All {careAlerts.scheduledToday} scheduled visit{careAlerts.scheduledToday === 1 ? " is" : "s are"} on track.
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      )}
+      {showCareCard && <CareVisitsTodayCard alerts={careAlerts} />}
 
       <Card>
         <CardHeader>

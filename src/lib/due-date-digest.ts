@@ -109,7 +109,7 @@ export async function sendDueDateDigests() {
     }),
   ]);
 
-  const byAssignee = new Map<string, { user: { email: string; emailNotificationsEnabled: boolean }; tasks: DigestTask[] }>();
+  const byAssignee = new Map<string, { user: { email: string | null; emailNotificationsEnabled: boolean }; tasks: DigestTask[] }>();
   for (const task of tasks) {
     const { assignees, ...digestTask } = task;
     for (const { user } of assignees) {

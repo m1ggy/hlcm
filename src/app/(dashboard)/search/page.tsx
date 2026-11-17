@@ -8,8 +8,9 @@ export default async function SearchPage({
   searchParams: Promise<{ q?: string }>;
 }) {
   const { q = "" } = await searchParams;
-  const results = q ? await searchAll(q) : { applications: [], clients: [], tasks: [] };
-  const hasResults = results.applications.length + results.clients.length + results.tasks.length > 0;
+  const results = q ? await searchAll(q) : { applications: [], clients: [], tasks: [], careClients: [], caregivers: [] };
+  const hasResults =
+    results.applications.length + results.clients.length + results.tasks.length + results.careClients.length + results.caregivers.length > 0;
 
   return (
     <div className="space-y-6">
@@ -40,6 +41,37 @@ export default async function SearchPage({
             {results.clients.map((client) => (
               <Link key={client.id} href="/clients" className="block text-sm hover:underline">
                 {client.name}
+              </Link>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* A care agency's tasks-only workspace (docs/client-care-plan.md). */}
+      {results.careClients.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Clients</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1">
+            {results.careClients.map((c) => (
+              <Link key={c.id} href={`/care-recipients?open=${c.id}`} className="block text-sm hover:underline">
+                {c.name}
+              </Link>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {results.caregivers.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Caregivers</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1">
+            {results.caregivers.map((c) => (
+              <Link key={c.id} href="/caregivers" className="block text-sm hover:underline">
+                {c.name}
               </Link>
             ))}
           </CardContent>

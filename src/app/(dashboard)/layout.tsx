@@ -21,6 +21,7 @@ import { getMyActiveEntry, getMyActiveBreak } from "@/lib/actions/time-entries";
 import { getMyOpenTaskTimer, listMyRecentTimerTasks } from "@/lib/actions/task-time-entries";
 import { listMyTaskOptions } from "@/lib/actions/tasks";
 import { listMyStartableRecipients, getMyCurrentVisitRecipientId } from "@/lib/actions/visits";
+import { hasCare } from "@/lib/workspace-kind";
 
 export default async function DashboardLayout({
   children,
@@ -41,15 +42,19 @@ export default async function DashboardLayout({
   const isCaregiver = session?.user?.role === "CAREGIVER";
   // In a client's tasks-only workspace there's no shift clock (shifts and
   // payroll belong to each person's home workspace), and only the assigned
-  // team times its work; the client's own people get neither.
+  // team times its work; the client's own people get neither. The
+  // exception: a care agency's own caregivers (docs/client-care-plan.md) —
+  // this workspace is their home, and the clock is how they run visits.
   const tasksWorkspace = org.kind === "TASKS";
+  const careVisits = isCaregiver && hasCare(org);
   const onWorkTeam = Boolean(session?.user?.isAssigned) || session?.user?.role === "DEVELOPER";
-  const showTaskTimer = !tasksWorkspace || onWorkTeam;
+  const showShiftClock = !tasksWorkspace || careVisits;
+  const showTaskTimer = (!tasksWorkspace || onWorkTeam) && !(tasksWorkspace && isCaregiver);
   const [activeEntry, activeBreak, careRecipients, visitRecipientId, openTimer, myTasks, recentTimerTasks] = await Promise.all([
     getMyActiveEntry(),
     getMyActiveBreak(),
-    isCaregiver ? listMyStartableRecipients() : Promise.resolve([]),
-    isCaregiver ? getMyCurrentVisitRecipientId() : Promise.resolve(null),
+    careVisits ? listMyStartableRecipients() : Promise.resolve([]),
+    careVisits ? getMyCurrentVisitRecipientId() : Promise.resolve(null),
     getMyOpenTaskTimer(),
     listMyTaskOptions(),
     listMyRecentTimerTasks(5),
@@ -70,10 +75,11 @@ export default async function DashboardLayout({
         <header data-print-hide className="flex flex-wrap items-center justify-between gap-x-2 gap-y-2 border-b px-4 py-3">
           <div className="flex min-w-0 flex-1 items-center gap-3">
             <SidebarTrigger />
-            <SearchBox />
+            {/* Nothing for a caregiver to search in a care agency's tasks-only workspace. */}
+            {!(tasksWorkspace && isCaregiver) && <SearchBox />}
           </div>
           <div className="flex flex-wrap items-center justify-end gap-1">
-            {!tasksWorkspace && (
+            {showShiftClock && (
               <TimeClockWidget
                 // Remount whenever the server-side clock state changes — the
                 // widget seeds its state from these props once, so without
@@ -115,7 +121,8 @@ export default async function DashboardLayout({
             <div className="hidden sm:block">
               <ProductTour
                 role={session?.user?.role}
-                tasksSide={tasksWorkspace ? (onWorkTeam ? "team" : "client") : undefined}
+                tasksSide={tasksWorkspace && !isCaregiver ? (onWorkTeam ? "team" : "client") : undefined}
+                tasksWorkspace={tasksWorkspace}
               />
             </div>
             <NotificationBell />
@@ -123,7 +130,7 @@ export default async function DashboardLayout({
         </header>
         {/* Extra bottom padding on phones keeps content clear of the caregiver tab bar. */}
         <main className={`w-full min-w-0 flex-1 px-4 py-6 md:px-6 ${isCaregiver ? "pb-24 md:pb-6" : ""}`}>{children}</main>
-        {isCaregiver && <CaregiverBottomNav />}
+        {isCaregiver && <CaregiverBottomNav tasksWorkspace={tasksWorkspace} />}
       </SidebarInset>
       <CommandPalette isAdmin={isAdmin(session?.user?.role)} />
       <GlobalShortcuts />

@@ -135,13 +135,20 @@ export function renderEmailLayout(opts: {
 }
 
 export async function sendEmail(params: {
-  to: string | string[];
+  /**
+   * Null / empty entries are dropped: a user who signs in with their phone
+   * number has no email (docs/client-care-plan.md), and nothing is sent when
+   * nobody's left.
+   */
+  to: string | null | (string | null)[];
   cc?: string[];
   subject: string;
   html: string;
   /** e.g. an invoice PDF — `content` is raw bytes, base64-encoded here, not by the caller. */
   attachments?: { filename: string; content: Uint8Array }[];
 }) {
+  const to = (Array.isArray(params.to) ? params.to : [params.to]).filter((t): t is string => Boolean(t));
+  if (to.length === 0) return;
   const sender = await senderFor();
   const res = await fetch(`${API_BASE}/emails`, {
     method: "POST",
@@ -152,7 +159,7 @@ export async function sendEmail(params: {
     body: JSON.stringify({
       from: sender.from,
       reply_to: sender.replyTo,
-      to: params.to,
+      to: Array.isArray(params.to) ? to : to[0],
       cc: params.cc?.length ? params.cc : undefined,
       subject: params.subject,
       html: params.html,

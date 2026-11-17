@@ -9,6 +9,16 @@ import { sendInviteEmail } from "@/lib/auth-emails";
 import { UserFacingError } from "@/lib/user-facing-error";
 import { assignToWorkspace, setWorkspaceSetup, type AssignableRole } from "@/lib/workspace-assignments";
 import { createStarterProject } from "@/lib/work-starter";
+import { generatePassword } from "@/lib/generated-password";
+
+/**
+ * How a new owner gets in: an emailed invite to choose their own password,
+ * or one we make up now (src/lib/generated-password.ts) and hand over
+ * ourselves — for clients who won't follow an invite link
+ * (docs/client-care-plan.md). Shown once to the platform admin; only the hash
+ * is stored.
+ */
+export type OwnerPasswordMode = "invite" | "generate";
 
 // Operator-side management of tenant workspaces — the only app code that
 // works *across* organizations (hence the raw client; see the ESLint
@@ -37,6 +47,8 @@ export type PlatformOrganization = {
   /** The managing company whose people work here (docs/workspace-tasks-plan.md). */
   managedByOrgId: string | null;
   managedByName: string | null;
+  /** A tasks-only workspace with clients and caregivers (docs/client-care-plan.md). */
+  careEnabled: boolean;
 };
 
 type OrgGroup<T> = { organizationId: string } & T;
@@ -62,6 +74,7 @@ export async function listOrganizations(onlyOrgId?: string): Promise<PlatformOrg
       termsAcceptedAt: true,
       kind: true,
       managedByOrgId: true,
+      careEnabled: true,
       managedBy: { select: { name: true } },
       // A managing company's assigned staff (linked accounts) aren't the workspace's own users.
       _count: { select: { users: { where: { isSupport: false, assignedFromUserId: null, active: true } } } },
@@ -94,7 +107,7 @@ export async function listOrganizations(onlyOrgId?: string): Promise<PlatformOrg
 export type PlatformUser = {
   id: string;
   name: string;
-  email: string;
+  email: string | null;
   role: string;
   active: boolean;
   mfaEnabled: boolean;
@@ -116,7 +129,7 @@ export type PlatformOrganizationDetail = PlatformOrganization & {
   managedWorkspaces: { id: string; name: string; slug: string; status: "ACTIVE" | "SUSPENDED"; assignedCount: number }[];
   users: PlatformUser[];
   /** The managing company's people working here through linked accounts. */
-  assigned: { id: string; name: string; email: string; homeOrgName: string; role: string; canAssign: boolean; active: boolean; since: Date; lastSignInAt: Date | null }[];
+  assigned: { id: string; name: string; email: string | null; homeOrgName: string; role: string; canAssign: boolean; active: boolean; since: Date; lastSignInAt: Date | null }[];
   counts: Record<
     "clients" | "applications" | "leads" | "careRecipients" | "invoices" | "projects" | "workProjects" | "openWorkTasks" | "formSubmissions" | "eodReports",
     number
@@ -276,6 +289,10 @@ export type CreateOrganizationInput = {
   ownerEmail: string;
   kind?: "FULL" | "TASKS";
   managedByOrgId?: string | null;
+  /** Tasks-only: also clients and caregivers (docs/client-care-plan.md). */
+  careEnabled?: boolean;
+  /** Default "invite". */
+  ownerPassword?: OwnerPasswordMode;
   /** The managing company's people to put to work there straight away (needs managedByOrgId). */
   assign?: { homeUserId: string; role: AssignableRole; canAssign: boolean }[];
 };
@@ -319,15 +336,21 @@ export async function createOrganization(input: CreateOrganizationInput, by?: Pl
   }
 
   const org = await prisma.organization.create({ data: { name, slug }, select: { id: true, slug: true, name: true } });
+  // An invited owner's hash is of random bytes nobody knows until they use the link.
+  const ownerPassword = input.ownerPassword === "generate" ? generatePassword() : undefined;
   const owner = await tenantDb(org.id).user.create({
-    data: { name: ownerName, email: ownerEmail, role: "OWNER", passwordHash: await bcrypt.hash(randomBytes(32).toString("hex"), 12) },
+    data: { name: ownerName, email: ownerEmail, role: "OWNER", passwordHash: await bcrypt.hash(ownerPassword ?? randomBytes(32).toString("hex"), 12) },
     select: { id: true, name: true, email: true },
   });
   const tasksOnly = input.kind === "TASKS";
   // Tasks-only: no licensing setup to copy (only the built-in defaults).
   await seedOrganization({ org, ownerId: owner.id, ...(tasksOnly && { templateOrgSlug: null }) });
   if (tasksOnly || input.managedByOrgId) {
-    await setWorkspaceSetup(org.id, { kind: input.kind ?? "FULL", managedByOrgId: input.managedByOrgId || null });
+    await setWorkspaceSetup(org.id, {
+      kind: input.kind ?? "FULL",
+      managedByOrgId: input.managedByOrgId || null,
+      careEnabled: tasksOnly && Boolean(input.careEnabled),
+    });
   }
   if (tasksOnly) await runAsTenant({ id: org.id, slug: org.slug }, () => createStarterProject(owner.id));
 
@@ -345,6 +368,8 @@ export async function createOrganization(input: CreateOrganizationInput, by?: Pl
     }
   }
 
+  // A made-up password is handed over by the platform admin: no email.
+  if (ownerPassword) return { org, inviteSent: false, assignErrors, ownerPassword };
   let inviteSent = true;
   try {
     await runAsTenant({ id: org.id, slug: org.slug }, () => sendInviteEmail({ ...owner, role: "OWNER" }, invitedBy));
@@ -352,7 +377,7 @@ export async function createOrganization(input: CreateOrganizationInput, by?: Pl
     console.error(`Failed to send the owner invite for new org ${org.slug}:`, error);
     inviteSent = false;
   }
-  return { org, inviteSent, assignErrors };
+  return { org, inviteSent, assignErrors, ownerPassword: undefined };
 }
 
 /** The people a managing company could put to work in a new workspace (the create wizard's "Assign staff" step). */
@@ -376,7 +401,7 @@ export async function listStaffOf(orgId: string) {
  */
 export async function inviteOwner(
   orgId: string,
-  input: { name: string; email: string; promoteExisting?: boolean },
+  input: { name: string; email: string; promoteExisting?: boolean; password?: OwnerPasswordMode },
   invitedBy?: string
 ) {
   const name = input.name.trim();
@@ -400,12 +425,21 @@ export async function inviteOwner(
       `${existing.name} already has a ${existing.role.toLowerCase()} account with ${email} — tick "Make an existing account an owner" to promote them`
     );
   }
+  // A made-up password replaces a promoted account's own one too — the
+  // console says so before asking for it.
+  const ownerPassword = input.password === "generate" ? generatePassword() : undefined;
+  const ownerHash = ownerPassword ? await bcrypt.hash(ownerPassword, 12) : undefined;
   const owner = existing
-    ? await t.user.update({ where: { id: existing.id }, data: { role: "OWNER", active: true }, select: { id: true, name: true, email: true } })
+    ? await t.user.update({
+        where: { id: existing.id },
+        data: { role: "OWNER", active: true, ...(ownerHash && { passwordHash: ownerHash }) },
+        select: { id: true, name: true, email: true },
+      })
     : await t.user.create({
-        data: { name, email, role: "OWNER", passwordHash: await bcrypt.hash(randomBytes(32).toString("hex"), 12) },
+        data: { name, email, role: "OWNER", passwordHash: ownerHash ?? (await bcrypt.hash(randomBytes(32).toString("hex"), 12)) },
         select: { id: true, name: true, email: true },
       });
+  if (ownerPassword) return { userId: owner.id, created: !existing, inviteSent: false, ownerPassword };
   let inviteSent = true;
   try {
     await runAsTenant(org, () => sendInviteEmail({ ...owner, role: "OWNER" }, invitedBy));
@@ -413,7 +447,7 @@ export async function inviteOwner(
     console.error(`Failed to send owner invite for ${org.slug}:`, error);
     inviteSent = false;
   }
-  return { userId: owner.id, created: !existing, inviteSent };
+  return { userId: owner.id, created: !existing, inviteSent, ownerPassword: undefined };
 }
 
 /** Re-sends the invite to every owner of `orgId` who hasn't accepted theirs yet. */

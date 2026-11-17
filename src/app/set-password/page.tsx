@@ -35,5 +35,5 @@ export default async function SetPasswordPage({ searchParams }: { searchParams: 
   }
 
   const title = valid.kind === "INVITE" ? `Welcome to ${brand}` : `${brand} — New password`;
-  return <SetPasswordForm token={token} title={title} email={valid.user.email} />;
+  return <SetPasswordForm token={token} title={title} email={valid.user.email ?? ""} />;
 }

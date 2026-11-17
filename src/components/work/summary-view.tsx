@@ -8,6 +8,7 @@ import { ChevronLeft, ChevronRight, EyeOff, MessageSquare, Pencil, Printer, Sett
 import { regenerateSummaryNoteAction, saveSummaryNoteAction, setDayTextSkipAction, updateSummarySettingsAction } from "@/lib/actions/work-summary";
 import { WORK_TASK_STATUS_LABELS, type WorkScope, type WorkTaskStatus } from "@/lib/work";
 import type { DaySummary, WeekSummary } from "@/lib/work-summary";
+import type { CareWeek } from "@/lib/care-summary";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -63,6 +64,7 @@ export function SummaryView({
   workspaceName,
   isNew,
   settings,
+  care,
 }: {
   summary: WeekSummary;
   today: string;
@@ -74,6 +76,8 @@ export function SummaryView({
   /** Nothing has happened in the workspace yet: explain the page. */
   isNew: boolean;
   settings: Settings;
+  /** A care agency's visits and concerns this week (docs/client-care-plan.md). */
+  care?: CareWeek | null;
 }) {
   const router = useRouter();
   const [day, setDay] = useState<string | null>(initialDay);
@@ -174,6 +178,24 @@ export function SummaryView({
           />
         )}
       </section>
+
+      {care && (
+        <section aria-label="Care visits this week" className="space-y-2">
+          <div className="flex items-baseline justify-between gap-2">
+            <h2 className="font-heading text-lg font-semibold">Care visits</h2>
+            <Link href="/care-recipients" className="text-sm text-muted-foreground hover:underline" data-print-hide>
+              Clients
+            </Link>
+          </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            <Stat label="Visits" value={care.visits} days={care.days.map((d) => d.visits)} />
+            <Stat label="Visit hours" value={care.visitHours} days={care.days.map((d) => d.visits)} mono />
+            <Stat label="Missed" value={care.missed} days={care.days.map((d) => d.missed)} />
+            <Stat label="Concerns raised" value={care.concernsRaised} days={care.days.map(() => 0)} />
+            <Stat label="Open concerns" value={care.openConcerns} days={care.days.map(() => 0)} />
+          </div>
+        </section>
+      )}
 
       {/* Days */}
       <section aria-label="Days" data-tour="summary-days" className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-7">
