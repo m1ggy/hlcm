@@ -15,7 +15,10 @@ import { UserFacingError } from "@/lib/user-facing-error";
 // (ignoring case), checked under a per-owner advisory lock so two people
 // creating "Licenses" at the same moment don't both succeed.
 
-export type FolderOwner = { kind: "client"; id: string } | { kind: "application"; id: string };
+export type FolderOwner = { kind: "client"; id: string } | { kind: "application"; id: string } | { kind: "library"; id: typeof LIBRARY_ID };
+
+/** The workspace's file library has one tree per workspace; tenant scoping picks the workspace. */
+export const LIBRARY_ID = "workspace";
 
 export type FolderRow = {
   id: string;
@@ -28,12 +31,14 @@ const MAX_NAME = 120;
 const MAX_DEPTH = 20;
 
 function ownerWhere(owner: FolderOwner) {
+  if (owner.kind === "library") return { library: true };
   return owner.kind === "client" ? { clientId: owner.id } : { applicationId: owner.id };
 }
 
-function ownerOf(row: { clientId: string | null; applicationId: string | null }): FolderOwner | null {
+function ownerOf(row: { clientId: string | null; applicationId: string | null; library: boolean }): FolderOwner | null {
   if (row.clientId) return { kind: "client", id: row.clientId };
   if (row.applicationId) return { kind: "application", id: row.applicationId };
+  if (row.library) return { kind: "library", id: LIBRARY_ID };
   return null;
 }
 
@@ -42,7 +47,7 @@ function sameOwner(a: FolderOwner | null, b: FolderOwner) {
 }
 
 function auditEntity(owner: FolderOwner) {
-  return { entityType: owner.kind === "client" ? "Client" : "Application", entityId: owner.id };
+  return { entityType: owner.kind === "client" ? "Client" : owner.kind === "application" ? "Application" : "WorkspaceLibrary", entityId: owner.id };
 }
 
 /** Trims and checks a folder name; throws a UserFacingError if it can't be one. */
@@ -100,7 +105,7 @@ async function folderInOwner(tx: TenantTx | typeof db, owner: FolderOwner, folde
   if (folderId === null) return null;
   const folder = await tx.fileFolder.findUnique({
     where: { id: folderId },
-    select: { id: true, parentId: true, name: true, clientId: true, applicationId: true },
+    select: { id: true, parentId: true, name: true, clientId: true, applicationId: true, library: true },
   });
   if (!folder || !sameOwner(ownerOf(folder), owner)) {
     throw new UserFacingError("That folder no longer exists");
@@ -126,7 +131,7 @@ async function ancestry(tx: TenantTx, folderId: string | null) {
 
 /** Looks up which owner a folder belongs to — for the action layer's access check. */
 export async function getFolderOwner(folderId: string): Promise<FolderOwner> {
-  const folder = await db.fileFolder.findUnique({ where: { id: folderId }, select: { clientId: true, applicationId: true } });
+  const folder = await db.fileFolder.findUnique({ where: { id: folderId }, select: { clientId: true, applicationId: true, library: true } });
   const owner = folder && ownerOf(folder);
   if (!owner) throw new UserFacingError("That folder no longer exists");
   return owner;

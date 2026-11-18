@@ -27,6 +27,8 @@ const TASKS_PATHS = [
   "/time",
   // The workspace's own forms and their submissions (Forms in the sidebar).
   "/intake",
+  // The workspace's own file library (src/lib/workspace-library.ts).
+  "/files",
   "/notifications",
   "/accept-terms",
   "/switch",

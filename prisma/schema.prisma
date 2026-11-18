@@ -1867,6 +1867,8 @@ model FileAsset {
   // null = top level. Only client and application files use folders.
   folder           FileFolder?     @relation(fields: [folderId], references: [id], onDelete: SetNull)
   folderId         String?
+  // A file in the workspace's own library (Files page), not tied to any record.
+  library          Boolean         @default(false)
 
   versions            FileVersion[]
   signatureEvents     SignatureEvent[]
@@ -1874,6 +1876,7 @@ model FileAsset {
   envelopeAsCompleted DocusignEnvelope?  @relation("EnvelopeCompletedFile")
 
   @@index([organizationId])
+  @@index([organizationId, library])
   @@index([folderId])
   @@map("file_assets")
 }
@@ -1891,6 +1894,10 @@ model FileFolder {
   clientId       String?
   application    Application? @relation(fields: [applicationId], references: [id], onDelete: Cascade)
   applicationId  String?
+  // Third owner kind: the workspace's own file library (a client workspace's
+  // Files page, docs/file-management-plan.md). Exactly one owner per folder
+  // (CHECK file_folders_one_owner).
+  library        Boolean      @default(false)
   parent         FileFolder?  @relation("FileFolderTree", fields: [parentId], references: [id], onDelete: NoAction)
   parentId       String?
   children       FileFolder[] @relation("FileFolderTree")
@@ -1905,6 +1912,7 @@ model FileFolder {
   @@index([organizationId])
   @@index([clientId, parentId])
   @@index([applicationId, parentId])
+  @@index([organizationId, library, parentId])
   @@map("file_folders")
 }
 

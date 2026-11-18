@@ -4,7 +4,7 @@
 // useUpload() (src/components/files/use-upload.ts), and the route runs the
 // very same action. Type-only imports: this file is safe in client bundles.
 import type { ActionResult } from "@/lib/action-result";
-import type { uploadFile, uploadClientFile, uploadTaskFile, uploadNewFileVersion } from "@/lib/actions/files";
+import type { uploadFile, uploadClientFile, uploadTaskFile, uploadNewFileVersion, uploadLibraryFile } from "@/lib/actions/files";
 import type { uploadWorkTaskFileAction } from "@/lib/actions/work";
 import type { uploadInvoiceAttachment } from "@/lib/actions/invoice-attachments";
 import type { uploadPayrollAttachment } from "@/lib/actions/payroll-attachments";
@@ -15,6 +15,8 @@ export type UploadResults = {
   application: Awaited<ReturnType<typeof uploadFile>>;
   /** id = clientId */
   client: Awaited<ReturnType<typeof uploadClientFile>>;
+  /** id unused — the workspace's file library */
+  library: Awaited<ReturnType<typeof uploadLibraryFile>>;
   /** id = taskId */
   task: Awaited<ReturnType<typeof uploadTaskFile>>;
   /** id = fileAssetId */
@@ -36,6 +38,7 @@ export type UploadTarget = keyof UploadResults;
 export const UPLOAD_TARGETS: readonly UploadTarget[] = [
   "application",
   "client",
+  "library",
   "task",
   "fileVersion",
   "workTask",

@@ -1,6 +1,6 @@
 import { unstable_rethrow } from "next/navigation";
 import { toActionResult, type ActionResult } from "@/lib/action-result";
-import { uploadFile, uploadClientFile, uploadTaskFile, uploadNewFileVersion } from "@/lib/actions/files";
+import { uploadFile, uploadClientFile, uploadTaskFile, uploadNewFileVersion, uploadLibraryFile } from "@/lib/actions/files";
 import { uploadWorkTaskFileAction } from "@/lib/actions/work";
 import { uploadInvoiceAttachment } from "@/lib/actions/invoice-attachments";
 import { uploadPayrollAttachment } from "@/lib/actions/payroll-attachments";
@@ -15,6 +15,7 @@ import { UPLOAD_TARGETS, type UploadTarget } from "@/lib/upload-targets";
 const handlers: Record<UploadTarget, (id: string, form: FormData) => Promise<ActionResult<unknown>>> = {
   application: uploadFile,
   client: uploadClientFile,
+  library: uploadLibraryFile,
   task: uploadTaskFile,
   fileVersion: uploadNewFileVersion,
   workTask: uploadWorkTaskFileAction,

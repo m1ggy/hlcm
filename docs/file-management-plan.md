@@ -60,3 +60,20 @@ whole folder from the computer (its structure is recreated).
    name refused, multi-select move, drag to folder, open + Back, rename file,
    subfolder, search, delete folder (contents moved up), folder upload made
    the folders. File bytes not checked locally: no `GCS_BUCKET` here.
+
+## Workspace file library (2026-11-19)
+
+A client workspace (Full Operations Management System) gets a **Files** page
+(`/files`): one folder tree for the whole company — policies, HR, contracts —
+separate from task attachments. Decided: office staff and the managing
+company's team working there; not caregivers or client portal users; one
+library per workspace (no per-care-client folders).
+
+- Third folder owner kind, `library` (`file_folders.library`,
+  `file_assets.library`, migration `20261119160000_workspace_library`; the
+  one-owner CHECK now counts it). Same `FileBrowser`, upload route target
+  `library`, download route and version/rename actions.
+- Access: `src/lib/workspace-library.ts` (`canUseLibrary`,
+  `requireLibraryAccess`) — tasks-only workspaces only.
+- Tests: `tests/workspace-library.test.ts`.
+

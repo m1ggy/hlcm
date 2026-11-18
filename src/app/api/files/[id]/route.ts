@@ -3,6 +3,7 @@ import { db, currentOrganization } from "@/lib/db";
 import { requireSession, assertApplicationAccess, UnauthorizedError, ForbiddenError, AppRole, isManagement } from "@/lib/rbac";
 import { readStoredFile } from "@/lib/storage";
 import { taskWhere, workScope } from "@/lib/work";
+import { requireLibraryAccess } from "@/lib/workspace-library";
 
 // Raster images may be shown in place (correspondence thumbnails, ?inline=1);
 // everything else always downloads. No SVG: it can carry script.
@@ -21,7 +22,10 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/files/[id]">
     // Correspondence is internal (src/lib/correspondence.ts), even when its parent isn't.
     if (asset.correspondenceId && (session.user.role === "CLIENT" || session.user.role === "CAREGIVER")) throw new ForbiddenError("Not accessible");
 
-    if (asset.applicationId) {
+    if (asset.library) {
+      // The workspace's file library (src/lib/workspace-library.ts).
+      await requireLibraryAccess();
+    } else if (asset.applicationId) {
       await assertApplicationAccess(session, asset.applicationId, "view");
     } else if (asset.task) {
       const task = asset.task;

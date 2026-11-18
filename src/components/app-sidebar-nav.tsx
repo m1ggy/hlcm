@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
-import { LayoutList, KanbanSquare, CalendarDays, Building2, FolderKanban, Users, ClipboardList, UserCog, CheckSquare, Clock, Timer, Receipt, Settings, Inbox, MapPin, CalendarCheck, BarChart3, Sun, Wallet, NotebookPen, BookMarked, HeartHandshake } from "lucide-react";
+import { LayoutList, KanbanSquare, CalendarDays, Building2, FolderKanban, Users, ClipboardList, UserCog, CheckSquare, Clock, Timer, Receipt, Settings, Inbox, MapPin, CalendarCheck, BarChart3, Sun, Wallet, NotebookPen, BookMarked, HeartHandshake, FolderOpen } from "lucide-react";
 import {
   SidebarGroup,
   SidebarGroupLabel,
@@ -66,6 +66,7 @@ export function AppSidebarNav({
   showClientWork = false,
   newSubmissions = 0,
   showForms = false,
+  showFiles = false,
 }: {
   isAdmin: boolean;
   canManageInvoices: boolean;
@@ -86,6 +87,8 @@ export function AppSidebarNav({
   newSubmissions?: number;
   /** Forms in a tasks-only workspace: its own forms and submissions. */
   showForms?: boolean;
+  /** A tasks-only workspace's file library (src/lib/workspace-library.ts). */
+  showFiles?: boolean;
 }) {
   const pathname = usePathname();
 
@@ -102,6 +105,8 @@ export function AppSidebarNav({
     ];
     const general: NavLink[] = [];
     if (showForms) general.push(...GENERAL);
+    // The company's own documents, separate from task attachments (docs/file-management-plan.md).
+    if (showFiles) general.push({ href: "/files", label: "Files", icon: FolderOpen, tour: "nav-files" });
     // The client company's own staff clock in here (docs/activity-monitoring-plan.md);
     // the managing company's team clocks in at home.
     if (!isWorkTeam) general.push({ href: "/time", label: "Time", icon: Clock, tour: "nav-time" });

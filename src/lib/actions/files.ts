@@ -10,7 +10,8 @@ import { UserFacingError } from "@/lib/user-facing-error";
 import { toActionResult } from "@/lib/action-result";
 import { MAX_FILE_BYTES, fileTooLargeMessage } from "@/lib/file-limits";
 import { resolveClientServiceId } from "@/lib/client-services";
-import { cleanFileName, resolveFolderId } from "@/lib/file-folders";
+import { cleanFileName, resolveFolderId, LIBRARY_ID } from "@/lib/file-folders";
+import { requireLibraryAccess } from "@/lib/workspace-library";
 
 // The upload/delete/version actions below are exported as thin
 // toActionResult wrappers around a private *Impl: production Next.js redacts
@@ -44,10 +45,15 @@ async function assertCanAccessFileAsset(
   asset: {
     applicationId: string | null;
     clientId: string | null;
+    library: boolean;
     task: { applicationId: string | null; createdById: string; assignees: { userId: string }[] } | null;
   },
   level: "view" | "edit"
 ) {
+  if (asset.library) {
+    await requireLibraryAccess();
+    return;
+  }
   if (asset.applicationId) {
     await assertApplicationAccess(session, asset.applicationId, level);
     return;
@@ -96,9 +102,11 @@ function assertNotEnvelopePending(asset: { envelopesAsSource: { id: string }[] }
 function revalidateForAsset(asset: {
   applicationId: string | null;
   clientId: string | null;
+  library: boolean;
   task: { applicationId: string | null } | null;
 }) {
-  if (asset.applicationId) revalidatePath(`/applications/${asset.applicationId}`);
+  if (asset.library) revalidatePath("/files");
+  else if (asset.applicationId) revalidatePath(`/applications/${asset.applicationId}`);
   else if (asset.task?.applicationId) revalidatePath(`/applications/${asset.task.applicationId}`);
   else if (asset.clientId) revalidatePath(`/clients/${asset.clientId}`);
   else revalidatePath("/tasks");
@@ -456,6 +464,62 @@ async function deleteClientFileImpl(fileId: string, clientId: string) {
   revalidatePath(`/clients/${clientId}`);
 }
 
+// ---- The workspace's file library (a client workspace's Files page) ------
+
+export async function listLibraryFiles() {
+  await requireLibraryAccess();
+  const assets = await db.fileAsset.findMany({
+    where: { library: true },
+    include: { uploadedBy: { select: { id: true, name: true } }, _count: { select: { versions: true, signatureEvents: true } } },
+    orderBy: { createdAt: "desc" },
+  });
+  return assets.map(({ _count, ...asset }) => ({ ...asset, versionCount: _count.versions, isSigned: _count.signatureEvents > 0 }));
+}
+
+/** `_id` is unused (one library per workspace); kept for the upload route's (id, form) shape. */
+export async function uploadLibraryFile(_id: string, formData: FormData) {
+  return toActionResult(() => uploadLibraryFileImpl(formData));
+}
+
+async function uploadLibraryFileImpl(formData: FormData) {
+  const session = await requireLibraryAccess();
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) throw new UserFacingError("Choose a file to upload");
+  if (file.size > MAX_FILE_BYTES) throw new UserFacingError(fileTooLargeMessage());
+
+  const folderId = await resolveFolderId(formData.get("folderId"), { kind: "library", id: LIBRARY_ID });
+  const { storageKey, sizeBytes, generation } = await saveUploadedFile(file);
+  const mimeType = file.type || "application/octet-stream";
+  const asset = await db.fileAsset.create({
+    data: {
+      library: true,
+      folderId,
+      fileName: file.name,
+      storageKey,
+      mimeType,
+      sizeBytes,
+      uploadedById: session.user.id,
+      versions: { create: { version: 1, generation, fileName: file.name, mimeType, sizeBytes, uploadedById: session.user.id } },
+    },
+    include: { uploadedBy: { select: { id: true, name: true } } },
+  });
+  await recordAudit({ entityType: "WorkspaceLibrary", entityId: LIBRARY_ID, action: "upload_file", actorId: session.user.id, field: "file", newValue: file.name });
+  revalidatePath("/files");
+  return { ...asset, versionCount: 1, isSigned: false };
+}
+
+export async function deleteLibraryFile(fileId: string) {
+  return toActionResult(async () => {
+    const session = await requireLibraryAccess();
+    const asset = await db.fileAsset.findUnique({ where: { id: fileId }, select: { id: true, library: true, fileName: true, storageKey: true } });
+    if (!asset?.library) throw new UserFacingError("That file is already gone — someone else may have just deleted it");
+    await db.fileAsset.delete({ where: { id: fileId } });
+    await deleteStoredFile(asset.storageKey);
+    await recordAudit({ entityType: "WorkspaceLibrary", entityId: LIBRARY_ID, action: "delete_file", actorId: session.user.id, field: "file", oldValue: asset.fileName });
+    revalidatePath("/files");
+  });
+}
+
 export async function listFileVersions(fileId: string) {
   const session = await requireSession();
   const asset = await db.fileAsset.findUniqueOrThrow({
@@ -617,6 +681,7 @@ async function renameFileImpl(fileId: string, rawName: string) {
       fileName: true,
       applicationId: true,
       clientId: true,
+      library: true,
       task: { select: { applicationId: true, createdById: true, assignees: { select: { userId: true } } } },
     },
   });
@@ -630,7 +695,9 @@ async function renameFileImpl(fileId: string, rawName: string) {
     ? { entityType: "Application", entityId: asset.applicationId }
     : asset.clientId
       ? { entityType: "Client", entityId: asset.clientId }
-      : { entityType: "FileAsset", entityId: fileId };
+      : asset.library
+        ? { entityType: "WorkspaceLibrary", entityId: LIBRARY_ID }
+        : { entityType: "FileAsset", entityId: fileId };
   await recordAudit({ ...entity, action: "rename_file", actorId: session.user.id, field: "file", oldValue: asset.fileName, newValue: fileName });
   revalidateForAsset(asset);
 }
