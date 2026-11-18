@@ -19,7 +19,7 @@ Hours, Time reports, timesheets and payroll keep working unchanged.
 
 | Topic | Decision |
 |---|---|
-| Who offers it | **Every workspace** — switched on per workspace. Off by default. |
+| Who offers it | **Every workspace, as a paid add-on.** The platform console grants the add-on to a workspace (by hand until add-on billing exists); that workspace's owner then switches monitoring on or off. Off by default. |
 | Who is tracked | A workspace's own people in OWNER, ADMIN, ACCOUNTANT, MANAGER, STAFF. Never CAREGIVER or CLIENT. Never a **linked account** (a managing company's staff working in a client workspace) — see below. |
 | What the app captures | **Screenshots** (every 30 min, random moment, all monitors) and **app + window title** (domain on Mac). **No** keyboard/mouse activity counts, **no** "Were you working?" idle prompt. |
 | Idle | **Auto clock-out after 2 hours with no keyboard or mouse input.** The app reads the OS idle time only (no counts). The entry closes at the moment input stopped, marked auto-closed, and the person is told when they come back. |
@@ -58,10 +58,19 @@ Rules this scope sets:
 
 Today a Full Operations Management System workspace only shows the shift clock
 when care visits are on (`showShiftClock` in `src/app/(dashboard)/layout.tsx`).
-This scope gives every such workspace the shift clock **for its own people**
-(home accounts); the managing company's linked accounts keep clocking in at home
-and keep using the task timer here. That brings Hours / Time for those people
-into the client workspace too (see open items: which pages come with it).
+This scope gives every such workspace the shift clock **always**, for its own
+people (home accounts), with the Time pages that go with it. The managing
+company's linked accounts keep clocking in at home and keep using the task timer
+here.
+
+The two are different and both stay:
+
+| | Shift clock | Task timer |
+|---|---|---|
+| Answers | When was this person working today? | How long went into this task? |
+| Used for | Hours, timesheets, payroll, breaks | Billing clients, end-of-day reports, task time |
+| Per person | One open shift, in their home workspace | One running timer across all their workspaces |
+| Monitoring | **Tracking runs while clocked in** | Not used by monitoring |
 
 ## Tenant scoping (missing from the old branch)
 
@@ -89,7 +98,7 @@ into the client workspace too (see open items: which pages come with it).
 | OWNER/DEVELOPER of the one workspace | OWNER per workspace + DEVELOPER (audited) |
 | No tenant scoping | Scoped as above |
 | Linked accounts not considered | Never tracked; app refuses them |
-| `agent/` tracked in the repo | `agent/` is git-ignored on main (`1629219`) — must be un-ignored, or the app moved to its own repo |
+| App source in `agent/` | Moves to a new folder, `desktop/` (`agent/` stays git-ignored on main, `1629219`) |
 | Migration `20261030120000_activity_monitoring` | New migration with a current timestamp |
 
 Kept as built: device-token auth, agent API (`/api/agent/*`), heartbeat
@@ -104,12 +113,12 @@ from `agent-releases/`, 90-day purge, activity export, release CI
 1. **Port onto main.** New branch from main; bring the old branch's code over,
    resolve conflicts (schema, time clock, layout), drop its migration and write
    a new one with tenant columns; agent tokens + login per workspace; screenshot
-   key prefix; linked accounts refused; desktop sign-ins logged. Decide where
-   `agent/` lives.
+   key prefix; linked accounts refused; desktop sign-ins logged. App source
+   in `desktop/`.
 2. **Trim capture.** Remove activity counts, idle prompt, bias and idle grace
    from the app, API, scoring and rules UI; add the 2-hour auto clock-out.
-3. **Per-workspace switch + policy.** Workspace setting to turn monitoring on,
-   policy text per workspace; owner + developer viewing rules; hide everything
+3. **Add-on + per-workspace switch + policy.** Platform console grants the
+   add-on; the owner turns monitoring on; policy text per workspace; owner + developer viewing rules; hide everything
    when off.
 4. **Shift clock in client workspaces** for their own people.
 5. **Release.** Production address in `agent/config.json`, Windows + Mac builds
@@ -118,11 +127,8 @@ from `agent-releases/`, 90-day purge, activity export, release CI
 
 ## Open items
 
-- Turning monitoring on: does each workspace owner switch it on, or the platform
-  console (e.g. if it becomes a paid-tier feature)?
-- Shift clock in client workspaces: always on, or only once monitoring is
-  switched on? And which pages come with it (Hours, Time reports, payroll)?
+- Add-on price and how it's billed (see tenant billing decisions); granted by hand until then.
 - Policy text from boss/legal (NY, CT, DE need written notice of electronic
   monitoring); per workspace, with a default.
-- Admin manual time entries for tracked people: still allowed (marked manual)?
+- Admin manual time entries for tracked people: **still allowed** (marked manual), decided 2026-11-18.
 - Google Cloud BAA covers the bucket (accepted 2026-11-02).
