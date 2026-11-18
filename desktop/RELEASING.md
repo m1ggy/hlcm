@@ -57,10 +57,10 @@ machines, so no Mac is needed.
 
 3. The workflow runs the tests, builds both platforms and creates a GitHub
    Release `agent-v0.2.1` with every installer, `.blockmap` and `latest*.yml`.
-4. **The release isn't live yet.** Download all its files into `release/`
-   (from the Release page, or `gh release download agent-v0.2.1 -D release`)
-   and upload them as in step 5 below. Keeping this by hand means a bad build
-   never reaches staff on its own.
+4. The workflow then publishes the files to the bucket's `agent-releases/`
+   folder (`scripts/upload-agent-release.sh`, through the droplet with the
+   deploy secrets), so the download page and auto-update pick it up. To hold
+   a build back, delete the Release's tag before that job runs, or cancel it.
 
 Running the workflow by hand from the Actions tab (no tag) only builds; the
 files are kept as run artifacts for 14 days instead of a Release.
@@ -74,12 +74,13 @@ files are kept as run artifacts for 14 days instead of a Release.
 4. Mac (must be built on a Mac; dmg can't be built on Windows):
    `npm ci && npm run dist:mac`. Produces `Carenela-<version>-arm64.dmg`,
    `-x64.dmg`, the matching `.zip` files, `.blockmap`s and `latest-mac.yml`.
-5. Upload to the private bucket under `agent-releases/`. Installers first,
-   manifests last, so no app sees a version before its files exist:
+5. Upload to the private bucket under `agent-releases/` (installers first,
+   manifests last, so no app sees a version before its files exist). The
+   script does it through the droplet's app container, which already has
+   the bucket credentials:
 
    ```sh
-   gcloud storage cp release/Carenela-* gs://$GCS_BUCKET/agent-releases/
-   gcloud storage cp release/latest*.yml gs://$GCS_BUCKET/agent-releases/
+   SSH_OPTS="-i ~/.ssh/hclm_deploy" scripts/upload-agent-release.sh desktop/release root@<droplet>
    ```
 
 The app server serves these through `/api/agent/updates/<file>` (short-lived
