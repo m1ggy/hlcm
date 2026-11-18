@@ -25,7 +25,7 @@ vi.mock("@/lib/rbac", () => ({
   UnauthorizedError: class extends Error {},
 }));
 
-const { addManualPayment, updatePayment, updateManualInvoiceDraft } = await import("@/lib/actions/invoices");
+const { addManualPayment, addPaidLineItem, createManualInvoice, updatePayment, updateManualInvoiceDraft } = await import("@/lib/actions/invoices");
 
 // Through tenantDb, not systemPrisma — Invoice.seq and every organizationId
 // default read the tenant scope (current_org_id()).
@@ -181,5 +181,66 @@ describe("lineBalances", () => {
       { amount: 1000, paid: 1000, due: 0 },
     ]);
     expect(lineBalances([{ quantity: 2.5, unitPrice: 40 }], null)).toEqual([{ amount: 100, paid: 0, due: 100 }]);
+  });
+});
+
+describe("paid items", () => {
+  const downpayment = { description: "Downpayment", amount: 500, paidAt: "2026-11-01", paymentMethod: "Zelle" };
+
+  it("adds a paid line with its payment and receipt, leaving the balance where it was", async () => {
+    const invoice = await makeInvoice(ORG.id, userId);
+    const result = await runAsTenant(ORG, () => addPaidLineItem(invoice.id, downpayment));
+    expect(result.ok).toBe(true);
+
+    const after = await prisma.invoice.findUniqueOrThrow({
+      where: { id: invoice.id },
+      include: { lineItems: { orderBy: { sortOrder: "asc" } }, payments: { include: { receipt: true } } },
+    });
+    expect(after.total).toBe(800);
+    expect(after.amountPaid).toBe(500);
+    expect(after.status).toBe("PARTIALLY_PAID");
+    expect(after.lineItems.map((li) => li.description)).toEqual(["Consulting", "Filing", "Downpayment"]);
+    const line = after.lineItems[2];
+    expect(after.payments).toHaveLength(1);
+    expect(after.payments[0]).toMatchObject({ lineItemId: line.id, amount: 500, paymentMethod: "Zelle" });
+    expect(after.payments[0].receipt?.storageKey).toBe("receipt.pdf");
+    // Still owed: the two unpaid lines.
+    expect(lineBalances(after.lineItems, after.amountPaid, after.payments).map((b) => b.due)).toEqual([200, 100, 0]);
+  });
+
+  it("keeps a paid invoice paid", async () => {
+    const invoice = await makeInvoice(ORG.id, userId);
+    await runAsTenant(ORG, () => addManualPayment(invoice.id, { amount: 300, paidAt: "2026-09-01", paymentMethod: "Cash", lineItemId: null }));
+    await runAsTenant(ORG, () => addPaidLineItem(invoice.id, downpayment));
+    const after = await prisma.invoice.findUniqueOrThrow({ where: { id: invoice.id } });
+    expect(after).toMatchObject({ total: 800, amountPaid: 800, status: "PAID" });
+  });
+
+  it("can start a new invoice with a downpayment already on it", async () => {
+    const client = await tenantDb(ORG.id).client.create({ data: { name: "New Client", createdById: userId } });
+    const result = await runAsTenant(ORG, () =>
+      createManualInvoice({
+        clientId: client.id,
+        lineItems: [{ description: "Monthly retainer", quantity: 1, unitPrice: 1000 }],
+        paidItems: [downpayment],
+      })
+    );
+    if (!result.ok) throw new Error(result.error);
+    const created = await prisma.invoice.findUniqueOrThrow({
+      where: { id: result.data.id },
+      include: { lineItems: { orderBy: { sortOrder: "asc" } }, payments: { include: { receipt: true } } },
+    });
+    expect(created).toMatchObject({ total: 1500, amountPaid: 500, status: "PARTIALLY_PAID", paymentMethod: "Zelle" });
+    expect(created.lineItems.map((li) => li.description)).toEqual(["Monthly retainer", "Downpayment"]);
+    expect(created.payments[0].lineItemId).toBe(created.lineItems[1].id);
+    expect(created.payments[0].receipt?.storageKey).toBe("receipt.pdf");
+
+    // Only paid items is fine too, and needs nothing more.
+    const onlyPaid = await runAsTenant(ORG, () => createManualInvoice({ clientId: client.id, lineItems: [], paidItems: [downpayment] }));
+    if (!onlyPaid.ok) throw new Error(onlyPaid.error);
+    expect(await prisma.invoice.findUniqueOrThrow({ where: { id: onlyPaid.data.id } })).toMatchObject({ total: 500, status: "PAID" });
+
+    const empty = await runAsTenant(ORG, () => createManualInvoice({ clientId: client.id, lineItems: [] }));
+    expect(empty).toMatchObject({ ok: false, error: "Add at least one line item" });
   });
 });

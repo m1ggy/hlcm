@@ -19,6 +19,7 @@ const TONE = {
 function kindOf(entry: AuditEntry): Kind | null {
   switch (entry.action) {
     case "record_manual_payment":
+    case "add_paid_item":
     case "mark_paid":
       return { title: "Payment received", icon: CreditCard, tone: TONE.green };
     case "create":

@@ -235,6 +235,7 @@ const EVENT_ACTIONS = new Set([
   "share_via_task_assignment",
   "void",
   "record_manual_payment",
+  "add_paid_item",
   "update_manual_payment",
   "delete_manual_payment",
   "void_with_payments",
@@ -359,6 +360,7 @@ export function formatEventDescription(
   if (action === "void") return oldValue ? `Voided the invoice (freed invoice #${oldValue} for reuse)` : "Voided the invoice";
   if (action === "void_with_payments" && oldValue) return `Voided the invoice (was ${oldValue})`;
   if (action === "record_manual_payment" && newValue) return `Recorded a payment: ${newValue}`;
+  if (action === "add_paid_item" && newValue) return `Added a paid item: ${newValue}`;
   if (action === "update_manual_payment" && newValue) return `Updated a payment: ${oldValue} → ${newValue}`;
   if (action === "delete_manual_payment" && oldValue) return `Deleted a payment: ${oldValue}`;
   if (action === "send_invoice_pdf" && newValue) return `Emailed the invoice PDF to ${newValue}`;

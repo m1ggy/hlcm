@@ -140,6 +140,9 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
             <CardContent>
               {canEditManual ? (
                 <ManualInvoiceEditor
+                  // Remounts after a change made elsewhere on the page (a paid
+                  // item added), so a later Save doesn't send stale lines.
+                  key={invoice.updatedAt.toISOString()}
                   invoiceId={invoice.id}
                   notes={invoice.notes}
                   internalTag={invoice.internalTag}

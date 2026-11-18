@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { InvoiceLineItemsEditor, emptyLineItem, type LineItem } from "./invoice-line-items-editor";
+import { PaidItemsEditor, paidItemInput, paidItemProblem, type PaidItem } from "./paid-items-editor";
 import { UnbilledTaskTimeSection } from "./unbilled-task-time-section";
 import { ServiceSelect, NO_SERVICE, type ServiceOption } from "@/components/clients/service-select";
 import { formatMoney } from "@/lib/money";
@@ -94,6 +95,7 @@ export function RecordPaymentDialog({
   const [lineItems, setLineItems] = useState([emptyLineItem()]);
   const [notes, setNotes] = useState("");
   const [internalTag, setInternalTag] = useState("");
+  const [paidItems, setPaidItems] = useState<PaidItem[]>([]);
 
   const selectedCase = selection.startsWith(CASE_PREFIX)
     ? applications.find((a) => a.id === selection.slice(CASE_PREFIX.length))
@@ -111,7 +113,8 @@ export function RecordPaymentDialog({
 
   const taskTimeSubtotal = taskTimeBilling.lineItems.reduce((sum, li) => sum + li.quantity * li.unitPrice, 0);
   const manualSubtotal = lineItems.reduce((sum, li) => sum + li.quantity * li.unitPrice, 0);
-  const subtotal = taskTimeSubtotal + manualSubtotal;
+  const paidSubtotal = paidItems.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+  const subtotal = taskTimeSubtotal + manualSubtotal + paidSubtotal;
 
   function reset() {
     setSelection(initialSelection());
@@ -124,6 +127,7 @@ export function RecordPaymentDialog({
     setLineItems([emptyLineItem()]);
     setNotes("");
     setInternalTag("");
+    setPaidItems([]);
   }
 
   function handleSubmit() {
@@ -133,8 +137,13 @@ export function RecordPaymentDialog({
     }
     const manualItems = lineItems.filter((li) => li.description.trim().length > 0);
     const allItems = [...taskTimeBilling.lineItems, ...manualItems];
-    if (allItems.length === 0) {
+    if (allItems.length === 0 && paidItems.length === 0) {
       toast.error("Add at least one line item");
+      return;
+    }
+    const paidProblem = paidItems.map(paidItemProblem).find(Boolean);
+    if (paidProblem) {
+      toast.error(paidProblem);
       return;
     }
 
@@ -152,6 +161,7 @@ export function RecordPaymentDialog({
           notes: notes || undefined,
           internalTag: internalTag || undefined,
           lineItems: allItems,
+          paidItems: paidItems.length ? paidItems.map(paidItemInput) : undefined,
         });
         if (!result.ok) {
           toast.error(result.error);
@@ -246,6 +256,8 @@ export function RecordPaymentDialog({
 
           <InvoiceLineItemsEditor lineItems={lineItems} onChange={setLineItems} amountOnly />
 
+          <PaidItemsEditor items={paidItems} onChange={setPaidItems} />
+
           <div className="space-y-1">
             <Label htmlFor="notes">Notes</Label>
             <Textarea id="notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional note printed on the invoice" />
@@ -261,9 +273,21 @@ export function RecordPaymentDialog({
             />
           </div>
 
-          <div className="flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2 text-sm">
-            <span className="text-muted-foreground">Subtotal (tax not calculated)</span>
-            <span className="font-medium">{formatMoney(subtotal)}</span>
+          <div className="space-y-1 rounded-lg bg-muted/50 px-3 py-2 text-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Total (tax not calculated)</span>
+              <span className="tabular-nums">{formatMoney(subtotal)}</span>
+            </div>
+            {paidSubtotal > 0 && (
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Already paid</span>
+                <span className="tabular-nums">{formatMoney(paidSubtotal)}</span>
+              </div>
+            )}
+            <div className="flex items-center justify-between font-medium">
+              <span>Total amount due</span>
+              <span className="tabular-nums">{formatMoney(Math.max(0, subtotal - paidSubtotal))}</span>
+            </div>
           </div>
 
           <Button onClick={handleSubmit} className="w-full" loading={isPending}>

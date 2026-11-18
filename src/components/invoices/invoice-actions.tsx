@@ -8,6 +8,7 @@ import { markInvoicePaid, voidInvoice, voidInvoiceWithPayments, deleteInvoice } 
 import { Button } from "@/components/ui/button";
 import { InvoiceFormDialog } from "./invoice-form-dialog";
 import { AddManualPaymentDialog } from "./add-manual-payment-dialog";
+import { AddPaidItemDialog } from "./paid-items-editor";
 import { SendInvoicePdfDialog } from "./send-invoice-pdf-dialog";
 import { SendInvoiceDialog } from "./send-invoice-dialog";
 import { isManualInvoice } from "./invoice-status-badge";
@@ -140,6 +141,8 @@ export function InvoiceActions({
   const canVoidWithPayments = isManual && (invoice.status === "PAID" || invoice.status === "PARTIALLY_PAID");
   const canMarkPaid = !isManual && invoice.status !== "PAID" && invoice.status !== "VOID";
   const canAddManualPayment = isManual && (invoice.status === "SENT" || invoice.status === "PARTIALLY_PAID");
+  // A running invoice takes paid items (a downpayment) whatever its balance — just not once voided.
+  const canAddPaidItem = isManual && (invoice.status === "SENT" || invoice.status === "PARTIALLY_PAID" || invoice.status === "PAID");
   const remaining = (invoice.total ?? 0) - (invoice.amountPaid ?? 0);
 
   return (
@@ -162,6 +165,7 @@ export function InvoiceActions({
           })()}
         />
       )}
+      {canAddPaidItem && <AddPaidItemDialog invoiceId={invoice.id} />}
       {canSendPdf && (
         <div className="flex items-center gap-1.5">
           <SendInvoicePdfDialog

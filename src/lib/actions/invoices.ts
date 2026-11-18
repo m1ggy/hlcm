@@ -22,6 +22,8 @@ import {
   subtotalOf,
   friendlyInvoiceNumberError,
   isManual,
+  paidItemSchema,
+  type PaidItemInput,
 } from "@/lib/invoice-shared";
 import { computeOutstandingAccountBalance } from "@/lib/actions/care-recipient-invoices";
 import {
@@ -353,7 +355,11 @@ const createManualInvoiceSchema = z.object({
   dueDate: z.string().optional(),
   notes: z.string().optional(),
   internalTag: z.string().optional(),
-  lineItems: z.array(lineItemSchema).min(1, "At least one line item is required"),
+  // May be empty when the invoice starts with only paid items (below).
+  lineItems: z.array(lineItemSchema),
+  // Items already paid when the invoice is made (a downpayment): each adds
+  // a line plus a payment for its full amount — see addPaidLineItem.
+  paidItems: z.array(paidItemSchema).optional(),
   // Case-work hours tracked on the Application's own Tasks (see
   // TaskTimeEntry, src/lib/actions/task-time-entries.ts), billed through
   // this invoice's applicationId — see UnbilledTaskTimeSection. Orthogonal
@@ -383,7 +389,10 @@ export async function createManualInvoice(input: z.infer<typeof createManualInvo
 async function createManualInvoiceImpl(input: z.infer<typeof createManualInvoiceSchema>) {
   const session = await requireRole(MANAGE_ROLES);
   const parsed = createManualInvoiceSchema.parse(input);
-  const total = subtotalOf(parsed.lineItems);
+  const paidItems = parsed.paidItems ?? [];
+  if (parsed.lineItems.length + paidItems.length === 0) throw new UserFacingError("Add at least one line item");
+  const paidTotal = paidItems.reduce((sum, p) => sum + p.amount, 0);
+  const total = subtotalOf(parsed.lineItems) + paidTotal;
 
   // Resolved server-side rather than left null — every manual invoice
   // should have a definite billing identity, even if the dialog somehow
@@ -405,9 +414,9 @@ async function createManualInvoiceImpl(input: z.infer<typeof createManualInvoice
     }
   }
 
-  const invoice = await db
+  const { invoice, paid } = await db
     .$transaction(async (tx) => {
-      const created = await tx.invoice.create({
+      let created = await tx.invoice.create({
         data: {
           clientId: parsed.clientId,
           applicationId: parsed.applicationId || undefined,
@@ -436,11 +445,39 @@ async function createManualInvoiceImpl(input: z.infer<typeof createManualInvoice
         });
       }
 
-      return created;
+      const paid = [];
+      for (const [index, item] of paidItems.entries()) {
+        paid.push(await createPaidItemRows(tx, created.id, item, parsed.lineItems.length + index, session.user.id));
+      }
+      if (paid.length) {
+        const latest = [...paid].sort((a, b) => b.payment.paidAt.getTime() - a.payment.paidAt.getTime())[0].payment;
+        created = await tx.invoice.update({
+          where: { id: created.id },
+          data: {
+            amountPaid: paidTotal,
+            status: paidTotal >= total ? "PAID" : "PARTIALLY_PAID",
+            paidAt: latest.paidAt,
+            paymentMethod: latest.paymentMethod,
+          },
+          include: invoiceInclude,
+        });
+      }
+
+      return { invoice: created, paid };
     })
     .catch(friendlyInvoiceNumberError);
 
   await recordAudit({ entityType: "Invoice", entityId: invoice.id, action: "create_manual", actorId: session.user.id });
+  for (const p of paid) {
+    await recordAudit({
+      entityType: "Invoice",
+      entityId: invoice.id,
+      action: "add_paid_item",
+      actorId: session.user.id,
+      newValue: `"${p.line.description}" ${formatMoney(p.payment.amount)}, paid ${p.payment.paymentMethod}`,
+    });
+    await storeReceiptPdf(invoice, p.payment, p.receipt, p.line.description);
+  }
 
   revalidatePath("/invoices");
   return invoice;
@@ -637,11 +674,26 @@ export async function addManualPayment(id: string, input: z.infer<typeof additio
     newValue: `${parsed.paymentMethod} (+${formatMoney(parsed.amount)})${lineItem ? ` for "${lineItem.description}"` : ""}`,
   });
 
-  // The payment itself is already committed above — a failure past this
-  // point (a PDF render bug, GCS being briefly unreachable) must not make
-  // this action throw and read as "payment recording failed" when it
-  // didn't. storageKey stays "" if this fails, which the invoice detail
-  // page reads as "receipt failed to generate" rather than a real one.
+  await storeReceiptPdf(invoice, payment, receipt, lineItem?.description ?? null);
+
+  revalidatePath("/invoices");
+  revalidatePath(`/invoices/${id}`);
+  return invoice;
+}
+
+type InvoiceWithInclude = Prisma.InvoiceGetPayload<{ include: typeof invoiceInclude }>;
+
+// The payment itself is already committed by the time this runs — a
+// failure here (a PDF render bug, GCS being briefly unreachable) must not
+// make the caller throw and read as "payment recording failed" when it
+// didn't. storageKey stays "" if this fails, which the invoice detail page
+// reads as "receipt failed to generate" rather than a real one.
+async function storeReceiptPdf(
+  invoice: InvoiceWithInclude,
+  payment: { id: string; amount: number; paidAt: Date; paymentMethod: string },
+  receipt: { id: string; seq: number },
+  lineItemDescription: string | null
+) {
   try {
     const profile = await getInvoiceProfile(invoice.invoiceProfileId);
     const logo = await getInvoiceLogo(profile);
@@ -649,7 +701,7 @@ export async function addManualPayment(id: string, input: z.infer<typeof additio
       {
         seq: receipt.seq,
         payment,
-        lineItemDescription: lineItem?.description ?? null,
+        lineItemDescription,
         invoice,
         client: invoice.client,
         logo,
@@ -662,10 +714,83 @@ export async function addManualPayment(id: string, input: z.infer<typeof additio
   } catch (error) {
     console.error(`Failed to generate/store receipt for payment ${payment.id}:`, error);
   }
+}
 
-  revalidatePath("/invoices");
-  revalidatePath(`/invoices/${id}`);
-  return invoice;
+// ---- Paid items (a downpayment, a retainer already received) -------------
+
+/**
+ * Writes one paid item inside a transaction: the line (at `sortOrder`) and a
+ * payment for its full amount tied to that line, with its receipt row (the
+ * PDF is stored after the transaction — storeReceiptPdf).
+ */
+async function createPaidItemRows(tx: TenantTx, invoiceId: string, item: z.infer<typeof paidItemSchema>, sortOrder: number, recordedById: string) {
+  const line = await tx.invoiceLineItem.create({
+    data: { invoiceId, description: item.description, quantity: 1, unitPrice: item.amount, sortOrder },
+  });
+  const payment = await tx.payment.create({
+    data: {
+      invoiceId,
+      lineItemId: line.id,
+      amount: item.amount,
+      paidAt: new Date(item.paidAt),
+      paymentMethod: item.paymentMethod,
+      recordedById,
+    },
+  });
+  const receipt = await tx.receipt.create({ data: { paymentId: payment.id, invoiceId, storageKey: "" } });
+  return { line, payment, receipt };
+}
+
+/**
+ * Adds a line that's already paid — a downpayment, a retainer received up
+ * front — to a running manual invoice: the line goes on the list and the
+ * total, and its payment (with a receipt) is recorded in the same step, so
+ * the balance owed doesn't change. Works on unpaid, partly paid and paid
+ * invoices; not voided ones.
+ */
+export async function addPaidLineItem(id: string, input: PaidItemInput) {
+  return toActionResult(async () => {
+    const session = await requireRole(MANAGE_ROLES);
+    const item = paidItemSchema.parse(input);
+    const before = await db.invoice.findUniqueOrThrow({ where: { id } });
+    if (!isManual(before)) throw new UserFacingError("This invoice isn't a manually-recorded one");
+    if (before.status !== "SENT" && before.status !== "PARTIALLY_PAID" && before.status !== "PAID") {
+      throw new UserFacingError("This invoice has been voided");
+    }
+
+    const total = (before.total ?? 0) + item.amount;
+    const amountPaid = (before.amountPaid ?? 0) + item.amount;
+    const { invoice, payment, receipt, line } = await db.$transaction(async (tx) => {
+      const last = await tx.invoiceLineItem.aggregate({ where: { invoiceId: id }, _max: { sortOrder: true } });
+      const rows = await createPaidItemRows(tx, id, item, (last._max.sortOrder ?? -1) + 1, session.user.id);
+      const invoice = await tx.invoice.update({
+        where: { id },
+        data: {
+          total,
+          amountPaid,
+          status: amountPaid >= total ? "PAID" : "PARTIALLY_PAID",
+          paidAt: new Date(item.paidAt),
+          paymentMethod: item.paymentMethod,
+          editedAfterSendAt: before.lastSentAt ? new Date() : undefined,
+        },
+        include: invoiceInclude,
+      });
+      return { invoice, ...rows };
+    });
+
+    await recordAudit({
+      entityType: "Invoice",
+      entityId: id,
+      action: "add_paid_item",
+      actorId: session.user.id,
+      newValue: `"${item.description}" ${formatMoney(item.amount)}, paid ${item.paymentMethod}`,
+    });
+    await storeReceiptPdf(invoice, payment, receipt, line.description);
+
+    revalidatePath("/invoices");
+    revalidatePath(`/invoices/${id}`);
+    return { id };
+  });
 }
 
 // Shared by updatePayment/deletePayment below — after either, the
