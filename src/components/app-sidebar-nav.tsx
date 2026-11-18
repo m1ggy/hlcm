@@ -146,7 +146,7 @@ export function AppSidebarNav({
     <>
       {groups.map((group, i) => (
         <SidebarGroup key={group.label ?? i} className="px-0 py-1">
-          {group.label && <SidebarGroupLabel className="font-semibold tracking-wide text-sidebar-label uppercase">{group.label}</SidebarGroupLabel>}
+          {group.label && <SidebarGroupLabel>{group.label}</SidebarGroupLabel>}
           <SidebarMenu>
             {group.links.map((link) => (
               <SidebarMenuItem key={link.href}>
