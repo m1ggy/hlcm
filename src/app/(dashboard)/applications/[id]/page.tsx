@@ -13,6 +13,7 @@ import { listLicenseTypes } from "@/lib/actions/license-types";
 import { listCaseTypes } from "@/lib/actions/case-types";
 import { listTasksForApplication } from "@/lib/actions/tasks";
 import { listFiles } from "@/lib/actions/files";
+import { listFoldersAction } from "@/lib/actions/folders";
 import { listCorrespondence } from "@/lib/correspondence";
 import { getMyWorkingTimezone } from "@/lib/actions/account";
 import { toCorrespondenceRow } from "@/lib/correspondence-view";
@@ -86,6 +87,7 @@ export default async function ApplicationDetailPage({
     auditLog,
     taskData,
     files,
+    folders,
     envelopes,
     accessGrants,
     applicableTemplates,
@@ -106,6 +108,7 @@ export default async function ApplicationDetailPage({
     getApplicationAuditLog(id),
     listTasksForApplication(id),
     listFiles(id),
+    listFoldersAction({ kind: "application", id }),
     listEnvelopesForApplication(id),
     listAccessGrants(id),
     listApplicableTemplates(id),
@@ -262,7 +265,7 @@ export default async function ApplicationDetailPage({
                     />
                   </TabsContent>
                   <TabsContent value="files">
-                    <FilePool applicationId={id} files={files} envelopes={envelopes} canEdit={canEdit} />
+                    <FilePool applicationId={id} files={files} folders={folders} envelopes={envelopes} canEdit={canEdit} />
                   </TabsContent>
                   <TabsContent value="documents" className="space-y-4">
                     {canEdit && <DocumentGenerator applicationId={id} templates={applicableTemplates} />}

@@ -7,4 +7,6 @@ export type FileRow = {
   uploadedBy: { name: string };
   versionCount: number;
   isSigned: boolean;
+  /** Client and application files only (docs/file-management-plan.md). */
+  folderId?: string | null;
 };

@@ -10,6 +10,7 @@ import { UserFacingError } from "@/lib/user-facing-error";
 import { toActionResult } from "@/lib/action-result";
 import { MAX_FILE_BYTES, fileTooLargeMessage } from "@/lib/file-limits";
 import { resolveClientServiceId } from "@/lib/client-services";
+import { cleanFileName, resolveFolderId } from "@/lib/file-folders";
 
 // The upload/delete/version actions below are exported as thin
 // toActionResult wrappers around a private *Impl: production Next.js redacts
@@ -137,12 +138,15 @@ async function uploadFileImpl(applicationId: string, formData: FormData) {
     throw new UserFacingError(fileTooLargeMessage());
   }
 
+  // Checked before the upload so a bad folder never leaves an orphaned object.
+  const folderId = await resolveFolderId(formData.get("folderId"), { kind: "application", id: applicationId });
   const { storageKey, sizeBytes, generation } = await saveUploadedFile(file);
   const mimeType = file.type || "application/octet-stream";
 
   const asset = await db.fileAsset.create({
     data: {
       applicationId,
+      folderId,
       fileName: file.name,
       storageKey,
       mimeType,
@@ -373,6 +377,7 @@ async function uploadClientFileImpl(clientId: string, formData: FormData) {
   // Checked before the upload so a bad service id never leaves an orphaned
   // object in storage.
   const clientServiceId = await resolveClientServiceId(formData.get("clientServiceId"), clientId);
+  const folderId = await resolveFolderId(formData.get("folderId"), { kind: "client", id: clientId });
   const { storageKey, sizeBytes, generation } = await saveUploadedFile(file);
   const mimeType = file.type || "application/octet-stream";
 
@@ -381,6 +386,7 @@ async function uploadClientFileImpl(clientId: string, formData: FormData) {
       data: {
         clientId,
         clientServiceId,
+        folderId,
         fileName: file.name,
         storageKey,
         mimeType,
@@ -593,4 +599,38 @@ async function revertFileVersionImpl(fileId: string, versionId: string) {
 
   revalidateForAsset(asset);
   return updated;
+}
+
+export async function renameFile(fileId: string, name: string) {
+  return toActionResult(() => renameFileImpl(fileId, name));
+}
+
+// Only the name people see changes; the stored object and every version's
+// own fileName stay as they were, so version history still shows what each
+// upload was called. Signed files can be renamed — their bytes don't change.
+async function renameFileImpl(fileId: string, rawName: string) {
+  const session = await requireSession();
+  const fileName = cleanFileName(rawName);
+  const asset = await db.fileAsset.findUniqueOrThrow({
+    where: { id: fileId },
+    select: {
+      fileName: true,
+      applicationId: true,
+      clientId: true,
+      task: { select: { applicationId: true, createdById: true, assignees: { select: { userId: true } } } },
+    },
+  });
+  await assertCanAccessFileAsset(session, asset, "edit");
+  if (asset.fileName === fileName) return;
+  await db.fileAsset
+    .update({ where: { id: fileId }, data: { fileName } })
+    .catch((e) => friendlyPrismaError(e, { notFoundMessage: "That file is already gone — someone else may have just deleted it" }));
+
+  const entity = asset.applicationId
+    ? { entityType: "Application", entityId: asset.applicationId }
+    : asset.clientId
+      ? { entityType: "Client", entityId: asset.clientId }
+      : { entityType: "FileAsset", entityId: fileId };
+  await recordAudit({ ...entity, action: "rename_file", actorId: session.user.id, field: "file", oldValue: asset.fileName, newValue: fileName });
+  revalidateForAsset(asset);
 }

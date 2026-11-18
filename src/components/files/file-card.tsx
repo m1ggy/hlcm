@@ -4,13 +4,36 @@ import { Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { cn } from "@/lib/utils";
 import { FileTypeIcon } from "./file-icon";
 import { formatBytes } from "./format-bytes";
 import type { FileRow } from "./types";
 
-export function FileCard({ file, onInfo }: { file: FileRow; onInfo: () => void }) {
+export function FileCard({
+  file,
+  onInfo,
+  selected,
+  onSelectedChange,
+  onDragStart,
+  folderLabel,
+}: {
+  file: FileRow;
+  onInfo: () => void;
+  /** With onSelectedChange: shows a checkbox (FileBrowser's multi-select). */
+  selected?: boolean;
+  onSelectedChange?: (selected: boolean) => void;
+  /** Makes the card draggable onto a folder. */
+  onDragStart?: (e: React.DragEvent) => void;
+  /** Search results: which folder the file is in. */
+  folderLabel?: string;
+}) {
   return (
-    <Card className="relative min-w-0 gap-2 p-3">
+    <Card
+      className={cn("relative min-w-0 gap-2 p-3", selected && "ring-2 ring-primary")}
+      draggable={onDragStart ? true : undefined}
+      onDragStart={onDragStart}
+    >
       <Button
         variant="ghost"
         size="icon-sm"
@@ -22,6 +45,14 @@ export function FileCard({ file, onInfo }: { file: FileRow; onInfo: () => void }
       </Button>
 
       <div className="flex min-w-0 items-start gap-2.5 pr-7">
+        {onSelectedChange && (
+          <Checkbox
+            checked={!!selected}
+            onCheckedChange={(checked) => onSelectedChange(checked === true)}
+            aria-label={`Select ${file.fileName}`}
+            className="mt-2.5"
+          />
+        )}
         <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
           <FileTypeIcon mimeType={file.mimeType} className="size-4" />
         </div>
@@ -33,6 +64,7 @@ export function FileCard({ file, onInfo }: { file: FileRow; onInfo: () => void }
             {formatBytes(file.sizeBytes)} · {new Date(file.createdAt).toLocaleDateString()}
           </p>
           <p className="truncate text-xs text-muted-foreground">{file.uploadedBy.name}</p>
+          {folderLabel && <p className="truncate text-xs text-muted-foreground">in {folderLabel}</p>}
         </div>
       </div>
 

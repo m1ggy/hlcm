@@ -127,14 +127,15 @@ export function useUpload() {
    * Sends each file as its own request, one after another — one big batch
    * would hold every file in server memory at once. A failed file doesn't
    * stop the rest; Cancel stops the one in flight and skips the remainder.
-   * `extra` adds fields to every file's form (e.g. clientServiceId).
+   * `extra` adds fields to every file's form (e.g. clientServiceId), or
+   * per file when it's a function (folder uploads: each file's folderId).
    */
   const uploadMany = useCallback(
     async <K extends UploadTarget>(
       target: K,
       id: string,
       files: File[],
-      extra?: Record<string, string>
+      extra?: Record<string, string> | ((file: File, index: number) => Record<string, string>)
     ): Promise<BatchOutcome<K>> => {
       cancelledRef.current = false;
       const outcome: BatchOutcome<K> = { uploaded: [], failed: [], cancelled: false };
@@ -144,7 +145,8 @@ export function useUpload() {
         if (cancelledRef.current) break;
         const form = new FormData();
         form.set("file", file);
-        for (const [key, value] of Object.entries(extra ?? {})) form.set(key, value);
+        const fields = typeof extra === "function" ? extra(file, i) : extra;
+        for (const [key, value] of Object.entries(fields ?? {})) form.set(key, value);
         const step = files.length > 1 ? `File ${i + 1} of ${files.length}` : undefined;
         const result = await send(target, id, form, { label: file.name, step, base, grandTotal });
         base += file.size;

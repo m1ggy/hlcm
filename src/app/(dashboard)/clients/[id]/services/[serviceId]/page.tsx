@@ -12,6 +12,7 @@ import {
 import { listAssignableUsers } from "@/lib/actions/applications";
 import { listServiceTasks } from "@/lib/actions/tasks";
 import { listClientFiles } from "@/lib/actions/files";
+import { listFoldersAction } from "@/lib/actions/folders";
 import { listClientNotes } from "@/lib/actions/notes";
 import { listInvoices } from "@/lib/actions/invoices";
 import { listServiceAdjustments } from "@/lib/actions/service-adjustments";
@@ -78,10 +79,11 @@ export default async function ClientServicePage({
   const requestedTab = TABS.find((t) => t === tab) ?? "overview";
   const initialTab = requestedTab === "accounting" && !canManageInvoices ? "overview" : requestedTab;
 
-  const [assignableUsers, tasks, files, notes, auditLog, invoices, profiles, serviceTypes, adjustments] = await Promise.all([
+  const [assignableUsers, tasks, files, folders, notes, auditLog, invoices, profiles, serviceTypes, adjustments] = await Promise.all([
     listAssignableUsers(),
     listServiceTasks(serviceId),
     listClientFiles(clientId, { clientServiceId: serviceId }),
+    listFoldersAction({ kind: "client", id: clientId }),
     listClientNotes(clientId, { clientServiceId: serviceId }),
     getClientServiceAuditLog(serviceId),
     canManageInvoices ? listInvoices({ clientServiceId: serviceId }) : Promise.resolve([]),
@@ -410,7 +412,7 @@ export default async function ClientServicePage({
         )}
 
         <TabsContent value="documents" className="pt-4">
-          <ClientFilePool clientId={clientId} clientServiceId={serviceId} files={files} canEdit />
+          <ClientFilePool clientId={clientId} clientServiceId={serviceId} files={files} folders={folders} canEdit />
         </TabsContent>
 
         <TabsContent value="notes" className="pt-4">

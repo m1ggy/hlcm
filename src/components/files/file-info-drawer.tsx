@@ -35,6 +35,7 @@ export function FileInfoDrawer({
   onDelete,
   onChanged,
   signAction,
+  extraActions,
 }: {
   file: FileRow | null;
   open: boolean;
@@ -44,6 +45,8 @@ export function FileInfoDrawer({
   onDelete: () => void;
   onChanged: () => void;
   signAction?: React.ReactNode;
+  /** More buttons in the action row (FileBrowser: Rename, Move). */
+  extraActions?: React.ReactNode;
 }) {
   const [versionsState, setVersionsState] = useState<{ fileId: string; rows: VersionRow[] } | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -134,6 +137,7 @@ export function FileInfoDrawer({
                 <Download className="size-3.5" /> Download
               </Button>
               {signAction}
+              {extraActions}
               {canEdit && (
                 <Button
                   variant="destructive"
