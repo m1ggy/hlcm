@@ -89,7 +89,9 @@ describe("which pages a workspace opens", () => {
       expect(isWorkspacePathAllowed(care, p), p).toBe(true);
     }
     // Licensing stays out either way.
-    for (const p of ["/clients", "/applications", "/invoices", "/payroll", "/time"]) expect(isWorkspacePathAllowed(care, p), p).toBe(false);
+    for (const p of ["/clients", "/applications", "/invoices", "/payroll"]) expect(isWorkspacePathAllowed(care, p), p).toBe(false);
+    // The shift clock is in every tasks-only workspace, for its own staff (docs/activity-monitoring-plan.md).
+    expect(isWorkspacePathAllowed(tasks, "/time")).toBe(true);
     expect(isWorkspacePathAllowed(full, "/clients")).toBe(true);
   });
 

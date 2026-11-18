@@ -76,7 +76,7 @@ export async function recordLoginEvent(params: {
   userId: string;
   device: LoginDevice;
   success: boolean;
-  method: "password" | "password+mfa" | "support" | "switch";
+  method: "password" | "password+mfa" | "support" | "switch" | "desktop_app" | "desktop_app+mfa";
   reason?: string;
 }) {
   try {

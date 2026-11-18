@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'" />
+    <title>Carenela: Sign in</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <h1>Carenela</h1>
+    <p class="sub">Sign in to your company's workspace.</p>
+
+    <form id="password-step">
+      <label for="workspace">Workspace</label>
+      <input id="workspace" autocomplete="organization" autocapitalize="off" spellcheck="false" required />
+      <p class="sub" id="workspace-hint"></p>
+      <label for="email">Email</label>
+      <input id="email" type="email" autocomplete="username" required />
+      <label for="password">Password</label>
+      <input id="password" type="password" autocomplete="current-password" required />
+      <div class="row"><button class="primary" type="submit">Sign in</button></div>
+    </form>
+
+    <form id="mfa-step" hidden>
+      <label for="otp">Code from your authenticator app</label>
+      <input id="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="10" required />
+      <div class="row"><button class="primary" type="submit">Verify</button></div>
+    </form>
+
+    <div class="error" id="error"></div>
+    <script src="login.js"></script>
+  </body>
+</html>

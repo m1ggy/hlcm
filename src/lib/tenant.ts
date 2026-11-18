@@ -25,6 +25,11 @@ export type HostOrg = {
   workDailyText: boolean;
   /** Clients and caregivers in a tasks-only workspace (docs/client-care-plan.md). */
   careEnabled: boolean;
+  /** Activity monitoring (docs/activity-monitoring-plan.md): add-on granted, switched on, policy. */
+  activityMonitoringAddon: boolean;
+  activityMonitoringEnabled: boolean;
+  monitoringPolicy: string | null;
+  monitoringPolicyVersion: number;
 };
 
 const HOST_ORG_SELECT = {
@@ -42,6 +47,10 @@ const HOST_ORG_SELECT = {
   workWeeklyEmail: true,
   workDailyText: true,
   careEnabled: true,
+  activityMonitoringAddon: true,
+  activityMonitoringEnabled: true,
+  monitoringPolicy: true,
+  monitoringPolicyVersion: true,
 } as const;
 
 // slug → org, cached briefly: this runs on every tenant-scoped query's first
@@ -102,6 +111,23 @@ export async function updateOrganizationSettings(orgId: string, data: { name?: s
   });
   forgetOrg(org.slug);
   return org;
+}
+
+/**
+ * Activity monitoring (docs/activity-monitoring-plan.md): the owner's on/off
+ * switch and the workspace's own notice. A changed notice bumps its version,
+ * so everyone accepts it again. Callers check who may do it.
+ */
+export async function updateMonitoringSettings(orgId: string, data: { activityMonitoringEnabled: boolean; monitoringPolicy: string | null }) {
+  const before = await prisma.organization.findUniqueOrThrow({ where: { id: orgId }, select: { monitoringPolicy: true } });
+  const policyChanged = (before.monitoringPolicy ?? null) !== data.monitoringPolicy;
+  const org = await prisma.organization.update({
+    where: { id: orgId },
+    data: { ...data, ...(policyChanged && { monitoringPolicyVersion: { increment: 1 } }) },
+    select: { slug: true },
+  });
+  forgetOrg(org.slug);
+  return { policyChanged };
 }
 
 /** The client weekly summary's settings (docs/workspace-tasks-plan.md, Phase 3); callers check who may change them. */

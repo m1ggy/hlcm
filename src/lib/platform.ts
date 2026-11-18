@@ -49,6 +49,9 @@ export type PlatformOrganization = {
   managedByName: string | null;
   /** A tasks-only workspace with clients and caregivers (docs/client-care-plan.md). */
   careEnabled: boolean;
+  /** Activity monitoring add-on granted (docs/activity-monitoring-plan.md); the owner switches it on. */
+  activityMonitoringAddon: boolean;
+  activityMonitoringEnabled: boolean;
 };
 
 type OrgGroup<T> = { organizationId: string } & T;
@@ -75,6 +78,8 @@ export async function listOrganizations(onlyOrgId?: string): Promise<PlatformOrg
       kind: true,
       managedByOrgId: true,
       careEnabled: true,
+      activityMonitoringAddon: true,
+      activityMonitoringEnabled: true,
       managedBy: { select: { name: true } },
       // A managing company's assigned staff (linked accounts) aren't the workspace's own users.
       _count: { select: { users: { where: { isSupport: false, assignedFromUserId: null, active: true } } } },

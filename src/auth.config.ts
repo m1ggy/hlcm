@@ -48,6 +48,9 @@ export function isPublicPath(pathname: string) {
     // this, the proxy 307-redirects every webhook POST to /login before
     // it ever reaches the route handler.
     pathname.startsWith("/api/webhooks") ||
+    // Desktop activity tracker: no cookie session, every handler checks
+    // its own Bearer device token (authenticateAgent in src/lib/agent-auth.ts).
+    pathname.startsWith("/api/agent/") ||
     // Caddy's certificate gate — asked with no session (src/app/api/tls-check).
     pathname.startsWith("/api/tls-check") ||
     // Which build the server is running, asked by open tabs (src/components/shared/version-watcher.tsx).

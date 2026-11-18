@@ -1,0 +1,123 @@
+name: Desktop tracker release
+
+# Builds the Carenela desktop app desktop app (desktop/) for Windows and Mac and attaches
+# the installers to a GitHub Release.
+#
+# Start it by pushing a tag that matches desktop/package.json's version:
+#   git tag agent-v0.2.1 && git push origin agent-v0.2.1
+# or run it by hand from the Actions tab (builds only, no Release, unless a
+# tag is given).
+#
+# The production address baked into the app comes from the repository
+# Variables), e.g. https://app.example.com. Without it the sign-in screen
+# asks for the address.
+#
+# A Release does NOT reach staff by itself: the apps update from the bucket's
+# agent-releases/ folder. See desktop/RELEASING.md for the upload step.
+#
+# Builds are unsigned by decision (no certificates).
+
+on:
+  push:
+    tags: ["agent-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-release-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: desktop
+    shell: bash
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: windows
+            runner: windows-latest
+            script: dist:win
+          - os: mac
+            runner: macos-latest
+            script: dist:mac
+    runs-on: ${{ matrix.runner }}
+    env:
+      # Unsigned builds: stop electron-builder looking for certificates.
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Check tag matches package.json version
+        if: startsWith(github.ref, 'refs/tags/agent-v')
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "agent-v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match desktop/package.json version $version. Bump the version or fix the tag."
+            exit 1
+          fi
+
+      - run: npm ci
+
+      - run: npm test
+
+      - run: npm run ${{ matrix.script }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tracker-${{ matrix.os }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            desktop/release/Carenela-*
+            desktop/release/latest*.yml
+
+  release:
+    name: GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/agent-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
+
+      - name: Create release
+        working-directory: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ls -la
+          version="${GITHUB_REF_NAME#agent-v}"
+          cat > notes.md <<EOF
+          Carenela desktop app $version (unsigned build).
+
+          Files:
+          - Windows: \`Carenela-Setup-$version.exe\`
+          - Mac, Apple chip: \`Carenela-$version-arm64.dmg\`
+          - Mac, Intel: \`Carenela-$version-x64.dmg\`
+
+          This release is not live yet. Staff get it once every file here is
+          uploaded to the bucket's \`agent-releases/\` folder (installers first,
+          \`latest*.yml\` last). See desktop/RELEASING.md.
+          EOF
+          gh release create "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Carenela desktop app $version" \
+            --notes-file notes.md \
+            Carenela-* latest*.yml

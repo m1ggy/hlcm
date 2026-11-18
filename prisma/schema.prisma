@@ -98,6 +98,17 @@ model Organization {
   // caregiver logins, schedules, visits). Set by a platform admin. FULL
   // workspaces always have them, so it's ignored there.
   careEnabled           Boolean @default(false)
+  // Activity monitoring (docs/activity-monitoring-plan.md): a paid add-on.
+  // The platform console grants it (activityMonitoringAddon); the workspace
+  // owner then switches it on (activityMonitoringEnabled). Off = no desktop
+  // sign-in, no tracking, no activity pages.
+  activityMonitoringAddon   Boolean @default(false)
+  activityMonitoringEnabled Boolean @default(false)
+  // The workspace's own monitoring policy shown in the desktop app; null =
+  // the default text in src/lib/monitoring-policy.ts.
+  monitoringPolicy          String?
+  // Bumped whenever monitoringPolicy changes, so everyone accepts it again.
+  monitoringPolicyVersion   Int     @default(1)
 
   orgCounters              OrgCounter[]
   picklistOptions          PicklistOption[]
@@ -160,6 +171,11 @@ model Organization {
   formSubmissions          FormSubmission[]
   formSubmissionFiles      FormSubmissionFile[]
   loginEvents              LoginEvent[]
+  agentDevices             AgentDevice[]
+  activityIntervals        ActivityInterval[]
+  screenshots              Screenshot[]
+  monitoringConsents       MonitoringConsent[]
+  productivityRules        ProductivityRule[]
   payPeriods               PayPeriod[]
   payrollPayments          PayrollPayment[]
   payrollAttachments       PayrollAttachment[]
@@ -462,6 +478,10 @@ model User {
   // another org's row) so the workspace's audit log names the real person.
   isSupport                 Boolean      @default(false)
   platformAdminId           String?
+  // Set by OWNER/DEVELOPER on Admin > Activity, per person, once they have
+  // the desktop tracker installed: clock-in and end-break then only work
+  // from the app (see src/lib/time-clock.ts#assertClockOriginAllowed).
+  requireDesktopClock       Boolean  @default(false)
   // IANA zone id (e.g. "America/Chicago") — null means "use the browser's
   // own timezone" (the pre-existing behavior). Set from Account settings;
   // controls both how this user's own times are displayed and how a typed
@@ -591,6 +611,13 @@ model User {
   payrollPaymentsMarked         PayrollPayment[]          @relation("PayrollPaymentMarkedBy")
   payrollProblemsResolved       PayrollPayment[]          @relation("PayrollPaymentProblemResolvedBy")
   payrollAttachmentsUploaded    PayrollAttachment[]       @relation("PayrollAttachmentUploadedBy")
+  agentDevices                  AgentDevice[]
+  activityIntervals             ActivityInterval[]
+  screenshots                   Screenshot[]              @relation("ScreenshotUser")
+  screenshotsDeleted            Screenshot[]              @relation("ScreenshotDeletedBy")
+  monitoringConsents            MonitoringConsent[]
+  productivityRulesCreated      ProductivityRule[]        @relation("ProductivityRuleCreatedBy")
+  productivityRulesForUser      ProductivityRule[]        @relation("ProductivityRuleUser")
 
   @@unique([organizationId, email])
   @@unique([organizationId, platformAdminId])
@@ -744,6 +771,22 @@ model TimeEntry {
 
   visitChecks VisitInstructionCheck[]
   incidents   CareIncident[]
+
+  // Where this session came from. AGENT = opened by the desktop tracker
+  // (see docs/activity-monitoring-plan.md), the only way tracked roles can
+  // clock in once Phase 4 enforcement is on. MANUAL = typed in by an admin.
+  source          TimeEntrySource @default(WEB)
+  agentDevice     AgentDevice?    @relation(fields: [agentDeviceId], references: [id], onDelete: SetNull)
+  agentDeviceId   String?
+  // Last heartbeat from the desktop app while this session was open. The
+  // server closes a silent AGENT session at this moment (see
+  // src/lib/agent-heartbeat.ts) and sets autoClosed, so a crashed or
+  // offline app can't leave the clock running.
+  lastHeartbeatAt DateTime?
+  autoClosed      Boolean         @default(false)
+
+  activityIntervals ActivityInterval[]
+  screenshots       Screenshot[]
 
   @@index([userId, clockIn])
   @@index([visitStartId])
@@ -3380,4 +3423,164 @@ model SmsLog {
   @@index([organizationId])
   @@index([entityId])
   @@map("sms_logs")
+}
+
+// ---------------------------------------------------------------------------
+// Activity monitoring (desktop tracker) — see docs/activity-monitoring-plan.md.
+// Tracked roles: everyone except CAREGIVER and CLIENT (isTrackedRole in
+// src/lib/rbac.ts), never linked accounts. Viewing anyone else's data is
+// the workspace's OWNER or a DEVELOPER only. Every model is tenant-scoped.
+// ---------------------------------------------------------------------------
+
+enum TimeEntrySource {
+  WEB
+  AGENT
+  MANUAL
+}
+
+// One installed copy of the desktop app, signed in as one user. The app
+// holds a long-lived refresh token (only its SHA-256 lives here) and trades
+// it for short access tokens (see src/lib/agent-auth.ts). Revoking a device
+// kills its refresh token; its current access token dies within 15 min.
+model AgentDevice {
+  id               String    @id @default(cuid())
+  organizationId String       @default(dbgenerated("current_org_id()"))
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  user             User      @relation(fields: [userId], references: [id])
+  userId           String
+  name             String
+  os               String
+  appVersion       String
+  refreshTokenHash String
+  refreshExpiresAt DateTime
+  lastSeenAt       DateTime?
+  lastIp           String?
+  revokedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  timeEntries       TimeEntry[]
+  activityIntervals ActivityInterval[]
+  screenshots       Screenshot[]
+  consents          MonitoringConsent[]
+
+  @@index([userId])
+  @@map("agent_devices")
+}
+
+// One tracked slice of a TimeEntry (normally 30 min, shorter when cut by a
+// clock-out or break). No keyboard or mouse data at all (scope v2). `apps`
+// is raw per-app/title usage; productivity scores are computed from it on
+// read, so editing a ProductivityRule re-scores history.
+model ActivityInterval {
+  id           String      @id @default(cuid())
+  organizationId String       @default(dbgenerated("current_org_id()"))
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  user         User        @relation(fields: [userId], references: [id])
+  userId       String
+  timeEntry    TimeEntry   @relation(fields: [timeEntryId], references: [id], onDelete: Cascade)
+  timeEntryId  String
+  device       AgentDevice @relation(fields: [deviceId], references: [id])
+  deviceId     String
+  // App-generated id, so an offline-queued upload retried twice lands once.
+  clientId     String
+  start        DateTime
+  end          DateTime
+  // [{ app, exe?, title, domain?, seconds }]
+  apps         Json
+  createdAt    DateTime    @default(now())
+
+  screenshots Screenshot[]
+
+  @@unique([deviceId, clientId])
+  @@index([userId, start])
+  @@index([timeEntryId])
+  @@map("activity_intervals")
+}
+
+// Holds whatever was on screen, so treat as PHI: private bucket, signed
+// URLs only, every view audited, deleted after 90 days. Users can never
+// delete their own; deletedAt/deletedBy is OWNER/DEVELOPER only.
+model Screenshot {
+  id          String            @id @default(cuid())
+  organizationId String       @default(dbgenerated("current_org_id()"))
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  user        User              @relation("ScreenshotUser", fields: [userId], references: [id])
+  userId      String
+  timeEntry   TimeEntry         @relation(fields: [timeEntryId], references: [id], onDelete: Cascade)
+  timeEntryId String
+  interval    ActivityInterval? @relation(fields: [intervalId], references: [id], onDelete: SetNull)
+  intervalId  String?
+  device      AgentDevice       @relation(fields: [deviceId], references: [id])
+  deviceId    String
+  clientId    String
+  storageKey  String
+  thumbKey    String
+  takenAt     DateTime
+  monitors    Int               @default(1)
+  deletedAt   DateTime?
+  deletedBy   User?             @relation("ScreenshotDeletedBy", fields: [deletedById], references: [id])
+  deletedById String?
+  createdAt   DateTime          @default(now())
+
+  @@unique([deviceId, clientId])
+  @@index([userId, takenAt])
+  @@index([timeEntryId])
+  @@map("screenshots")
+}
+
+// A user accepting one version of the monitoring policy
+// (src/lib/monitoring-policy.ts). The app can't clock in until the current
+// version is accepted.
+model MonitoringConsent {
+  id            String       @id @default(cuid())
+  organizationId String       @default(dbgenerated("current_org_id()"))
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  user          User         @relation(fields: [userId], references: [id])
+  userId        String
+  policyVersion String
+  acceptedAt    DateTime     @default(now())
+  ipAddress     String?
+  device        AgentDevice? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  deviceId      String?
+
+  @@unique([userId, policyVersion])
+  @@map("monitoring_consents")
+}
+
+enum ProductivityCategory {
+  PRODUCTIVE
+  NEUTRAL
+  UNPRODUCTIVE
+}
+
+enum ProductivityMatch {
+  APP
+  DOMAIN
+  TITLE_CONTAINS
+}
+
+// OWNER/DEVELOPER-managed scoring rule for an app, site or window title.
+// Most specific wins: userId > roles > global, then priority, then match
+// type (DOMAIN > TITLE_CONTAINS > APP). Category only (scope v2).
+model ProductivityRule {
+  id           String               @id @default(cuid())
+  organizationId String       @default(dbgenerated("current_org_id()"))
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  matchType    ProductivityMatch
+  pattern      String
+  category     ProductivityCategory
+  // Empty = every tracked role.
+  roles        Role[]
+  user         User?                @relation("ProductivityRuleUser", fields: [userId], references: [id], onDelete: Cascade)
+  userId       String?
+  priority     Int                  @default(0)
+  enabled      Boolean              @default(true)
+  createdBy    User                 @relation("ProductivityRuleCreatedBy", fields: [createdById], references: [id])
+  createdById  String
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  @@index([organizationId, enabled])
+  @@map("productivity_rules")
 }

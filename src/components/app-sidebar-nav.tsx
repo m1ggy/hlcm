@@ -97,7 +97,11 @@ export function AppSidebarNav({
       // Our staff guide (docs/staff-guide.md) — for our team here, never the client's people.
       ...(isWorkTeam ? [{ href: "/staff-guide", label: "Staff guide", icon: BookMarked, tour: "nav-staff-guide" }] : []),
     ];
-    const general: NavLink[] = [{ href: "/account", label: "Settings", icon: Settings, tour: "nav-settings" }];
+    const general: NavLink[] = [];
+    // The client company's own staff clock in here (docs/activity-monitoring-plan.md);
+    // the managing company's team clocks in at home.
+    if (!isWorkTeam) general.push({ href: "/time", label: "Time", icon: Clock, tour: "nav-time" });
+    general.push({ href: "/account", label: "Settings", icon: Settings, tour: "nav-settings" });
     if (isAdmin) general.push({ href: "/admin/users", label: "Users", icon: UserCog, tour: "nav-admin" });
     const care: NavLink[] = [
       { href: "/care-recipients", label: "Clients", icon: Users, tour: "nav-care-clients" },

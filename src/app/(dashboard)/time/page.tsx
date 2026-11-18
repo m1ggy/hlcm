@@ -1,5 +1,7 @@
 import { auth } from "@/auth";
+import Link from "next/link";
 import { blockCaregiverRoute, isAdmin, isManagement } from "@/lib/rbac";
+import { isTrackedHere } from "@/lib/activity-monitoring";
 import { listTaskAssignableUsers } from "@/lib/actions/applications";
 import { getAccount } from "@/lib/actions/account";
 import { listCareRecipients } from "@/lib/actions/care-recipients";
@@ -8,6 +10,7 @@ import { TimesheetReport } from "@/components/time-clock/timesheet-report";
 import { MyPayCard } from "@/components/payroll/my-pay-card";
 import { PageInfoButton } from "@/components/shared/page-info-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 
 export default async function TimePage() {
   // Caregivers have their own hours page without the team timesheet.
@@ -16,6 +19,7 @@ export default async function TimePage() {
   const role = session?.user?.role;
   const canSeeAllUsers = isManagement(role);
   const canPay = isAdmin(role);
+  const tracked = session?.user ? await isTrackedHere(session.user.id) : false;
 
   const [users, account, recipients] = await Promise.all([
     // Includes caregivers: they clock visits, so admins need to filter to
@@ -28,6 +32,7 @@ export default async function TimePage() {
 
   return (
     <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-2">
       <div className="flex items-center gap-1.5">
         <h1 className="text-2xl font-semibold">Time</h1>
         <PageInfoButton title="Time">
@@ -46,6 +51,17 @@ export default async function TimePage() {
             </p>
           )}
         </PageInfoButton>
+      </div>
+        {tracked && (
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" nativeButton={false} render={<Link href="/time/activity" />}>
+              My activity
+            </Button>
+            <Button variant="outline" size="sm" nativeButton={false} render={<Link href="/time/app" />}>
+              Desktop app
+            </Button>
+          </div>
+        )}
       </div>
 
       <Card data-tour="my-time">

@@ -187,11 +187,18 @@ function SetupDialog({ org, organizations }: { org: Org; organizations: Org[] })
   const [kind, setKind] = useState<Kind>(org.kind);
   const [managedBy, setManagedBy] = useState(org.managedByOrgId ?? NO_MANAGER);
   const [care, setCare] = useState(org.careEnabled);
+  const [monitoring, setMonitoring] = useState(org.activityMonitoringAddon);
   const { isPending, run } = useAction();
 
   function save() {
     run(
-      () => setWorkspaceSetupFromPlatform(org.id, { kind, managedByOrgId: managedBy === NO_MANAGER ? null : managedBy, careEnabled: care }),
+      () =>
+        setWorkspaceSetupFromPlatform(org.id, {
+          kind,
+          managedByOrgId: managedBy === NO_MANAGER ? null : managedBy,
+          careEnabled: care,
+          activityMonitoringAddon: monitoring,
+        }),
       () => {
         toast.success(`${org.name} updated`);
         setOpen(false);
@@ -216,6 +223,17 @@ function SetupDialog({ org, organizations }: { org: Org; organizations: Org[] })
             care={care}
             onCare={setCare}
           />
+          {/* docs/activity-monitoring-plan.md: a paid add-on; the workspace owner then switches it on. */}
+          <label className="flex items-start gap-2 rounded-lg border p-3 text-sm">
+            <Checkbox className="mt-0.5" checked={monitoring} onCheckedChange={(c) => setMonitoring(c === true)} />
+            <span>
+              <span className="font-medium">Activity monitoring add-on</span>
+              <span className="block text-xs text-muted-foreground">
+                The desktop app: screenshots and apps used while staff are clocked in. The workspace owner still switches it on
+                {org.activityMonitoringEnabled ? " (it's on now)" : ""}.
+              </span>
+            </span>
+          </label>
           <Button className="w-full" onClick={save} loading={isPending}>
             Save
           </Button>

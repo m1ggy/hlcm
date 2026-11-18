@@ -106,3 +106,32 @@ export async function deleteStoredPrefix(prefix: string): Promise<void> {
   if (!/^org\/[^/]+\/$/.test(prefix)) throw new Error(`Refusing to delete files under "${prefix}"`);
   await getBucket().deleteFiles({ prefix, versions: true, force: true });
 }
+
+// The bucket has Object Versioning on (for document version history), so a
+// plain delete only makes the object noncurrent and its bytes stay. For data
+// that must really go (desktop-tracker screenshots past retention or deleted
+// by an owner), remove every generation.
+export async function deleteStoredFileAllVersions(storageKey: string): Promise<void> {
+  const bucketRef = getBucket();
+  const [files] = await bucketRef.getFiles({ prefix: storageKey, versions: true });
+  await Promise.all(
+    files
+      .filter((f) => f.name === storageKey)
+      .map((f) => bucketRef.file(f.name, { generation: f.metadata.generation! }).delete({ ignoreNotFound: true }))
+  );
+}
+
+// Saves under a caller-chosen object name instead of a random one — the
+// desktop tracker's screenshots live under `org/{orgId}/screenshots/...`
+// so the bucket's lifecycle rule can expire that prefix after 90 days
+// (see docs/activity-monitoring-plan.md) without touching other files.
+export async function saveBufferAt(storageKey: string, buffer: Buffer, contentType: string): Promise<void> {
+  await getBucket().file(storageKey).save(buffer, { resumable: false, contentType });
+}
+
+// Short-lived read link for a private object — screenshots are never
+// streamed through the app or made public.
+export async function signedReadUrl(storageKey: string, expiresInMs = 5 * 60 * 1000): Promise<string> {
+  const [url] = await getBucket().file(storageKey).getSignedUrl({ action: "read", expires: Date.now() + expiresInMs });
+  return url;
+}

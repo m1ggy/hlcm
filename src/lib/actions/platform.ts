@@ -96,7 +96,7 @@ export async function listStaffForPlatform(managingOrgId: string): Promise<Actio
 /** A workspace's type (full CRM / tasks only), managing company, and (tasks only) clients and caregivers. */
 export async function setWorkspaceSetupFromPlatform(
   orgId: string,
-  input: { kind: "FULL" | "TASKS"; managedByOrgId: string | null; careEnabled?: boolean }
+  input: { kind: "FULL" | "TASKS"; managedByOrgId: string | null; careEnabled?: boolean; activityMonitoringAddon?: boolean }
 ): Promise<ActionResult<void>> {
   return toActionResult(async () => {
     const session = await requirePlatformAdmin();
