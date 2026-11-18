@@ -39,6 +39,7 @@ import { GET as me } from "@/app/api/agent/me/route";
 import { clockIn } from "@/lib/actions/time-entries";
 import { setRequireDesktopClock } from "@/lib/actions/activity";
 import { getTeamActivity } from "@/lib/activity-data";
+import { saveMonitoringSettings } from "@/lib/actions/monitoring-settings";
 
 // Activity monitoring scope v2 (docs/activity-monitoring-plan.md): per
 // workspace, add-on + switch, never linked accounts, tokens bound to their
@@ -219,5 +220,39 @@ describe("who the owner sees", () => {
   it("can't set app-only clock-in for a linked account", async () => {
     sessionUser.current = { id: ids.clientOwner, role: "OWNER" };
     await expect(runAsTenant(CLIENT, () => setRequireDesktopClock(ids.linked, true))).rejects.toThrow(/isn't tracked/);
+  });
+});
+
+describe("the owner's switch", () => {
+  it("a changed notice has to be accepted again", async () => {
+    const token = (await signIn(HOME, "sam@am-home.test")).body.accessToken!;
+    const read = async () =>
+      (await (await runAsTenant(HOME, () => me(new Request("http://test.local/api/agent/me", { headers: { authorization: `Bearer ${token}` } })))).json()).policy;
+    expect((await read()).accepted).toBe(true);
+
+    sessionUser.current = { id: ids.owner, role: "OWNER" };
+    const result = await runAsTenant(HOME, () => saveMonitoringSettings({ enabled: true, policy: "Our own notice." }));
+    expect(result.ok).toBe(true);
+    const policy = await read();
+    expect(policy).toMatchObject({ text: "Our own notice.", accepted: false });
+  });
+
+  it("switching it off stops desktop sign-in and lets everyone clock in on the web again", async () => {
+    sessionUser.current = { id: ids.owner, role: "OWNER" };
+    await runAsTenant(HOME, () => saveMonitoringSettings({ enabled: false, policy: "Our own notice." }));
+    const { status } = await signIn(HOME, "sam@am-home.test");
+    expect(status).toBe(403);
+
+    sessionUser.current = { id: ids.staff, role: "STAFF" };
+    const entry = await runAsTenant(HOME, () => clockIn());
+    expect(entry.source).toBe("WEB");
+  });
+
+  it("can't be switched on without the add-on", async () => {
+    const otto = await tenantDb(OFF.id).user.findFirstOrThrow({ where: { email: "otto@am-off.test" } });
+    await tenantDb(OFF.id).user.update({ where: { id: otto.id }, data: { role: "OWNER" } });
+    sessionUser.current = { id: otto.id, role: "OWNER" };
+    const result = await runAsTenant(OFF, () => saveMonitoringSettings({ enabled: true, policy: "" }));
+    expect(result).toMatchObject({ ok: false });
   });
 });

@@ -2,7 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ChevronLeft, Download } from "lucide-react";
 import { auth } from "@/auth";
-import { blockCaregiverRoute, isTrackedRole } from "@/lib/rbac";
+import { blockCaregiverRoute } from "@/lib/rbac";
+import { isTrackedHere } from "@/lib/activity-monitoring";
 import { getAppUrl } from "@/lib/email";
 import { latestDownloads } from "@/lib/agent-releases";
 import { Button } from "@/components/ui/button";
@@ -12,8 +13,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 export default async function DesktopAppPage() {
   await blockCaregiverRoute("/hours");
   const session = await auth();
-  if (!session?.user || !isTrackedRole(session.user.role)) redirect("/time");
-  const address = getAppUrl();
+  if (!session?.user || !(await isTrackedHere(session.user.id))) redirect("/time");
+  const address = await getAppUrl();
   // Newest installers from the update manifests in agent-releases/ (see desktop/RELEASING.md).
   const latest = await latestDownloads();
   const downloads = [

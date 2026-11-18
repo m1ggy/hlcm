@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { auth } from "@/auth";
 import { blockCaregiverRoute, isSuperuser } from "@/lib/rbac";
+import { currentMonitoring } from "@/lib/activity-monitoring";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const ADMIN_LINKS = [
@@ -23,7 +24,7 @@ const ACTIVITY_LINK = { href: "/admin/activity", label: "Activity", description:
 export default async function AdminPage() {
   await blockCaregiverRoute();
   const session = await auth();
-  const links = isSuperuser(session?.user?.role) ? [ACTIVITY_LINK, ...ADMIN_LINKS] : ADMIN_LINKS;
+  const links = isSuperuser(session?.user?.role) && (await currentMonitoring()).on ? [ACTIVITY_LINK, ...ADMIN_LINKS] : ADMIN_LINKS;
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold">Admin</h1>

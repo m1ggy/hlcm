@@ -113,6 +113,23 @@ export async function updateOrganizationSettings(orgId: string, data: { name?: s
   return org;
 }
 
+/**
+ * Activity monitoring (docs/activity-monitoring-plan.md): the owner's on/off
+ * switch and the workspace's own notice. A changed notice bumps its version,
+ * so everyone accepts it again. Callers check who may do it.
+ */
+export async function updateMonitoringSettings(orgId: string, data: { activityMonitoringEnabled: boolean; monitoringPolicy: string | null }) {
+  const before = await prisma.organization.findUniqueOrThrow({ where: { id: orgId }, select: { monitoringPolicy: true } });
+  const policyChanged = (before.monitoringPolicy ?? null) !== data.monitoringPolicy;
+  const org = await prisma.organization.update({
+    where: { id: orgId },
+    data: { ...data, ...(policyChanged && { monitoringPolicyVersion: { increment: 1 } }) },
+    select: { slug: true },
+  });
+  forgetOrg(org.slug);
+  return { policyChanged };
+}
+
 /** The client weekly summary's settings (docs/workspace-tasks-plan.md, Phase 3); callers check who may change them. */
 export async function updateWorkSummarySettings(
   orgId: string,

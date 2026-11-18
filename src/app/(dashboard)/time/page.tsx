@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import Link from "next/link";
-import { blockCaregiverRoute, isAdmin, isManagement, isTrackedRole } from "@/lib/rbac";
+import { blockCaregiverRoute, isAdmin, isManagement } from "@/lib/rbac";
+import { isTrackedHere } from "@/lib/activity-monitoring";
 import { listTaskAssignableUsers } from "@/lib/actions/applications";
 import { getAccount } from "@/lib/actions/account";
 import { listCareRecipients } from "@/lib/actions/care-recipients";
@@ -18,7 +19,7 @@ export default async function TimePage() {
   const role = session?.user?.role;
   const canSeeAllUsers = isManagement(role);
   const canPay = isAdmin(role);
-  const tracked = isTrackedRole(role);
+  const tracked = session?.user ? await isTrackedHere(session.user.id) : false;
 
   const [users, account, recipients] = await Promise.all([
     // Includes caregivers: they clock visits, so admins need to filter to

@@ -1,4 +1,4 @@
-import { currentOrganization } from "@/lib/db";
+import { currentOrganization, db } from "@/lib/db";
 import { isTrackedRole, isSuperuser } from "@/lib/rbac";
 import { monitoringPolicyFor } from "@/lib/monitoring-policy";
 import type { HostOrg } from "@/lib/tenant";
@@ -27,6 +27,13 @@ export function isTrackablePerson(user: TrackablePerson): boolean {
 /** OWNER or DEVELOPER: may see everyone's activity in the workspace. */
 export function canViewTeamActivity(role: string | null | undefined): boolean {
   return isSuperuser(role);
+}
+
+/** Monitoring is on here and this person is tracked: the self-view, download page and app-only clock-in apply. */
+export async function isTrackedHere(userId: string): Promise<boolean> {
+  if (!monitoringOn(await currentOrganization())) return false;
+  const user = await db.user.findUnique({ where: { id: userId }, select: { role: true, active: true, isSupport: true, assignedFromUserId: true } });
+  return !!user && isTrackablePerson(user);
 }
 
 /** The current workspace's monitoring state, for pages and the desktop app. */

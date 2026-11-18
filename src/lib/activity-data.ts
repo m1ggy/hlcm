@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
 import { ForbiddenError, requireSession } from "@/lib/rbac";
-import { canViewTeamActivity, isTrackablePerson } from "@/lib/activity-monitoring";
+import { canViewTeamActivity, currentMonitoring, isTrackablePerson } from "@/lib/activity-monitoring";
 import { dayRangeToInstants, effectiveTimezone, toDateInputValue } from "@/lib/time-entries";
 import {
   EMPTY_SCORE,
@@ -28,6 +28,7 @@ import type { Prisma, Role } from "@/generated/prisma/client";
 export async function requireMonitoringViewer() {
   const session = await requireSession();
   if (!canViewTeamActivity(session.user.role)) throw new ForbiddenError();
+  if (!(await currentMonitoring()).on) throw new ForbiddenError();
   return session;
 }
 
@@ -35,6 +36,7 @@ export async function requireMonitoringViewer() {
 async function requireActivityAccess(userId: string) {
   const session = await requireSession();
   if (session.user.id !== userId && !canViewTeamActivity(session.user.role)) throw new ForbiddenError();
+  if (!(await currentMonitoring()).on) throw new ForbiddenError();
   return session;
 }
 

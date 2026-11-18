@@ -9,6 +9,7 @@ import { friendlyPrismaError } from "@/lib/prisma-errors";
 import { toActionResult } from "@/lib/action-result";
 import { assertTimeNotLocked, assertRangeNotLocked, lockedIds } from "@/lib/payroll-lock";
 import { TimeClockError, summarizeByUser, type TimeEntryRangeInput, type BreakDeductionRule } from "@/lib/time-entries";
+import { isTrackedHere } from "@/lib/activity-monitoring";
 import { clockInFor, clockOutFor, startBreakFor, endBreakFor, endBreakForDayFor, type LocationInput } from "@/lib/time-clock";
 
 export async function getMyActiveEntry() {
@@ -32,7 +33,7 @@ export async function getMyActiveBreak() {
 /** Whether the signed-in user must clock in from the desktop app (see time-clock.ts#assertClockOriginAllowed). */
 export async function getMyDesktopClockRequired() {
   const session = await requireSession();
-  if (session.user.role === "CAREGIVER" || session.user.role === "CLIENT") return false;
+  if (!(await isTrackedHere(session.user.id))) return false;
   const user = await db.user.findUnique({ where: { id: session.user.id }, select: { requireDesktopClock: true } });
   return user?.requireDesktopClock ?? false;
 }

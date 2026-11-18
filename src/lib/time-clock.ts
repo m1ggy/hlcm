@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { db } from "@/lib/db";
+import { db, currentOrganization } from "@/lib/db";
+import { monitoringOn } from "@/lib/activity-monitoring";
 import { recordAudit } from "@/lib/audit";
 import { TimeClockError } from "@/lib/time-entries";
 import type { TimeEntrySource } from "@/generated/prisma/client";
@@ -75,6 +76,8 @@ export const DESKTOP_CLOCK_REQUIRED_MESSAGE = "Use the Carenela desktop app to c
  */
 async function assertClockOriginAllowed(userId: string, origin: ClockOrigin) {
   if (origin.source !== "WEB") return;
+  // Switched off (or the add-on removed): everyone clocks in on the web again.
+  if (!monitoringOn(await currentOrganization())) return;
   const user = await db.user.findUnique({ where: { id: userId }, select: { requireDesktopClock: true, role: true } });
   if (user?.requireDesktopClock && user.role !== "CAREGIVER" && user.role !== "CLIENT") {
     throw new TimeClockError(DESKTOP_CLOCK_REQUIRED_MESSAGE);

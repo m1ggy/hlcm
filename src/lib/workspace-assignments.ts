@@ -489,8 +489,11 @@ async function auditBoth(
   );
 }
 
-/** Platform console: a workspace's kind and managing company. */
-export async function setWorkspaceSetup(orgId: string, input: { kind: "FULL" | "TASKS"; managedByOrgId: string | null; careEnabled?: boolean }) {
+/** Platform console: a workspace's kind, managing company and add-ons. */
+export async function setWorkspaceSetup(
+  orgId: string,
+  input: { kind: "FULL" | "TASKS"; managedByOrgId: string | null; careEnabled?: boolean; activityMonitoringAddon?: boolean }
+) {
   if (input.managedByOrgId === orgId) throw new UserFacingError("A workspace can't manage itself");
   if (input.managedByOrgId) {
     const manager = await prisma.organization.findUnique({ where: { id: input.managedByOrgId }, select: { slug: true, managedByOrgId: true } });

@@ -2,7 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { auth } from "@/auth";
-import { blockCaregiverRoute, isTrackedRole } from "@/lib/rbac";
+import { blockCaregiverRoute } from "@/lib/rbac";
+import { isTrackedHere } from "@/lib/activity-monitoring";
 import { getActivityDay, listUserDevices } from "@/lib/activity-data";
 import { ActivityDayView } from "@/components/activity/activity-day-view";
 import { DayPicker } from "@/components/activity/day-picker";
@@ -15,7 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 export default async function MyActivityPage({ searchParams }: { searchParams: Promise<{ date?: string }> }) {
   await blockCaregiverRoute("/hours");
   const session = await auth();
-  if (!session?.user || !isTrackedRole(session.user.role)) redirect("/time");
+  if (!session?.user || !(await isTrackedHere(session.user.id))) redirect("/time");
   const { date } = await searchParams;
   const [day, devices] = await Promise.all([getActivityDay(session.user.id, date), listUserDevices(session.user.id)]);
 
