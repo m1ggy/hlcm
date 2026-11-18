@@ -164,3 +164,14 @@ export function friendlyInvoiceNumberError(error: unknown): never {
 export function isManual(invoice: { status: string; stripeInvoiceId: string | null }) {
   return !invoice.stripeInvoiceId && invoice.status !== "DRAFT";
 }
+
+// An item already paid when it's added — a downpayment, a retainer received
+// up front: a line plus a payment for its full amount (addPaidLineItem and
+// createManualInvoice in src/lib/actions/invoices.ts).
+export const paidItemSchema = z.object({
+  description: z.string().trim().min(1, "Describe the paid item"),
+  amount: z.coerce.number().positive("A paid item's amount must be more than 0"),
+  paidAt: z.string().min(1, "Pick the date it was paid"),
+  paymentMethod: z.string().trim().min(1, "Pick how it was paid"),
+});
+export type PaidItemInput = z.input<typeof paidItemSchema>;
