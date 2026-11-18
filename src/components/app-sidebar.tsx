@@ -41,7 +41,9 @@ export async function AppSidebar() {
   return (
     <Sidebar>
       <SidebarHeader className="px-3 py-3">
-        <WorkspaceSwitcher currentName={org?.name ?? PRODUCT_NAME} targets={switchTargets} />
+        <div className="rounded-lg bg-card px-2 py-1.5 text-card-foreground shadow-sm">
+          <WorkspaceSwitcher currentName={org?.name ?? PRODUCT_NAME} targets={switchTargets} />
+        </div>
       </SidebarHeader>
       <SidebarContent className="px-2">
         <AppSidebarNav
