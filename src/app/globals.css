@@ -229,6 +229,27 @@
   --ring: var(--sidebar-ring);
 }
 
+/* The logo card at the top of the side nav (app-sidebar.tsx) sits on the
+   card color, not blue, so it takes the app's normal ink tokens back. */
+.sidebar-brand-card {
+  --foreground: #121c2b;
+  --muted: #e8edf3;
+  --muted-foreground: #4a5668;
+  --accent: #dde8f8;
+  --accent-foreground: #1f5fbf;
+  --border: #d5dde8;
+  --ring: #1f5fbf;
+}
+.dark .sidebar-brand-card {
+  --foreground: #e6ecf4;
+  --muted: #1a2536;
+  --muted-foreground: #9eabbe;
+  --accent: #142a4a;
+  --accent-foreground: #9cc0f5;
+  --border: #243147;
+  --ring: #6fa3f0;
+}
+
 /* Printing a page (the client weekly summary's Print button): just the
    content, no app chrome. Mark anything else to leave out with
    data-print-hide. */
