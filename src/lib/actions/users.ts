@@ -61,6 +61,7 @@ export async function listUsers() {
       phone: true,
       smsRemindersEnabled: true,
       smsDailyUpdates: true,
+      smsUrgentAlerts: true,
       smsOptedOutAt: true,
       assignedFromUserId: true,
     },
@@ -205,6 +206,8 @@ const updateSchema = z.object({
   // src/lib/meeting-reminders.ts) — not a self-service preference like
   // emailNotificationsEnabled on /account.
   smsRemindersEnabled: z.boolean(),
+  // Urgent task texts (src/lib/work-urgent.ts) — on by default; absent = unchanged.
+  smsUrgentAlerts: z.boolean().optional(),
   // The evening text in a client's tasks workspace (src/lib/work-summary-notes.ts).
   // People normally opt in themselves on /account; staff can sign someone up
   // only after confirming that person agreed (smsConsent), which is audited.
@@ -233,6 +236,7 @@ async function updateUserUnwrapped(input: z.infer<typeof updateSchema>) {
       phone: true,
       smsRemindersEnabled: true,
       smsDailyUpdates: true,
+      smsUrgentAlerts: true,
       smsOptedOutAt: true,
     },
   });
@@ -294,6 +298,7 @@ async function updateUserUnwrapped(input: z.infer<typeof updateSchema>) {
       phone,
       smsRemindersEnabled: parsed.smsRemindersEnabled,
       smsDailyUpdates,
+      ...(parsed.smsUrgentAlerts !== undefined && { smsUrgentAlerts: parsed.smsUrgentAlerts }),
       ...(parsed.password ? { passwordHash: await bcrypt.hash(parsed.password, 12) } : {}),
     },
   });
@@ -312,6 +317,7 @@ async function updateUserUnwrapped(input: z.infer<typeof updateSchema>) {
       phone,
       smsRemindersEnabled: parsed.smsRemindersEnabled,
       smsDailyUpdates,
+      smsUrgentAlerts: parsed.smsUrgentAlerts ?? before.smsUrgentAlerts,
     },
   });
   if (signingUp) {

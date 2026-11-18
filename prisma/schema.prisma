@@ -423,6 +423,8 @@ enum NotificationType {
   EOD_REMINDER
   EOD_COMMENTED
   FORM_SUBMITTED
+  // A workspace task was marked Urgent (docs/crm-requests-phase2.md).
+  WORK_TASK_URGENT
 }
 
 enum InvoiceStatus {
@@ -478,6 +480,11 @@ model User {
   // A client-side user's own opt-in to the evening text of their workspace's
   // day note (Organization.workDailyText).
   smsDailyUpdates           Boolean      @default(false)
+  // Texted when a workspace task they're on (or, as an Owner/Admin/Manager,
+  // any task in the workspace) is marked Urgent. On by default for anyone
+  // with a phone; they can turn it off on Account, or an admin on Edit user.
+  // A linked account reads its home account's setting and number.
+  smsUrgentAlerts           Boolean      @default(true)
   smsOptedOutAt             DateTime?
   smsLogs                   SmsLog[]
   // Developer-only switch (Admin > Users > Logins): when on, sign-in from a

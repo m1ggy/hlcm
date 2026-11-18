@@ -1,5 +1,5 @@
 import { auth } from "@/auth";
-import { getAccount } from "@/lib/actions/account";
+import { getAccount, type TextAlertKind } from "@/lib/actions/account";
 import { currentOrganization } from "@/lib/db";
 import { PasswordChangeForm } from "@/components/account/password-change-form";
 import { MfaSection } from "@/components/account/mfa-section";
@@ -10,11 +10,21 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default async function AccountPage() {
   const [account, org, session] = await Promise.all([getAccount(), currentOrganization(), auth()]);
-  // Which text opt-in fits: form alerts in a full workspace; in a client's
-  // tasks-only workspace, the daily update for the client's own people (when
-  // the team has turned it on), and nothing for the team there.
-  const clientSide = org.kind === "TASKS" && !session?.user.isAssigned && session?.user.role !== "CAREGIVER";
-  const texts = org.kind !== "TASKS" ? "forms" : clientSide && org.workDailyText ? "daily" : null;
+  // Which text opt-ins fit: form alerts in a full workspace; in a client's
+  // workspace, the daily update for the client's own people (when the team
+  // has turned it on). Urgent task alerts for everyone but caregivers. The
+  // team's linked accounts in a client workspace have none here — theirs
+  // live on their home account.
+  const caregiver = session?.user.role === "CAREGIVER";
+  const linked = org.kind === "TASKS" && Boolean(session?.user.isAssigned);
+  const texts: { kind: TextAlertKind; enabled: boolean }[] =
+    caregiver || linked
+      ? []
+      : [
+          ...(org.kind !== "TASKS" ? [{ kind: "forms" as const, enabled: account.smsFormAlerts }] : []),
+          ...(org.kind === "TASKS" && org.workDailyText ? [{ kind: "daily" as const, enabled: account.smsDailyUpdates }] : []),
+          { kind: "urgent" as const, enabled: account.smsUrgentAlerts },
+        ];
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -48,14 +58,9 @@ export default async function AccountPage() {
         </CardHeader>
         <CardContent>
           <EmailNotificationsToggle initialEnabled={account.emailNotificationsEnabled} />
-          {texts && (
+          {texts.length > 0 && (
             <div className="mt-5 border-t pt-5">
-              <TextAlertsSection
-                kind={texts}
-                phone={account.phone}
-                enabled={texts === "daily" ? account.smsDailyUpdates : account.smsFormAlerts}
-                optedOut={Boolean(account.smsOptedOutAt)}
-              />
+              <TextAlertsSection options={texts} phone={account.phone} optedOut={Boolean(account.smsOptedOutAt)} />
             </div>
           )}
         </CardContent>

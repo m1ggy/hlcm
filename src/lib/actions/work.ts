@@ -15,6 +15,7 @@ import { INCIDENT_CATEGORY_LABELS } from "@/lib/visits";
 import { workScope, type WorkTaskStatus } from "@/lib/work";
 import { getTaskDetail, listAssignableUsers } from "@/lib/work-data";
 import * as work from "@/lib/work-service";
+import { sendUrgentTaskAlerts } from "@/lib/work-urgent";
 import { startClientTaskTimer, startTaskTimer, stopTaskTimer } from "@/lib/actions/task-time-entries";
 import { linkedWorkTaskUpdateDefaults, postLinkedWorkTaskUpdate, postWorkTaskUpdate, workTaskUpdateDefaults, type TaskUpdateInput } from "@/lib/task-updates";
 
@@ -74,6 +75,7 @@ export async function createTaskAction(input: work.TaskInput, orgId?: string) {
     const id = await inWorkspace(orgId, async (a) => {
       const { task, notifications } = await work.createTask(a, input);
       await send(notifications, a.userId);
+      if (task.priority === "URGENT") await sendUrgentTaskAlerts(a.userId, task.id);
       return task.id;
     });
     refresh();
@@ -83,7 +85,11 @@ export async function createTaskAction(input: work.TaskInput, orgId?: string) {
 
 export async function updateTaskAction(taskId: string, patch: work.TaskPatch, orgId?: string) {
   return toActionResult(async () => {
-    await inWorkspace(orgId, (a) => work.updateTask(a, taskId, patch));
+    await inWorkspace(orgId, async (a) => {
+      const before = patch.priority === "URGENT" ? await db.workTask.findUnique({ where: { id: taskId }, select: { priority: true } }) : null;
+      const task = await work.updateTask(a, taskId, patch);
+      if (before && before.priority !== "URGENT" && task.priority === "URGENT") await sendUrgentTaskAlerts(a.userId, task.id);
+    });
     refresh();
   });
 }
@@ -185,6 +191,7 @@ export async function createFromTemplateAction(templateId: string, opts: { dueDa
     const a = await actor();
     const { task, notifications } = await work.createFromTemplate(a, templateId, opts);
     await send(notifications, a.userId);
+    if (task.priority === "URGENT") await sendUrgentTaskAlerts(a.userId, task.id);
     refresh();
     return { id: task.id };
   });
@@ -359,6 +366,7 @@ export async function createTaskFromConcernAction(incidentId: string) {
       assigneeIds: [a.userId],
     });
     await send(notifications, a.userId);
+    if (task.priority === "URGENT") await sendUrgentTaskAlerts(a.userId, task.id);
     refresh();
     revalidatePath("/care-recipients");
     return { taskId: task.id, created: true };

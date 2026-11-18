@@ -43,6 +43,7 @@ const NOTIFICATION_HEADINGS: Record<$Enums.NotificationType, string> = {
   EOD_REMINDER: "End-of-day report",
   EOD_COMMENTED: "Comment on your report",
   FORM_SUBMITTED: "New form submission",
+  WORK_TASK_URGENT: "Task marked urgent",
 };
 
 // Fire-and-forget from inside a mutation — never let a notification failure

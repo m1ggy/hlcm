@@ -16,7 +16,7 @@ export async function getAccount() {
   const [user, workspaceTimezone] = await Promise.all([
     db.user.findUniqueOrThrow({
       where: { id: session.user.id },
-      select: { id: true, name: true, email: true, mfaEnabled: true, emailNotificationsEnabled: true, timezone: true, phone: true, smsFormAlerts: true, smsDailyUpdates: true, smsOptedOutAt: true },
+      select: { id: true, name: true, email: true, mfaEnabled: true, emailNotificationsEnabled: true, timezone: true, phone: true, smsFormAlerts: true, smsDailyUpdates: true, smsUrgentAlerts: true, smsOptedOutAt: true },
     }),
     currentWorkspaceTimezone(),
   ]);
@@ -163,19 +163,31 @@ export async function disableMfa() {
  * on themselves. Turning it on again clears an earlier STOP on our side
  * (they may also need to text START to the number).
  */
-/** Your mobile number and one text opt-in: new form submissions (team) or the daily update (a client workspace's client side). */
-export async function updateTextAlerts(input: { phone: string; enabled: boolean; kind?: "forms" | "daily" }) {
+export type TextAlertKind = "forms" | "daily" | "urgent";
+const TEXT_ALERT_FIELDS = { forms: "smsFormAlerts", daily: "smsDailyUpdates", urgent: "smsUrgentAlerts" } as const;
+
+/**
+ * Your mobile number and your text opt-ins: new form submissions (team), the
+ * daily update (a client workspace's client side), and urgent task alerts
+ * (on by default — src/lib/work-urgent.ts).
+ */
+export async function updateTextAlerts(input: { phone: string; alerts: Partial<Record<TextAlertKind, boolean>> }) {
   return toActionResult(async () => {
     const session = await requireSession();
     const phone = input.phone.trim() ? normalizePhone(input.phone) : null;
     if (input.phone.trim() && !phone) throw new UserFacingError("Enter a valid mobile number, like (555) 123-4567");
-    if (input.enabled && !phone) throw new UserFacingError("Add your mobile number to get texts");
-    const field = input.kind === "daily" ? "smsDailyUpdates" : "smsFormAlerts";
+    if ((input.alerts.forms || input.alerts.daily) && !phone) throw new UserFacingError("Add your mobile number to get texts");
+    const changes = (Object.keys(TEXT_ALERT_FIELDS) as TextAlertKind[]).flatMap((kind) =>
+      input.alerts[kind] === undefined ? [] : [{ field: TEXT_ALERT_FIELDS[kind], value: input.alerts[kind] as boolean }]
+    );
+    const turningOn = changes.some((c) => c.value);
     await db.user.update({
       where: { id: session.user.id },
-      data: { phone, [field]: input.enabled, ...(input.enabled && { smsOptedOutAt: null }) },
+      data: { phone, ...Object.fromEntries(changes.map((c) => [c.field, c.value])), ...(turningOn && phone && { smsOptedOutAt: null }) },
     });
-    await recordAudit({ entityType: "User", entityId: session.user.id, action: "update", actorId: session.user.id, field, newValue: input.enabled });
+    for (const c of changes) {
+      await recordAudit({ entityType: "User", entityId: session.user.id, action: "update", actorId: session.user.id, field: c.field, newValue: c.value });
+    }
     return { phone };
   });
 }
