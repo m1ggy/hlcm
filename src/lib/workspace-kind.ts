@@ -25,6 +25,8 @@ const TASKS_PATHS = [
   // The shift clock, for the client company's own staff (docs/activity-monitoring-plan.md),
   // with its desktop app pages under /time.
   "/time",
+  // The workspace's own forms and their submissions (Forms in the sidebar).
+  "/intake",
   "/notifications",
   "/accept-terms",
   "/switch",
@@ -63,7 +65,7 @@ export function hasCare(org: KindedOrg): boolean {
  */
 export function isWorkspacePathAllowed(org: KindedOrg, pathname: string, role?: string | null): boolean {
   if (org.kind !== "TASKS") return true;
-  if (role === "CAREGIVER" && matches(pathname, ["/work"])) return false;
+  if (role === "CAREGIVER" && matches(pathname, ["/work", "/intake"])) return false;
   return isTasksWorkspacePath(pathname) || (hasCare(org) && isCarePath(pathname));
 }
 

@@ -92,6 +92,10 @@ describe("which pages a workspace opens", () => {
     for (const p of ["/clients", "/applications", "/invoices", "/payroll"]) expect(isWorkspacePathAllowed(care, p), p).toBe(false);
     // The shift clock is in every tasks-only workspace, for its own staff (docs/activity-monitoring-plan.md).
     expect(isWorkspacePathAllowed(tasks, "/time")).toBe(true);
+    // Its own forms and submissions; never for caregivers.
+    expect(isWorkspacePathAllowed(tasks, "/intake")).toBe(true);
+    expect(isWorkspacePathAllowed(tasks, "/intake/forms/new")).toBe(true);
+    expect(isWorkspacePathAllowed(care, "/intake", "CAREGIVER")).toBe(false);
     expect(isWorkspacePathAllowed(full, "/clients")).toBe(true);
   });
 

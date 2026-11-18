@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { requireRole, isManagement } from "@/lib/rbac";
-import { db, currentWorkspaceTimezone } from "@/lib/db";
+import { db, currentOrganization, currentWorkspaceTimezone } from "@/lib/db";
 import { listClients } from "@/lib/actions/clients";
 import { listProjects } from "@/lib/actions/projects";
 import { formatAnswer, isLayoutField, type FieldSnapshot } from "@/lib/form-logic";
@@ -20,6 +20,9 @@ export default async function IntakePage({ searchParams }: { searchParams: Promi
   const sp = await searchParams;
   const status = sp.status === "all" ? null : STATUSES.includes(sp.status as (typeof STATUSES)[number]) ? (sp.status as (typeof STATUSES)[number]) : "PENDING";
   const q = sp.q?.trim().toLowerCase() ?? "";
+  // A client workspace (Full Operations Management System) has no licensing
+  // clients or projects: its submissions are reviewed, dismissed and noted only.
+  const licensing = (await currentOrganization()).kind !== "TASKS";
 
   const [rows, counts, templates, clients, projects, timeZone] = await Promise.all([
     db.formSubmission.findMany({
@@ -36,8 +39,8 @@ export default async function IntakePage({ searchParams }: { searchParams: Promi
     }),
     db.formSubmission.groupBy({ by: ["status"], _count: true, ...(sp.form && { where: { templateId: sp.form } }) }),
     db.formTemplate.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
-    listClients(),
-    listProjects(),
+    licensing ? listClients() : Promise.resolve([]),
+    licensing ? listProjects() : Promise.resolve([]),
     currentWorkspaceTimezone(),
   ]);
 
@@ -109,6 +112,7 @@ export default async function IntakePage({ searchParams }: { searchParams: Promi
         timeZone={timeZone}
         clients={clients.map((c) => ({ id: c.id, name: c.name }))}
         projects={projects.map((p) => ({ id: p.id, name: p.name }))}
+        licensing={licensing}
       />
     </div>
   );

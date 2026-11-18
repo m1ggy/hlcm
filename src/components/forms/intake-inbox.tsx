@@ -53,6 +53,7 @@ export function IntakeInbox({
   timeZone,
   clients,
   projects,
+  licensing = true,
 }: {
   submissions: InboxSubmission[];
   status: string;
@@ -64,6 +65,8 @@ export function IntakeInbox({
   timeZone: string;
   clients: { id: string; name: string }[];
   projects: { id: string; name: string }[];
+  /** Create client / Attach to client: the licensing CRM only. */
+  licensing?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -180,7 +183,7 @@ export function IntakeInbox({
 
       <Sheet open={current !== null} onOpenChange={(o) => !o && openOne(null)}>
         <SheetContent className="w-full gap-0 overflow-y-auto sm:max-w-xl data-[side=right]:sm:max-w-xl">
-          {current && <Detail key={current.id} s={current} when={when} clients={clients} projects={projects} onDone={() => router.refresh()} />}
+          {current && <Detail key={current.id} s={current} when={when} clients={clients} projects={projects} licensing={licensing} onDone={() => router.refresh()} />}
         </SheetContent>
       </Sheet>
     </div>
@@ -192,12 +195,14 @@ function Detail({
   when,
   clients,
   projects,
+  licensing,
   onDone,
 }: {
   s: InboxSubmission;
   when: (iso: string, withTime?: boolean) => string;
   clients: { id: string; name: string }[];
   projects: { id: string; name: string }[];
+  licensing: boolean;
   onDone: () => void;
 }) {
   const [note, setNote] = useState(s.note ?? "");
@@ -290,8 +295,12 @@ function Detail({
       <div className="flex flex-wrap gap-2 border-t pt-4">
         {s.status === "PENDING" ? (
           <>
-            <CreateClientFromSubmissionDialog submissionId={s.id} defaults={s.defaults} projects={projects} />
-            <AttachSubmissionDialog submissionId={s.id} clients={clients} />
+            {licensing && (
+              <>
+                <CreateClientFromSubmissionDialog submissionId={s.id} defaults={s.defaults} projects={projects} />
+                <AttachSubmissionDialog submissionId={s.id} clients={clients} />
+              </>
+            )}
             <Button size="sm" variant="outline" disabled={pending} onClick={() => act(() => markSubmissionReviewed(s.id), "Marked reviewed")}>
               <Check className="size-3.5" /> Mark reviewed
             </Button>

@@ -31,7 +31,8 @@ export async function AppSidebar() {
   // The licensing Clients link a caregiver gets in the full CRM; never in a tasks-only workspace.
   const showCaregiverClients = isCaregiver && !tasksWorkspace ? await caregiverHasClients() : !tasksWorkspace;
   const actor = { id: session.user.id, organizationId: session.user.organizationId };
-  const seesForms = !isCaregiver && org?.kind !== "TASKS" && ["OWNER", "ADMIN", "ACCOUNTANT", "MANAGER", "STAFF", "DEVELOPER"].includes(session.user.role);
+  // Every workspace has its own forms, client workspaces included.
+  const seesForms = !isCaregiver && ["OWNER", "ADMIN", "ACCOUNTANT", "MANAGER", "STAFF", "DEVELOPER"].includes(session.user.role);
   const [switchTargets, managesWorkspaces, newSubmissions] = await Promise.all([
     listSwitchTargets(actor),
     canManageAnyWorkspace({ userId: actor.id, orgId: actor.organizationId, role: session.user.role }),
@@ -58,6 +59,7 @@ export async function AppSidebar() {
           isWorkTeam={Boolean(session.user.isAssigned) || session.user.role === "DEVELOPER"}
           showClientWork={switchTargets.some((t) => t.home && t.current)}
           newSubmissions={newSubmissions}
+          showForms={seesForms}
         />
       </SidebarContent>
       <SidebarFooter className="gap-2 border-t px-3 py-3">
