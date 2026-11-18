@@ -81,14 +81,16 @@
   --chart-4: #6b4fa8;
   --chart-5: #4a5668;
   --radius: 0.625rem;
-  --sidebar: #ffffff;
-  --sidebar-foreground: #121c2b;
-  --sidebar-primary: #1f5fbf;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #dde8f8;
-  --sidebar-accent-foreground: #174a96;
-  --sidebar-border: #d5dde8;
-  --sidebar-ring: #1f5fbf;
+  /* The side nav is brand blue, with white text. */
+  --sidebar: #1f5fbf;
+  --sidebar-foreground: #ffffff;
+  --sidebar-muted-foreground: #d6e4f7;
+  --sidebar-primary: #ffffff;
+  --sidebar-primary-foreground: #1f5fbf;
+  --sidebar-accent: #174a96;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #3c75c9;
+  --sidebar-ring: #f0a73a;
   /* Carenela extras */
   --brand-deep: #0f2d5c;
   --marigold: #f0a73a;
@@ -121,14 +123,15 @@
   --chart-3: #52b9b4;
   --chart-4: #b9a3e6;
   --chart-5: #9eabbe;
-  --sidebar: #131c2b;
+  --sidebar: #12346a;
   --sidebar-foreground: #e6ecf4;
+  --sidebar-muted-foreground: #a9bfdc;
   --sidebar-primary: #6fa3f0;
   --sidebar-primary-foreground: #071526;
-  --sidebar-accent: #142a4a;
-  --sidebar-accent-foreground: #9cc0f5;
-  --sidebar-border: #243147;
-  --sidebar-ring: #6fa3f0;
+  --sidebar-accent: #1d4a8f;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #24508f;
+  --sidebar-ring: #f0a73a;
   --brand-deep: #1d4f8f;
   --marigold: #f4b65a;
   --on-marigold: #2b1a00;
@@ -210,6 +213,22 @@
 .hclm-tour-popover .driver-popover-arrow-side-right { border-left-color: var(--popover); }
 .hclm-tour-popover .driver-popover-arrow-side-top { border-bottom-color: var(--popover); }
 .hclm-tour-popover .driver-popover-arrow-side-bottom { border-top-color: var(--popover); }
+/* Inside the blue side nav, the app's grey and ink tokens (muted text,
+   outline and ghost buttons, borders) are swapped for ones that read on
+   blue. Menus and dialogs opened from it render outside, so keep theirs. */
+[data-slot="sidebar"],
+[data-sidebar="sidebar"] {
+  --foreground: var(--sidebar-foreground);
+  --muted-foreground: var(--sidebar-muted-foreground);
+  --muted: var(--sidebar-accent);
+  --accent: var(--sidebar-accent);
+  --accent-foreground: var(--sidebar-accent-foreground);
+  --border: var(--sidebar-border);
+  --input: var(--sidebar-border);
+  --background: transparent;
+  --ring: var(--sidebar-ring);
+}
+
 /* Printing a page (the client weekly summary's Print button): just the
    content, no app chrome. Mark anything else to leave out with
    data-print-hide. */
