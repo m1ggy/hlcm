@@ -125,6 +125,28 @@ from `agent-releases/`, 90-day purge, activity export, release CI
    from CI, first upload to `agent-releases/`, GCS lifecycle rule, test install
    on a real Windows PC and a real Mac end to end.
 
+## Status (2026-11-18, branch `feature/activity-monitoring-v2`, not pushed)
+
+- Phase 1 done (`2c235fd`, tests `44fbce4`): old branch ported onto main;
+  migration `20261119120000_activity_monitoring`; agent tokens carry the
+  workspace; screenshots under `org/{orgId}/screenshots/`; heartbeat sweep
+  and 90-day purge run per workspace; desktop sign-ins in `login_events`
+  (method `desktop_app`); app source in `desktop/`.
+- Phase 2 done (`bd7f0eb`): `uiohook-napi` removed; app sends app usage
+  only; 2-hour no-input clock-out back-dated to when input stopped
+  (`autoClosed`); rules are category only; `/api/agent/rules` removed.
+- Phase 3 done (`ff1388c`): console Setup dialog grants the add-on; owner
+  switch + own notice on Admin > Organization (version bump on change);
+  everything hidden and app-only clock-in ignored while off.
+- Phase 4 done (`f875f5d`): client workspaces' own staff get the header
+  clock and `/time`; the managing company's team doesn't.
+- Tests: `tests/activity-monitoring.test.ts` (14), full suite green;
+  desktop unit tests 10/10. Not yet run in a browser or as a real
+  Electron app, and the migration hasn't touched the dev database.
+- Phase 5 (release) not started. Also: the app is still branded "HCLM
+  Tracker", and its sign-in asks for a server address — with one address
+  per workspace it should ask for the workspace (or find it by email).
+
 ## Open items
 
 - Add-on price and how it's billed (see tenant billing decisions); granted by hand until then.
