@@ -200,6 +200,18 @@ They keep that password. If someone forgets theirs, an admin sets a new one from
 
 **This week.** The agency's weekly summary also shows **Care visits**: visits made, visit hours, missed visits, and concerns raised and still open.
 
+## Client and case files: folders
+
+A client's files (**Documents** tab) and a case's files (**Files** on the application) can be sorted into folders.
+
+- **New folder** makes one inside the folder you're in. Click a folder to open it; the path above the files takes you back up (the house icon is the top level), and so does the browser's Back button.
+- **Upload → Files…** puts files in the open folder. **Upload → A folder…**, or dragging a folder from your computer onto the files, recreates that folder and its subfolders here.
+- **Moving files:** tick the files and choose **Move to…**, or drag them onto a folder or onto a name in the path. To move one file, open it with the **ⓘ** button and choose **Move**.
+- **Renaming:** a folder's **⋯** menu has **Rename**; for a file, open it with **ⓘ** and choose **Rename**. Older versions keep the name they were uploaded with.
+- **Deleting a folder never deletes files.** Whatever was inside moves up one level.
+- **Search all folders** finds files anywhere in the client or case and shows which folder each one is in.
+- On a client's **service** page you see the client's folders, but only that service's files; uploads there go to that service and the open folder.
+
 ## Your daily routine
 
 Five habits keep the client's page and your report current with almost no end-of-day writing.

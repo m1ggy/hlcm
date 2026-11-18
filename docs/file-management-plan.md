@@ -41,13 +41,22 @@ whole folder from the computer (its structure is recreated).
    `src/lib/file-folders.ts`, actions in `src/lib/actions/folders.ts`,
    `folderId` on the client and application upload actions, `renameFile` in
    `src/lib/actions/files.ts`, tests in `tests/file-folders.test.ts`.
-2. `FileBrowser` component replacing `ClientFilePool`: breadcrumb, folders
-   first with file counts, New folder, rename/move/delete menu, select files
-   then "Move to…" with a folder-tree picker, drag a file onto a folder or a
-   crumb, open folder kept in `?folder=`, search across all folders.
-3. Uploads: into the open folder; "Upload folder" (`webkitdirectory`) and
-   drag-and-drop of folders (`webkitGetAsEntry`), calling
-   `ensureFolderPathsAction` once and then the existing upload queue with a
-   `folderId` per file (`useUpload.uploadMany` needs per-file extras).
-4. Application files (`FilePool`) on `FileBrowser`; the service-page filter.
-5. Staff guide section; manual check.
+2. **Done.** `FileBrowser` (`src/components/files/file-browser.tsx`) used
+   by `ClientFilePool` and `FilePool`: home-icon breadcrumb, folders first
+   with counts, New folder, folder menu (rename / move / delete), select
+   files then "Move to…" (`folder-dialogs.tsx`), drag files or folders onto
+   a folder or a crumb, open folder in `?folder=` (pushState, Back works),
+   search across all folders, Rename / Move in the file drawer. Grid sizes
+   by container width (the application panel is narrow).
+3. **Done.** Uploads go into the open folder; "Upload → A folder…"
+   (`webkitdirectory`) and dropping folders (`dropped-items.ts`) call
+   `ensureFolderPathsAction` once, then the upload queue with a per-file
+   `folderId`. Dropped empty folders are created; a picked folder's empty
+   subfolders aren't (the browser doesn't list them).
+4. **Done.** Application files on `FileBrowser`; service pages show the
+   client's folders with that service's files.
+5. **Done.** Staff guide section "Client and case files: folders". Checked
+   in the browser 2026-11-19 (local, headless Chromium): create, duplicate
+   name refused, multi-select move, drag to folder, open + Back, rename file,
+   subfolder, search, delete folder (contents moved up), folder upload made
+   the folders. File bytes not checked locally: no `GCS_BUCKET` here.

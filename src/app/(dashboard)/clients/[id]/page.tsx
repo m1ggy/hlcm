@@ -11,6 +11,7 @@ import { listClientCredentials } from "@/lib/actions/client-credentials";
 import { listClientContacts } from "@/lib/actions/client-contacts";
 import { listClientOwners } from "@/lib/actions/client-owners";
 import { listClientFiles } from "@/lib/actions/files";
+import { listFoldersAction } from "@/lib/actions/folders";
 import { listClientAgreements } from "@/lib/actions/client-agreements";
 import { listClientLicenses } from "@/lib/actions/client-licenses";
 import { listCareRecipients, listCaregivers } from "@/lib/actions/care-recipients";
@@ -116,6 +117,7 @@ export default async function ClientDetailPage({
     contacts,
     owners,
     files,
+    folders,
     agreements,
     licenses,
     mcoStages,
@@ -138,6 +140,7 @@ export default async function ClientDetailPage({
     listClientContacts(id),
     listClientOwners(id),
     listClientFiles(id),
+    listFoldersAction({ kind: "client", id }),
     listClientAgreements(id),
     listClientLicenses(id),
     listPipelineStages("MCO", { includeExit: true }),
@@ -454,7 +457,7 @@ export default async function ClientDetailPage({
         )}
 
         <TabsContent value="documents" className="space-y-6 pt-4">
-          <ClientFilePool clientId={id} files={files} canEdit />
+          <ClientFilePool clientId={id} files={files} folders={folders} canEdit />
 
           <ClientCredentialsCard clientId={id} credentials={credentials} />
         </TabsContent>
