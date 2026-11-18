@@ -40,15 +40,20 @@ export default async function DashboardLayout({
   // workspace can't be used — except by support, who may be there to help.
   if (!session?.user?.isSupport && needsTermsAcceptance(org)) redirect("/accept-terms");
   const isCaregiver = session?.user?.role === "CAREGIVER";
-  // In a client's tasks-only workspace there's no shift clock (shifts and
-  // payroll belong to each person's home workspace), and only the assigned
-  // team times its work; the client's own people get neither. The
-  // exception: a care agency's own caregivers (docs/client-care-plan.md) —
-  // this workspace is their home, and the clock is how they run visits.
+  // In a client's tasks-only workspace the managing company's assigned team
+  // has no shift clock (shifts and payroll belong to their home workspace)
+  // but times its work; the client's own staff get the shift clock and no
+  // task timer. A care agency's own caregivers (docs/client-care-plan.md)
+  // run visits with the clock.
   const tasksWorkspace = org.kind === "TASKS";
   const careVisits = isCaregiver && hasCare(org);
   const onWorkTeam = Boolean(session?.user?.isAssigned) || session?.user?.role === "DEVELOPER";
-  const showShiftClock = !tasksWorkspace || careVisits;
+  // A client workspace's own staff (not the managing company's assigned
+  // team, who clock in at home) have the shift clock here too, so activity
+  // monitoring can cover them (docs/activity-monitoring-plan.md).
+  const ownStaff =
+    !isCaregiver && !session?.user?.isAssigned && !session?.user?.isSupport && session?.user?.role !== "CLIENT" && session?.user?.role !== "DEVELOPER";
+  const showShiftClock = !tasksWorkspace || careVisits || ownStaff;
   const showTaskTimer = (!tasksWorkspace || onWorkTeam) && !(tasksWorkspace && isCaregiver);
   const [activeEntry, activeBreak, careRecipients, visitRecipientId, openTimer, myTasks, recentTimerTasks, desktopClockRequired] = await Promise.all([
     getMyActiveEntry(),

@@ -22,6 +22,9 @@ const TASKS_PATHS = [
   "/account",
   "/admin/users",
   "/admin/organization",
+  // The shift clock, for the client company's own staff (docs/activity-monitoring-plan.md),
+  // with its desktop app pages under /time.
+  "/time",
   "/notifications",
   "/accept-terms",
   "/switch",
