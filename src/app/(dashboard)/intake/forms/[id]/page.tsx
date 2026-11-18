@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { requireSession, isManagement } from "@/lib/rbac";
-import { db } from "@/lib/db";
+import { db, currentOrganization } from "@/lib/db";
 import { getFormTemplate } from "@/lib/actions/form-templates";
 import { isPlatformSmsConfigured } from "@/lib/sms";
 import { parseShowIf, type FormFieldType } from "@/lib/form-logic";
@@ -15,8 +15,12 @@ export default async function FormBuilderPage({ params }: { params: Promise<{ id
   const template = id === "new" ? null : await getFormTemplate(id);
   if (id !== "new" && !template) notFound();
 
+  // A client workspace's forms can also notify the managing company's team
+  // working there (their linked accounts; email and in-app — their number
+  // lives on their home account). It has no licensing clients to fill in.
+  const licensing = (await currentOrganization()).kind !== "TASKS";
   const people = await db.user.findMany({
-    where: { active: true, isSupport: false, assignedFromUserId: null, role: { notIn: ["CLIENT", "CAREGIVER"] } },
+    where: { active: true, isSupport: false, ...(licensing && { assignedFromUserId: null }), role: { notIn: ["CLIENT", "CAREGIVER"] } },
     orderBy: { name: "asc" },
     select: { id: true, name: true, phone: true, smsFormAlerts: true, smsOptedOutAt: true },
   });
@@ -67,6 +71,7 @@ export default async function FormBuilderPage({ params }: { params: Promise<{ id
       initial={initial}
       staff={people.map((p) => ({ id: p.id, name: p.name, canText: Boolean(p.phone && p.smsFormAlerts && !p.smsOptedOutAt) }))}
       textingReady={isPlatformSmsConfigured()}
+      licensing={licensing}
     />
   );
 }

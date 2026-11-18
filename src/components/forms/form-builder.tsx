@@ -142,7 +142,18 @@ function toDefs(drafts: Draft[]): FormFieldDef[] {
   }));
 }
 
-export function FormBuilder({ initial, staff, textingReady }: { initial: BuilderTemplate; staff: StaffOption[]; textingReady: boolean }) {
+export function FormBuilder({
+  initial,
+  staff,
+  textingReady,
+  licensing = true,
+}: {
+  initial: BuilderTemplate;
+  staff: StaffOption[];
+  textingReady: boolean;
+  /** "Fills in <client field> when you create a client": the licensing CRM only. */
+  licensing?: boolean;
+}) {
   const router = useRouter();
   const [meta, setMeta] = useState({
     name: initial.name,
@@ -334,6 +345,7 @@ export function FormBuilder({ initial, staff, textingReady }: { initial: Builder
                         onRemove={() => remove(d.uid)}
                         onAddBelow={(t) => add(t, d.uid)}
                         conditionTargets={answerable(i)}
+                        licensing={licensing}
                       />
                     ))}
                   </ol>
@@ -470,6 +482,7 @@ function QuestionCard({
   onRemove,
   onAddBelow,
   conditionTargets,
+  licensing,
 }: {
   draft: Draft;
   index: number;
@@ -480,6 +493,7 @@ function QuestionCard({
   onRemove: () => void;
   onAddBelow: (t: FormFieldType) => void;
   conditionTargets: Draft[];
+  licensing: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: d.uid });
   const layout = isLayoutField(d.type);
@@ -565,7 +579,7 @@ function QuestionCard({
                 <Checkbox checked={d.required} onCheckedChange={(c) => onChange({ required: Boolean(c) })} /> Required
               </label>
             )}
-            {!layout && d.type !== "FILE" && d.type !== "CHECKBOX" && (
+            {licensing && !layout && d.type !== "FILE" && d.type !== "CHECKBOX" && (
               <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
                 Fills in
                 <Select items={{ [NONE]: "nothing", ...CLIENT_FIELD_LABELS }} value={d.clientField} onValueChange={(v) => onChange({ clientField: v ?? NONE })}>

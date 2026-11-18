@@ -65,6 +65,7 @@ export function AppSidebarNav({
   isWorkTeam = false,
   showClientWork = false,
   newSubmissions = 0,
+  showForms = false,
 }: {
   isAdmin: boolean;
   canManageInvoices: boolean;
@@ -83,6 +84,8 @@ export function AppSidebarNav({
   showClientWork?: boolean;
   /** New form submissions waiting, shown on the Forms link. */
   newSubmissions?: number;
+  /** Forms in a tasks-only workspace: its own forms and submissions. */
+  showForms?: boolean;
 }) {
   const pathname = usePathname();
 
@@ -98,6 +101,7 @@ export function AppSidebarNav({
       ...(isWorkTeam ? [{ href: "/staff-guide", label: "Staff guide", icon: BookMarked, tour: "nav-staff-guide" }] : []),
     ];
     const general: NavLink[] = [];
+    if (showForms) general.push(...GENERAL);
     // The client company's own staff clock in here (docs/activity-monitoring-plan.md);
     // the managing company's team clocks in at home.
     if (!isWorkTeam) general.push({ href: "/time", label: "Time", icon: Clock, tour: "nav-time" });
