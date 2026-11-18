@@ -2,7 +2,7 @@ import { app, shell } from "electron";
 import { autoUpdater } from "electron-updater";
 import type { MenuItemConstructorOptions } from "electron";
 
-// Updates come from the HCLM server the app is signed in to
+// Updates come from the Carenela workspace the app is signed in to
 // (`/api/agent/updates/*`, which hands out short-lived links to the release
 // files in the private bucket), so there's no separate update URL to set.
 //

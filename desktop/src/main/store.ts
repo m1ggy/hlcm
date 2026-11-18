@@ -87,10 +87,11 @@ export function saveSettings(settings: Settings) {
 }
 
 /** Server URL baked in at build time (agent/config.json); can be overridden at sign-in. */
-export function defaultServerUrl(): string {
+/** The product's domain (config.json): workspaces live at <slug>.<rootDomain>. */
+export function rootDomain(): string {
   try {
-    const config = JSON.parse(fs.readFileSync(path.join(app.getAppPath(), "config.json"), "utf8")) as { defaultServerUrl?: string };
-    return config.defaultServerUrl ?? "";
+    const config = JSON.parse(fs.readFileSync(path.join(app.getAppPath(), "config.json"), "utf8")) as { rootDomain?: string };
+    return (config.rootDomain ?? "").trim().toLowerCase();
   } catch {
     return "";
   }

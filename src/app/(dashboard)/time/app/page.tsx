@@ -14,7 +14,14 @@ export default async function DesktopAppPage() {
   await blockCaregiverRoute("/hours");
   const session = await auth();
   if (!session?.user || !(await isTrackedHere(session.user.id))) redirect("/time");
+  // What to type in the app's Workspace field: the short name on the
+  // product's domain, or the full address anywhere else (local testing).
   const address = await getAppUrl();
+  const workspace = (() => {
+    const { hostname, origin } = new URL(address);
+    const root = process.env.ROOT_DOMAIN?.trim().toLowerCase();
+    return root && root !== "localhost" && hostname.endsWith(`.${root}`) ? hostname.slice(0, -root.length - 1) : origin;
+  })();
   // Newest installers from the update manifests in agent-releases/ (see desktop/RELEASING.md).
   const latest = await latestDownloads();
   const downloads = [
@@ -29,7 +36,7 @@ export default async function DesktopAppPage() {
         <Link href="/time" className="flex items-center gap-1 text-sm text-muted-foreground hover:underline">
           <ChevronLeft className="size-4" /> Time
         </Link>
-        <h1 className="text-2xl font-semibold">HCLM desktop app</h1>
+        <h1 className="text-2xl font-semibold">Carenela desktop app</h1>
         <p className="text-sm text-muted-foreground">
           Office staff clock in, take breaks and clock out from the desktop app. It sits in your system tray while you work.
         </p>
@@ -71,15 +78,15 @@ export default async function DesktopAppPage() {
               Windows doesn&apos;t recognise it yet.)
             </li>
             <li>
-              <strong>Mac:</strong> open the downloaded file and drag HCLM Tracker into Applications. Open it once; when the Mac says it
+              <strong>Mac:</strong> open the downloaded file and drag Carenela into Applications. Open it once; when the Mac says it
               can&apos;t be opened, go to System Settings &gt; Privacy &amp; Security, scroll down and click <strong>Open Anyway</strong>,
               then confirm.
             </li>
             <li>The app adds an icon to your system tray (bottom right on Windows, top right on Mac).</li>
             <li>
-              If it asks for the HCLM address, enter <code className="rounded bg-muted px-1.5 py-0.5">{address}</code>
+              For <strong>Workspace</strong>, enter <code className="rounded bg-muted px-1.5 py-0.5">{workspace}</code>
             </li>
-            <li>Sign in with your usual HCLM email, password and sign-in code.</li>
+            <li>Sign in with your usual email, password and sign-in code.</li>
             <li>Read the monitoring notice and accept it.</li>
             <li>
               On a Mac, allow Screen Recording and Accessibility when asked, then reopen the app. After each update you may need to

@@ -1,6 +1,6 @@
 name: Desktop tracker release
 
-# Builds the HCLM Tracker desktop app (desktop/) for Windows and Mac and attaches
+# Builds the Carenela desktop app desktop app (desktop/) for Windows and Mac and attaches
 # the installers to a GitHub Release.
 #
 # Start it by pushing a tag that matches desktop/package.json's version:
@@ -9,7 +9,6 @@ name: Desktop tracker release
 # tag is given).
 #
 # The production address baked into the app comes from the repository
-# variable AGENT_SERVER_URL (Settings > Secrets and variables > Actions >
 # Variables), e.g. https://app.example.com. Without it the sign-in screen
 # asks for the address.
 #
@@ -70,16 +69,6 @@ jobs:
             exit 1
           fi
 
-      - name: Set production address
-        env:
-          SERVER_URL: ${{ vars.AGENT_SERVER_URL }}
-        run: |
-          if [ -z "$SERVER_URL" ]; then
-            echo "::warning::AGENT_SERVER_URL is not set; the app will ask users for the HCLM address."
-          fi
-          node -e "require('fs').writeFileSync('config.json', JSON.stringify({ defaultServerUrl: process.env.SERVER_URL.replace(/\/+$/, '') }, null, 2) + '\n')"
-          cat config.json
-
       - run: npm ci
 
       - run: npm test
@@ -92,7 +81,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
           path: |
-            desktop/release/HCLM-Tracker-*
+            desktop/release/Carenela-*
             desktop/release/latest*.yml
 
   release:
@@ -116,12 +105,12 @@ jobs:
           ls -la
           version="${GITHUB_REF_NAME#agent-v}"
           cat > notes.md <<EOF
-          HCLM Tracker $version (unsigned build).
+          Carenela desktop app $version (unsigned build).
 
           Files:
-          - Windows: \`HCLM-Tracker-Setup-$version.exe\`
-          - Mac, Apple chip: \`HCLM-Tracker-$version-arm64.dmg\`
-          - Mac, Intel: \`HCLM-Tracker-$version-x64.dmg\`
+          - Windows: \`Carenela-Setup-$version.exe\`
+          - Mac, Apple chip: \`Carenela-$version-arm64.dmg\`
+          - Mac, Intel: \`Carenela-$version-x64.dmg\`
 
           This release is not live yet. Staff get it once every file here is
           uploaded to the bucket's \`agent-releases/\` folder (installers first,
@@ -129,6 +118,6 @@ jobs:
           EOF
           gh release create "$GITHUB_REF_NAME" \
             --repo "$GITHUB_REPOSITORY" \
-            --title "HCLM Tracker $version" \
+            --title "Carenela desktop app $version" \
             --notes-file notes.md \
-            HCLM-Tracker-* latest*.yml
+            Carenela-* latest*.yml

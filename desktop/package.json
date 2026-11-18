@@ -1,9 +1,9 @@
 {
-  "name": "hclm-tracker",
-  "productName": "HCLM Tracker",
-  "version": "0.2.0",
+  "name": "carenela-desktop",
+  "productName": "Carenela",
+  "version": "0.3.0",
   "private": true,
-  "description": "HCLM desktop activity tracker for office staff",
+  "description": "Carenela desktop app: clock in and activity monitoring for office staff",
   "main": "dist/main/main.js",
   "type": "commonjs",
   "scripts": {
@@ -24,8 +24,8 @@
     "typescript": "^7.0.2"
   },
   "build": {
-    "appId": "com.hclm.tracker",
-    "productName": "HCLM Tracker",
+    "appId": "com.carenela.desktop",
+    "productName": "Carenela",
     "directories": {
       "output": "release"
     },
@@ -39,7 +39,7 @@
     ],
     "win": {
       "target": "nsis",
-      "artifactName": "HCLM-Tracker-Setup-${version}.${ext}"
+      "artifactName": "Carenela-Setup-${version}.${ext}"
     },
     "nsis": {
       "oneClick": true,
@@ -62,13 +62,13 @@
           ]
         }
       ],
-      "artifactName": "HCLM-Tracker-${version}-${arch}.${ext}",
+      "artifactName": "Carenela-${version}-${arch}.${ext}",
       "category": "public.app-category.business",
       "identity": "-",
       "hardenedRuntime": false,
       "extendInfo": {
         "LSUIElement": true,
-        "NSScreenCaptureUsageDescription": "HCLM Tracker takes screenshots while you are clocked in, as described in the monitoring notice."
+        "NSScreenCaptureUsageDescription": "Carenela takes screenshots while you are clocked in, as described in the monitoring notice."
       }
     },
     "publish": [

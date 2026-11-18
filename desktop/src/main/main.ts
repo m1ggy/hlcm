@@ -17,9 +17,10 @@ import { UploadQueue, type QueueItem } from "./queue";
 import { Tracker } from "./tracker";
 import { trayIcon, type IconState } from "./icon";
 import { Updater } from "./updater";
-import { clearAuth, defaultServerUrl, loadAuth, loadSettings, log, queueKey, saveAuth, saveSettings } from "./store";
+import { workspaceLabel, workspaceUrl } from "./workspace";
+import { clearAuth, rootDomain, loadAuth, loadSettings, log, queueKey, saveAuth, saveSettings } from "./store";
 
-// HCLM Tracker: tray app for office staff. Clock in/out here; while
+// Carenela: tray app for office staff. Clock in/out here; while
 // clocked in it records the window in front and screenshots (see
 // tracker.ts), clocks out after 2 hours with no input, and
 // uploads them through an encrypted offline queue (queue.ts). The server
@@ -73,7 +74,7 @@ function openWindow(name: keyof typeof windows, options: { width: number; height
     minimizable: name === "panel",
     alwaysOnTop: options.alwaysOnTop ?? false,
     closable: options.closable ?? true,
-    title: "HCLM Tracker",
+    title: "Carenela",
     autoHideMenuBar: true,
     show: false,
     webPreferences: { preload: PRELOAD, contextIsolation: true, sandbox: true, nodeIntegration: false },
@@ -122,8 +123,8 @@ function showPanel() {
 function viewState() {
   return {
     signedIn: !!api,
-    serverUrl: api?.serverUrl ?? loadSettings().serverUrl ?? defaultServerUrl(),
-    serverUrlBuiltIn: (api?.serverUrl ?? loadSettings().serverUrl ?? defaultServerUrl()) === defaultServerUrl() && !!defaultServerUrl(),
+    workspace: workspaceLabel(api?.serverUrl ?? loadSettings().serverUrl ?? "", rootDomain()),
+    rootDomain: rootDomain(),
     user: me?.user ?? null,
     status: me?.status ?? "CLOCKED_OUT",
     clockIn: me?.openEntry?.clockIn ?? null,
@@ -167,7 +168,7 @@ function broadcast() {
 function updateTray() {
   if (!tray) return;
   tray.setImage(trayIcon(iconState()));
-  tray.setToolTip(`HCLM Tracker: ${statusLine()}`);
+  tray.setToolTip(`Carenela: ${statusLine()}`);
   const status = me?.status;
   const template: Electron.MenuItemConstructorOptions[] = [];
   if (api && me) {
@@ -184,7 +185,7 @@ function updateTray() {
     template.push({ type: "separator" });
   }
   template.push({ label: api ? "Open tracker" : "Sign in", click: () => showPanel() });
-  if (api) template.push({ label: "Open HCLM in browser", click: () => void shell.openExternal(api!.serverUrl) });
+  if (api) template.push({ label: "Open Carenela in browser", click: () => void shell.openExternal(api!.serverUrl) });
   if (api) template.push({ label: "Sign out", click: () => void signOut() });
   const updateItems = updater?.menuItems() ?? [];
   if (updateItems.length) template.push({ type: "separator" }, ...updateItems);
@@ -193,7 +194,7 @@ function updateTray() {
 }
 
 function notify(body: string) {
-  if (Notification.isSupported()) new Notification({ title: "HCLM Tracker", body, silent: true }).show();
+  if (Notification.isSupported()) new Notification({ title: "Carenela", body, silent: true }).show();
 }
 
 /** The server's word on the clock. Tracking starts/stops to match it. */
@@ -272,8 +273,8 @@ async function ensurePermissions(): Promise<boolean> {
   const missing = [!screen && "Screen Recording", !accessibility && "Accessibility"].filter(Boolean).join(" and ");
   const { response } = await dialog.showMessageBox({
     type: "warning",
-    message: `HCLM Tracker needs ${missing} permission`,
-    detail: `Open System Settings > Privacy & Security, turn on HCLM Tracker under ${missing}, then restart the app.`,
+    message: `Carenela needs ${missing} permission`,
+    detail: `Open System Settings > Privacy & Security, turn on Carenela under ${missing}, then restart the app.`,
     buttons: ["Open System Settings", "Cancel"],
   });
   if (response === 0) {
@@ -335,17 +336,6 @@ async function autoClockOut(since: number) {
 // ---------------------------------------------------------------------------
 // Sign-in / out
 // ---------------------------------------------------------------------------
-
-function normalizeServerUrl(raw: string): string | null {
-  try {
-    const url = new URL(raw.trim());
-    const local = url.hostname === "localhost" || url.hostname === "127.0.0.1";
-    if (url.protocol !== "https:" && !(local && url.protocol === "http:")) return null;
-    return url.origin;
-  } catch {
-    return null;
-  }
-}
 
 function useAuth(auth: StoredAuth) {
   api = new ApiClient(auth, app.getVersion(), (next) => {
@@ -429,9 +419,9 @@ async function sendItem(item: QueueItem) {
 function registerIpc() {
   ipcMain.handle("state:get", () => viewState());
 
-  ipcMain.handle("auth:login", async (_event, input: { serverUrl: string; email: string; password: string }) => {
-    const serverUrl = normalizeServerUrl(String(input?.serverUrl ?? ""));
-    if (!serverUrl) return { ok: false, error: "Enter the HCLM address, starting with https://" };
+  ipcMain.handle("auth:login", async (_event, input: { workspace: string; email: string; password: string }) => {
+    const serverUrl = workspaceUrl(String(input?.workspace ?? ""), rootDomain());
+    if (!serverUrl) return { ok: false, error: "Enter your workspace, e.g. yourcompany" };
     try {
       const result = await ApiClient.login(serverUrl, {
         email: String(input.email ?? ""),

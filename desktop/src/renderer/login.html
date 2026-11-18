@@ -3,24 +3,22 @@
   <head>
     <meta charset="utf-8" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'" />
-    <title>HCLM Tracker: Sign in</title>
+    <title>Carenela: Sign in</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <h1>HCLM Tracker</h1>
-    <p class="sub">Sign in with your HCLM account.</p>
+    <h1>Carenela</h1>
+    <p class="sub">Sign in to your company's workspace.</p>
 
     <form id="password-step">
-      <div id="server-field">
-        <label for="server">HCLM address</label>
-        <input id="server" type="url" placeholder="https://" required />
-      </div>
+      <label for="workspace">Workspace</label>
+      <input id="workspace" autocomplete="organization" autocapitalize="off" spellcheck="false" required />
+      <p class="sub" id="workspace-hint"></p>
       <label for="email">Email</label>
       <input id="email" type="email" autocomplete="username" required />
       <label for="password">Password</label>
       <input id="password" type="password" autocomplete="current-password" required />
       <div class="row"><button class="primary" type="submit">Sign in</button></div>
-      <p class="sub"><a href="#" id="change-server" hidden>Use a different HCLM address</a></p>
     </form>
 
     <form id="mfa-step" hidden>

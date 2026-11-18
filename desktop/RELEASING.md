@@ -1,4 +1,4 @@
-# Releasing HCLM Tracker
+# Releasing the Carenela desktop app
 
 The builds are **not code-signed** (no Windows certificate or Apple Developer
 account, by decision). What that means for users is explained on the
@@ -17,14 +17,10 @@ download page (`/time/app`):
 
 ## One-time setup
 
-1. Put the production address in `config.json`:
-
-   ```json
-   { "defaultServerUrl": "https://your-hclm-domain" }
-   ```
-
-   The sign-in screen then hides the address field (a "Use a different HCLM
-   address" link still lets you point it at a test server).
+1. `config.json` holds the product's domain (`{ "rootDomain": "carenela.com" }`).
+   Sign-in asks for the workspace's short name and signs in to
+   `<name>.carenela.com`; a full address (e.g. `http://ctk.localhost:3000`)
+   still works for testing.
 
 2. Screenshot retention backstop on the bucket. The app server already deletes
    screenshots older than 90 days every day (`src/lib/activity-retention.ts`);
@@ -51,11 +47,6 @@ download page (`/time/app`):
 `.github/workflows/agent-release.yml` builds Windows and Mac on GitHub's
 machines, so no Mac is needed.
 
-One-time: set the repository variable `AGENT_SERVER_URL` (Settings → Secrets
-and variables → Actions → Variables) to the production address, e.g.
-`https://your-hclm-domain`. The workflow writes it into `config.json` for the
-build; the committed `config.json` stays empty.
-
 1. Bump `version` in `package.json` and commit.
 2. Tag and push the tag (it must match the version, or the build stops):
 
@@ -79,15 +70,15 @@ files are kept as run artifacts for 14 days instead of a Release.
 1. Bump `version` in `package.json` (the updater only offers a higher version).
 2. `npm test`.
 3. Windows (on Windows): `npm run dist:win`. Produces in `release/`:
-   `HCLM-Tracker-Setup-<version>.exe`, its `.blockmap`, and `latest.yml`.
+   `Carenela-Setup-<version>.exe`, its `.blockmap`, and `latest.yml`.
 4. Mac (must be built on a Mac; dmg can't be built on Windows):
-   `npm ci && npm run dist:mac`. Produces `HCLM-Tracker-<version>-arm64.dmg`,
+   `npm ci && npm run dist:mac`. Produces `Carenela-<version>-arm64.dmg`,
    `-x64.dmg`, the matching `.zip` files, `.blockmap`s and `latest-mac.yml`.
 5. Upload to the private bucket under `agent-releases/`. Installers first,
    manifests last, so no app sees a version before its files exist:
 
    ```sh
-   gcloud storage cp release/HCLM-Tracker-* gs://$GCS_BUCKET/agent-releases/
+   gcloud storage cp release/Carenela-* gs://$GCS_BUCKET/agent-releases/
    gcloud storage cp release/latest*.yml gs://$GCS_BUCKET/agent-releases/
    ```
 

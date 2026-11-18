@@ -5,22 +5,12 @@ function busy(form, on) {
 }
 
 window.hclm.invoke("state:get").then((state) => {
-  $("server").value = state.serverUrl || "";
-  // A build with the address baked in (config.json defaultServerUrl) hides
-  // the field; the link below brings it back, e.g. for a test server.
-  if (state.serverUrl && state.serverUrlBuiltIn) {
-    $("server-field").hidden = true;
-    $("change-server").hidden = false;
-  }
+  $("workspace").value = state.workspace || "";
+  $("workspace").placeholder = state.rootDomain ? "yourcompany" : "https://";
+  // The part of the address before .carenela.com, as in the browser.
+  $("workspace-hint").textContent = state.rootDomain ? `The name in your web address: yourcompany.${state.rootDomain}` : "";
   if (state.error) $("error").textContent = state.error;
-  ($("server").value ? $("email") : $("server")).focus();
-});
-
-$("change-server").addEventListener("click", (event) => {
-  event.preventDefault();
-  $("server-field").hidden = false;
-  $("change-server").hidden = true;
-  $("server").focus();
+  ($("workspace").value ? $("email") : $("workspace")).focus();
 });
 
 $("password-step").addEventListener("submit", async (event) => {
@@ -29,7 +19,7 @@ $("password-step").addEventListener("submit", async (event) => {
   $("error").textContent = "";
   busy(form, true);
   const result = await window.hclm.invoke("auth:login", {
-    serverUrl: $("server").value,
+    workspace: $("workspace").value,
     email: $("email").value,
     password: $("password").value,
   });
