@@ -1,9 +1,20 @@
 name: Desktop tracker release
 
-# Builds the Carenela desktop app desktop app (desktop/) for Windows and Mac and attaches
-# the installers to a GitHub Release.
+# Builds the Carenela desktop app (desktop/) for Windows and Mac, attaches
+# the installers to a GitHub Release, and publishes them to the prod
+# bucket's agent-releases/ folder, where the download page and the apps'
+# auto-update find them (scripts/upload-agent-release.sh, through the
+# droplet — same DROPLET_* secrets as deploy.yml).
 #
 # Start it by pushing a tag that matches desktop/package.json's version:
+#   git tag agent-v0.3.1 && git push origin agent-v0.3.1
+# or run it by hand from the Actions tab (builds only, no Release, unless a
+# tag is given).
+#
+# The app asks for the workspace at sign-in (config.json rootDomain).
+# Builds are unsigned by decision (no certificates).
+
+on:
 #   git tag agent-v0.2.1 && git push origin agent-v0.2.1
 # or run it by hand from the Actions tab (builds only, no Release, unless a
 # tag is given).
@@ -112,12 +123,44 @@ jobs:
           - Mac, Apple chip: \`Carenela-$version-arm64.dmg\`
           - Mac, Intel: \`Carenela-$version-x64.dmg\`
 
-          This release is not live yet. Staff get it once every file here is
-          uploaded to the bucket's \`agent-releases/\` folder (installers first,
-          \`latest*.yml\` last). See desktop/RELEASING.md.
+          Published to the bucket's \`agent-releases/\` folder by the next job;
+          the download page and the apps' auto-update pick it up from there.
           EOF
           gh release create "$GITHUB_REF_NAME" \
             --repo "$GITHUB_REPOSITORY" \
             --title "Carenela desktop app $version" \
             --notes-file notes.md \
             Carenela-* latest*.yml
+
+  publish:
+    name: Publish to agent-releases/
+    needs: release
+    runs-on: ubuntu-latest
+    env:
+      DEPLOY_PATH: ${{ secrets.DROPLET_DEPLOY_PATH || '/opt/hclm-app' }}
+      SSH_PORT: ${{ secrets.DROPLET_SSH_PORT || 22 }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts/upload-agent-release.sh
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
+
+      - name: Load SSH key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DROPLET_SSH_KEY }}
+
+      - name: Trust droplet host key
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -p "$SSH_PORT" -H "${{ secrets.DROPLET_HOST }}" >> ~/.ssh/known_hosts
+
+      # Installers first, latest*.yml last, so no app sees a version before
+      # its files exist.
+      - name: Upload
+        run: bash scripts/upload-agent-release.sh release "${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}"
