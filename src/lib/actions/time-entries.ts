@@ -9,6 +9,7 @@ import { friendlyPrismaError } from "@/lib/prisma-errors";
 import { toActionResult } from "@/lib/action-result";
 import { assertTimeNotLocked, assertRangeNotLocked, lockedIds } from "@/lib/payroll-lock";
 import { TimeClockError, summarizeByUser, type TimeEntryRangeInput, type BreakDeductionRule } from "@/lib/time-entries";
+import { clockInFor, clockOutFor, startBreakFor, endBreakFor, endBreakForDayFor, type LocationInput } from "@/lib/time-clock";
 
 export async function getMyActiveEntry() {
   const session = await requireSession();
@@ -28,225 +29,49 @@ export async function getMyActiveBreak() {
   });
 }
 
-// GPS captured client-side (see TimeClockWidget) around the moment of the
-// action — record-only, never validated or required here. A Caregiver with
-// no recipient assignments, a denied location permission, or any other
-// role entirely just omits this and clocks in/out exactly as before.
-type LocationInput = {
-  latitude?: number;
-  longitude?: number;
-  accuracy?: number;
-  locationError?: string;
-};
-
-// Written at clock-out of a visit — trimmed, blank treated as "no note".
-// Capped so a pasted wall of text can't bloat every visit-history fetch.
-const visitNoteSchema = z.string().trim().max(4000).optional();
-
-/** Stores the note on the visit's first segment — see TimeEntry.visitStartId. */
-async function saveVisitNote(entry: { id: string; visitStartId: string | null; careRecipientId: string | null }, note: string | undefined) {
-  const visitNote = visitNoteSchema.parse(note);
-  if (!entry.careRecipientId || !visitNote) return;
-  await db.timeEntry.update({ where: { id: entry.visitStartId ?? entry.id }, data: { visitNote } });
+/** Whether the signed-in user must clock in from the desktop app (see time-clock.ts#assertClockOriginAllowed). */
+export async function getMyDesktopClockRequired() {
+  const session = await requireSession();
+  if (session.user.role === "CAREGIVER" || session.user.role === "CLIENT") return false;
+  const user = await db.user.findUnique({ where: { id: session.user.id }, select: { requireDesktopClock: true } });
+  return user?.requireDesktopClock ?? false;
 }
+
+// Clock rules live in src/lib/time-clock.ts, shared with the desktop
+// tracker's API — these are just the web clock's session-checked entry points.
 
 export async function clockIn(input: { careRecipientId?: string } & LocationInput = {}) {
   const session = await requireSession();
-  const open = await db.timeEntry.findFirst({
-    where: { userId: session.user.id, clockOut: null },
-  });
-  if (open) throw new TimeClockError("Already clocked in");
-
-  // A visit can only be for someone this Caregiver is actually assigned to
-  // — otherwise a crafted request could log (and later bill) time against
-  // any recipient by id.
-  if (input.careRecipientId) {
-    const assigned = await db.careRecipientAssignment.findUnique({
-      where: { careRecipientId_caregiverId: { careRecipientId: input.careRecipientId, caregiverId: session.user.id } },
-      select: { careRecipient: { select: { active: true } } },
-    });
-    if (!assigned?.careRecipient.active) throw new TimeClockError("You're not assigned to that recipient");
-  }
-
-  const entry = await db.timeEntry.create({
-    data: {
-      userId: session.user.id,
-      clockIn: new Date(),
-      careRecipientId: input.careRecipientId,
-      clockInLatitude: input.latitude,
-      clockInLongitude: input.longitude,
-      clockInLocationAccuracy: input.accuracy,
-      clockInLocationError: input.locationError,
-    },
-  });
-
-  await recordAudit({
-    entityType: "TimeEntry",
-    entityId: entry.id,
-    action: "clock_in",
-    actorId: session.user.id,
-  });
-
+  const entry = await clockInFor(session.user.id, input);
   revalidatePath("/", "layout");
   return entry;
 }
 
 export async function clockOut(input: LocationInput & { visitNote?: string } = {}) {
   const session = await requireSession();
-  const open = await db.timeEntry.findFirst({
-    where: { userId: session.user.id, clockOut: null },
-    orderBy: { clockIn: "desc" },
-  });
-  if (!open) throw new TimeClockError("Not clocked in");
-
-  const entry = await db.timeEntry.update({
-    where: { id: open.id },
-    data: {
-      clockOut: new Date(),
-      clockOutLatitude: input.latitude,
-      clockOutLongitude: input.longitude,
-      clockOutLocationAccuracy: input.accuracy,
-      clockOutLocationError: input.locationError,
-    },
-  });
-  await saveVisitNote(entry, input.visitNote);
-  await stopTaskTimersAtDayEnd(session.user.id, entry.clockOut!);
-
-  await recordAudit({
-    entityType: "TimeEntry",
-    entityId: entry.id,
-    action: "clock_out",
-    actorId: session.user.id,
-  });
-
+  // `at` is the desktop app's idle back-date only — never from the web.
+  const entry = await clockOutFor(session.user.id, { ...input, at: undefined });
   revalidatePath("/", "layout");
   return entry;
 }
 
-/**
- * Clocking out ends the day, so it also stops a task timer left running —
- * otherwise a forgotten timer keeps counting overnight. Closed at the same
- * moment as the shift. (Starting a timer clocks you in: startTaskTimer.)
- */
-async function stopTaskTimersAtDayEnd(userId: string, at: Date) {
-  const open = await db.taskTimeEntry.findMany({ where: { userId, endedAt: null }, select: { id: true } });
-  if (open.length === 0) return;
-  await db.taskTimeEntry.updateMany({ where: { id: { in: open.map((e) => e.id) } }, data: { endedAt: at } });
-  for (const e of open) {
-    await recordAudit({ entityType: "TaskTimeEntry", entityId: e.id, action: "stop_timer_on_clock_out", actorId: userId });
-  }
-  revalidatePath("/time-tracking");
-}
-
-/** The session a break interrupted — startBreak closes it at exactly
- * breakStart, so it's the latest entry that ended by then. */
-async function entryBeforeBreak(userId: string, breakStart: Date) {
-  return db.timeEntry.findFirst({
-    where: { userId, clockOut: { lte: breakStart } },
-    orderBy: { clockOut: "desc" },
-    select: { id: true, careRecipientId: true, visitStartId: true },
-  });
-}
-
-/**
- * Starts a break: closes the caller's open TimeEntry (a break is unpaid,
- * same as any other gap between sessions already is) and opens a
- * BreakEntry. Requires being clocked in and not already on a break —
- * mirrors clockIn's "already clocked in" guard.
- */
 export async function startBreak() {
   const session = await requireSession();
-  const [openEntry, openBreak] = await Promise.all([
-    db.timeEntry.findFirst({ where: { userId: session.user.id, clockOut: null } }),
-    db.breakEntry.findFirst({ where: { userId: session.user.id, breakEnd: null } }),
-  ]);
-  if (!openEntry) throw new TimeClockError("Not clocked in");
-  if (openBreak) throw new TimeClockError("Already on a break");
-
-  const now = new Date();
-  const breakEntry = await db.$transaction(async (tx) => {
-    await tx.timeEntry.update({ where: { id: openEntry.id }, data: { clockOut: now } });
-    return tx.breakEntry.create({ data: { userId: session.user.id, breakStart: now } });
-  });
-
-  await recordAudit({
-    entityType: "BreakEntry",
-    entityId: breakEntry.id,
-    action: "start_break",
-    actorId: session.user.id,
-  });
-
+  const breakEntry = await startBreakFor(session.user.id);
   revalidatePath("/", "layout");
   return breakEntry;
 }
 
-/** Ends a break and resumes work: closes the BreakEntry and opens a fresh
- * TimeEntry. Use endBreakForDay instead if the break turned into being done
- * for the day rather than a return to work. */
 export async function endBreak() {
   const session = await requireSession();
-  const openBreak = await db.breakEntry.findFirst({
-    where: { userId: session.user.id, breakEnd: null },
-    orderBy: { breakStart: "desc" },
-  });
-  if (!openBreak) throw new TimeClockError("Not on a break");
-
-  // Resuming after a break mid-visit is still the same visit — carry the
-  // recipient over and link back to the visit's first segment, otherwise
-  // the rest of the visit would bill to nobody and lose its checklist.
-  const beforeBreak = await entryBeforeBreak(session.user.id, openBreak.breakStart);
-
-  const now = new Date();
-  const entry = await db.$transaction(async (tx) => {
-    await tx.breakEntry.update({ where: { id: openBreak.id }, data: { breakEnd: now } });
-    return tx.timeEntry.create({
-      data: {
-        userId: session.user.id,
-        clockIn: now,
-        careRecipientId: beforeBreak?.careRecipientId ?? null,
-        visitStartId: beforeBreak?.careRecipientId ? (beforeBreak.visitStartId ?? beforeBreak.id) : null,
-      },
-    });
-  });
-
-  await recordAudit({
-    entityType: "BreakEntry",
-    entityId: openBreak.id,
-    action: "end_break",
-    actorId: session.user.id,
-  });
-
+  const entry = await endBreakFor(session.user.id);
   revalidatePath("/", "layout");
   return entry;
 }
 
-/** Ends a break without resuming work — the break turned into being done
- * for the day. Just closes the BreakEntry; the TimeEntry it started from
- * stays closed, so no new session opens (unlike endBreak). */
 export async function endBreakForDay(input: { visitNote?: string } = {}) {
   const session = await requireSession();
-  const openBreak = await db.breakEntry.findFirst({
-    where: { userId: session.user.id, breakEnd: null },
-    orderBy: { breakStart: "desc" },
-  });
-  if (!openBreak) throw new TimeClockError("Not on a break");
-
-  const entry = await db.breakEntry.update({ where: { id: openBreak.id }, data: { breakEnd: new Date() } });
-
-  // Ending the day from a break ends the visit too — same note prompt as
-  // a normal clock-out.
-  const beforeBreak = await entryBeforeBreak(session.user.id, openBreak.breakStart);
-  if (beforeBreak) await saveVisitNote(beforeBreak, input.visitNote);
-  // And it's a clock-out, so a running task timer stops too.
-  await stopTaskTimersAtDayEnd(session.user.id, entry.breakEnd!);
-
-  await recordAudit({
-    entityType: "BreakEntry",
-    entityId: openBreak.id,
-    action: "end_break_for_day",
-    actorId: session.user.id,
-  });
-
+  const entry = await endBreakForDayFor(session.user.id, input);
   revalidatePath("/", "layout");
   return entry;
 }
@@ -662,7 +487,7 @@ async function createManualTimeEntryImpl(input: {
   const { breakStart, breakEnd } = parsed;
   const entry = await db.$transaction(async (tx) => {
     const first = await tx.timeEntry.create({
-      data: { userId: parsed.userId, clockIn: parsed.clockIn, clockOut: breakStart ?? parsed.clockOut, careRecipientId },
+      data: { userId: parsed.userId, clockIn: parsed.clockIn, clockOut: breakStart ?? parsed.clockOut, careRecipientId, source: "MANUAL" },
     });
     if (breakStart && breakEnd) {
       await tx.breakEntry.create({ data: { userId: parsed.userId, breakStart, breakEnd } });
@@ -672,6 +497,7 @@ async function createManualTimeEntryImpl(input: {
           clockIn: breakEnd,
           clockOut: parsed.clockOut,
           careRecipientId,
+          source: "MANUAL",
           // Same visit on both sides of the break — see TimeEntry.visitStartId.
           visitStartId: careRecipientId ? first.id : null,
         },
@@ -809,6 +635,9 @@ async function addBreakToEntryImpl(entryId: string, input: { breakStart: string;
         clockOut,
         careRecipientId: entry.careRecipientId,
         visitStartId: entry.careRecipientId ? (entry.visitStartId ?? entry.id) : null,
+        // Splitting a session keeps where it came from (web, desktop app, manual).
+        source: entry.source,
+        agentDeviceId: entry.agentDeviceId,
         // The real clock-out (and where it happened) now belongs to the
         // second half.
         ...clockOutLocationOf(entry),

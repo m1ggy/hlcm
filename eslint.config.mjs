@@ -39,6 +39,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Desktop tracker app: its own package, tsconfig and build (desktop/package.json).
+    "desktop/**",
   ]),
 ]);
 

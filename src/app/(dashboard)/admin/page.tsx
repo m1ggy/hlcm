@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { blockCaregiverRoute } from "@/lib/rbac";
+import { auth } from "@/auth";
+import { blockCaregiverRoute, isSuperuser } from "@/lib/rbac";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const ADMIN_LINKS = [
@@ -16,13 +17,18 @@ const ADMIN_LINKS = [
   { href: "/intake/forms", label: "Forms", description: "Public intake forms — now under Forms in the sidebar" },
 ];
 
+// Monitoring data is OWNER/DEVELOPER only (docs/activity-monitoring-plan.md).
+const ACTIVITY_LINK = { href: "/admin/activity", label: "Activity", description: "Desktop app tracking: who is working, screenshots, app usage and productivity rules" };
+
 export default async function AdminPage() {
   await blockCaregiverRoute();
+  const session = await auth();
+  const links = isSuperuser(session?.user?.role) ? [ACTIVITY_LINK, ...ADMIN_LINKS] : ADMIN_LINKS;
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold">Admin</h1>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {ADMIN_LINKS.map((link) => (
+        {links.map((link) => (
           <Link key={link.href} href={link.href}>
             <Card>
               <CardHeader>

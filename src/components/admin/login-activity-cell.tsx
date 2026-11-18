@@ -16,6 +16,15 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
+const METHOD_LABELS: Record<string, string> = {
+  password: "Password",
+  "password+mfa": "Password + MFA",
+  support: "Support link",
+  switch: "Workspace switch",
+  desktop_app: "Desktop app",
+  "desktop_app+mfa": "Desktop app + MFA",
+};
+
 const DEVICE_ICON = { DESKTOP: Monitor, MOBILE: Smartphone, TABLET: Tablet } as const;
 const DEVICE_LABEL = { DESKTOP: "Computer", MOBILE: "Phone", TABLET: "Tablet" } as const;
 
@@ -167,7 +176,7 @@ export function LoginActivityCell({
                         </span>
                       </TableCell>
                       <TableCell>{describe(e)}</TableCell>
-                      <TableCell>{e.method === "password+mfa" ? "Password + MFA" : "Password"}</TableCell>
+                      <TableCell>{METHOD_LABELS[e.method] ?? "Password"}</TableCell>
                       <TableCell className="font-mono text-xs">{e.ipAddress ?? "—"}</TableCell>
                       <TableCell>
                         {e.success ? null : (

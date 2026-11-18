@@ -25,6 +25,11 @@ export type HostOrg = {
   workDailyText: boolean;
   /** Clients and caregivers in a tasks-only workspace (docs/client-care-plan.md). */
   careEnabled: boolean;
+  /** Activity monitoring (docs/activity-monitoring-plan.md): add-on granted, switched on, policy. */
+  activityMonitoringAddon: boolean;
+  activityMonitoringEnabled: boolean;
+  monitoringPolicy: string | null;
+  monitoringPolicyVersion: number;
 };
 
 const HOST_ORG_SELECT = {
@@ -42,6 +47,10 @@ const HOST_ORG_SELECT = {
   workWeeklyEmail: true,
   workDailyText: true,
   careEnabled: true,
+  activityMonitoringAddon: true,
+  activityMonitoringEnabled: true,
+  monitoringPolicy: true,
+  monitoringPolicyVersion: true,
 } as const;
 
 // slug → org, cached briefly: this runs on every tenant-scoped query's first

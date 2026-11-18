@@ -3,7 +3,8 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Clock, Coffee, LogOut } from "lucide-react";
+import Link from "next/link";
+import { Clock, Coffee, LogOut, Monitor } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AvatarInitials } from "@/components/ui/avatar-initials";
@@ -21,6 +22,7 @@ export function TimeClockWidget({
   initialCareRecipientId = null,
   isCaregiver = false,
   careRecipients = [],
+  desktopClockRequired = false,
 }: {
   initialClockIn: string | null;
   /** Server passes the open BreakEntry's breakStart as an ISO string, same
@@ -37,6 +39,9 @@ export function TimeClockWidget({
    * (office work, clocks in same as any other role), 1 auto-selects, 2+
    * prompts. See src/lib/actions/care-recipients.ts#listMyCareRecipients. */
   careRecipients?: CareRecipient[];
+  /** Clock-in and end break only work from the desktop app for this user
+   * (Admin > Activity). Clock out, Break and End day still work here. */
+  desktopClockRequired?: boolean;
 }) {
   const [clockedInAt, setClockedInAt] = useState(initialClockIn ? new Date(initialClockIn) : null);
   const [breakStartedAt, setBreakStartedAt] = useState(initialBreakStart ? new Date(initialBreakStart) : null);
@@ -217,9 +222,13 @@ export function TimeClockWidget({
         <span className="rounded-md border border-amber-500/40 px-2 py-1 text-xs font-medium text-amber-700 dark:text-amber-400">
           On break · {formatDuration(elapsedHours)}
         </span>
-        <Button variant="outline" size="sm" onClick={handleEndBreak} loading={isPending}>
-          <Clock className="size-3.5" /> End break
-        </Button>
+        {desktopClockRequired ? (
+          <span className="hidden text-xs text-muted-foreground sm:inline">End your break in the desktop app</span>
+        ) : (
+          <Button variant="outline" size="sm" onClick={handleEndBreak} loading={isPending}>
+            <Clock className="size-3.5" /> End break
+          </Button>
+        )}
         <Button variant="ghost" size="sm" onClick={handleEndBreakForDay} loading={isPending}>
           <LogOut className="size-3.5" /> {activeRecipientId ? "End visit" : "End day"}
         </Button>
@@ -244,6 +253,14 @@ export function TimeClockWidget({
           <Coffee className="size-3.5" /> Break
         </Button>
       </div>
+    );
+  }
+
+  if (desktopClockRequired) {
+    return (
+      <Button variant="outline" size="sm" nativeButton={false} data-tour="time-clock" render={<Link href="/time/app" />}>
+        <Monitor className="size-3.5" /> <span className="hidden sm:inline">Clock in from the</span> desktop app
+      </Button>
     );
   }
 

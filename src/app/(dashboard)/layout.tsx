@@ -17,7 +17,7 @@ import { CaregiverBottomNav } from "@/components/caregiver-bottom-nav";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { BookOpen } from "lucide-react";
-import { getMyActiveEntry, getMyActiveBreak } from "@/lib/actions/time-entries";
+import { getMyActiveEntry, getMyActiveBreak, getMyDesktopClockRequired } from "@/lib/actions/time-entries";
 import { getMyOpenTaskTimer, listMyRecentTimerTasks } from "@/lib/actions/task-time-entries";
 import { listMyTaskOptions } from "@/lib/actions/tasks";
 import { listMyStartableRecipients, getMyCurrentVisitRecipientId } from "@/lib/actions/visits";
@@ -50,7 +50,7 @@ export default async function DashboardLayout({
   const onWorkTeam = Boolean(session?.user?.isAssigned) || session?.user?.role === "DEVELOPER";
   const showShiftClock = !tasksWorkspace || careVisits;
   const showTaskTimer = (!tasksWorkspace || onWorkTeam) && !(tasksWorkspace && isCaregiver);
-  const [activeEntry, activeBreak, careRecipients, visitRecipientId, openTimer, myTasks, recentTimerTasks] = await Promise.all([
+  const [activeEntry, activeBreak, careRecipients, visitRecipientId, openTimer, myTasks, recentTimerTasks, desktopClockRequired] = await Promise.all([
     getMyActiveEntry(),
     getMyActiveBreak(),
     careVisits ? listMyStartableRecipients() : Promise.resolve([]),
@@ -58,6 +58,7 @@ export default async function DashboardLayout({
     getMyOpenTaskTimer(),
     listMyTaskOptions(),
     listMyRecentTimerTasks(5),
+    getMyDesktopClockRequired(),
   ]);
 
   return (
@@ -91,6 +92,7 @@ export default async function DashboardLayout({
                 initialCareRecipientId={visitRecipientId}
                 isCaregiver={isCaregiver}
                 careRecipients={careRecipients}
+                desktopClockRequired={desktopClockRequired}
               />
             )}
             {showTaskTimer && (

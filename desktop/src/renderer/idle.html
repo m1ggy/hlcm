@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'" />
+    <title>HCLM Tracker: Were you working?</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <h1>Were you working?</h1>
+    <p class="sub" id="range">No keyboard or mouse activity was detected.</p>
+    <p class="meta">
+      If you choose No, you'll be clocked out from the moment you went idle, and can clock in again right away.
+    </p>
+    <div class="row">
+      <button id="no">No, clock me out</button>
+      <button class="primary" id="yes">Yes, I was working</button>
+    </div>
+    <p class="meta" id="countdown"></p>
+    <script src="idle.js"></script>
+  </body>
+</html>

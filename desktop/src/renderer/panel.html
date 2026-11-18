@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'" />
+    <title>HCLM Tracker</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="banner warn" id="offline" hidden>
+      Offline. Activity is saved on this computer, but if the server can't be reached for 15 minutes your clock stops.
+    </div>
+    <div class="banner" id="elsewhere" hidden>
+      You're clocked in from the web or another computer. This computer isn't tracking that session.
+    </div>
+    <div class="banner warn" id="consent" hidden>Accept the monitoring notice to clock in.</div>
+
+    <div class="status"><span class="dot" id="dot"></span><span id="status">Loading…</span></div>
+    <div class="timer" id="timer">0:00:00</div>
+    <div class="meta" id="since">&nbsp;</div>
+
+    <div class="row" id="buttons"></div>
+    <div class="error" id="error"></div>
+
+    <div class="meta" id="shot"></div>
+    <div class="meta" id="uploads"></div>
+
+    <div class="links">
+      <a id="web">Open HCLM</a>
+      <span class="meta" id="who"></span>
+      <a id="signout">Sign out</a>
+    </div>
+    <script src="panel.js"></script>
+  </body>
+</html>

@@ -86,12 +86,51 @@ async function tickEodReminders() {
   }
 }
 
+// Closes desktop-tracker sessions whose app stopped heartbeating (see
+// src/lib/agent-heartbeat.ts). Every 2 minutes, so a session ends at most
+// ~17 minutes after the app went silent, clocked out at its last heartbeat.
+async function tickAgentHeartbeats() {
+  const { closeSilentAgentSessions } = await import("@/lib/agent-heartbeat");
+  const { forEachActiveOrg } = await import("@/lib/db");
+  try {
+    await forEachActiveOrg("Agent heartbeats", async () => {
+      await closeSilentAgentSessions();
+    });
+  } catch (error) {
+    console.error("Agent heartbeat sweep failed:", error);
+  }
+}
+
+// Deletes desktop-tracker screenshots and activity older than 90 days (see
+// src/lib/activity-retention.ts). Checked hourly, runs once per day.
+let lastPurgeDate: string | null = null;
+
+async function maybePurgeActivity() {
+  const today = new Date().toDateString();
+  if (lastPurgeDate === today) return;
+  lastPurgeDate = today;
+  const { purgeOldActivity } = await import("@/lib/activity-retention");
+  const { forEachActiveOrg } = await import("@/lib/db");
+  try {
+    await forEachActiveOrg("Activity retention", async (org) => {
+      const result = await purgeOldActivity();
+      if (result.screenshots || result.intervals) {
+        console.log(`Activity retention (${org.slug}): removed ${result.screenshots} screenshots and ${result.intervals} intervals older than ${result.cutoff.toISOString()}`);
+      }
+    });
+  } catch (error) {
+    console.error("Activity retention run failed:", error);
+  }
+}
+
 export function register() {
   if (process.env.NEXT_RUNTIME === "edge") return;
   setInterval(maybeSendDigest, 60 * 60 * 1000);
   setInterval(tickMeetingReminders, 5 * 60 * 1000);
   setInterval(tickWorkSummaries, 60 * 60 * 1000);
   setInterval(tickEodReminders, 60 * 60 * 1000);
+  setInterval(tickAgentHeartbeats, 2 * 60 * 1000);
+  setInterval(maybePurgeActivity, 60 * 60 * 1000);
 }
 
 // Next logs the error itself; this adds which tenant it happened in (from

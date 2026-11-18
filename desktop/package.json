@@ -1,0 +1,82 @@
+{
+  "name": "hclm-tracker",
+  "productName": "HCLM Tracker",
+  "version": "0.2.0",
+  "private": true,
+  "description": "HCLM desktop activity tracker for office staff",
+  "main": "dist/main/main.js",
+  "type": "commonjs",
+  "scripts": {
+    "build": "tsc -p .",
+    "start": "npm run build && electron .",
+    "test": "npm run build && node --test \"dist/main/*.test.js\"",
+    "dist:win": "npm run build && electron-builder --win --publish never",
+    "dist:mac": "npm run build && electron-builder --mac --publish never"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.11",
+    "get-windows": "^9.3.0",
+    "uiohook-napi": "^1.5.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "electron": "^45.1.0",
+    "electron-builder": "^26.18.0",
+    "typescript": "^7.0.2"
+  },
+  "build": {
+    "appId": "com.hclm.tracker",
+    "productName": "HCLM Tracker",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*.js",
+      "!dist/**/*.test.js",
+      "src/renderer/**",
+      "src/preload.js",
+      "config.json",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "artifactName": "HCLM-Tracker-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "HCLM-Tracker-${version}-${arch}.${ext}",
+      "category": "public.app-category.business",
+      "identity": "-",
+      "hardenedRuntime": false,
+      "extendInfo": {
+        "LSUIElement": true,
+        "NSScreenCaptureUsageDescription": "HCLM Tracker takes screenshots while you are clocked in, as described in the monitoring notice."
+      }
+    },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://updates.invalid/agent"
+      }
+    ]
+  }
+}

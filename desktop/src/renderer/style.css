@@ -1,0 +1,177 @@
+:root {
+  --bg: #ffffff;
+  --fg: #1d2330;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --accent: #1f6feb;
+  --accent-fg: #ffffff;
+  --ok: #1f9d55;
+  --warn: #b7791f;
+  --bad: #c53030;
+  --soft: #f5f7fa;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16191f;
+    --fg: #e6e8ec;
+    --muted: #9aa3af;
+    --border: #2b3038;
+    --accent: #4c8dff;
+    --soft: #1e232b;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 20px;
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  user-select: none;
+}
+
+h1 {
+  font-size: 18px;
+  margin: 0 0 4px;
+}
+
+p.sub {
+  margin: 0 0 16px;
+  color: var(--muted);
+}
+
+label {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  margin: 12px 0 4px;
+}
+
+input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--soft);
+  color: var(--fg);
+  font: inherit;
+  user-select: text;
+}
+
+button {
+  font: inherit;
+  padding: 9px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--soft);
+  color: var(--fg);
+  cursor: pointer;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.row button {
+  flex: 1;
+}
+
+.error {
+  color: var(--bad);
+  min-height: 20px;
+  margin-top: 10px;
+  font-size: 13px;
+}
+
+.banner {
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--soft);
+  border: 1px solid var(--border);
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.banner.warn {
+  border-color: var(--warn);
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.dot.tracking {
+  background: var(--ok);
+}
+
+.dot.paused {
+  background: var(--warn);
+}
+
+.timer {
+  font-size: 40px;
+  font-variant-numeric: tabular-nums;
+  margin: 10px 0 2px;
+}
+
+.meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.policy {
+  white-space: pre-wrap;
+  border: 1px solid var(--border);
+  background: var(--soft);
+  border-radius: 6px;
+  padding: 12px;
+  height: 430px;
+  overflow-y: auto;
+  user-select: text;
+}
+
+.links {
+  margin-top: 18px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+}
+
+.links a {
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+[hidden] {
+  display: none !important;
+}

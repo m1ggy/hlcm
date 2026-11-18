@@ -35,6 +35,16 @@ export function isAdmin(role: string | null | undefined): boolean {
   return role === "ADMIN" || role === "ACCOUNTANT" || isSuperuser(role);
 }
 
+/**
+ * Roles the desktop activity tracker covers — everyone who works in the
+ * office app, i.e. every role except CAREGIVER (field staff on the web/mobile
+ * clock) and CLIENT (portal users who never clock in). See
+ * docs/activity-monitoring-plan.md.
+ */
+export function isTrackedRole(role: string | null | undefined): boolean {
+  return !!role && role !== "CAREGIVER" && role !== "CLIENT";
+}
+
 /** ADMIN/ACCOUNTANT/MANAGER/OWNER — the "management" tier used across visibility and archive checks. */
 export function isManagement(role: string | null | undefined): boolean {
   return isAdmin(role) || role === "MANAGER";
