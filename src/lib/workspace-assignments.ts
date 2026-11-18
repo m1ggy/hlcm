@@ -502,3 +502,16 @@ export async function setWorkspaceSetup(orgId: string, input: { kind: "FULL" | "
   const org = await prisma.organization.update({ where: { id: orgId }, data, select: { slug: true } });
   forgetOrg(org.slug);
 }
+
+/**
+ * The texting details on the home accounts behind linked accounts (their
+ * number and urgent-alert setting live there — src/lib/work-urgent.ts). Read
+ * across workspaces, so it's here with the other cross-workspace reads.
+ */
+export async function homeTextSettings(homeUserIds: string[]) {
+  if (homeUserIds.length === 0) return [];
+  return prisma.user.findMany({
+    where: { id: { in: homeUserIds }, active: true },
+    select: { id: true, phone: true, smsUrgentAlerts: true, smsOptedOutAt: true },
+  });
+}

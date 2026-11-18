@@ -43,6 +43,7 @@ type EditableUser = {
   active: boolean;
   phone: string | null;
   smsRemindersEnabled: boolean;
+  smsUrgentAlerts: boolean;
   smsDailyUpdates?: boolean;
   smsOptedOutAt?: Date | null;
 };
@@ -75,6 +76,7 @@ export function EditUserDialog({
   const [showPassword, setShowPassword] = useState(false);
   const [phone, setPhone] = useState(user.phone ?? "");
   const [smsRemindersEnabled, setSmsRemindersEnabled] = useState(user.smsRemindersEnabled);
+  const [smsUrgentAlerts, setSmsUrgentAlerts] = useState(user.smsUrgentAlerts);
   const wasDaily = user.smsDailyUpdates ?? false;
   const [smsDailyUpdates, setSmsDailyUpdates] = useState(wasDaily);
   const [smsConsent, setSmsConsent] = useState(false);
@@ -111,6 +113,7 @@ export function EditUserDialog({
     setShowPassword(false);
     setPhone(user.phone ?? "");
     setSmsRemindersEnabled(user.smsRemindersEnabled);
+    setSmsUrgentAlerts(user.smsUrgentAlerts);
     setSmsDailyUpdates(wasDaily);
     setSmsConsent(false);
   }
@@ -147,6 +150,7 @@ export function EditUserDialog({
           password: password || undefined,
           phone: phone || undefined,
           smsRemindersEnabled,
+          smsUrgentAlerts,
           ...(showDailyText && { smsDailyUpdates, smsConsent }),
         });
         if (!result.ok) {
@@ -259,6 +263,12 @@ export function EditUserDialog({
             <Checkbox checked={smsRemindersEnabled} onCheckedChange={(c) => setSmsRemindersEnabled(c === true)} />
             Send this person a text/call before every upcoming meeting
           </label>
+          {role !== "CAREGIVER" && (
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox checked={smsUrgentAlerts} onCheckedChange={(c) => setSmsUrgentAlerts(c === true)} />
+              Text this person when a task they&apos;re on is marked urgent
+            </label>
+          )}
           {showDailyText && (
             <div className="space-y-2 rounded-md border p-3">
               {optedOut && !wasDaily ? (

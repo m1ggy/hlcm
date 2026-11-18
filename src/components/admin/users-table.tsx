@@ -28,6 +28,7 @@ type ListedUser = {
   phone: string | null;
   smsRemindersEnabled: boolean;
   smsDailyUpdates: boolean;
+  smsUrgentAlerts: boolean;
   smsOptedOutAt: Date | null;
   /** Set for a managing company's assigned person — read-only here. */
   assignedFromUserId?: string | null;
