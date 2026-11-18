@@ -26,14 +26,13 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
           <h1 className="text-2xl font-semibold">Activity</h1>
           <PageInfoButton title="Activity">
             <p>
-              What the desktop app recorded for office staff: who is working now, activity from keyboard and mouse use,
-              screenshots, and the apps and sites they used. Only owners and developers can see this page. Each person can see their
-              own data under Time &gt; My activity.
+              What the desktop app recorded for this workspace&apos;s own staff: who is working now, screenshots, and the apps and
+              sites they used. It never records keyboard or mouse input; after 2 hours with none, it clocks the person out. Only the
+              owner can see this page. Each person can see their own data under Time &gt; My activity.
             </p>
             <p>
-              <strong>Activity</strong> is the share of time with keyboard or mouse input. <strong>Adjusted</strong> adds the
-              thinking-time credit from your app rules. <strong>Productive</strong> is the share of time in apps and sites marked
-              Productive. None of these change paid hours.
+              <strong>Productive</strong> is the share of tracked time in apps and sites your app rules mark Productive. It
+              doesn&apos;t change paid hours.
             </p>
             <p>
               Tick <strong>App required</strong> once someone has the desktop app installed: from then on they can only clock in or

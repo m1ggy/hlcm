@@ -15,22 +15,18 @@ import {
 import { ApiClient, ApiError, NetworkError, SignedOutError, type ClockState, type DeviceInfo, type Me, type StoredAuth } from "./api";
 import { UploadQueue, type QueueItem } from "./queue";
 import { Tracker } from "./tracker";
-import type { AgentRule } from "./rules";
-import type { IdleDecision } from "./activity";
 import { trayIcon, type IconState } from "./icon";
 import { Updater } from "./updater";
 import { clearAuth, defaultServerUrl, loadAuth, loadSettings, log, queueKey, saveAuth, saveSettings } from "./store";
 
 // HCLM Tracker: tray app for office staff. Clock in/out here; while
-// clocked in it records activity and screenshots (see tracker.ts) and
+// clocked in it records the window in front and screenshots (see
+// tracker.ts), clocks out after 2 hours with no input, and
 // uploads them through an encrypted offline queue (queue.ts). The server
 // is the source of truth for the clock: every action and the once-a-minute
 // heartbeat return the current state, and tracking follows it.
 
 const HEARTBEAT_MS = 60_000;
-const RULES_REFRESH_MS = 30 * 60_000;
-// No answer to the idle prompt counts as "No, I wasn't working".
-const IDLE_PROMPT_TIMEOUT_MS = 5 * 60_000;
 const RENDERER = path.join(__dirname, "..", "..", "src", "renderer");
 const PRELOAD = path.join(__dirname, "..", "..", "src", "preload.js");
 
@@ -43,12 +39,11 @@ let lastError: string | null = null;
 let lastScreenshotAt: number | null = null;
 let updater: Updater;
 let mfaChallenge: { serverUrl: string; challenge: string } | null = null;
-let idlePromptTimer: NodeJS.Timeout | null = null;
-let pendingDiscard: number | null = null;
+let pendingAutoOut: number | null = null;
 let quitting = false;
 
 let tray: Tray | null = null;
-const windows: Partial<Record<"login" | "consent" | "panel" | "idle", BrowserWindow>> = {};
+const windows: Partial<Record<"login" | "consent" | "panel", BrowserWindow>> = {};
 
 const deviceInfo: DeviceInfo = {
   name: os.hostname().slice(0, 100),
@@ -139,14 +134,13 @@ function viewState() {
     online,
     pendingUploads: queue?.pendingCount() ?? 0,
     lastScreenshotAt,
-    idlePending: !!tracker?.idlePending,
     error: lastError,
   };
 }
 
 function iconState(): IconState {
   if (!api || !online) return "problem";
-  if (tracker.idlePending || me?.status === "ON_BREAK") return "paused";
+  if (me?.status === "ON_BREAK") return "paused";
   if (tracker.tracking) return "tracking";
   return "off";
 }
@@ -154,7 +148,6 @@ function iconState(): IconState {
 function statusLine() {
   if (!api) return "Signed out";
   if (!online) return "Offline: time stops counting after 15 min";
-  if (tracker.idlePending) return "Waiting for your idle answer";
   switch (me?.status) {
     case "CLOCKED_IN":
       return me.openEntry?.trackingThisDevice ? "Clocked in, tracking" : "Clocked in elsewhere (not tracked here)";
@@ -207,12 +200,12 @@ function notify(body: string) {
 function applyClockState(state: ClockState) {
   const wasTracking = tracker.tracking;
   me = me ? { ...me, ...state } : me;
+  tracker.setNoInputLimit(state.autoClockOutIdleMinutes);
   const entry = state.openEntry;
   if (entry?.trackingThisDevice) {
     tracker.start({ timeEntryId: entry.id, clockIn: Date.parse(entry.clockIn) });
   } else if (wasTracking) {
     tracker.stop();
-    closeIdlePrompt();
     notify("Your clock was stopped on the server (clocked out on the web, or this computer was offline or asleep for 15+ minutes).");
   }
   broadcast();
@@ -265,16 +258,6 @@ async function heartbeat() {
   }
 }
 
-async function loadRules() {
-  if (!api) return;
-  try {
-    const result = await api.request<{ defaultIdleMinutes: number; rules: AgentRule[] }>("/rules");
-    tracker.setRules(result.rules, result.defaultIdleMinutes);
-  } catch (error) {
-    if (!(error instanceof NetworkError)) handleError(error, "rules");
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Clock
 // ---------------------------------------------------------------------------
@@ -302,10 +285,6 @@ async function ensurePermissions(): Promise<boolean> {
 
 async function runClock(action: ClockAction, at?: number): Promise<{ ok: boolean; error?: string }> {
   if (!api) return { ok: false, error: "Not signed in" };
-  if ((action === "out" || action === "break-start") && tracker.idlePending) {
-    openIdlePrompt();
-    return { ok: false, error: "Answer the idle question first" };
-  }
   if (action === "in" || action === "break-end") {
     if (me && !me.policy.accepted) {
       showConsent();
@@ -332,53 +311,25 @@ async function runClock(action: ClockAction, at?: number): Promise<{ ok: boolean
 }
 
 // ---------------------------------------------------------------------------
-// Idle prompt
+// No-input clock-out
 // ---------------------------------------------------------------------------
 
-function openIdlePrompt() {
-  const win = openWindow("idle", { width: 420, height: 300, alwaysOnTop: true, closable: false });
-  win.setAlwaysOnTop(true, "screen-saver");
-}
-
-function closeIdlePrompt() {
-  if (idlePromptTimer) clearTimeout(idlePromptTimer);
-  idlePromptTimer = null;
-  closeWindow("idle");
-}
-
-function onIdleEnded() {
-  openIdlePrompt();
-  if (idlePromptTimer) clearTimeout(idlePromptTimer);
-  idlePromptTimer = setTimeout(() => void answerIdle("DISCARDED"), IDLE_PROMPT_TIMEOUT_MS);
-  broadcast();
-}
-
-async function answerIdle(decision: IdleDecision) {
-  closeIdlePrompt();
-  const session = tracker.tracking;
-  const idleStart = tracker.resolveIdle(decision);
-  if (decision === "DISCARDED" && idleStart !== null && session) {
-    pendingDiscard = Math.max(idleStart, session.clockIn);
-    await clockOutDiscarded();
-  }
-  broadcast();
-}
-
-/** "No" to the idle prompt: clock out back at the start of the idle stretch, retrying while offline. */
-async function clockOutDiscarded() {
-  if (pendingDiscard === null) return;
-  const at = pendingDiscard;
+/** 2 hours with no keyboard or mouse input: clock out back when input stopped, retrying while offline. */
+async function autoClockOut(since: number) {
+  pendingAutoOut ??= since;
+  const at = pendingAutoOut;
   const result = await runClock("out", at);
   if (result.ok) {
-    pendingDiscard = null;
-    notify(`Clocked out at ${new Date(at).toLocaleTimeString()}, when you went idle. Clock in again to keep working.`);
+    pendingAutoOut = null;
+    notify(`Clocked out at ${new Date(at).toLocaleTimeString()}: no keyboard or mouse input for 2 hours. Clock in again to keep working.`);
   } else if (!online) {
-    setTimeout(() => void clockOutDiscarded(), 30_000);
+    setTimeout(() => void autoClockOut(at), 30_000);
   } else {
     // Server refused (e.g. already clocked out elsewhere): nothing to retry.
-    pendingDiscard = null;
+    pendingAutoOut = null;
     tracker.stop(at);
   }
+  broadcast();
 }
 
 // ---------------------------------------------------------------------------
@@ -411,7 +362,6 @@ async function completeSignIn(serverUrl: string, tokens: { deviceId: string; ref
   mfaChallenge = null;
   closeWindow("login");
   await loadMe();
-  await loadRules();
   if (me?.policy.accepted) showPanel();
 }
 
@@ -444,7 +394,6 @@ async function signOut() {
 
 async function forceSignedOut(message: string | null) {
   tracker.stop();
-  closeIdlePrompt();
   queue.setSender(null);
   // Queued items were for this device's session; a new sign-in is a new
   // device the server won't accept them from.
@@ -538,17 +487,6 @@ function registerIpc() {
     return runClock(action);
   });
 
-  ipcMain.handle("idle:get", () => {
-    const pending = tracker.idlePending;
-    return pending && { start: pending.start, end: pending.end, timeoutMs: IDLE_PROMPT_TIMEOUT_MS };
-  });
-
-  ipcMain.handle("idle:answer", async (_event, decision: IdleDecision) => {
-    if (decision !== "KEPT" && decision !== "DISCARDED") return { ok: false };
-    await answerIdle(decision);
-    return { ok: true };
-  });
-
   ipcMain.handle("app:openWeb", () => {
     if (api) void shell.openExternal(api.serverUrl);
   });
@@ -575,7 +513,7 @@ if (!app.requestSingleInstanceLock()) {
         queue.enqueue(item);
         broadcast();
       },
-      idleEnded: () => onIdleEnded(),
+      noInput: (since) => void autoClockOut(since),
       screenshotTaken: (at) => {
         lastScreenshotAt = at;
         broadcast();
@@ -586,7 +524,7 @@ if (!app.requestSingleInstanceLock()) {
 
     updater = new Updater({
       serverUrl: () => api?.serverUrl ?? null,
-      canInstallNow: () => !tracker.tracking && !tracker.idlePending,
+      canInstallNow: () => !tracker.tracking,
       beforeInstall: () => {
         quitting = true;
       },
@@ -603,14 +541,12 @@ if (!app.requestSingleInstanceLock()) {
     if (auth) {
       useAuth(auth);
       await loadMe();
-      await loadRules();
       if (me?.policy.accepted) showPanel();
     } else {
       openWindow("login", { width: 380, height: 520 });
     }
 
     setInterval(() => void heartbeat(), HEARTBEAT_MS);
-    setInterval(() => void loadRules(), RULES_REFRESH_MS);
     // Back from sleep: catch up with the server right away.
     powerMonitor.on("resume", () => void heartbeat());
     // OS shutdown: keep what we have on disk; the server closes the session

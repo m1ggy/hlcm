@@ -11,8 +11,6 @@ const INVOKE_CHANNELS = [
   "consent:get",
   "consent:accept",
   "clock:run",
-  "idle:get",
-  "idle:answer",
   "app:openWeb",
   "app:signOut",
 ];

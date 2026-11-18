@@ -24,7 +24,7 @@ export async function GET(request: Request) {
 
     const doc: ExportDoc = {
       title: "Desktop app activity",
-      subtitle: `${report.from} to ${report.to} (${report.timeZone}). Activity = time with keyboard/mouse input; adjusted adds app-rule credit. Percentages of tracked time.`,
+      subtitle: `${report.from} to ${report.to} (${report.timeZone}). Productive = time in apps and sites marked Productive, as a share of tracked time.`,
       sections: [
         {
           title: "By person",

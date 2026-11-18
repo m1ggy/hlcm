@@ -30,12 +30,12 @@ export default async function MyActivityPage({ searchParams }: { searchParams: P
             <h1 className="text-2xl font-semibold">My activity</h1>
             <PageInfoButton title="My activity">
               <p>
-                This is what the HCLM desktop app recorded while you were clocked in: screenshots, keyboard and mouse activity
-                (counts only, never what you typed) and the apps, window titles and websites you used. Owners see the same thing.
+                This is what the desktop app recorded while you were clocked in: screenshots and the apps, window titles and
+                websites you used. It never records keyboard or mouse input. Your workspace&apos;s owner sees the same thing.
               </p>
               <p>
-                <strong>Activity</strong> is the share of time with keyboard or mouse input. <strong>Adjusted</strong> gives credit for
-                time spent reading or in meetings in apps the owner has set rules for. Neither changes your paid hours.
+                <strong>Productive</strong> is the share of your tracked time in apps the owner marked Productive. It doesn&apos;t
+                change your paid hours.
               </p>
               <p>Screenshots are kept for 90 days and can&apos;t be deleted from here.</p>
             </PageInfoButton>

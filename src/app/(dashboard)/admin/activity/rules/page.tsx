@@ -27,10 +27,7 @@ export default async function ActivityRulesPage() {
           <PageInfoButton title="App rules">
             <p>Rules say how an app, website or window title counts in activity reports.</p>
             <p>
-              <strong>Category</strong> sets whether time there counts as Productive, Neutral or Unproductive.{" "}
-              <strong>Thinking-time credit</strong> counts part of the time without typing as active, for work like reading code or
-              sitting in a meeting. For example, at 60%, 10 minutes in an app with 4 minutes of typing scores 7.6 active minutes.{" "}
-              <strong>Idle prompt after</strong> makes the desktop app wait longer before asking &quot;Were you working?&quot;.
+              <strong>Category</strong> sets whether time there counts as Productive, Neutral or Unproductive.
             </p>
             <p>Changes apply to past days too (scores are worked out when you view them). Paid hours never change.</p>
           </PageInfoButton>

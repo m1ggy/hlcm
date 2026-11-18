@@ -34,8 +34,8 @@ function renderTimer() {
 function render(next) {
   state = next;
   const labels = { CLOCKED_IN: "Clocked in", ON_BREAK: "On break", CLOCKED_OUT: "Clocked out" };
-  $("status").textContent = state.idlePending ? "Waiting for your idle answer" : labels[state.status];
-  $("dot").className = `dot ${state.status === "CLOCKED_IN" && state.trackedHere ? "tracking" : state.status === "ON_BREAK" || state.idlePending ? "paused" : ""}`;
+  $("status").textContent = labels[state.status];
+  $("dot").className = `dot ${state.status === "CLOCKED_IN" && state.trackedHere ? "tracking" : state.status === "ON_BREAK" ? "paused" : ""}`;
   $("since").textContent =
     state.status === "CLOCKED_IN" ? `Since ${time(state.clockIn)}` : state.status === "ON_BREAK" ? `Break since ${time(state.breakStart)}` : " ";
   $("offline").hidden = state.online;

@@ -2,7 +2,7 @@ import { deflateSync } from "node:zlib";
 import { nativeImage, type NativeImage } from "electron";
 
 // Tray dots drawn in code, so the app ships no image files for state.
-// Green = tracking, amber = break / idle prompt, grey = clocked out,
+// Green = tracking, amber = break, grey = clocked out,
 // red = signed out or offline.
 
 const COLORS = {

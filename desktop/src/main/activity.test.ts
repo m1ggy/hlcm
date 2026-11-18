@@ -7,66 +7,38 @@ let n = 0;
 const newId = () => `id${++n}`;
 
 function tick(offsetSec: number, extra: Partial<Tick> = {}): Tick {
-  return { t: T0 + offsetSec * 1000, sec: 5, keys: 0, mouse: 0, active: false, idle: false, app: "Code", title: "a.ts", ...extra };
+  return { t: T0 + offsetSec * 1000, sec: 5, app: "Code", title: "a.ts", ...extra };
 }
 
-test("sums counts and active/idle seconds per interval", () => {
-  const ticks = [
-    tick(5, { keys: 3, active: true }),
-    tick(10, { mouse: 2, active: true }),
-    tick(15),
-    tick(20, { idle: true }),
-    tick(25, { idle: true, active: true }), // idle wins over active
-  ];
-  const [interval] = buildIntervals(ticks, { timeEntryId: "e1", start: T0, end: T0 + 30_000, decisionFor: () => null, newId });
-  assert.equal(interval.keyCount, 3);
-  assert.equal(interval.mouseCount, 2);
-  assert.equal(interval.activeSec, 10);
-  assert.equal(interval.idleSec, 10);
+test("sums app time per interval, with no keyboard or mouse fields", () => {
+  const ticks = [tick(5), tick(10), tick(15, { app: "Chrome", title: "Inbox", domain: "mail.google.com" })];
+  const [interval] = buildIntervals(ticks, { timeEntryId: "e1", start: T0, end: T0 + 30_000, newId });
   assert.equal(interval.start, new Date(T0).toISOString());
   assert.equal(interval.end, new Date(T0 + 30_000).toISOString());
-  assert.deepEqual(interval.apps, [{ app: "Code", title: "a.ts", seconds: 25, activeSeconds: 10 }]);
+  assert.deepEqual(interval.apps, [
+    { app: "Code", title: "a.ts", seconds: 10 },
+    { app: "Chrome", title: "Inbox", domain: "mail.google.com", seconds: 5 },
+  ]);
+  assert.deepEqual(Object.keys(interval).sort(), ["apps", "clientId", "end", "start", "timeEntryId"]);
 });
 
-test("splits a long held slice into 30-minute chunks", () => {
+test("splits a long slice into 30-minute chunks", () => {
   const end = T0 + INTERVAL_MS * 2 + 10 * 60_000;
-  const ticks = [tick(60, { active: true }), tick(INTERVAL_MS / 1000 + 60, { active: true }), tick((2 * INTERVAL_MS) / 1000 + 60)];
-  const intervals = buildIntervals(ticks, { timeEntryId: "e1", start: T0, end, decisionFor: () => null, newId });
-  assert.equal(intervals.length, 3);
+  const ticks = [tick(60), tick(INTERVAL_MS / 1000 + 60), tick((2 * INTERVAL_MS) / 1000 + 60)];
+  const intervals = buildIntervals(ticks, { timeEntryId: "e1", start: T0, end, newId });
   assert.deepEqual(
     intervals.map((i) => (Date.parse(i.end) - Date.parse(i.start)) / 60_000),
     [30, 30, 10]
   );
   assert.deepEqual(
-    intervals.map((i) => i.activeSec),
-    [5, 5, 0]
+    intervals.map((i) => i.apps[0]?.seconds),
+    [5, 5, 5]
   );
-});
-
-test("active + idle never exceed the interval length", () => {
-  const ticks = Array.from({ length: 10 }, (_, i) => tick(i + 1, { sec: 10, active: true }));
-  const [interval] = buildIntervals(ticks, { timeEntryId: "e1", start: T0, end: T0 + 10_000, decisionFor: () => null, newId });
-  assert.equal(interval.activeSec + interval.idleSec <= 10, true);
-});
-
-test("passes each chunk to decisionFor", () => {
-  const seen: number[] = [];
-  buildIntervals([], {
-    timeEntryId: "e1",
-    start: T0,
-    end: T0 + INTERVAL_MS + 60_000,
-    decisionFor: (s) => {
-      seen.push(s);
-      return "KEPT";
-    },
-    newId,
-  });
-  assert.deepEqual(seen, [T0, T0 + INTERVAL_MS]);
 });
 
 test("groups apps by app + title + domain and caps the list", () => {
   const ticks = Array.from({ length: 310 }, (_, i) => tick(i + 1, { sec: 1, title: `t${i}` }));
-  const [interval] = buildIntervals(ticks, { timeEntryId: "e1", start: T0, end: T0 + 400_000, decisionFor: () => null, newId });
+  const [interval] = buildIntervals(ticks, { timeEntryId: "e1", start: T0, end: T0 + 400_000, newId });
   assert.equal(interval.apps.length, 300);
   assert.equal(interval.apps.at(-1)?.app, "Other");
   assert.equal(

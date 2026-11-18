@@ -37,6 +37,8 @@ export type ClockState = {
   openEntry: { id: string; clockIn: string; source: "WEB" | "AGENT" | "MANUAL"; trackingThisDevice: boolean } | null;
   openBreak: { id: string; breakStart: string } | null;
   policy: { version: string; text: string; accepted: boolean };
+  /** No input for this long and the app clocks the person out. */
+  autoClockOutIdleMinutes: number;
 };
 export type Me = ClockState & {
   user: { id: string; name: string; email: string; role: string; timezone: string | null };
