@@ -171,6 +171,7 @@ model Organization {
   leads                    Lead[]
   formSubmissions          FormSubmission[]
   formSubmissionFiles      FormSubmissionFile[]
+  formShiftClients         FormShiftClient[]
   loginEvents              LoginEvent[]
   agentDevices             AgentDevice[]
   activityIntervals        ActivityInterval[]
@@ -588,6 +589,7 @@ model User {
   breakDeductionsCreated        TimesheetBreakDeduction[] @relation("TimesheetBreakDeductionCreatedBy")
   formTemplatesCreated          FormTemplate[]            @relation("FormTemplateCreatedBy")
   formSubmissionsReviewed       FormSubmission[]          @relation("FormSubmissionReviewedBy")
+  formSubmissionsSubmitted      FormSubmission[]          @relation("FormSubmissionSubmittedBy")
   leadsReviewed                 Lead[]                    @relation("LeadReviewedBy")
   leadsAssigned                 Lead[]                    @relation("LeadAssignedTo")
   docusignEnvelopesSent         DocusignEnvelope[]        @relation("DocusignEnvelopeSentBy")
@@ -763,9 +765,11 @@ model TimeEntry {
   // continuation segment points back at it. Everything visit-level —
   // checklist ticks, the visit note, incidents — hangs off that first
   // segment, so `visitStartId ?? id` is "which visit is this".
-  visitStart    TimeEntry?  @relation("VisitSegments", fields: [visitStartId], references: [id], onDelete: SetNull)
-  visitStartId  String?
-  visitSegments TimeEntry[] @relation("VisitSegments")
+  visitStart           TimeEntry?       @relation("VisitSegments", fields: [visitStartId], references: [id], onDelete: SetNull)
+  visitStartId         String?
+  visitSegments        TimeEntry[]      @relation("VisitSegments")
+  // Shift forms filled in for this visit (on its first segment).
+  shiftFormSubmissions FormSubmission[] @relation("FormSubmissionVisit")
 
   // What happened on the visit, written by the Caregiver at clock-out.
   // Only ever set on a visit's first segment (see visitStartId above).
@@ -1371,16 +1375,18 @@ model CareRecipient {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  assignments  CareRecipientAssignment[]
-  timeEntries  TimeEntry[]
-  instructions CareInstruction[]
-  shifts       VisitShift[]
-  incidents    CareIncident[]
-  workTasks    WorkTask[]
+  assignments     CareRecipientAssignment[]
+  timeEntries     TimeEntry[]
+  instructions    CareInstruction[]
+  shiftForms      FormShiftClient[]
+  formSubmissions FormSubmission[]
+  shifts          VisitShift[]
+  incidents       CareIncident[]
+  workTasks       WorkTask[]
   // Manual invoices billed for this recipient's care — see
   // Invoice.careRecipientId. Always billed through their own `client`
   // above (Invoice.clientId is a hard requirement, unrelated to this).
-  invoices     Invoice[]
+  invoices        Invoice[]
 
   @@index([clientId])
   @@index([organizationId])
@@ -2768,15 +2774,22 @@ model FormTemplate {
   // src/lib/actions/public-forms.ts. Both empty falls back to every active
   // ADMIN (the original, hardcoded behavior); either one non-empty
   // replaces that default entirely, deduped against each other.
-  notifyUserIds       String[] @default([])
+  notifyUserIds       String[]          @default([])
   notifyEmails        String?
   // Staff texted on a new submission (if they've turned on text alerts and
   // have a phone) — docs/forms-plan.md, Phase 5.
-  notifyTextUserIds   String[] @default([])
+  notifyTextUserIds   String[]          @default([])
   // Shown after submitting; null = the default thanks.
   thankYouMessage     String?
   // Email the person a copy of their answers (to the first email field).
-  sendCopyToSubmitter Boolean  @default(false)
+  sendCopyToSubmitter Boolean           @default(false)
+  // A shift form (docs/shift-forms-plan.md): caregivers fill it in the app
+  // when they end a visit, and can't clock out until they have. No public
+  // link. Applies to every client's visits (shiftAllClients) or only to the
+  // care clients listed in shiftClients.
+  shiftForm           Boolean           @default(false)
+  shiftAllClients     Boolean           @default(true)
+  shiftClients        FormShiftClient[]
 
   createdBy   User     @relation("FormTemplateCreatedBy", fields: [createdById], references: [id])
   createdById String
@@ -2935,32 +2948,57 @@ model Lead {
 // a request, not a person. `client`/`reviewedBy` stay null until staff acts
 // on it (see PENDING in FormSubmissionStatus).
 model FormSubmission {
-  id             String               @id @default(cuid())
-  organizationId String               @default(dbgenerated("current_org_id()"))
-  organization   Organization         @relation(fields: [organizationId], references: [id])
-  template       FormTemplate         @relation(fields: [templateId], references: [id])
-  templateId     String
-  answers        Json
-  status         FormSubmissionStatus @default(PENDING)
-  client         Client?              @relation(fields: [clientId], references: [id])
-  clientId       String?
-  reviewedBy     User?                @relation("FormSubmissionReviewedBy", fields: [reviewedById], references: [id])
-  reviewedById   String?
-  reviewedAt     DateTime?
-  ipAddress      String?
-  createdAt      DateTime             @default(now())
+  id              String               @id @default(cuid())
+  organizationId  String               @default(dbgenerated("current_org_id()"))
+  organization    Organization         @relation(fields: [organizationId], references: [id])
+  template        FormTemplate         @relation(fields: [templateId], references: [id])
+  templateId      String
+  answers         Json
+  status          FormSubmissionStatus @default(PENDING)
+  client          Client?              @relation(fields: [clientId], references: [id])
+  clientId        String?
+  reviewedBy      User?                @relation("FormSubmissionReviewedBy", fields: [reviewedById], references: [id])
+  reviewedById    String?
+  reviewedAt      DateTime?
+  ipAddress       String?
+  createdAt       DateTime             @default(now())
   // The form's fields as they were when it was filled in, so answers keep
   // their labels after the form changes: [{ key, label, type }].
-  fieldsSnapshot Json?
+  fieldsSnapshot  Json?
   // Staff-only note on the submission.
-  note           String?
+  note            String?
   // Where the person's copy was emailed, if it was.
-  copyEmailedTo  String?
+  copyEmailedTo   String?
+  // A shift form filled in at the end of a visit: who, for which care
+  // client, and which visit (its first segment, TimeEntry.visitStartId ?? id).
+  submittedBy     User?                @relation("FormSubmissionSubmittedBy", fields: [submittedById], references: [id])
+  submittedById   String?
+  careRecipient   CareRecipient?       @relation(fields: [careRecipientId], references: [id], onDelete: SetNull)
+  careRecipientId String?
+  visit           TimeEntry?           @relation("FormSubmissionVisit", fields: [visitId], references: [id], onDelete: SetNull)
+  visitId         String?
 
   files FormSubmissionFile[]
 
   @@index([organizationId])
+  @@index([visitId])
   @@map("form_submissions")
+}
+
+// Which care clients a shift form applies to, when it isn't all of them.
+model FormShiftClient {
+  id              String        @id @default(cuid())
+  organizationId  String        @default(dbgenerated("current_org_id()"))
+  organization    Organization  @relation(fields: [organizationId], references: [id])
+  template        FormTemplate  @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  templateId      String
+  careRecipient   CareRecipient @relation(fields: [careRecipientId], references: [id], onDelete: Cascade)
+  careRecipientId String
+
+  @@unique([templateId, careRecipientId])
+  @@index([organizationId])
+  @@index([careRecipientId])
+  @@map("form_shift_clients")
 }
 
 // A FILE-type field's upload — stored the same way every other upload in

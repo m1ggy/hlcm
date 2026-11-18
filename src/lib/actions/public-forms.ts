@@ -29,7 +29,8 @@ export async function getPublicFormTemplate(slug: string) {
   const org = await getHostOrg();
   if (!org || org.status !== "ACTIVE") return null;
   return db.formTemplate.findFirst({
-    where: { slug, active: true },
+    // Shift forms are filled in the app at the end of a visit, never by link.
+    where: { slug, active: true, shiftForm: false },
     include: { fields: { orderBy: { sortOrder: "asc" } } },
   });
 }

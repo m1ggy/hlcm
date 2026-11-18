@@ -2,12 +2,16 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { currentOrganization, db } from "@/lib/db";
+import { currentOrg, currentOrganization, db, runAsTenant } from "@/lib/db";
 import { requireSession, ForbiddenError } from "@/lib/rbac";
 import { requireCareRole as requireRole } from "@/lib/care-access";
 import { recordAudit } from "@/lib/audit";
 import { notify } from "@/lib/notifications";
 import { toActionResult } from "@/lib/action-result";
+import { after } from "next/server";
+import { missingShiftForms } from "@/lib/shift-forms";
+import { alertForSubmission, recordSubmission } from "@/lib/form-submit";
+import type { Answers } from "@/lib/form-logic";
 import { UserFacingError } from "@/lib/user-facing-error";
 import { caregiverClientScope } from "@/lib/caregiver-scope";
 import { effectiveTimezone, dayRangeToInstants } from "@/lib/time-entries";
@@ -304,7 +308,48 @@ export async function getMyVisitWrapUp() {
     recipientName: recipient.name,
     total: recipient.instructions.length,
     missed: recipient.instructions.filter((i) => !checked.has(i.id)).map((i) => i.label),
+    // Shift forms still to fill before the visit can end (docs/shift-forms-plan.md).
+    forms: await missingShiftForms(session.user.id, { visitId, careRecipientId: visit.careRecipientId! }),
   };
+}
+
+/**
+ * A caregiver fills in a shift form for the visit in progress (or paused
+ * on a break). Posted like the public form: `answers` JSON and files as
+ * `file:<fieldKey>`. The office hears about it like any submission.
+ */
+export async function submitShiftForm(templateId: string, formData: FormData) {
+  return toActionResult(async () => {
+    const session = await requireRole(["CAREGIVER"]);
+    const visit = await myCurrentVisit(session.user.id);
+    if (!visit) throw new UserFacingError("Start a visit to fill in its forms");
+    const visitId = visitIdOf(visit);
+    const missing = await missingShiftForms(session.user.id, { visitId, careRecipientId: visit.careRecipientId! });
+    if (!missing.some((f) => f.id === templateId)) throw new UserFacingError("This form is already filled in for this visit");
+
+    let answers: Answers;
+    try {
+      answers = JSON.parse(String(formData.get("answers") ?? "{}"));
+    } catch {
+      throw new UserFacingError("Something went wrong reading the form — please try again.");
+    }
+    const files: { key: string; file: File }[] = [];
+    for (const [name, value] of formData.entries()) {
+      if (name.startsWith("file:") && value instanceof File) files.push({ key: name.slice(5), file: value });
+    }
+    const { submissionId } = await recordSubmission({
+      templateId,
+      answers,
+      files,
+      ip: null,
+      shift: { submittedById: session.user.id, careRecipientId: visit.careRecipientId!, visitId },
+    });
+    await recordAudit({ entityType: "FormSubmission", entityId: submissionId, action: "submit_shift_form", actorId: session.user.id, newValue: templateId });
+    const org = await currentOrg();
+    after(() => runAsTenant(org, () => alertForSubmission(submissionId)).catch((error) => console.error("submitShiftForm: alerts failed:", error)));
+    revalidatePath("/intake");
+    return { submissionId };
+  });
 }
 
 /** Tick (or un-tick) one instruction on the caller's visit in progress. */
