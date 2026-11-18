@@ -106,7 +106,7 @@ export function NotificationBell({ variant = "staff" }: { variant?: EntityLinkVa
           <Button variant="ghost" size="icon-sm" className="relative" data-tour="notifications">
             <Bell className="size-4" />
             {unread > 0 && (
-              <Badge variant="destructive" className="absolute -top-1 -right-1 h-4 min-w-4 px-1">
+              <Badge className="absolute -top-1 -right-1 h-4 min-w-4 bg-marigold px-1 font-semibold text-on-marigold">
                 {unread > 9 ? "9+" : unread}
               </Badge>
             )}

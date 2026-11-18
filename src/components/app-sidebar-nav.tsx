@@ -146,15 +146,20 @@ export function AppSidebarNav({
     <>
       {groups.map((group, i) => (
         <SidebarGroup key={group.label ?? i} className="px-0 py-1">
-          {group.label && <SidebarGroupLabel>{group.label}</SidebarGroupLabel>}
+          {group.label && <SidebarGroupLabel className="font-semibold tracking-wide text-sidebar-label uppercase">{group.label}</SidebarGroupLabel>}
           <SidebarMenu>
             {group.links.map((link) => (
               <SidebarMenuItem key={link.href}>
-                <SidebarMenuButton isActive={activeHref === link.href} render={<Link href={link.href} data-tour={link.tour} />}>
+                <SidebarMenuButton
+                  isActive={activeHref === link.href}
+                  // The current page: a marigold bar and icon, the logo's accent.
+                  className="data-active:shadow-[inset_3px_0_0_var(--marigold)] data-active:[&_svg]:text-marigold"
+                  render={<Link href={link.href} data-tour={link.tour} />}
+                >
                   <link.icon />
                   <span>{link.label}</span>
                 </SidebarMenuButton>
-                {link.href === "/intake" && newSubmissions > 0 && <SidebarMenuBadge aria-label={`${newSubmissions} new`}>{newSubmissions}</SidebarMenuBadge>}
+                {link.href === "/intake" && newSubmissions > 0 && <SidebarMenuBadge aria-label={`${newSubmissions} new`} className="rounded-full bg-marigold font-semibold text-on-marigold peer-hover/menu-button:text-on-marigold peer-data-active/menu-button:text-on-marigold">{newSubmissions}</SidebarMenuBadge>}
               </SidebarMenuItem>
             ))}
           </SidebarMenu>

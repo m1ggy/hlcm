@@ -249,7 +249,7 @@ export function TimeClockWidget({
 
   return (
     <>
-      <Button variant="default" size="sm" onClick={handleClockIn} loading={isPending || isStartingVisit} data-tour="time-clock">
+      <Button variant="default" size="sm" className="bg-marigold font-semibold text-on-marigold hover:bg-marigold/90" onClick={handleClockIn} loading={isPending || isStartingVisit} data-tour="time-clock">
         <Clock className="size-3.5" /> {isPending || isStartingVisit ? "Clocking in..." : isCaregiver && careRecipients.length > 0 ? "Start visit" : "Clock in"}
       </Button>
       {picker}
