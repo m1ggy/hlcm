@@ -15,20 +15,6 @@ name: Desktop tracker release
 # Builds are unsigned by decision (no certificates).
 
 on:
-#   git tag agent-v0.2.1 && git push origin agent-v0.2.1
-# or run it by hand from the Actions tab (builds only, no Release, unless a
-# tag is given).
-#
-# The production address baked into the app comes from the repository
-# Variables), e.g. https://app.example.com. Without it the sign-in screen
-# asks for the address.
-#
-# A Release does NOT reach staff by itself: the apps update from the bucket's
-# agent-releases/ folder. See desktop/RELEASING.md for the upload step.
-#
-# Builds are unsigned by decision (no certificates).
-
-on:
   push:
     tags: ["agent-v*"]
   workflow_dispatch:
