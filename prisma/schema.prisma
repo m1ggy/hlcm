@@ -84,20 +84,20 @@ model Organization {
 
   // Client weekly summary (docs/workspace-tasks-plan.md, Phase 3). Hours
   // reach the client only when this is on (decided W7).
-  workShowHoursToClient Boolean @default(false)
+  workShowHoursToClient     Boolean @default(false)
   // A Claude-written note per day and per week (decided W8: on by default;
   // nothing is sent without ANTHROPIC_API_KEY on the server).
-  workAiSummaries       Boolean @default(true)
+  workAiSummaries           Boolean @default(true)
   // Monday email of last week to the client's people.
-  workWeeklyEmail       Boolean @default(true)
+  workWeeklyEmail           Boolean @default(true)
   // Evening text of the day's note to the client's people who signed up
   // for it (smsDailyUpdates). Off until the team turns it on.
-  workDailyText         Boolean @default(false)
+  workDailyText             Boolean @default(false)
   // Clients and caregivers in a client company's tasks-only workspace
   // (docs/client-care-plan.md): the CRM's home-care pages (care recipients,
   // caregiver logins, schedules, visits). Set by a platform admin. FULL
   // workspaces always have them, so it's ignored there.
-  careEnabled           Boolean @default(false)
+  careEnabled               Boolean @default(false)
   // Activity monitoring (docs/activity-monitoring-plan.md): a paid add-on.
   // The platform console grants it (activityMonitoringAddon); the workspace
   // owner then switches it on (activityMonitoringEnabled). Off = no desktop
@@ -143,6 +143,7 @@ model Organization {
   mcoCredentials           McoCredential[]
   accessGrants             AccessGrant[]
   fileAssets               FileAsset[]
+  fileFolders              FileFolder[]
   fileVersions             FileVersion[]
   documentTemplates        DocumentTemplate[]
   documentTemplateFields   DocumentTemplateField[]
@@ -481,7 +482,7 @@ model User {
   // Set by OWNER/DEVELOPER on Admin > Activity, per person, once they have
   // the desktop tracker installed: clock-in and end-break then only work
   // from the app (see src/lib/time-clock.ts#assertClockOriginAllowed).
-  requireDesktopClock       Boolean  @default(false)
+  requireDesktopClock       Boolean      @default(false)
   // IANA zone id (e.g. "America/Chicago") — null means "use the browser's
   // own timezone" (the pre-existing behavior). Set from Account settings;
   // controls both how this user's own times are displayed and how a typed
@@ -565,6 +566,7 @@ model User {
   accessGrantsReceived          AccessGrant[]             @relation("AccessGrantUser")
   accessGrantsGiven             AccessGrant[]             @relation("AccessGrantGrantedBy")
   filesUploaded                 FileAsset[]               @relation("FileUploadedBy")
+  fileFoldersCreated            FileFolder[]              @relation("FileFolderCreatedBy")
   fileVersionsUploaded          FileVersion[]             @relation("FileVersionUploadedBy")
   invoiceAttachmentsUploaded    InvoiceAttachment[]       @relation("InvoiceAttachmentUploadedBy")
   documentTemplatesCreated      DocumentTemplate[]        @relation("DocumentTemplateCreatedBy")
@@ -1171,6 +1173,7 @@ model Client {
   agreements      ClientAgreement[]
   licenses        ClientLicense[]
   files           FileAsset[]
+  fileFolders     FileFolder[]
   correspondence  Correspondence[]
   services        ClientService[]
 
@@ -1712,6 +1715,7 @@ model Application {
   tasks              Task[]
   accessGrants       AccessGrant[]
   files              FileAsset[]
+  fileFolders        FileFolder[]
   correspondence     Correspondence[]
   shareLinks         ApplicationShareLink[]
   generatedDocuments GeneratedDocument[]
@@ -1859,6 +1863,10 @@ model FileAsset {
   // downloads keep the parent's access check; file pools leave these out.
   correspondence   Correspondence? @relation(fields: [correspondenceId], references: [id], onDelete: Cascade)
   correspondenceId String?
+  // Where the file sits in its owner's folder tree (docs/file-management-plan.md);
+  // null = top level. Only client and application files use folders.
+  folder           FileFolder?     @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  folderId         String?
 
   versions            FileVersion[]
   signatureEvents     SignatureEvent[]
@@ -1866,7 +1874,38 @@ model FileAsset {
   envelopeAsCompleted DocusignEnvelope?  @relation("EnvelopeCompletedFile")
 
   @@index([organizationId])
+  @@index([folderId])
   @@map("file_assets")
+}
+
+// A folder in a client's or an application's files (docs/file-management-plan.md).
+// Exactly one of clientId/applicationId is set, and a folder's parent and
+// files always belong to that same owner. Storage keys are flat, so folders
+// exist only here: moving a file is a folderId update. Sibling names are
+// unique ignoring case (index in the migration, NULLS NOT DISTINCT).
+model FileFolder {
+  id             String       @id @default(cuid())
+  organizationId String       @default(dbgenerated("current_org_id()"))
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  client         Client?      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId       String?
+  application    Application? @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  applicationId  String?
+  parent         FileFolder?  @relation("FileFolderTree", fields: [parentId], references: [id], onDelete: NoAction)
+  parentId       String?
+  children       FileFolder[] @relation("FileFolderTree")
+  name           String
+  createdBy      User         @relation("FileFolderCreatedBy", fields: [createdById], references: [id])
+  createdById    String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  files FileAsset[]
+
+  @@index([organizationId])
+  @@index([clientId, parentId])
+  @@index([applicationId, parentId])
+  @@map("file_folders")
 }
 
 // One GCS generation of a FileAsset's object (same storageKey, overwritten
@@ -3443,10 +3482,10 @@ enum TimeEntrySource {
 // it for short access tokens (see src/lib/agent-auth.ts). Revoking a device
 // kills its refresh token; its current access token dies within 15 min.
 model AgentDevice {
-  id               String    @id @default(cuid())
-  organizationId String       @default(dbgenerated("current_org_id()"))
-  organization   Organization @relation(fields: [organizationId], references: [id])
-  user             User      @relation(fields: [userId], references: [id])
+  id               String       @id @default(cuid())
+  organizationId   String       @default(dbgenerated("current_org_id()"))
+  organization     Organization @relation(fields: [organizationId], references: [id])
+  user             User         @relation(fields: [userId], references: [id])
   userId           String
   name             String
   os               String
@@ -3456,8 +3495,8 @@ model AgentDevice {
   lastSeenAt       DateTime?
   lastIp           String?
   revokedAt        DateTime?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
 
   timeEntries       TimeEntry[]
   activityIntervals ActivityInterval[]
@@ -3473,22 +3512,22 @@ model AgentDevice {
 // is raw per-app/title usage; productivity scores are computed from it on
 // read, so editing a ProductivityRule re-scores history.
 model ActivityInterval {
-  id           String      @id @default(cuid())
+  id             String       @id @default(cuid())
   organizationId String       @default(dbgenerated("current_org_id()"))
   organization   Organization @relation(fields: [organizationId], references: [id])
-  user         User        @relation(fields: [userId], references: [id])
-  userId       String
-  timeEntry    TimeEntry   @relation(fields: [timeEntryId], references: [id], onDelete: Cascade)
-  timeEntryId  String
-  device       AgentDevice @relation(fields: [deviceId], references: [id])
-  deviceId     String
+  user           User         @relation(fields: [userId], references: [id])
+  userId         String
+  timeEntry      TimeEntry    @relation(fields: [timeEntryId], references: [id], onDelete: Cascade)
+  timeEntryId    String
+  device         AgentDevice  @relation(fields: [deviceId], references: [id])
+  deviceId       String
   // App-generated id, so an offline-queued upload retried twice lands once.
-  clientId     String
-  start        DateTime
-  end          DateTime
+  clientId       String
+  start          DateTime
+  end            DateTime
   // [{ app, exe?, title, domain?, seconds }]
-  apps         Json
-  createdAt    DateTime    @default(now())
+  apps           Json
+  createdAt      DateTime     @default(now())
 
   screenshots Screenshot[]
 
@@ -3502,26 +3541,26 @@ model ActivityInterval {
 // URLs only, every view audited, deleted after 90 days. Users can never
 // delete their own; deletedAt/deletedBy is OWNER/DEVELOPER only.
 model Screenshot {
-  id          String            @id @default(cuid())
-  organizationId String       @default(dbgenerated("current_org_id()"))
-  organization   Organization @relation(fields: [organizationId], references: [id])
-  user        User              @relation("ScreenshotUser", fields: [userId], references: [id])
-  userId      String
-  timeEntry   TimeEntry         @relation(fields: [timeEntryId], references: [id], onDelete: Cascade)
-  timeEntryId String
-  interval    ActivityInterval? @relation(fields: [intervalId], references: [id], onDelete: SetNull)
-  intervalId  String?
-  device      AgentDevice       @relation(fields: [deviceId], references: [id])
-  deviceId    String
-  clientId    String
-  storageKey  String
-  thumbKey    String
-  takenAt     DateTime
-  monitors    Int               @default(1)
-  deletedAt   DateTime?
-  deletedBy   User?             @relation("ScreenshotDeletedBy", fields: [deletedById], references: [id])
-  deletedById String?
-  createdAt   DateTime          @default(now())
+  id             String            @id @default(cuid())
+  organizationId String            @default(dbgenerated("current_org_id()"))
+  organization   Organization      @relation(fields: [organizationId], references: [id])
+  user           User              @relation("ScreenshotUser", fields: [userId], references: [id])
+  userId         String
+  timeEntry      TimeEntry         @relation(fields: [timeEntryId], references: [id], onDelete: Cascade)
+  timeEntryId    String
+  interval       ActivityInterval? @relation(fields: [intervalId], references: [id], onDelete: SetNull)
+  intervalId     String?
+  device         AgentDevice       @relation(fields: [deviceId], references: [id])
+  deviceId       String
+  clientId       String
+  storageKey     String
+  thumbKey       String
+  takenAt        DateTime
+  monitors       Int               @default(1)
+  deletedAt      DateTime?
+  deletedBy      User?             @relation("ScreenshotDeletedBy", fields: [deletedById], references: [id])
+  deletedById    String?
+  createdAt      DateTime          @default(now())
 
   @@unique([deviceId, clientId])
   @@index([userId, takenAt])
@@ -3533,16 +3572,16 @@ model Screenshot {
 // (src/lib/monitoring-policy.ts). The app can't clock in until the current
 // version is accepted.
 model MonitoringConsent {
-  id            String       @id @default(cuid())
+  id             String       @id @default(cuid())
   organizationId String       @default(dbgenerated("current_org_id()"))
   organization   Organization @relation(fields: [organizationId], references: [id])
-  user          User         @relation(fields: [userId], references: [id])
-  userId        String
-  policyVersion String
-  acceptedAt    DateTime     @default(now())
-  ipAddress     String?
-  device        AgentDevice? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
-  deviceId      String?
+  user           User         @relation(fields: [userId], references: [id])
+  userId         String
+  policyVersion  String
+  acceptedAt     DateTime     @default(now())
+  ipAddress      String?
+  device         AgentDevice? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  deviceId       String?
 
   @@unique([userId, policyVersion])
   @@map("monitoring_consents")
@@ -3564,22 +3603,22 @@ enum ProductivityMatch {
 // Most specific wins: userId > roles > global, then priority, then match
 // type (DOMAIN > TITLE_CONTAINS > APP). Category only (scope v2).
 model ProductivityRule {
-  id           String               @id @default(cuid())
-  organizationId String       @default(dbgenerated("current_org_id()"))
-  organization   Organization @relation(fields: [organizationId], references: [id])
-  matchType    ProductivityMatch
-  pattern      String
-  category     ProductivityCategory
+  id             String               @id @default(cuid())
+  organizationId String               @default(dbgenerated("current_org_id()"))
+  organization   Organization         @relation(fields: [organizationId], references: [id])
+  matchType      ProductivityMatch
+  pattern        String
+  category       ProductivityCategory
   // Empty = every tracked role.
-  roles        Role[]
-  user         User?                @relation("ProductivityRuleUser", fields: [userId], references: [id], onDelete: Cascade)
-  userId       String?
-  priority     Int                  @default(0)
-  enabled      Boolean              @default(true)
-  createdBy    User                 @relation("ProductivityRuleCreatedBy", fields: [createdById], references: [id])
-  createdById  String
-  createdAt    DateTime             @default(now())
-  updatedAt    DateTime             @updatedAt
+  roles          Role[]
+  user           User?                @relation("ProductivityRuleUser", fields: [userId], references: [id], onDelete: Cascade)
+  userId         String?
+  priority       Int                  @default(0)
+  enabled        Boolean              @default(true)
+  createdBy      User                 @relation("ProductivityRuleCreatedBy", fields: [createdById], references: [id])
+  createdById    String
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
 
   @@index([organizationId, enabled])
   @@map("productivity_rules")
