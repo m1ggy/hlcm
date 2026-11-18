@@ -3,7 +3,7 @@ let version = null;
 
 window.hclm.invoke("consent:get").then((policy) => {
   if (!policy) {
-    $("text").textContent = "Couldn't load the notice. Check your connection and reopen the tracker.";
+    $("text").textContent = "Couldn't load the notice. Check your connection and reopen the app.";
     return;
   }
   version = policy.version;

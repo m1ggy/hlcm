@@ -141,11 +141,14 @@ from `agent-releases/`, 90-day purge, activity export, release CI
 - Phase 4 done (`f875f5d`): client workspaces' own staff get the header
   clock and `/time`; the managing company's team doesn't.
 - Tests: `tests/activity-monitoring.test.ts` (14), full suite green;
-  desktop unit tests 10/10. Not yet run in a browser or as a real
-  Electron app, and the migration hasn't touched the dev database.
-- Phase 5 (release) not started. Also: the app is still branded "HCLM
-  Tracker", and its sign-in asks for a server address — with one address
-  per workspace it should ask for the workspace (or find it by email).
+  desktop unit tests 13/13.
+- Checked by hand 2026-11-18 on a throwaway copy of the dev database
+  (`hclm_am`; the migration applied cleanly to real data): owner pages,
+  staff self-view and download page, client workspace clock and Time page,
+  and the real Electron app signing in, clocking in and out.
+- Phase 5 code done (`0022173`): app renamed "Carenela"; sign-in asks for
+  the workspace's short name (config.json `rootDomain`). Left: tag a
+  release, upload to `agent-releases/`, test install on a real Mac.
 
 ## Open items
 
