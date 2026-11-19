@@ -78,6 +78,9 @@ export type BuilderTemplate = {
   notifyUserIds: string[];
   notifyEmails: string | null;
   notifyTextUserIds: string[];
+  shiftForm: boolean;
+  shiftAllClients: boolean;
+  shiftClientIds: string[];
   submissionCount: number;
   fields: { key: string; label: string; type: FormFieldType; required: boolean; options: string[]; clientField: string | null; helpText: string | null; placeholder: string | null; showIf: ShowIf | null }[];
 };
@@ -147,12 +150,15 @@ export function FormBuilder({
   staff,
   textingReady,
   licensing = true,
+  careClients = null,
 }: {
   initial: BuilderTemplate;
   staff: StaffOption[];
   textingReady: boolean;
   /** "Fills in <client field> when you create a client": the licensing CRM only. */
   licensing?: boolean;
+  /** Care clients a shift form can apply to; null when this workspace has no care side (no shift forms). */
+  careClients?: { id: string; name: string }[] | null;
 }) {
   const router = useRouter();
   const [meta, setMeta] = useState({
@@ -166,6 +172,9 @@ export function FormBuilder({
     notifyUserIds: initial.notifyUserIds,
     notifyEmails: initial.notifyEmails ?? "",
     notifyTextUserIds: initial.notifyTextUserIds,
+    shiftForm: initial.shiftForm,
+    shiftAllClients: initial.shiftAllClients,
+    shiftClientIds: initial.shiftClientIds,
   });
   const [drafts, setDrafts] = useState<Draft[]>(() => {
     const uids = new Map(initial.fields.map((f) => [f.key, newUid()]));
@@ -252,6 +261,9 @@ export function FormBuilder({
       notifyUserIds: meta.notifyUserIds,
       notifyEmails: meta.notifyEmails,
       notifyTextUserIds: meta.notifyTextUserIds,
+      shiftForm: meta.shiftForm,
+      shiftAllClients: meta.shiftAllClients,
+      shiftClientIds: meta.shiftClientIds,
       fields: drafts.map((d) => ({
         key: keys.get(d.uid)!,
         label: d.label,
@@ -301,7 +313,7 @@ export function FormBuilder({
           <span className="text-xs text-muted-foreground" aria-live="polite">
             {dirty ? "Unsaved changes" : "All changes saved"}
           </span>
-          {initial.id && (
+          {initial.id && !initial.shiftForm && (
             <Button variant="outline" size="sm" nativeButton={false} render={<a href={`/forms/${initial.slug}`} target="_blank" rel="noreferrer" />}>
               <Eye className="size-4" /> Open form
             </Button>
@@ -379,24 +391,65 @@ export function FormBuilder({
                 </div>
                 <label className="flex items-center gap-2 text-sm">
                   <Checkbox checked={meta.active} onCheckedChange={(c) => setM({ active: Boolean(c) })} />
-                  Form is live — people with the link can fill it in
+                  {meta.shiftForm ? "Form is live — caregivers fill it in when they end a visit" : "Form is live — people with the link can fill it in"}
                 </label>
               </section>
 
-              <section className="space-y-4 rounded-xl border bg-card p-4">
-                <h2 className="text-sm font-semibold">After someone submits</h2>
-                <div className="space-y-1">
-                  <Label htmlFor="fb-thanks">Thank-you message</Label>
-                  <Textarea id="fb-thanks" rows={3} value={meta.thankYouMessage} onChange={(e) => setM({ thankYouMessage: e.target.value })} placeholder="We've received your form and will be in touch." />
-                </div>
-                <label className="flex items-start gap-2 text-sm">
-                  <Checkbox checked={meta.sendCopyToSubmitter} onCheckedChange={(c) => setM({ sendCopyToSubmitter: Boolean(c) })} className="mt-0.5" />
-                  <span>
-                    Email them a copy of their answers
-                    {!hasEmail && <span className="block text-xs text-amber-700 dark:text-amber-400">Add an Email question for this to work.</span>}
-                  </span>
-                </label>
-              </section>
+              {careClients && (
+                <section className="space-y-3 rounded-xl border bg-card p-4">
+                  <label className="flex items-start gap-2 text-sm">
+                    <Checkbox checked={meta.shiftForm} onCheckedChange={(c) => setM({ shiftForm: Boolean(c) })} className="mt-0.5" />
+                    <span>
+                      <span className="font-semibold">Shift form</span>
+                      <span className="block text-xs text-muted-foreground">
+                        Caregivers fill it in on their phone at the end of a visit and can&apos;t clock out until they do. It has no public link.
+                      </span>
+                    </span>
+                  </label>
+                  {meta.shiftForm && (
+                    <div className="space-y-2 pl-6">
+                      <Label>Which visits</Label>
+                      <Select value={meta.shiftAllClients ? "all" : "some"} onValueChange={(v) => setM({ shiftAllClients: v === "all" })}>
+                        <SelectTrigger className="w-full">
+                          <SelectValue>{(v: string) => (v === "all" ? "Every client's visits" : "Only these clients' visits")}</SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Every client&apos;s visits</SelectItem>
+                          <SelectItem value="some">Only these clients&apos; visits</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {!meta.shiftAllClients && (
+                        <>
+                          <MultiUserSelect
+                            items={Object.fromEntries(careClients.map((c) => [c.id, c.name]))}
+                            value={meta.shiftClientIds}
+                            onValueChange={(v) => setM({ shiftClientIds: v })}
+                            placeholder="Pick clients…"
+                          />
+                          {meta.shiftClientIds.length === 0 && <p className="text-xs text-amber-700 dark:text-amber-400">Pick at least one client.</p>}
+                        </>
+                      )}
+                    </div>
+                  )}
+                </section>
+              )}
+
+              {!meta.shiftForm && (
+                <section className="space-y-4 rounded-xl border bg-card p-4">
+                  <h2 className="text-sm font-semibold">After someone submits</h2>
+                  <div className="space-y-1">
+                    <Label htmlFor="fb-thanks">Thank-you message</Label>
+                    <Textarea id="fb-thanks" rows={3} value={meta.thankYouMessage} onChange={(e) => setM({ thankYouMessage: e.target.value })} placeholder="We've received your form and will be in touch." />
+                  </div>
+                  <label className="flex items-start gap-2 text-sm">
+                    <Checkbox checked={meta.sendCopyToSubmitter} onCheckedChange={(c) => setM({ sendCopyToSubmitter: Boolean(c) })} className="mt-0.5" />
+                    <span>
+                      Email them a copy of their answers
+                      {!hasEmail && <span className="block text-xs text-amber-700 dark:text-amber-400">Add an Email question for this to work.</span>}
+                    </span>
+                  </label>
+                </section>
+              )}
 
               <section className="space-y-4 rounded-xl border bg-card p-4">
                 <h2 className="text-sm font-semibold">Tell the team</h2>

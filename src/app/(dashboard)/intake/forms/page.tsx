@@ -60,16 +60,19 @@ export default async function FormsListPage() {
                     )}
                     {t.description && <p className="line-clamp-2 text-sm text-muted-foreground">{t.description}</p>}
                   </div>
-                  <Badge variant={t.active ? "default" : "secondary"}>{t.active ? "Live" : "Off"}</Badge>
+                  <div className="flex shrink-0 gap-1">
+                    {t.shiftForm && <Badge variant="outline">Shift form</Badge>}
+                    <Badge variant={t.active ? "default" : "secondary"}>{t.active ? "Live" : "Off"}</Badge>
+                  </div>
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {questions} {questions === 1 ? "question" : "questions"} ·{" "}
                   <Link href={`/intake?form=${t.id}&status=all`} className="underline-offset-4 hover:underline">
                     {t._count.submissions} {t._count.submissions === 1 ? "submission" : "submissions"}
                   </Link>{" "}
-                  · /forms/{t.slug}
+                  · {t.shiftForm ? "filled in at the end of a visit" : `/forms/${t.slug}`}
                 </p>
-                <FormRowActions id={t.id} slug={t.slug} name={t.name} active={t.active} canManage={canManage} hasSubmissions={t._count.submissions > 0} />
+                <FormRowActions id={t.id} slug={t.slug} name={t.name} active={t.active} canManage={canManage} shiftForm={t.shiftForm} hasSubmissions={t._count.submissions > 0} />
               </li>
             );
           })}

@@ -33,6 +33,10 @@ export default async function IntakePage({ searchParams }: { searchParams: Promi
         client: { select: { id: true, name: true } },
         reviewedBy: { select: { name: true } },
         files: { select: { id: true, fieldKey: true, fileName: true, sizeBytes: true } },
+        // Shift forms: who filled it in, for which care client and visit.
+        submittedBy: { select: { name: true } },
+        careRecipient: { select: { id: true, name: true } },
+        visit: { select: { clockIn: true } },
       },
       orderBy: { createdAt: "desc" },
       take: 500,
@@ -72,7 +76,7 @@ export default async function IntakePage({ searchParams }: { searchParams: Promi
         createdAt: s.createdAt.toISOString(),
         status: s.status,
         form: { id: s.template.id, name: s.template.name },
-        from: (nameItem && formatAnswer(answers[nameItem.key])) || (emailItem && formatAnswer(answers[emailItem.key])) || null,
+        from: s.submittedBy?.name ?? ((nameItem && formatAnswer(answers[nameItem.key])) || (emailItem && formatAnswer(answers[emailItem.key])) || null),
         items,
         files: s.files.map((f) => ({ ...f, label: snapshot.find((x) => x.key === f.fieldKey)?.label ?? f.fieldKey })),
         client: s.client,
@@ -82,9 +86,12 @@ export default async function IntakePage({ searchParams }: { searchParams: Promi
         copyEmailedTo: s.copyEmailedTo,
         texted: texts.filter((t) => t.entityId === s.id && t.ok).map((t) => t.user?.name ?? "someone"),
         defaults,
+        shift: s.visitId || s.careRecipient || s.submittedBy
+          ? { caregiver: s.submittedBy?.name ?? null, careRecipient: s.careRecipient, visitAt: s.visit?.clockIn.toISOString() ?? null }
+          : null,
       };
     })
-    .filter((s) => s.id === sp.open || !q || [s.form.name, s.from ?? "", s.note ?? "", ...s.items.map((i) => i.value)].some((v) => v.toLowerCase().includes(q)));
+    .filter((s) => s.id === sp.open || !q || [s.form.name, s.from ?? "", s.note ?? "", s.shift?.careRecipient?.name ?? "", ...s.items.map((i) => i.value)].some((v) => v.toLowerCase().includes(q)));
 
   const count = (st: string) => counts.find((c) => c.status === st)?._count ?? 0;
 

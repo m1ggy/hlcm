@@ -34,6 +34,8 @@ export type InboxSubmission = {
   copyEmailedTo: string | null;
   texted: string[];
   defaults: Record<string, string>;
+  /** A shift form filled in at the end of a visit (docs/shift-forms-plan.md). */
+  shift: { caregiver: string | null; careRecipient: { id: string; name: string } | null; visitAt: string | null } | null;
 };
 
 const STATUS_LABEL = { PENDING: "New", REVIEWED: "Reviewed", DISMISSED: "Dismissed" } as const;
@@ -171,6 +173,7 @@ export function IntakeInbox({
                     </span>
                   </span>
                   {s.client && <span className="text-xs text-muted-foreground">→ {s.client.name}</span>}
+                  {s.shift?.careRecipient && <span className="text-xs text-muted-foreground">Visit with {s.shift.careRecipient.name}</span>}
                   {s.files.length > 0 && <span className="text-xs text-muted-foreground">{s.files.length} file{s.files.length === 1 ? "" : "s"}</span>}
                   <Badge variant={STATUS_VARIANT[s.status]}>{STATUS_LABEL[s.status]}</Badge>
                   <span className="w-28 text-right text-xs text-muted-foreground tabular-nums">{when(s.createdAt)}</span>
@@ -235,6 +238,17 @@ function Detail({
             </Link>
           )}
         </div>
+        {s.shift && (
+          <p className="pt-1 text-sm text-muted-foreground">
+            Shift form{s.shift.caregiver && <> from {s.shift.caregiver}</>}
+            {s.shift.careRecipient && (
+              <>
+                {" "}for the visit with <span className="font-medium text-foreground">{s.shift.careRecipient.name}</span>
+              </>
+            )}
+            {s.shift.visitAt && <>, started {when(s.shift.visitAt)}</>}
+          </p>
+        )}
       </SheetHeader>
 
       <dl className="space-y-3">

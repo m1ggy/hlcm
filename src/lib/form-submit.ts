@@ -109,14 +109,15 @@ const escapeHtml = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;")
 export async function alertForSubmission(submissionId: string) {
   const submission = await db.formSubmission.findUniqueOrThrow({
     where: { id: submissionId },
-    include: { template: { include: { fields: { orderBy: { sortOrder: "asc" } } } } },
+    include: { template: { include: { fields: { orderBy: { sortOrder: "asc" } } } }, submittedBy: { select: { name: true } }, careRecipient: { select: { name: true } } },
   });
   const template = submission.template;
   const org = await currentOrganization();
   const answers = (submission.answers ?? {}) as Record<string, unknown>;
-  const firstName = firstNameFrom(template.fields, answers);
+  // A shift form names the caregiver (and the visit's client), not an answer.
+  const firstName = submission.submittedBy ? submission.submittedBy.name.trim().split(/\s+/)[0] : firstNameFrom(template.fields, answers);
   const link = `${orgAppUrl(org.slug)}/intake?open=${submission.id}`;
-  const message = `New "${template.name}" submission${firstName ? ` from ${firstName}` : ""}`;
+  const message = `New "${template.name}" submission${firstName ? ` from ${firstName}` : ""}${submission.careRecipient ? ` (visit with ${submission.careRecipient.name})` : ""}`;
   const result = { notified: [] as string[], emailed: [] as string[], texted: [] as string[], copyTo: null as string | null };
 
   // Bell + email.

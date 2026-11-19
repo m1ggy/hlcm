@@ -2,7 +2,8 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { db } from "@/lib/db";
+import { currentOrganization, db } from "@/lib/db";
+import { hasCare } from "@/lib/workspace-kind";
 import { requireRole } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { friendlyPrismaError } from "@/lib/prisma-errors";
@@ -40,7 +41,10 @@ export async function listFormTemplates() {
 
 export async function getFormTemplate(id: string) {
   await requireRole([...VIEW_ROLES]);
-  return db.formTemplate.findUnique({ where: { id }, include: { fields: { orderBy: { sortOrder: "asc" } }, _count: { select: { submissions: true } } } });
+  return db.formTemplate.findUnique({
+    where: { id },
+    include: { fields: { orderBy: { sortOrder: "asc" } }, shiftClients: { select: { careRecipientId: true } }, _count: { select: { submissions: true } } },
+  });
 }
 
 const showIfSchema = z
@@ -75,6 +79,10 @@ const formSchema = z.object({
   notifyUserIds: z.array(z.string()).default([]),
   notifyEmails: z.string().nullable().optional(),
   notifyTextUserIds: z.array(z.string()).default([]),
+  // Shift form (docs/shift-forms-plan.md): filled by caregivers when they end a visit.
+  shiftForm: z.boolean().default(false),
+  shiftAllClients: z.boolean().default(true),
+  shiftClientIds: z.array(z.string()).default([]),
   fields: z.array(fieldSchema).min(1, "Add at least one question"),
 });
 
@@ -109,6 +117,21 @@ const fieldRows = (fields: z.infer<typeof fieldSchema>[]) =>
     sortOrder: i,
   }));
 
+/**
+ * A shift form needs the workspace's care side, and either every client or
+ * at least one chosen (existing) care client. Returns the client ids to save.
+ */
+async function checkShift(data: z.infer<typeof formSchema>): Promise<string[]> {
+  if (!data.shiftForm) return [];
+  if (!hasCare(await currentOrganization())) throw new UserFacingError("Shift forms need clients and caregivers turned on for this workspace");
+  if (data.shiftAllClients) return [];
+  const ids = [...new Set(data.shiftClientIds)];
+  if (ids.length === 0) throw new UserFacingError("Pick at least one client for this shift form, or choose every client");
+  const found = await db.careRecipient.findMany({ where: { id: { in: ids } }, select: { id: true } });
+  if (found.length !== ids.length) throw new UserFacingError("One of the chosen clients is gone — pick them again");
+  return ids;
+}
+
 const duplicates = {
   duplicateMessages: {
     slug: "That link is already used by another form — pick a different one",
@@ -135,15 +158,21 @@ export async function saveFormTemplate(id: string | null, input: FormTemplateInp
       notifyUserIds: data.notifyUserIds,
       notifyEmails: validateNotifyEmails(data.notifyEmails),
       notifyTextUserIds: data.notifyTextUserIds,
+      shiftForm: data.shiftForm,
+      shiftAllClients: data.shiftAllClients,
     };
-    if (data.sendCopyToSubmitter && !data.fields.some((f) => f.type === "EMAIL")) {
+    const shiftClientIds = await checkShift(data);
+    if (data.shiftForm) base.sendCopyToSubmitter = false;
+    if (base.sendCopyToSubmitter && !data.fields.some((f) => f.type === "EMAIL")) {
       throw new UserFacingError("To email people a copy, add an Email question");
     }
     const saved = await db
       .$transaction(async (tx) => {
-        if (!id) return tx.formTemplate.create({ data: { ...base, createdById: session.user.id, fields: { create: fieldRows(data.fields) } } });
+        const shiftClients = { create: shiftClientIds.map((careRecipientId) => ({ careRecipientId })) };
+        if (!id) return tx.formTemplate.create({ data: { ...base, createdById: session.user.id, fields: { create: fieldRows(data.fields) }, shiftClients } });
         await tx.formField.deleteMany({ where: { templateId: id } });
-        return tx.formTemplate.update({ where: { id }, data: { ...base, fields: { create: fieldRows(data.fields) } } });
+        await tx.formShiftClient.deleteMany({ where: { templateId: id } });
+        return tx.formTemplate.update({ where: { id }, data: { ...base, fields: { create: fieldRows(data.fields) }, shiftClients } });
       })
       .catch((e) => friendlyPrismaError(e, duplicates));
     await recordAudit({ entityType: "FormTemplate", entityId: saved.id, action: id ? "update" : "create", actorId: session.user.id, newValue: saved.name });
@@ -165,7 +194,7 @@ export async function setFormActive(id: string, active: boolean) {
 export async function duplicateFormTemplate(id: string) {
   return toActionResult(async () => {
     const session = await requireRole([...MANAGE_ROLES]);
-    const t = await db.formTemplate.findUnique({ where: { id }, include: { fields: { orderBy: { sortOrder: "asc" } } } });
+    const t = await db.formTemplate.findUnique({ where: { id }, include: { fields: { orderBy: { sortOrder: "asc" } }, shiftClients: { select: { careRecipientId: true } } } });
     if (!t) throw new UserFacingError("That form is gone");
     let slug = `${t.slug}-copy`;
     for (let n = 2; await db.formTemplate.findFirst({ where: { slug }, select: { id: true } }); n++) slug = `${t.slug}-copy-${n}`;
@@ -180,6 +209,9 @@ export async function duplicateFormTemplate(id: string) {
         notifyUserIds: t.notifyUserIds,
         notifyEmails: t.notifyEmails,
         notifyTextUserIds: t.notifyTextUserIds,
+        shiftForm: t.shiftForm,
+        shiftAllClients: t.shiftAllClients,
+        shiftClients: { create: t.shiftClients.map((c) => ({ careRecipientId: c.careRecipientId })) },
         createdById: session.user.id,
         fields: {
           create: t.fields.map((f) => ({
@@ -212,6 +244,7 @@ export async function deleteFormTemplate(id: string) {
     if (t._count.submissions > 0) throw new UserFacingError("This form has submissions, so it can't be deleted — turn it off instead");
     await db.$transaction(async (tx) => {
       await tx.formField.deleteMany({ where: { templateId: id } });
+      await tx.formShiftClient.deleteMany({ where: { templateId: id } });
       await tx.formTemplate.delete({ where: { id } });
     });
     await recordAudit({ entityType: "FormTemplate", entityId: id, action: "delete", actorId: session.user.id, oldValue: t.name });
