@@ -34,7 +34,13 @@ export type CaregiverRosterRow = {
   lastSignInAt: Date | null;
   /** Still on the clock right now. */
   onShift: boolean;
+  /** Their standing weekly visits (VisitShift), active clients only. */
+  shifts: { id: string; weekday: number; startMinute: number; endMinute: number; client: { id: string; name: string } }[];
+  /** Their last few visits (first segments), newest first. */
+  recentVisits: { id: string; clockIn: Date; clockOut: Date | null; visitNote: string | null; client: { id: string; name: string } }[];
 };
+
+const RECENT_VISITS = 6;
 
 export async function listCaregiverRoster(): Promise<CaregiverRosterRow[]> {
   await requireCareRole([...OFFICE]);
@@ -59,12 +65,23 @@ export async function listCaregiverRoster(): Promise<CaregiverRosterRow[]> {
     },
   });
   const ids = caregivers.map((c) => c.id);
-  const [entries, logins] = await Promise.all([
+  const [entries, logins, shifts, visits] = await Promise.all([
     db.timeEntry.findMany({
       where: { userId: { in: ids }, clockIn: { gte: range.from, lte: range.to } },
       select: { userId: true, clockIn: true, clockOut: true, careRecipientId: true, visitStartId: true },
     }),
     db.loginEvent.groupBy({ by: ["userId"], where: { userId: { in: ids }, success: true }, _max: { createdAt: true } }),
+    db.visitShift.findMany({
+      where: { caregiverId: { in: ids }, careRecipient: { active: true } },
+      select: { id: true, caregiverId: true, weekday: true, startMinute: true, endMinute: true, careRecipient: { select: { id: true, name: true } } },
+      orderBy: [{ weekday: "asc" }, { startMinute: "asc" }],
+    }),
+    // The last month is plenty to find each caregiver's last few visits.
+    db.timeEntry.findMany({
+      where: { userId: { in: ids }, visitStartId: null, careRecipientId: { not: null }, clockIn: { gte: new Date(Date.now() - 31 * 24 * 3600_000) } },
+      select: { id: true, userId: true, clockIn: true, clockOut: true, visitNote: true, careRecipient: { select: { id: true, name: true } } },
+      orderBy: { clockIn: "desc" },
+    }),
   ]);
   const now = new Date();
   const lastLogin = new Map(logins.map((l) => [l.userId, l._max.createdAt]));
@@ -82,6 +99,13 @@ export async function listCaregiverRoster(): Promise<CaregiverRosterRow[]> {
       visitsThisWeek: mine.filter((e) => e.careRecipientId && !e.visitStartId).length,
       lastSignInAt: lastLogin.get(c.id) ?? null,
       onShift: mine.some((e) => !e.clockOut),
+      shifts: shifts
+        .filter((sh) => sh.caregiverId === c.id)
+        .map((sh) => ({ id: sh.id, weekday: sh.weekday, startMinute: sh.startMinute, endMinute: sh.endMinute, client: sh.careRecipient })),
+      recentVisits: visits
+        .filter((v) => v.userId === c.id && v.careRecipient)
+        .slice(0, RECENT_VISITS)
+        .map((v) => ({ id: v.id, clockIn: v.clockIn, clockOut: v.clockOut, visitNote: v.visitNote, client: v.careRecipient! })),
     };
   });
 }

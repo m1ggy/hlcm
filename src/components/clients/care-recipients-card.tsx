@@ -118,7 +118,7 @@ const CONTACT_METHODS = ["Phone", "Email", "Text"];
 // "workspace": a care agency's own clients in its tasks-only workspace
 // (docs/client-care-plan.md) — called Clients there, with no SSN and no
 // billing (invoicing them isn't offered there).
-type CardVariant = "agency" | "workspace";
+export type CardVariant = "agency" | "workspace";
 
 function CareRecipientFields({ defaultValues, variant = "agency" }: { defaultValues?: CareRecipientRow; variant?: CardVariant }) {
   const [preferredContactMethod, setPreferredContactMethod] = useState(defaultValues?.preferredContactMethod || CONTACT_METHOD_NONE);
@@ -346,7 +346,7 @@ function CareRecipientFields({ defaultValues, variant = "agency" }: { defaultVal
   );
 }
 
-function NewCareRecipientDialog({ clientId, variant = "agency" }: { clientId: string | null; variant?: CardVariant }) {
+export function NewCareRecipientDialog({ clientId, variant = "agency", primary = false }: { clientId: string | null; variant?: CardVariant; primary?: boolean }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -368,7 +368,7 @@ function NewCareRecipientDialog({ clientId, variant = "agency" }: { clientId: st
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button variant="outline" size="sm">Add {noun}</Button>} />
+      <DialogTrigger render={<Button variant={primary ? "default" : "outline"} size={primary ? "default" : "sm"}>Add {noun}</Button>} />
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Add a {noun}</DialogTitle>
@@ -384,7 +384,7 @@ function NewCareRecipientDialog({ clientId, variant = "agency" }: { clientId: st
   );
 }
 
-function EditCareRecipientDialog({ recipient, variant = "agency" }: { recipient: CareRecipientRow; variant?: CardVariant }) {
+export function EditCareRecipientDialog({ recipient, variant = "agency" }: { recipient: CareRecipientRow; variant?: CardVariant }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -420,7 +420,7 @@ function EditCareRecipientDialog({ recipient, variant = "agency" }: { recipient:
   );
 }
 
-function AssignCaregiverControl({
+export function AssignCaregiverControl({
   careRecipientId,
   caregivers,
   alreadyAssigned,
@@ -475,7 +475,7 @@ function AssignCaregiverControl({
   );
 }
 
-function CaregiverChip({ careRecipientId, caregiver }: { careRecipientId: string; caregiver: { id: string; name: string } }) {
+export function CaregiverChip({ careRecipientId, caregiver }: { careRecipientId: string; caregiver: { id: string; name: string } }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -501,7 +501,7 @@ function CaregiverChip({ careRecipientId, caregiver }: { careRecipientId: string
   );
 }
 
-function ArchiveRecipientButton({ id }: { id: string }) {
+export function ArchiveRecipientButton({ id }: { id: string }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -554,7 +554,7 @@ function RestoreRecipientButton({ id, onRestored }: { id: string; onRestored: ()
 // filter: "archived") kept out of the way until someone actually needs to
 // find and restore one, same "hidden until asked for" shape the Clients
 // list page uses for its own archived view.
-function ArchivedRecipients({ clientId }: { clientId: string | null }) {
+export function ArchivedRecipients({ clientId }: { clientId: string | null }) {
   const [archived, setArchived] = useState<CareRecipientRow[] | null>(null);
   const [isPending, startTransition] = useTransition();
 
