@@ -1,13 +1,14 @@
 "use client";
 
-import { useCallback, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronLeft, ChevronRight, EyeOff, MessageSquare, Pencil, Printer, Settings2, Sparkles } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, EyeOff, FileText, MessageSquare, Pencil, Printer, Settings2, Sparkles, X } from "lucide-react";
 import { regenerateSummaryNoteAction, saveSummaryNoteAction, setDayTextSkipAction, updateSummarySettingsAction } from "@/lib/actions/work-summary";
 import { WORK_TASK_STATUS_LABELS, noteBullets, type WorkScope, type WorkTaskStatus } from "@/lib/work";
-import type { DaySummary, WeekSummary } from "@/lib/work-summary";
+import type { DaySummary, SummaryPerson, WeekSummary } from "@/lib/work-summary";
+import { filterDayToPerson, groupDayByPerson, personDayCount, type PersonDay, type PersonEvent } from "@/lib/work-summary-people";
 import type { CareWeek } from "@/lib/care-summary";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -16,6 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AvatarInitials } from "@/components/ui/avatar-initials";
 import { TaskSheet } from "./task-sheet";
 
 /** Small uppercase labels (header, stats, days, sections): closer to the text color than muted, so they read in both themes. */
@@ -58,6 +60,7 @@ export function SummaryView({
   summary,
   today,
   initialDay,
+  initialPerson,
   scope,
   currentUserId,
   people,
@@ -69,6 +72,8 @@ export function SummaryView({
   summary: WeekSummary;
   today: string;
   initialDay: string | null;
+  /** The team's filter to one of its people (docs/summary-by-person-plan.md). */
+  initialPerson?: string | null;
   scope: WorkScope;
   currentUserId: string;
   people: { id: string; name: string }[];
@@ -82,24 +87,63 @@ export function SummaryView({
   const router = useRouter();
   const [day, setDay] = useState<string | null>(initialDay);
   const [taskId, setTaskId] = useState<string | null>(null);
+  const [person, setPerson] = useState<string | null>(initialPerson ?? null);
   const canEdit = scope.canManageProjects;
   const aiAvailable = settings.aiConfigured && settings.aiSummaries;
   const thisMonday = shift(today, -((new Date(`${today}T00:00:00Z`).getUTCDay() + 6) % 7));
   const hoursHidden = scope.side === "team" && !settings.showHoursToClient;
 
-  const pickDay = useCallback((d: string | null) => {
-    setDay(d);
-    const url = new URL(window.location.href);
-    url.searchParams.set("week", summary.from);
-    if (d) url.searchParams.set("day", d);
-    else url.searchParams.delete("day");
-    window.history.replaceState(null, "", url);
-    if (d) requestAnimationFrame(() => document.getElementById("day-detail")?.scrollIntoView({ behavior: "smooth", block: "start" }));
-  }, [summary.from]);
+  const setParam = useCallback(
+    (key: string, value: string | null) => {
+      const url = new URL(window.location.href);
+      url.searchParams.set("week", summary.from);
+      if (value) url.searchParams.set(key, value);
+      else url.searchParams.delete(key);
+      window.history.replaceState(null, "", url);
+    },
+    [summary.from]
+  );
+  const pickDay = useCallback(
+    (d: string | null) => {
+      setDay(d);
+      setParam("day", d);
+      if (d) requestAnimationFrame(() => document.getElementById("day-detail")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    },
+    [setParam]
+  );
+  const pickPerson = useCallback(
+    (id: string | null) => {
+      setPerson(id);
+      setParam("person", id);
+    },
+    [setParam]
+  );
+  // Week links keep the person filter.
+  const weekHref = (monday: string | null) => {
+    const q = new URLSearchParams();
+    if (monday) q.set("week", monday);
+    if (person) q.set("person", person);
+    const qs = q.toString();
+    return `/work/summary${qs ? `?${qs}` : ""}`;
+  };
   const onSheetOpenChange = useCallback((open: boolean) => !open && setTaskId(null), []);
 
-  const selected = summary.days.find((d) => d.date === day) ?? null;
-  const t = summary.totals;
+  const days = useMemo(() => (person ? summary.days.map((d) => filterDayToPerson(d, person)) : summary.days), [summary.days, person]);
+  const selected = days.find((d) => d.date === day) ?? null;
+  const t = useMemo(() => {
+    if (!person) return summary.totals;
+    const sum = (f: (d: DaySummary) => number) => days.reduce((s, d) => s + f(d), 0);
+    return {
+      completed: sum((d) => d.completed.length),
+      progressed: sum((d) => d.progressed.length),
+      added: sum((d) => d.added.length),
+      comments: sum((d) => d.comments.length),
+      files: sum((d) => d.files.length),
+      hours: summary.totals.hours === null ? null : Math.round(sum((d) => d.hours ?? 0) * 100) / 100,
+    };
+  }, [person, days, summary.totals]);
+  const filteredTo = person ? summary.people.find((p) => p.id === person) : null;
+  const team = summary.people.filter((p) => p.side === "team");
   const sameMonth = summary.from.slice(0, 7) === summary.to.slice(0, 7);
   const title = `${fmt(summary.from, { month: "short", day: "numeric" })} – ${fmt(summary.to, sameMonth ? { day: "numeric" } : { month: "short", day: "numeric" })}, ${summary.to.slice(0, 4)}`;
 
@@ -112,11 +156,11 @@ export function SummaryView({
           <h1 className="font-heading text-3xl font-semibold tracking-tight">Week of {title}</h1>
         </div>
         <div className="flex flex-wrap items-center gap-2" data-print-hide>
-          <Button variant="outline" size="icon" nativeButton={false} aria-label="Previous week" render={<Link href={`/work/summary?week=${shift(summary.from, -7)}`} />}>
+          <Button variant="outline" size="icon" nativeButton={false} aria-label="Previous week" render={<Link href={weekHref(shift(summary.from, -7))} />}>
             <ChevronLeft className="size-4" />
           </Button>
           {summary.from !== thisMonday && (
-            <Button variant="outline" nativeButton={false} render={<Link href="/work/summary" />}>
+            <Button variant="outline" nativeButton={false} render={<Link href={weekHref(null)} />}>
               This week
             </Button>
           )}
@@ -126,7 +170,7 @@ export function SummaryView({
             aria-label="Next week"
             nativeButton={false}
             disabled={summary.from >= thisMonday}
-            render={<Link href={`/work/summary?week=${shift(summary.from, 7)}`} aria-disabled={summary.from >= thisMonday} />}
+            render={<Link href={weekHref(shift(summary.from, 7))} aria-disabled={summary.from >= thisMonday} />}
             className={cn(summary.from >= thisMonday && "pointer-events-none opacity-50")}
           >
             <ChevronRight className="size-4" />
@@ -137,7 +181,7 @@ export function SummaryView({
             className="w-40"
             max={today}
             defaultValue={summary.from}
-            onChange={(e) => e.target.value && router.push(`/work/summary?week=${e.target.value}`)}
+            onChange={(e) => e.target.value && router.push(weekHref(e.target.value))}
           />
           <Button variant="outline" onClick={() => window.print()}>
             <Printer className="size-4" /> Print
@@ -147,6 +191,18 @@ export function SummaryView({
       </div>
 
       {isNew && <Welcome side={scope.side} canEdit={canEdit} aiOn={aiAvailable} />}
+
+      {filteredTo && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2.5 text-sm">
+          <AvatarInitials name={filteredTo.name} className="size-6 text-[0.625rem]" />
+          <span>
+            Showing only <span className="font-semibold">{filteredTo.name}</span>&apos;s work. The week&apos;s note covers everyone.
+          </span>
+          <Button size="sm" variant="ghost" className="ml-auto" onClick={() => pickPerson(null)} data-print-hide>
+            <X className="size-3.5" /> Show everyone
+          </Button>
+        </div>
+      )}
 
       {/* The week's paragraph */}
       <NoteBlock
@@ -163,16 +219,16 @@ export function SummaryView({
 
       {/* Totals */}
       <section aria-label="This week in numbers" className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <Stat label="Finished" value={t.completed} days={summary.days.map((d) => d.completed.length)} />
-        <Stat label="Moved forward" value={t.progressed} days={summary.days.map((d) => d.progressed.length)} />
-        <Stat label="New tasks" value={t.added} days={summary.days.map((d) => d.added.length)} />
-        <Stat label="Comments" value={t.comments} days={summary.days.map((d) => d.comments.length)} />
-        <Stat label="Files shared" value={t.files} days={summary.days.map((d) => d.files.length)} />
+        <Stat label="Finished" value={t.completed} days={days.map((d) => d.completed.length)} />
+        <Stat label="Moved forward" value={t.progressed} days={days.map((d) => d.progressed.length)} />
+        <Stat label="New tasks" value={t.added} days={days.map((d) => d.added.length)} />
+        <Stat label="Comments" value={t.comments} days={days.map((d) => d.comments.length)} />
+        <Stat label="Files shared" value={t.files} days={days.map((d) => d.files.length)} />
         {t.hours !== null && (
           <Stat
             label="Hours"
             value={t.hours}
-            days={summary.days.map((d) => d.hours ?? 0)}
+            days={days.map((d) => d.hours ?? 0)}
             mono
             hint={hoursHidden ? "Only your team sees hours" : undefined}
           />
@@ -197,10 +253,22 @@ export function SummaryView({
         </section>
       )}
 
+      {scope.side === "team" && team.length > 0 && (
+        <WhoWorked summary={summary} team={team} today={today} person={person} onPick={(id) => pickPerson(id === person ? null : id)} />
+      )}
+
       {/* Days */}
       <section aria-label="Days" data-tour="summary-days" className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-7">
-        {summary.days.map((d) => (
-          <DayCard key={d.date} d={d} today={today} selected={d.date === day} onSelect={() => pickDay(d.date === day ? null : d.date)} />
+        {days.map((d) => (
+          <DayCard
+            key={d.date}
+            d={d}
+            people={summary.people}
+            today={today}
+            selected={d.date === day}
+            showNote={!person}
+            onSelect={() => pickDay(d.date === day ? null : d.date)}
+          />
         ))}
       </section>
 
@@ -208,6 +276,9 @@ export function SummaryView({
         <DayDetail
           key={selected.date}
           d={selected}
+          people={summary.people}
+          clientName={workspaceName}
+          filtered={Boolean(person)}
           canEdit={canEdit}
           aiAvailable={aiAvailable}
           hoursHidden={hoursHidden}
@@ -272,10 +343,34 @@ function Stat({ label, value, days, mono, hint }: { label: string; value: number
   );
 }
 
-function DayCard({ d, today, selected, onSelect }: { d: DaySummary; today: string; selected: boolean; onSelect: () => void }) {
+/** Who did something on a day: anyone with an item, or (for the team) tracked hours. */
+function activePeople(d: DaySummary, people: SummaryPerson[]) {
+  const ids = new Set<string>();
+  for (const list of [d.completed, d.progressed, d.added, d.comments, d.files, d.updates]) for (const i of list) ids.add(i.byId);
+  if (d.hoursBy) for (const [id, h] of Object.entries(d.hoursBy)) if (h > 0) ids.add(id);
+  return people.filter((p) => ids.has(p.id));
+}
+
+function DayCard({
+  d,
+  people,
+  today,
+  selected,
+  showNote,
+  onSelect,
+}: {
+  d: DaySummary;
+  people: SummaryPerson[];
+  today: string;
+  selected: boolean;
+  /** Off while filtered to one person: the note covers everyone. */
+  showNote: boolean;
+  onSelect: () => void;
+}) {
   const active = isActive(d);
   const future = d.date > today;
   const isToday = d.date === today;
+  const who = active ? activePeople(d, people) : [];
   return (
     <button
       type="button"
@@ -300,16 +395,16 @@ function DayCard({ d, today, selected, onSelect }: { d: DaySummary; today: strin
       ) : (
         <>
           <span className="font-heading text-base font-semibold">{headline(d)}</span>
-          {d.note && <span className="line-clamp-4 text-sm">{d.note.body}</span>}
-          {!d.note && d.completed.length > 0 && (
-            <ul className="space-y-0.5 text-sm">
-              {d.completed.slice(0, 3).map((c) => (
-                <li key={c.taskId + c.at.toString()} className="truncate">
-                  ✓ {c.title}
-                </li>
-              ))}
-              {d.completed.length > 3 && <li className="text-muted-foreground">+{d.completed.length - 3} more</li>}
-            </ul>
+          {showNote && d.note && <span className="line-clamp-3 text-sm">{d.note.body}</span>}
+          {who.length > 0 && (
+            <span className="flex items-center gap-1.5" aria-label={`${who.length} ${who.length === 1 ? "person" : "people"}: ${who.map((p) => p.name).join(", ")}`}>
+              <span className="flex -space-x-1" aria-hidden>
+                {who.slice(0, 5).map((p) => (
+                  <AvatarInitials key={p.id} name={p.name} className="size-6 text-[0.625rem] ring-2 ring-card" />
+                ))}
+              </span>
+              {who.length > 5 && <span className="text-xs text-muted-foreground">+{who.length - 5}</span>}
+            </span>
           )}
           {d.hours !== null && d.hours > 0 && <span className="font-mono text-xs text-muted-foreground tabular-nums">{d.hours}h</span>}
         </>
@@ -328,6 +423,9 @@ function TaskLink({ id, title, onOpen }: { id: string; title: string; onOpen: (i
 
 function DayDetail({
   d,
+  people,
+  clientName,
+  filtered,
   canEdit,
   aiAvailable,
   hoursHidden,
@@ -336,6 +434,11 @@ function DayDetail({
   onClose,
 }: {
   d: DaySummary;
+  people: SummaryPerson[];
+  /** The client's name, for their own people's group. */
+  clientName: string;
+  /** Filtered to one person: the switch and the group headings aren't needed. */
+  filtered: boolean;
   canEdit: boolean;
   aiAvailable: boolean;
   hoursHidden: boolean;
@@ -344,23 +447,60 @@ function DayDetail({
   onOpenTask: (id: string) => void;
   onClose: () => void;
 }) {
+  const [view, setView] = useState<"person" | "type">("person");
+  return (
+    <section id="day-detail" className="scroll-mt-4 space-y-5 rounded-xl border bg-card p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="font-heading text-xl font-semibold">{fmt(d.date, { weekday: "long", month: "long", day: "numeric" })}</h2>
+        <div className="flex items-center gap-2" data-print-hide>
+          {isActive(d) && !filtered && (
+            <div role="group" aria-label="Group the day" className="inline-flex rounded-lg border p-0.5">
+              {(["person", "type"] as const).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  aria-pressed={view === v}
+                  onClick={() => setView(v)}
+                  className={cn("rounded-md px-2.5 py-1 text-sm transition-colors", view === v ? "bg-secondary font-medium text-secondary-foreground" : "text-muted-foreground hover:text-foreground")}
+                >
+                  {v === "person" ? "By person" : "By type"}
+                </button>
+              ))}
+            </div>
+          )}
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            Close
+          </Button>
+        </div>
+      </div>
+      <NoteBlock period="DAY" day={d.date} note={d.note} canEdit={canEdit} aiAvailable={aiAvailable && isActive(d)} emptyText={canEdit ? "No note for this day yet." : null} />
+      {textInfo && <DayText d={d} {...textInfo} />}
+      {!isActive(d) && <p className="text-sm text-muted-foreground">Nothing was updated this day.</p>}
+
+      {isActive(d) &&
+        (view === "person" || filtered ? (
+          <ByPerson d={d} people={people} clientName={clientName} hoursHidden={hoursHidden} onOpenTask={onOpenTask} />
+        ) : (
+          <ByType d={d} onOpenTask={onOpenTask} />
+        ))}
+      {d.hours !== null && d.hours > 0 && (
+        <p className="font-mono text-sm tabular-nums text-muted-foreground">
+          {d.hours}h of work{hoursHidden && " (only your team sees hours)"}
+        </p>
+      )}
+    </section>
+  );
+}
+
+/** The day by kind of event, everyone together (the page's first layout). */
+function ByType({ d, onOpenTask }: { d: DaySummary; onOpenTask: (id: string) => void }) {
   const byProject = <T extends { projectName: string }>(items: T[]) => {
     const groups = new Map<string, T[]>();
     for (const i of items) groups.set(i.projectName, [...(groups.get(i.projectName) ?? []), i]);
     return [...groups.entries()];
   };
   return (
-    <section id="day-detail" className="scroll-mt-4 space-y-5 rounded-xl border bg-card p-5">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="font-heading text-xl font-semibold">{fmt(d.date, { weekday: "long", month: "long", day: "numeric" })}</h2>
-        <Button variant="ghost" size="sm" onClick={onClose} data-print-hide>
-          Close
-        </Button>
-      </div>
-      <NoteBlock period="DAY" day={d.date} note={d.note} canEdit={canEdit} aiAvailable={aiAvailable && isActive(d)} emptyText={canEdit ? "No note for this day yet." : null} />
-      {textInfo && <DayText d={d} {...textInfo} />}
-      {!isActive(d) && <p className="text-sm text-muted-foreground">Nothing was updated this day.</p>}
-
+    <div className="space-y-5">
       {d.completed.length > 0 && (
         <DetailList title="Finished">
           {byProject(d.completed).map(([project, items]) => (
@@ -435,11 +575,268 @@ function DayDetail({
           ))}
         </DetailList>
       )}
-      {d.hours !== null && d.hours > 0 && (
-        <p className="font-mono text-sm tabular-nums text-muted-foreground">
-          {d.hours}h of work{hoursHidden && " (only your team sees hours)"}
-        </p>
+    </div>
+  );
+}
+
+/** True while the browser prints, so every card prints opened up. */
+function usePrinting() {
+  const [printing, setPrinting] = useState(false);
+  useEffect(() => {
+    const on = () => setPrinting(true);
+    const off = () => setPrinting(false);
+    window.addEventListener("beforeprint", on);
+    window.addEventListener("afterprint", off);
+    return () => {
+      window.removeEventListener("beforeprint", on);
+      window.removeEventListener("afterprint", off);
+    };
+  }, []);
+  return printing;
+}
+
+/** The day by who did it (docs/summary-by-person-plan.md): the team, then the client's own people. */
+function ByPerson({
+  d,
+  people,
+  clientName,
+  hoursHidden,
+  onOpenTask,
+}: {
+  d: DaySummary;
+  people: SummaryPerson[];
+  clientName: string;
+  hoursHidden: boolean;
+  onOpenTask: (id: string) => void;
+}) {
+  const { team, client } = useMemo(() => groupDayByPerson(d, people), [d, people]);
+  // A busy day starts with each person folded to their one-line summary.
+  const startOpen = team.length + client.length <= 3;
+  return (
+    <div className="space-y-5">
+      {team.length > 0 && (
+        <div className="space-y-2">
+          {client.length > 0 && <h3 className={SUBTITLE}>The team</h3>}
+          {team.map((p) => (
+            <PersonCard key={`${p.id}-${startOpen}`} p={p} startOpen={startOpen} hoursHidden={hoursHidden} onOpenTask={onOpenTask} />
+          ))}
+        </div>
       )}
+      {client.length > 0 && (
+        <div className="space-y-2">
+          <h3 className={SUBTITLE}>From {clientName}</h3>
+          {client.map((p) => (
+            <PersonCard key={`${p.id}-${startOpen}`} p={p} startOpen={startOpen} hoursHidden={hoursHidden} onOpenTask={onOpenTask} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const TASKS_SHOWN = 5;
+
+function personLine(p: PersonDay) {
+  const c = p.counts;
+  const parts: string[] = [];
+  if (c.completed) parts.push(`${c.completed} finished`);
+  if (c.progressed) parts.push(`${c.progressed} moved forward`);
+  if (c.added) parts.push(`${c.added} new`);
+  if (c.updates) parts.push(`${c.updates} ${c.updates === 1 ? "update" : "updates"}`);
+  if (c.comments) parts.push(`${c.comments} ${c.comments === 1 ? "comment" : "comments"}`);
+  if (c.files) parts.push(`${c.files} ${c.files === 1 ? "file" : "files"}`);
+  return parts.join(" · ") || "Tracked time only";
+}
+
+function PersonCard({ p, startOpen, hoursHidden, onOpenTask }: { p: PersonDay; startOpen: boolean; hoursHidden: boolean; onOpenTask: (id: string) => void }) {
+  const [open, setOpen] = useState(startOpen);
+  const [all, setAll] = useState(false);
+  const printing = usePrinting();
+  const shown = open || printing;
+  const tasks = all || printing ? p.tasks : p.tasks.slice(0, TASKS_SHOWN);
+  return (
+    <div className="rounded-lg border">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-expanded={shown}
+        className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-ring"
+      >
+        <AvatarInitials name={p.name} />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-medium">{p.name}</span>
+          <span className="block truncate text-sm text-muted-foreground">{personLine(p)}</span>
+        </span>
+        {p.hours !== null && p.hours > 0 && (
+          <span className="shrink-0 font-mono text-sm tabular-nums text-muted-foreground" title={hoursHidden ? "Only your team sees hours" : undefined}>
+            {Math.round(p.hours * 100) / 100}h
+          </span>
+        )}
+        <ChevronDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform", shown && "rotate-180")} data-print-hide />
+      </button>
+      {shown && p.tasks.length > 0 && (
+        <ul className="divide-y border-t">
+          {tasks.map((t) => (
+            <PersonTaskRow key={t.taskId} t={t} onOpenTask={onOpenTask} />
+          ))}
+          {!all && !printing && p.tasks.length > TASKS_SHOWN && (
+            <li className="px-3 py-2" data-print-hide>
+              <Button size="sm" variant="ghost" onClick={() => setAll(true)}>
+                Show {p.tasks.length - TASKS_SHOWN} more {p.tasks.length - TASKS_SHOWN === 1 ? "task" : "tasks"}
+              </Button>
+            </li>
+          )}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/** A short label for a status-like event: "Finished", "To do → In progress". */
+function eventChip(e: PersonEvent) {
+  switch (e.kind) {
+    case "finished":
+      return "✓ Finished";
+    case "moved":
+      return `${status(e.from)} → ${status(e.to)}`;
+    case "declined":
+      return "Request declined";
+    case "added":
+      return e.requested ? "Requested" : "Added";
+    default:
+      return null;
+  }
+}
+
+function PersonTaskRow({ t, onOpenTask }: { t: PersonDay["tasks"][number]; onOpenTask: (id: string) => void }) {
+  // The same label twice in a day (moved back and forth, finished twice) shows once.
+  const chips = t.events.filter((e, i, all) => eventChip(e) && all.findIndex((o) => eventChip(o) === eventChip(e)) === i);
+  const files = t.events.filter((e) => e.kind === "file");
+  const texts = t.events.filter((e) => e.kind === "update" || e.kind === "comment");
+  return (
+    <li className="space-y-1.5 px-3 py-2.5 text-sm">
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        <TaskLink id={t.taskId} title={t.title} onOpen={onOpenTask} />
+        <span className="text-xs text-muted-foreground">{t.projectName}</span>
+      </div>
+      {(chips.length > 0 || files.length > 0) && (
+        <div className="flex flex-wrap gap-1.5">
+          {chips.map((e, i) => (
+            <Badge key={i} variant={e.kind === "finished" ? "default" : "secondary"} className="font-normal" title={time(e.at)}>
+              {eventChip(e)}
+            </Badge>
+          ))}
+          {files.map((e, i) => (
+            <Badge key={`f${i}`} variant="outline" className="gap-1 font-normal" title={time(e.at)}>
+              <FileText className="size-3" /> {e.kind === "file" ? e.fileName : ""}
+            </Badge>
+          ))}
+        </div>
+      )}
+      {texts.map((e, i) => (
+        <div key={i} className="border-l-2 pl-3">
+          <p className="text-xs text-muted-foreground">
+            {e.kind === "update" ? "Update" : "Comment"} · {time(e.at)}
+          </p>
+          <p className="whitespace-pre-wrap">{e.kind === "update" ? e.text : e.kind === "comment" ? e.body : ""}</p>
+        </div>
+      ))}
+    </li>
+  );
+}
+
+/** The team's week by person: who did how much each day; click someone to see only their work. */
+function WhoWorked({
+  summary,
+  team,
+  today,
+  person,
+  onPick,
+}: {
+  summary: WeekSummary;
+  team: SummaryPerson[];
+  today: string;
+  person: string | null;
+  onPick: (id: string) => void;
+}) {
+  const rows = team
+    .map((p) => {
+      const counts = summary.days.map((d) => personDayCount(d, p.id));
+      const hours = summary.days.map((d) => (d.hoursBy ? (d.hoursBy[p.id] ?? 0) : null));
+      return {
+        p,
+        counts,
+        hours,
+        total: counts.reduce((s, n) => s + n, 0),
+        totalHours: hours.every((h) => h === null) ? null : Math.round(hours.reduce((s: number, h) => s + (h ?? 0), 0) * 100) / 100,
+      };
+    })
+    .sort((a, b) => b.total - a.total || (b.totalHours ?? 0) - (a.totalHours ?? 0) || a.p.name.localeCompare(b.p.name));
+  const max = Math.max(1, ...rows.flatMap((r) => r.counts));
+  return (
+    <section aria-label="Who worked this week" className="space-y-2" data-print-hide>
+      <div className="flex items-baseline justify-between gap-2">
+        <h2 className="font-heading text-lg font-semibold">Who worked</h2>
+        <p className="flex items-center gap-1 text-xs text-muted-foreground">
+          <EyeOff className="size-3" /> Only your team sees this
+        </p>
+      </div>
+      <div className="overflow-x-auto rounded-xl border bg-card">
+        <table className="w-full min-w-[36rem] text-sm">
+          <thead>
+            <tr className="border-b text-left">
+              <th className="px-3 py-2 font-medium text-muted-foreground">Person</th>
+              {summary.days.map((d) => (
+                <th key={d.date} className={cn("px-1 py-2 text-center font-medium text-muted-foreground", d.date === today && "text-foreground")}>
+                  {fmt(d.date, { weekday: "short" })}
+                </th>
+              ))}
+              <th className="px-3 py-2 text-right font-medium text-muted-foreground">Week</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(({ p, counts, hours, total, totalHours }) => (
+              <tr
+                key={p.id}
+                onClick={() => onPick(p.id)}
+                className={cn("cursor-pointer border-b transition-colors last:border-b-0 hover:bg-muted/50", person === p.id && "bg-primary/10 shadow-[inset_3px_0_0_var(--color-primary)]")}
+              >
+                <td className="px-3 py-2">
+                  <button
+                    type="button"
+                    aria-pressed={person === p.id}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onPick(p.id);
+                    }}
+                    className="flex items-center gap-2 text-left font-medium focus-visible:outline-2 focus-visible:outline-ring"
+                  >
+                    <AvatarInitials name={p.name} className="size-6 text-[0.625rem]" />
+                    <span className="truncate">{p.name}</span>
+                  </button>
+                </td>
+                {counts.map((n, i) => (
+                  <td key={i} className="px-1 py-1.5 text-center">
+                    <span
+                      className={cn(
+                        "mx-auto flex h-9 w-11 flex-col items-center justify-center rounded-md tabular-nums",
+                        n > 0 ? (n / max > 0.66 ? "bg-primary/45" : n / max > 0.33 ? "bg-primary/30" : "bg-primary/15") : "bg-muted/60 text-muted-foreground"
+                      )}
+                    >
+                      <span className={cn(n > 0 && "font-semibold")}>{n || "–"}</span>
+                      {hours[i] !== null && (hours[i] ?? 0) > 0 && <span className="font-mono text-[0.625rem] leading-none text-foreground/70">{Math.round((hours[i] ?? 0) * 10) / 10}h</span>}
+                    </span>
+                  </td>
+                ))}
+                <td className="px-3 py-2 text-right tabular-nums">
+                  <span className="font-semibold">{total}</span>
+                  {totalHours !== null && totalHours > 0 && <span className="ml-1.5 font-mono text-xs text-muted-foreground">{totalHours}h</span>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 }

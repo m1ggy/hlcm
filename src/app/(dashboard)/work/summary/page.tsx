@@ -12,8 +12,8 @@ import { hasCare } from "@/lib/workspace-kind";
 // The client's weekly summary (docs/workspace-tasks-plan.md, Phase 3): what
 // was done each day, Monday to Sunday, any week back. The home page of a
 // client's tasks-only workspace.
-export default async function WorkSummaryPage({ searchParams }: { searchParams: Promise<{ week?: string; day?: string }> }) {
-  const { week, day } = await searchParams;
+export default async function WorkSummaryPage({ searchParams }: { searchParams: Promise<{ week?: string; day?: string; person?: string }> }) {
+  const { week, day, person } = await searchParams;
   const { viewer, scope, org } = await requireWorkViewer();
   const today = await workspaceToday();
   const valid = (d?: string) => (d && /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(d)) ? d : null);
@@ -22,7 +22,7 @@ export default async function WorkSummaryPage({ searchParams }: { searchParams: 
   // team always sees them, marked as hidden from the client when they are.
   const withHours = org.workShowHoursToClient || scope.side === "team";
   const [summary, people, hasHistory, textPeople, care] = await Promise.all([
-    getWeekSummary({ monday, timeZone: org.timezone || DEFAULT_TIMEZONE, orgKind: org.kind, withHours }),
+    getWeekSummary({ monday, timeZone: org.timezone || DEFAULT_TIMEZONE, orgKind: org.kind, withHours, hoursByPerson: scope.side === "team" }),
     scope.side === "team" ? listAssignableUsers(org.kind) : Promise.resolve([]),
     summaryHasHistory(org.kind),
     scope.canManageProjects ? countDailyTextRecipients() : Promise.resolve(0),
@@ -36,6 +36,8 @@ export default async function WorkSummaryPage({ searchParams }: { searchParams: 
       summary={summary}
       today={today}
       initialDay={focusedDay && focusedDay >= summary.from && focusedDay <= summary.to ? focusedDay : null}
+      // Filtering to one person is the team's (docs/summary-by-person-plan.md).
+      initialPerson={scope.side === "team" && summary.people.some((p) => p.id === person && p.side === "team") ? person! : null}
       scope={scope}
       currentUserId={viewer.userId}
       people={people}

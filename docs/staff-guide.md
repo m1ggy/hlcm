@@ -144,11 +144,15 @@ Everyone except caregivers submits one EOD report a day, under **End of day** in
 
 The client's home page is **This week**: Monday to Sunday, what was finished, moved forward or added each day, built from the tasks and shared updates you post. When you're in their workspace, you see exactly what they see.
 
+**By person.** Click a day and its details are grouped by who did the work: one card per person with a one-line count, then one row per task with everything that happened to it that day. The client's own comments and requests are in a separate group at the bottom. **By type** switches back to one list per kind of event.
+
+**Who worked (team only).** Above the day cards, a grid shows each team member's activity and hours for every day of the week. Click a name to show only that person's work on the whole page; **Show everyone** clears it. The client never sees this grid or anyone's hours.
+
 ![A client's This week page: totals for the week and a card per day with what was finished and the day's note](/staff-guide/this-week.png)
 
 **Daily and weekly notes (managers).** Managers can write a short note for any day or week. Claude drafts these notes automatically each evening; edit or rewrite any of them. A note you edit is never overwritten.
 
-**Hours stay hidden** from the client unless a manager turns them on in the page's settings.
+**Hours stay hidden** from the client unless a manager turns them on in the page's settings. Even then, the client sees only day and week totals, never one person's hours.
 
 **Monday email.** Every Monday morning the client's people get last week's summary by email.
 

@@ -21,18 +21,25 @@ export async function summaryHasHistory(orgKind: "FULL" | "TASKS"): Promise<bool
   return Boolean(found);
 }
 
-export type SummaryTaskRef ={ taskId: string; title: string; projectId: string; projectName: string };
+export type SummaryTaskRef = { taskId: string; title: string; projectId: string; projectName: string };
+/** Who did it: their name and user id (docs/summary-by-person-plan.md). */
+type By = { by: string; byId: string; at: Date };
+
+/** Someone with something on the summary this week: the managing team's people, or the client's own. */
+export type SummaryPerson = { id: string; name: string; side: "team" | "client" };
 
 export type DaySummary = {
   date: string;
-  completed: (SummaryTaskRef & { by: string; at: Date })[];
-  progressed: (SummaryTaskRef & { by: string; at: Date; from: string | null; to: string | null; declined: boolean })[];
-  added: (SummaryTaskRef & { by: string; at: Date; requested: boolean })[];
-  comments: (SummaryTaskRef & { by: string; at: Date; body: string })[];
-  files: (SummaryTaskRef & { by: string; at: Date; fileName: string })[];
+  completed: (SummaryTaskRef & By)[];
+  progressed: (SummaryTaskRef & By & { from: string | null; to: string | null; declined: boolean })[];
+  added: (SummaryTaskRef & By & { requested: boolean })[];
+  comments: (SummaryTaskRef & By & { body: string })[];
+  files: (SummaryTaskRef & By & { fileName: string })[];
   /** What the team reported doing, from their end-of-day lines shared with the client (Phase 5). */
-  updates: (SummaryTaskRef & { by: string; at: Date; text: string })[];
+  updates: (SummaryTaskRef & By & { text: string })[];
   hours: number | null;
+  /** Hours by user id — only for the team's view (`hoursByPerson`); the client sees totals only. */
+  hoursBy: Record<string, number> | null;
   note: { body: string; source: "AI" | "HUMAN" | "EDITED"; authorName: string | null } | null;
   /** The evening text to the client: switched off by the team, or sent (when, to how many). */
   text: { skip: boolean; sentAt: Date | null; sentTo: number | null };
@@ -42,6 +49,8 @@ export type WeekSummary = {
   from: string;
   to: string;
   days: DaySummary[];
+  /** Everyone with something this week, the team first, then by name. */
+  people: SummaryPerson[];
   totals: { completed: number; progressed: number; added: number; comments: number; files: number; hours: number | null };
   note: { body: string; source: "AI" | "HUMAN" | "EDITED"; authorName: string | null } | null;
 };
@@ -66,29 +75,38 @@ export function dayHasActivity(d: DaySummary) {
  * `withHours`: include tracked hours (only when the workspace shows them to
  * the client, or for the team's own view).
  */
-export async function getWeekSummary(opts: { monday: string; timeZone: string; orgKind: "FULL" | "TASKS"; withHours: boolean }): Promise<WeekSummary> {
+export async function getWeekSummary(opts: {
+  monday: string;
+  timeZone: string;
+  orgKind: "FULL" | "TASKS";
+  withHours: boolean;
+  /** Also split hours by person (the team's view only). */
+  hoursByPerson?: boolean;
+}): Promise<WeekSummary> {
   const { monday, timeZone, orgKind, withHours } = opts;
+  const hoursByPerson = withHours && Boolean(opts.hoursByPerson);
   const scope = clientScope(orgKind);
   const sunday = addDays(monday, 6);
   const range = dayRangeToInstants(monday, sunday, timeZone);
   const visibleTask = taskWhere(scope);
   const taskRef = { select: { id: true, title: true, project: { select: { id: true, name: true } } } } as const;
+  const person = { select: { id: true, name: true, role: true, assignedFromUserId: true } } as const;
 
   const [activities, comments, entries, notes] = await Promise.all([
     db.workTaskActivity.findMany({
       where: { occurredAt: { gte: range.from, lte: range.to }, ...activityWhere(scope), task: visibleTask, kind: { in: ["CREATED", "REQUESTED", "STATUS_CHANGED", "FILE_ADDED", "DECLINED", "REPORTED"] } },
       orderBy: { occurredAt: "asc" },
-      include: { actor: { select: { name: true } }, task: taskRef },
+      include: { actor: person, task: taskRef },
     }),
     db.workTaskComment.findMany({
       where: { createdAt: { gte: range.from, lte: range.to }, visibility: "CLIENT", task: visibleTask },
       orderBy: { createdAt: "asc" },
-      include: { author: { select: { name: true } }, task: taskRef },
+      include: { author: person, task: taskRef },
     }),
     withHours
       ? db.taskTimeEntry.findMany({
           where: { startedAt: { gte: range.from, lte: range.to }, endedAt: { not: null }, workTask: visibleTask },
-          select: { startedAt: true, endedAt: true },
+          select: { startedAt: true, endedAt: true, userId: true, user: person },
         })
       : Promise.resolve([]),
     db.workSummaryNote.findMany({
@@ -106,6 +124,7 @@ export async function getWeekSummary(opts: { monday: string; timeZone: string; o
     files: [],
     updates: [],
     hours: withHours ? 0 : null,
+    hoursBy: hoursByPerson ? {} : null,
     note: null,
     text: { skip: false, sentAt: null, sentTo: null },
   }));
@@ -117,10 +136,20 @@ export async function getWeekSummary(opts: { monday: string; timeZone: string; o
     projectName: t.project.name,
   });
 
+  // The same rule as workScope: in a client's tasks workspace the team is the
+  // managing company's linked accounts (and platform support); elsewhere,
+  // everyone but CLIENT users.
+  const people = new Map<string, SummaryPerson>();
+  const seen = (u: { id: string; name: string; role: string; assignedFromUserId: string | null }) => {
+    const team = orgKind === "TASKS" ? Boolean(u.assignedFromUserId) || u.role === "DEVELOPER" : u.role !== "CLIENT";
+    if (!people.has(u.id)) people.set(u.id, { id: u.id, name: u.name, side: team ? "team" : "client" });
+    return { by: u.name, byId: u.id };
+  };
+
   for (const a of activities) {
     const day = dayOf(a.occurredAt);
     if (!day) continue;
-    const base = { ...ref(a.task), by: a.actor.name, at: a.occurredAt };
+    const base = { ...ref(a.task), ...seen(a.actor), at: a.occurredAt };
     if (a.kind === "CREATED" || a.kind === "REQUESTED") day.added.push({ ...base, requested: a.kind === "REQUESTED" });
     else if (a.kind === "FILE_ADDED") day.files.push({ ...base, fileName: a.to ?? "a file" });
     else if (a.kind === "REPORTED") day.updates.push({ ...base, text: a.to ?? "" });
@@ -134,11 +163,18 @@ export async function getWeekSummary(opts: { monday: string; timeZone: string; o
     day.progressed = day.progressed.filter((p) => !done.has(p.taskId));
   }
   for (const c of comments) {
-    dayOf(c.createdAt)?.comments.push({ ...ref(c.task), by: c.author.name, at: c.createdAt, body: c.body });
+    const day = dayOf(c.createdAt);
+    if (day) day.comments.push({ ...ref(c.task), ...seen(c.author), at: c.createdAt, body: c.body });
   }
   for (const e of entries) {
     const day = dayOf(e.startedAt);
-    if (day && e.endedAt) day.hours = (day.hours ?? 0) + (e.endedAt.getTime() - e.startedAt.getTime()) / 3_600_000;
+    if (!day || !e.endedAt) continue;
+    const h = (e.endedAt.getTime() - e.startedAt.getTime()) / 3_600_000;
+    day.hours = (day.hours ?? 0) + h;
+    if (day.hoursBy) {
+      seen(e.user);
+      day.hoursBy[e.userId] = (day.hoursBy[e.userId] ?? 0) + h;
+    }
   }
   for (const n of notes) {
     const note = { body: n.body, source: n.source, authorName: n.author?.name ?? null };
@@ -149,13 +185,18 @@ export async function getWeekSummary(opts: { monday: string; timeZone: string; o
     }
   }
   const weekNote = notes.find((n) => n.period === "WEEK" && n.body.trim());
-  for (const d of days) if (d.hours !== null) d.hours = Math.round(d.hours * 100) / 100;
+  const round = (n: number) => Math.round(n * 100) / 100;
+  for (const d of days) {
+    if (d.hours !== null) d.hours = round(d.hours);
+    if (d.hoursBy) for (const id of Object.keys(d.hoursBy)) d.hoursBy[id] = round(d.hoursBy[id]);
+  }
 
   const sum = (f: (d: DaySummary) => number) => days.reduce((s, d) => s + f(d), 0);
   return {
     from: monday,
     to: sunday,
     days,
+    people: [...people.values()].sort((a, b) => (a.side === b.side ? a.name.localeCompare(b.name) : a.side === "team" ? -1 : 1)),
     totals: {
       completed: sum((d) => d.completed.length),
       progressed: sum((d) => d.progressed.length),

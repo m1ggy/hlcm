@@ -455,7 +455,7 @@ function buildTasksClientSteps(): TourStep[] {
       element: '[data-tour="summary-days"]',
       popover: {
         title: "Day by day",
-        description: "Each card shows what was finished, moved forward or added that day, plus comments and files shared with you. Click a day for the details, and a task to open it.",
+        description: "Each card shows what was finished, moved forward or added that day, plus comments and files shared with you. Click a day for the details, grouped by who did the work, and a task to open it.",
         side: "top",
       },
     },

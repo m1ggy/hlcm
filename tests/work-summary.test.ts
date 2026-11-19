@@ -28,6 +28,7 @@ import { assignToWorkspace } from "@/lib/workspace-assignments";
 import { noteBullets, workScope } from "@/lib/work";
 import { addComment, createProject, createTask, updateTask, type WorkActor } from "@/lib/work-service";
 import { addDays, getWeekSummary, weekStartOf } from "@/lib/work-summary";
+import { filterDayToPerson, groupDayByPerson, personDayCount } from "@/lib/work-summary-people";
 import { runSummaryJob, saveSummaryNote, setDayTextSkip } from "@/lib/work-summary-notes";
 import { toDateInputValue } from "@/lib/time-entries";
 
@@ -119,6 +120,43 @@ describe("the week summary", () => {
   it("adds hours only when asked for", async () => {
     const week = await inClient(() => getWeekSummary({ monday, timeZone: "UTC", orgKind: "TASKS", withHours: true }));
     expect(week.totals.hours).toBe(1.5);
+    // Per person only for the team's view.
+    expect(week.days.find((d) => d.date === today)!.hoursBy).toBeNull();
+  });
+});
+
+describe("the week by person (docs/summary-by-person-plan.md)", () => {
+  it("knows who did each thing, and which side they're on", async () => {
+    await inClient(async () => {
+      const cat = await tenantDb(CLIENT.id).user.findFirstOrThrow({ where: { email: "cat@ws-client.test" } });
+      const task = await tenantDb(CLIENT.id).workTask.findFirstOrThrow({ where: { title: "Draft homepage copy" } });
+      // The client's own comment.
+      await tenantDb(CLIENT.id).workTaskComment.create({ data: { taskId: task.id, authorId: cat.id, body: "Looks great so far", visibility: "CLIENT" } });
+    });
+    const week = await inClient(() => getWeekSummary({ monday, timeZone: "UTC", orgKind: "TASKS", withHours: true, hoursByPerson: true }));
+    expect(week.people.map((p) => [p.name, p.side])).toEqual([
+      ["Val VA", "team"],
+      ["Cat Client", "client"],
+    ]);
+    const day = week.days.find((d) => d.date === today)!;
+    expect(day.hoursBy).toEqual({ [vaId]: 1.5 });
+    expect(day.completed[0].byId).toBe(vaId);
+
+    const { team, client } = groupDayByPerson(day, week.people);
+    expect(team.map((p) => p.name)).toEqual(["Val VA"]);
+    expect(team[0].hours).toBe(1.5);
+    expect(team[0].counts).toMatchObject({ completed: 1, progressed: 1, added: 2, comments: 1 });
+    // One row per task, its events in order: added, then finished, then the comment.
+    const logo = team[0].tasks.find((t) => t.title === "Collect logo files")!;
+    expect(logo.finished).toBe(true);
+    expect(logo.events.map((e) => e.kind)).toEqual(["added", "finished", "comment"]);
+    expect(team[0].tasks).toHaveLength(2);
+    expect(client.map((p) => [p.name, p.counts.comments])).toEqual([["Cat Client", 1]]);
+
+    const valOnly = filterDayToPerson(day, vaId);
+    expect(valOnly.comments.map((c) => c.body)).toEqual(["Got the SVGs, thanks!"]);
+    expect(valOnly.hours).toBe(1.5);
+    expect(personDayCount(day, vaId)).toBe(5);
   });
 });
 
