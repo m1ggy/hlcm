@@ -171,7 +171,7 @@ const invoiceInputSchema = z.object({
   lineItems: z.array(lineItemSchema).min(1, "At least one line item is required"),
 });
 
-export async function createInvoice(input: z.infer<typeof invoiceInputSchema>) {
+export async function createInvoice(input: z.input<typeof invoiceInputSchema>) {
   const session = await requireRole(MANAGE_ROLES);
   const parsed = invoiceInputSchema.parse(input);
   const clientServiceId = await resolveClientServiceId(parsed.clientServiceId, parsed.clientId);
@@ -199,7 +199,7 @@ export async function createInvoice(input: z.infer<typeof invoiceInputSchema>) {
   return invoice;
 }
 
-export async function updateInvoice(id: string, input: z.infer<typeof invoiceInputSchema>) {
+export async function updateInvoice(id: string, input: z.input<typeof invoiceInputSchema>) {
   const session = await requireRole(MANAGE_ROLES);
   const parsed = invoiceInputSchema.parse(input);
 
@@ -379,14 +379,14 @@ const createManualInvoiceSchema = z.object({
 // — this action never tags a careRecipientId.
 // Returns a result rather than throwing, so a duplicate invoice number or a
 // visit someone else just billed reaches the user as a readable message.
-export async function createManualInvoice(input: z.infer<typeof createManualInvoiceSchema>) {
+export async function createManualInvoice(input: z.input<typeof createManualInvoiceSchema>) {
   return toActionResult(async () => {
     const invoice = await createManualInvoiceImpl(input);
     return { id: invoice.id };
   });
 }
 
-async function createManualInvoiceImpl(input: z.infer<typeof createManualInvoiceSchema>) {
+async function createManualInvoiceImpl(input: z.input<typeof createManualInvoiceSchema>) {
   const session = await requireRole(MANAGE_ROLES);
   const parsed = createManualInvoiceSchema.parse(input);
   const paidItems = parsed.paidItems ?? [];
@@ -432,7 +432,12 @@ async function createManualInvoiceImpl(input: z.infer<typeof createManualInvoice
           taxAmount: 0,
           createdById: session.user.id,
           lineItems: {
-            create: parsed.lineItems.map((li, index) => ({ ...li, sortOrder: index })),
+            // A line typed without a date takes the invoice's issue date.
+            create: parsed.lineItems.map((li, index) => ({
+              ...li,
+              lineDate: li.lineDate ?? (parsed.issueDate ? new Date(parsed.issueDate) : new Date()),
+              sortOrder: index,
+            })),
           },
         },
         include: invoiceInclude,
@@ -566,7 +571,11 @@ export async function updateManualInvoiceDraft(id: string, input: z.input<typeof
       if (li.id && keptIds.has(li.id)) {
         await tx.invoiceLineItem.update({ where: { id: li.id }, data });
       } else {
-        await tx.invoiceLineItem.create({ data: { ...data, invoiceId: id } });
+        // A new plain line with no date is dated today — it's next month's
+        // charge on a running invoice.
+        await tx.invoiceLineItem.create({
+          data: { ...data, lineDate: data.lineDate ?? (data.kind === "MANUAL" ? new Date() : null), invoiceId: id },
+        });
       }
     }
 
@@ -598,6 +607,8 @@ const additionalPaymentInputSchema = z.object({
   amount: z.coerce.number().positive("Amount must be greater than 0"),
   paidAt: z.string().min(1, "Payment date is required"),
   paymentMethod: z.string().min(1, "Payment method is required"),
+  // Check number, Zelle confirmation, etc. Empty = none.
+  reference: z.string().trim().nullish().transform((v) => v || null),
   // Optional — one of this same invoice's line items (see
   // Payment.lineItemId). Empty string/null = the invoice as a whole.
   lineItemId: z.string().nullish().transform((v) => v || null),
@@ -626,7 +637,7 @@ async function resolvePaymentLineItem(invoiceId: string, lineItemId: string | nu
 // automatically; that's the separate, explicit sendReceiptEmail below.
 // Refuses anything that isn't itself a manual invoice awaiting payment — a
 // real Stripe-bound invoice's paid state comes from the webhook, not this.
-export async function addManualPayment(id: string, input: z.infer<typeof additionalPaymentInputSchema>) {
+export async function addManualPayment(id: string, input: z.input<typeof additionalPaymentInputSchema>) {
   const session = await requireRole(MANAGE_ROLES);
   const parsed = additionalPaymentInputSchema.parse(input);
 
@@ -655,6 +666,7 @@ export async function addManualPayment(id: string, input: z.infer<typeof additio
         amount: parsed.amount,
         paidAt,
         paymentMethod: parsed.paymentMethod,
+        reference: parsed.reference,
         recordedById: session.user.id,
       },
     });
@@ -725,7 +737,7 @@ async function storeReceiptPdf(
  */
 async function createPaidItemRows(tx: TenantTx, invoiceId: string, item: z.infer<typeof paidItemSchema>, sortOrder: number, recordedById: string) {
   const line = await tx.invoiceLineItem.create({
-    data: { invoiceId, description: item.description, quantity: 1, unitPrice: item.amount, sortOrder },
+    data: { invoiceId, description: item.description, quantity: 1, unitPrice: item.amount, sortOrder, lineDate: new Date(item.paidAt) },
   });
   const payment = await tx.payment.create({
     data: {
@@ -734,6 +746,7 @@ async function createPaidItemRows(tx: TenantTx, invoiceId: string, item: z.infer
       amount: item.amount,
       paidAt: new Date(item.paidAt),
       paymentMethod: item.paymentMethod,
+      reference: item.reference || null,
       recordedById,
     },
   });
@@ -824,7 +837,7 @@ async function recomputeInvoiceFromPayments(tx: TenantTx, invoiceId: string, tot
  * must not fail the edit itself, same reasoning as addManualPayment's own
  * receipt generation. Refuses once the invoice is VOID.
  */
-export async function updatePayment(paymentId: string, input: z.infer<typeof additionalPaymentInputSchema>) {
+export async function updatePayment(paymentId: string, input: z.input<typeof additionalPaymentInputSchema>) {
   const session = await requireRole(MANAGE_ROLES);
   const parsed = additionalPaymentInputSchema.parse(input);
 
@@ -841,7 +854,7 @@ export async function updatePayment(paymentId: string, input: z.infer<typeof add
   const invoice = await db.$transaction(async (tx) => {
     await tx.payment.update({
       where: { id: paymentId },
-      data: { amount: parsed.amount, paidAt, paymentMethod: parsed.paymentMethod, lineItemId: lineItem?.id ?? null },
+      data: { amount: parsed.amount, paidAt, paymentMethod: parsed.paymentMethod, reference: parsed.reference, lineItemId: lineItem?.id ?? null },
     });
     return recomputeInvoiceFromPayments(tx, before.invoiceId, total);
   });

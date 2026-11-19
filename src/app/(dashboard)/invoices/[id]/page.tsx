@@ -245,7 +245,10 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                     {invoice.payments.map((payment) => (
                       <tr key={payment.id} className="border-b last:border-0">
                         <td className="py-2 pr-3 whitespace-nowrap">{formatCalendarDate(payment.paidAt)}</td>
-                        <td className="py-2 pr-3 text-muted-foreground [overflow-wrap:anywhere]">{payment.paymentMethod}</td>
+                        <td className="py-2 pr-3 text-muted-foreground [overflow-wrap:anywhere]">
+                          {payment.paymentMethod}
+                          {payment.reference && <span className="block text-xs">{payment.reference}</span>}
+                        </td>
                         <td className="py-2 pr-3 text-muted-foreground [overflow-wrap:anywhere]">{payment.lineItem?.description ?? "Whole invoice"}</td>
                         <td className="py-2 pr-3 text-right whitespace-nowrap tabular-nums">{formatMoney(payment.amount)}</td>
                         <td className="py-2">
@@ -294,6 +297,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                               amount={payment.amount}
                               paidAt={payment.paidAt}
                               paymentMethod={payment.paymentMethod}
+                              reference={payment.reference}
                               lineItemId={payment.lineItemId}
                               lineItems={invoice.lineItems.map((li) => ({ id: li.id, description: li.description }))}
                             />

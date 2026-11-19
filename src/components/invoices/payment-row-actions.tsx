@@ -18,6 +18,7 @@ export function PaymentRowActions({
   amount,
   paidAt,
   paymentMethod,
+  reference,
   lineItemId,
   lineItems,
 }: {
@@ -25,6 +26,7 @@ export function PaymentRowActions({
   amount: number;
   paidAt: Date;
   paymentMethod: string;
+  reference: string | null;
   lineItemId: string | null;
   lineItems: PaymentLineItemOption[];
 }) {
@@ -54,6 +56,7 @@ export function PaymentRowActions({
         amount={amount}
         paidAt={paidAt}
         paymentMethod={paymentMethod}
+        reference={reference}
         lineItemId={lineItemId}
         lineItems={lineItems}
       />

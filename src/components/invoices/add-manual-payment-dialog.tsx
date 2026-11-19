@@ -46,6 +46,7 @@ export function AddManualPaymentDialog({
   const [amount, setAmount] = useState(remaining.toFixed(2));
   const [paidAt, setPaidAt] = useState(todayInputValue());
   const [paymentMethod, setPaymentMethod] = useState("");
+  const [reference, setReference] = useState("");
   const [lineItemId, setLineItemId] = useState("");
   const value = Number(amount);
   const over = value > 0 ? Math.round((value - remaining) * 100) / 100 : 0;
@@ -69,7 +70,7 @@ export function AddManualPaymentDialog({
     }
     startTransition(async () => {
       try {
-        await addManualPayment(invoiceId, { amount: value, paidAt, paymentMethod: paymentMethod.trim(), lineItemId });
+        await addManualPayment(invoiceId, { amount: value, paidAt, paymentMethod: paymentMethod.trim(), reference, lineItemId });
         toast.success("Payment recorded");
         setOpen(false);
         router.refresh();
@@ -103,6 +104,10 @@ export function AddManualPaymentDialog({
             <Input id="add-paidAt" type="date" value={paidAt} onChange={(e) => setPaidAt(e.target.value)} />
           </div>
           <PaymentMethodSelect value={paymentMethod} onChange={setPaymentMethod} />
+          <div className="space-y-1">
+            <Label htmlFor="add-reference">Reference (optional)</Label>
+            <Input id="add-reference" placeholder="Check #, Zelle confirmation…" value={reference} onChange={(e) => setReference(e.target.value)} />
+          </div>
           {lineItems.length > 0 && <PaymentLineItemSelect lineItems={lineItems} value={lineItemId} onChange={pickLine} />}
           <Button onClick={handleSubmit} className="w-full" loading={isPending}>
             {isPending ? "Recording..." : "Record payment"}

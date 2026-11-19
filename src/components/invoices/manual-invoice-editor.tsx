@@ -92,6 +92,7 @@ export function ManualInvoiceEditor({
         quantityLabel="Hours"
         rateLabel="Rate"
         amountOnly={!isCareRecipientInvoice}
+        showDate={!isCareRecipientInvoice}
       />
 
       <div className="grid sm:grid-cols-2 gap-4">

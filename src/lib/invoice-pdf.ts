@@ -194,9 +194,19 @@ export type InvoicePdfInput = {
     address: string | null;
     billingContactName: string | null;
   } | null;
-  lineItems: { id?: string; description: string; quantity: number; unitPrice: number }[];
-  /** Recorded payments, for each line's paid/due (see lineBalances). */
-  payments?: { amount: number; lineItemId: string | null }[];
+  /** lineDate: when the charge was added (the Modern layout's Date column;
+   * null falls back to issueDate). */
+  lineItems: { id?: string; description: string; quantity: number; unitPrice: number; lineDate?: Date | null }[];
+  /** Recorded payments, for each line's paid/due (see lineBalances) — and,
+   * with their date/method/reference, the Modern layout's "Payments
+   * received" table. */
+  payments?: {
+    amount: number;
+    lineItemId: string | null;
+    paidAt?: Date;
+    paymentMethod?: string;
+    reference?: string | null;
+  }[];
   /** Which InvoiceProfile this invoice was billed under — see src/lib/invoice-profiles.ts. */
   logo?: { bytes: Uint8Array; mimeType: string } | null;
   footerText?: string | null;

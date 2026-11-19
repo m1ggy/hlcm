@@ -169,7 +169,7 @@ export async function drawModernHeader(
 export function drawPartyBox(
   page: PDFPage,
   fonts: Fonts,
-  opts: { top: number; label: string; lines: { label: string; value: string }[]; width?: number }
+  opts: { top: number; label: string; lines: { label: string; value: string }[]; width?: number; compact?: boolean }
 ): number {
   text(page, opts.label, LEFT + 3, opts.top, { size: 7, font: fonts.bold, color: STEEL });
   const boxTop = opts.top + 5;
@@ -182,8 +182,10 @@ export function drawPartyBox(
     return { label: line.label, labelWidth, values: line.value ? wrapText(line.value, fonts.bold, size, width - 8 - labelWidth) : [""] };
   });
   const lineCount = rows.reduce((n, row) => n + row.values.length, 0);
-  const first = boxTop + Math.max(18, 42 - (lineCount - 1) * 6);
-  const height = Math.max(82, first - boxTop + (lineCount - 1) * 12 + 22);
+  // `compact` sizes the box to its lines instead of the sample's fixed
+  // minimum (the running invoice needs the room for its payments table).
+  const first = boxTop + (opts.compact ? 18 : Math.max(18, 42 - (lineCount - 1) * 6));
+  const height = opts.compact ? first - boxTop + (lineCount - 1) * 12 + 12 : Math.max(82, first - boxTop + (lineCount - 1) * 12 + 22);
   box(page, { x: LEFT, top: boxTop, width, height, fill: CREAM, border: GRID });
   let baseline = first;
   for (const row of rows) {

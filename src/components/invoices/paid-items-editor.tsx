@@ -16,7 +16,7 @@ import { PaymentMethodSelect } from "./payment-method-select";
 // amount, so it shows on the list and in the totals without changing what's
 // still owed. See addPaidLineItem / createManualInvoice.
 
-export type PaidItem = { description: string; amount: string; paidAt: string; paymentMethod: string };
+export type PaidItem = { description: string; amount: string; paidAt: string; paymentMethod: string; reference?: string };
 
 function today() {
   const d = new Date();
@@ -41,6 +41,7 @@ export const paidItemInput = (item: PaidItem) => ({
   amount: Number(item.amount),
   paidAt: item.paidAt,
   paymentMethod: item.paymentMethod.trim(),
+  reference: item.reference?.trim() || undefined,
 });
 
 function PaidItemFields({ item, onChange, idPrefix }: { item: PaidItem; onChange: (next: PaidItem) => void; idPrefix: string }) {
@@ -63,6 +64,15 @@ function PaidItemFields({ item, onChange, idPrefix }: { item: PaidItem; onChange
           <Input id={`${idPrefix}-paidAt`} type="date" value={item.paidAt} onChange={(e) => set({ paidAt: e.target.value })} />
         </div>
         <PaymentMethodSelect value={item.paymentMethod} onChange={(paymentMethod) => set({ paymentMethod })} />
+      </div>
+      <div className="space-y-1">
+        <Label htmlFor={`${idPrefix}-reference`}>Reference (optional)</Label>
+        <Input
+          id={`${idPrefix}-reference`}
+          value={item.reference ?? ""}
+          onChange={(e) => set({ reference: e.target.value })}
+          placeholder="Check #, Zelle confirmation…"
+        />
       </div>
     </div>
   );

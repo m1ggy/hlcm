@@ -73,6 +73,10 @@ export const lineItemSchema = z.object({
   // Not .int() — day-rate/prorated lines bill fractional hours (e.g. 8.5).
   quantity: z.coerce.number().min(0.01),
   unitPrice: z.coerce.number().min(0),
+  // When the charge was added — a date input's "yyyy-mm-dd", or a Date when
+  // an existing line is round-tripped. Empty/null = not set (the PDF then
+  // shows the invoice's issue date).
+  lineDate: z.preprocess((v) => (v === null || v === "" ? undefined : v), z.coerce.date().optional()),
 });
 
 // A Care Recipient invoice's line item, structured beyond the plain
@@ -128,6 +132,7 @@ export function toStructuredLineItemData(li: z.infer<typeof structuredLineItemSc
     unitPrice: li.unitPrice,
     sortOrder,
     kind: li.kind,
+    lineDate: li.lineDate ?? null,
     visitDate: li.visitDate,
     visitStart: li.visitStart,
     visitEnd: li.visitEnd,
@@ -173,5 +178,7 @@ export const paidItemSchema = z.object({
   amount: z.coerce.number().positive("A paid item's amount must be more than 0"),
   paidAt: z.string().min(1, "Pick the date it was paid"),
   paymentMethod: z.string().trim().min(1, "Pick how it was paid"),
+  // Check number, Zelle confirmation, etc.
+  reference: z.string().trim().optional(),
 });
 export type PaidItemInput = z.input<typeof paidItemSchema>;

@@ -254,7 +254,7 @@ export function RecordPaymentDialog({
             </div>
           </div>
 
-          <InvoiceLineItemsEditor lineItems={lineItems} onChange={setLineItems} amountOnly />
+          <InvoiceLineItemsEditor lineItems={lineItems} onChange={setLineItems} amountOnly showDate />
 
           <PaidItemsEditor items={paidItems} onChange={setPaidItems} />
 

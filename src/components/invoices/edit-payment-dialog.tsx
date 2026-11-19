@@ -35,6 +35,7 @@ export function EditPaymentDialog({
   amount,
   paidAt,
   paymentMethod,
+  reference,
   lineItemId,
   lineItems,
 }: {
@@ -42,6 +43,7 @@ export function EditPaymentDialog({
   amount: number;
   paidAt: Date;
   paymentMethod: string;
+  reference: string | null;
   lineItemId: string | null;
   lineItems: PaymentLineItemOption[];
 }) {
@@ -51,6 +53,7 @@ export function EditPaymentDialog({
   const [amountValue, setAmountValue] = useState(amount.toFixed(2));
   const [paidAtValue, setPaidAtValue] = useState(toDateInputValue(paidAt));
   const [methodValue, setMethodValue] = useState(paymentMethod);
+  const [referenceValue, setReferenceValue] = useState(reference ?? "");
   const [lineItemValue, setLineItemValue] = useState(lineItemId ?? "");
 
   function handleSubmit() {
@@ -69,6 +72,7 @@ export function EditPaymentDialog({
           amount: value,
           paidAt: paidAtValue,
           paymentMethod: methodValue.trim(),
+          reference: referenceValue,
           lineItemId: lineItemValue,
         });
         toast.success("Payment updated");
@@ -100,6 +104,10 @@ export function EditPaymentDialog({
             <Input id="edit-paidAt" type="date" value={paidAtValue} onChange={(e) => setPaidAtValue(e.target.value)} />
           </div>
           <PaymentMethodSelect value={methodValue} onChange={setMethodValue} />
+          <div className="space-y-1">
+            <Label htmlFor="edit-reference">Reference (optional)</Label>
+            <Input id="edit-reference" placeholder="Check #, Zelle confirmation…" value={referenceValue} onChange={(e) => setReferenceValue(e.target.value)} />
+          </div>
           {lineItems.length > 0 && <PaymentLineItemSelect lineItems={lineItems} value={lineItemValue} onChange={setLineItemValue} />}
           <Button onClick={handleSubmit} className="w-full" loading={isPending}>
             {isPending ? "Saving..." : "Save changes"}

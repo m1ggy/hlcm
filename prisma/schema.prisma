@@ -2576,6 +2576,9 @@ model Payment {
   amount         Float
   paidAt         DateTime
   paymentMethod  String
+  // Optional — a check number, Zelle confirmation, etc. Printed in the
+  // invoice PDF's "Payments received" table.
+  reference      String?
   // Optional — which line item on this same invoice the payment is for
   // (e.g. a deposit against one charge). A label only: the invoice's own
   // PAID/PARTIALLY_PAID status still comes from the total alone (see
@@ -2647,6 +2650,10 @@ model InvoiceLineItem {
   unitPrice      Float
   sortOrder      Int                 @default(0)
   kind           InvoiceLineItemKind @default(MANUAL)
+  // The date this charge was added (a plain manual line's Date column on
+  // the running invoice PDF). Null on older lines — the PDF falls back to
+  // the invoice's issue date. Visit lines use visitDate instead.
+  lineDate       DateTime?
 
   // Set only when kind is VISIT_HOURLY or VISIT_DAILY — a snapshot taken
   // at billing time, not a live join, since the caregiver can be
