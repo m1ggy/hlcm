@@ -19,6 +19,7 @@ import { canManageAnyWorkspace } from "@/lib/workspace-assignments";
 import { WorkspaceSwitcher } from "@/components/workspaces/workspace-switcher";
 import { hasCare } from "@/lib/workspace-kind";
 import { canManageCare } from "@/lib/care-access";
+import { canUseLibrary } from "@/lib/workspace-library";
 
 export async function AppSidebar() {
   const session = await auth();
@@ -60,6 +61,7 @@ export async function AppSidebar() {
           showClientWork={switchTargets.some((t) => t.home && t.current)}
           newSubmissions={newSubmissions}
           showForms={seesForms}
+          showFiles={canUseLibrary(session.user.role, org?.kind)}
         />
       </SidebarContent>
       <SidebarFooter className="gap-2 border-t px-3 py-3">

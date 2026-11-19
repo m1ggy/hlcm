@@ -12,7 +12,24 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 /** A form card's actions: copy link, open, QR code, and (managers) edit/duplicate/turn off/delete. */
-export function FormRowActions({ id, slug, name, active, canManage, hasSubmissions }: { id: string; slug: string; name: string; active: boolean; canManage: boolean; hasSubmissions: boolean }) {
+export function FormRowActions({
+  id,
+  slug,
+  name,
+  active,
+  canManage,
+  shiftForm = false,
+  hasSubmissions,
+}: {
+  id: string;
+  slug: string;
+  name: string;
+  active: boolean;
+  canManage: boolean;
+  /** Shift forms are filled in the app at the end of a visit: no link, no QR code. */
+  shiftForm?: boolean;
+  hasSubmissions: boolean;
+}) {
   const router = useRouter();
   const [copied, setCopied] = useState(false);
   const [qr, setQr] = useState<string | null>(null);
@@ -39,15 +56,19 @@ export function FormRowActions({ id, slug, name, active, canManage, hasSubmissio
 
   return (
     <div className="mt-auto flex flex-wrap items-center gap-2">
-      <Button variant="outline" size="sm" onClick={copy}>
-        {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />} {copied ? "Copied" : "Copy link"}
-      </Button>
-      <Button variant="ghost" size="sm" nativeButton={false} render={<a href={`/forms/${slug}`} target="_blank" rel="noreferrer" />}>
-        <ExternalLink className="size-3.5" /> Open
-      </Button>
-      <Button variant="ghost" size="sm" onClick={async () => setQr(await QRCode.toDataURL(url(), { width: 512, margin: 2 }))}>
-        <QrCode className="size-3.5" /> QR code
-      </Button>
+      {!shiftForm && (
+        <>
+          <Button variant="outline" size="sm" onClick={copy}>
+            {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />} {copied ? "Copied" : "Copy link"}
+          </Button>
+          <Button variant="ghost" size="sm" nativeButton={false} render={<a href={`/forms/${slug}`} target="_blank" rel="noreferrer" />}>
+            <ExternalLink className="size-3.5" /> Open
+          </Button>
+          <Button variant="ghost" size="sm" onClick={async () => setQr(await QRCode.toDataURL(url(), { width: 512, margin: 2 }))}>
+            <QrCode className="size-3.5" /> QR code
+          </Button>
+        </>
+      )}
       {canManage && (
         <>
           <Button variant="ghost" size="sm" nativeButton={false} render={<Link href={`/intake/forms/${id}`} />}>

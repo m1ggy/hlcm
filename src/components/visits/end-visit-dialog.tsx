@@ -3,9 +3,10 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { CircleAlert, CircleCheck } from "lucide-react";
+import { ChevronLeft, CircleAlert, CircleCheck, ClipboardList } from "lucide-react";
 import { clockOut, endBreakForDay } from "@/lib/actions/time-entries";
-import { getMyVisitWrapUp } from "@/lib/actions/visits";
+import { getMyVisitWrapUp, submitShiftForm } from "@/lib/actions/visits";
+import { FormRenderer } from "@/components/forms/form-renderer";
 import { captureLocation } from "@/lib/geolocation";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -43,6 +44,8 @@ export function EndVisitDialog({
   const router = useRouter();
   const [wrapUp, setWrapUp] = useState<WrapUp | undefined>(undefined);
   const [note, setNote] = useState("");
+  // The shift form being filled in (docs/shift-forms-plan.md), shown in place of the wrap-up.
+  const [fillingId, setFillingId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -57,7 +60,10 @@ export function EndVisitDialog({
   }, [open]);
 
   function handleOpenChange(next: boolean) {
-    if (!next) setWrapUp(undefined);
+    if (!next) {
+      setWrapUp(undefined);
+      setFillingId(null);
+    }
     onOpenChange(next);
   }
 
@@ -82,6 +88,39 @@ export function EndVisitDialog({
   }
 
   const missed = wrapUp?.missed ?? [];
+  const forms = wrapUp?.forms ?? [];
+  const filling = forms.find((f) => f.id === fillingId) ?? null;
+
+  if (open && filling) {
+    return (
+      <Dialog open={open} onOpenChange={handleOpenChange}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <button type="button" className="flex w-fit items-center gap-1 text-sm text-muted-foreground hover:underline" onClick={() => setFillingId(null)}>
+              <ChevronLeft className="size-4" /> Back
+            </button>
+            <DialogTitle className="sr-only">{filling.name}</DialogTitle>
+          </DialogHeader>
+          <FormRenderer
+            fields={filling.fields}
+            title={filling.name}
+            description={filling.description}
+            onSubmit={async (answers, files) => {
+              const data = new FormData();
+              data.set("answers", JSON.stringify(answers));
+              for (const [key, list] of Object.entries(files)) for (const f of list) data.append(`file:${key}`, f);
+              const result = await submitShiftForm(filling.id, data);
+              if (!result.ok) return result;
+              toast.success(`${filling.name} sent`);
+              setFillingId(null);
+              setWrapUp(await getMyVisitWrapUp().catch(() => wrapUp));
+              return { ok: true };
+            }}
+          />
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -115,6 +154,20 @@ export function EndVisitDialog({
           )
         ) : null}
 
+        {forms.length > 0 && (
+          <div className="space-y-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3">
+            <p className="flex items-center gap-2 text-sm font-medium">
+              <ClipboardList className="size-4 shrink-0" />
+              {forms.length === 1 ? "Fill in this form before you go" : `Fill in these ${forms.length} forms before you go`}
+            </p>
+            {forms.map((f) => (
+              <Button key={f.id} variant="outline" className="w-full justify-start" onClick={() => setFillingId(f.id)}>
+                {f.name}
+              </Button>
+            ))}
+          </div>
+        )}
+
         <div className="space-y-1.5">
           <Label htmlFor="visit-note">How did the visit go?</Label>
           <Textarea
@@ -132,8 +185,8 @@ export function EndVisitDialog({
           <Button variant="outline" size="lg" onClick={() => handleOpenChange(false)} disabled={isPending}>
             Keep visiting
           </Button>
-          <Button size="lg" onClick={handleEnd} loading={isPending}>
-            {note.trim() ? "End visit" : "End without a note"}
+          <Button size="lg" onClick={handleEnd} loading={isPending} disabled={wrapUp === undefined || forms.length > 0}>
+            {forms.length > 0 ? "Fill in the forms first" : note.trim() ? "End visit" : "End without a note"}
           </Button>
         </DialogFooter>
       </DialogContent>

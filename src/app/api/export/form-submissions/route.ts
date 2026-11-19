@@ -21,7 +21,7 @@ export async function GET(request: Request) {
 
     const rows = await db.formSubmission.findMany({
       where: { ...(formId && { templateId: formId }), ...(status && ["PENDING", "REVIEWED", "DISMISSED"].includes(status) && { status: status as "PENDING" }) },
-      include: { template: { select: { name: true, fields: { orderBy: { sortOrder: "asc" }, select: { key: true, label: true, type: true } } } }, client: { select: { name: true } }, files: { select: { fileName: true } } },
+      include: { template: { select: { name: true, fields: { orderBy: { sortOrder: "asc" }, select: { key: true, label: true, type: true } } } }, client: { select: { name: true } }, files: { select: { fileName: true } }, submittedBy: { select: { name: true } }, careRecipient: { select: { name: true } }, visit: { select: { clockIn: true } } },
       orderBy: { createdAt: "desc" },
       take: 10_000,
     });
@@ -34,6 +34,8 @@ export async function GET(request: Request) {
     }
     const keys = [...columns.keys()];
     const formName = formId && rows[0] ? rows[0].template.name : "All forms";
+    // Shift forms (filled at the end of a visit) get who, for whom and when.
+    const shift = rows.some((r) => r.visitId || r.submittedById);
 
     return exportResponse(
       {
@@ -45,6 +47,7 @@ export async function GET(request: Request) {
               { label: "Submitted", width: 18 },
               ...(formId ? [] : [{ label: "Form", width: 22 }]),
               { label: "Status", width: 10 },
+              ...(shift ? [{ label: "Caregiver", width: 20 }, { label: "Care client", width: 20 }, { label: "Visit started", width: 18 }] : []),
               ...keys.map((k) => ({ label: columns.get(k)!, width: 24 })),
               { label: "Files", width: 24 },
               { label: "Client", width: 20 },
@@ -56,6 +59,7 @@ export async function GET(request: Request) {
                 r.createdAt.toISOString().replace("T", " ").slice(0, 16),
                 ...(formId ? [] : [r.template.name]),
                 STATUS_LABEL[r.status] ?? r.status,
+                ...(shift ? [r.submittedBy?.name ?? "", r.careRecipient?.name ?? "", r.visit ? r.visit.clockIn.toISOString().replace("T", " ").slice(0, 16) : ""] : []),
                 ...keys.map((k) => formatAnswer(answers[k])),
                 r.files.map((f) => f.fileName).join(", "),
                 r.client?.name ?? "",

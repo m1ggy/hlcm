@@ -51,9 +51,18 @@ export function fieldDefs(fields: TemplateWithFields["fields"]): FormFieldDef[] 
  * Validates and saves a submission (and its files). Throws UserFacingError
  * with the first problem — the form already checks the same rules inline.
  */
-export async function recordSubmission(input: { templateId: string; answers: Answers; files: { key: string; file: File }[]; ip: string | null }) {
+export async function recordSubmission(input: {
+  templateId: string;
+  answers: Answers;
+  files: { key: string; file: File }[];
+  ip: string | null;
+  /** A shift form filled in at the end of a visit (src/lib/shift-forms.ts). */
+  shift?: { submittedById: string; careRecipientId: string; visitId: string };
+}) {
   const template = await loadTemplate(input.templateId);
   if (!template) throw new UserFacingError("This form isn't available anymore.");
+  // A shift form only comes from a caregiver's visit; a public form never does.
+  if (template.shiftForm !== Boolean(input.shift)) throw new UserFacingError("This form isn't available anymore.");
   const defs = fieldDefs(template.fields);
 
   // Files only count for visible FILE fields.
@@ -75,7 +84,7 @@ export async function recordSubmission(input: { templateId: string; answers: Ans
 
   const snapshot: FieldSnapshot[] = template.fields.filter((f) => !isLayoutField(f.type)).map((f) => ({ key: f.key, label: f.label, type: f.type }));
   const submission = await db.formSubmission.create({
-    data: { templateId: template.id, answers: cleanAnswers(defs, input.answers), ipAddress: input.ip, fieldsSnapshot: snapshot },
+    data: { templateId: template.id, answers: cleanAnswers(defs, input.answers), ipAddress: input.ip, fieldsSnapshot: snapshot, ...input.shift },
   });
   // Saved (and virus-scanned) after the row exists, so a bad file never
   // orphans half a submission.
@@ -100,14 +109,15 @@ const escapeHtml = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;")
 export async function alertForSubmission(submissionId: string) {
   const submission = await db.formSubmission.findUniqueOrThrow({
     where: { id: submissionId },
-    include: { template: { include: { fields: { orderBy: { sortOrder: "asc" } } } } },
+    include: { template: { include: { fields: { orderBy: { sortOrder: "asc" } } } }, submittedBy: { select: { name: true } }, careRecipient: { select: { name: true } } },
   });
   const template = submission.template;
   const org = await currentOrganization();
   const answers = (submission.answers ?? {}) as Record<string, unknown>;
-  const firstName = firstNameFrom(template.fields, answers);
+  // A shift form names the caregiver (and the visit's client), not an answer.
+  const firstName = submission.submittedBy ? submission.submittedBy.name.trim().split(/\s+/)[0] : firstNameFrom(template.fields, answers);
   const link = `${orgAppUrl(org.slug)}/intake?open=${submission.id}`;
-  const message = `New "${template.name}" submission${firstName ? ` from ${firstName}` : ""}`;
+  const message = `New "${template.name}" submission${firstName ? ` from ${firstName}` : ""}${submission.careRecipient ? ` (visit with ${submission.careRecipient.name})` : ""}`;
   const result = { notified: [] as string[], emailed: [] as string[], texted: [] as string[], copyTo: null as string | null };
 
   // Bell + email.

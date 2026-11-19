@@ -2,6 +2,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { db, currentOrganization } from "@/lib/db";
 import { monitoringOn } from "@/lib/activity-monitoring";
+import { assertShiftFormsDone } from "@/lib/shift-forms";
 import { recordAudit } from "@/lib/audit";
 import { TimeClockError } from "@/lib/time-entries";
 import type { TimeEntrySource } from "@/generated/prisma/client";
@@ -148,6 +149,8 @@ export async function clockOutFor(userId: string, input: LocationInput & { visit
   const now = new Date();
   const clockOut = input.at ?? now;
   if (clockOut < open.clockIn || clockOut > now) throw new TimeClockError("Clock-out time has to fall inside the open session");
+  // Ending a visit needs its shift forms (docs/shift-forms-plan.md).
+  if (open.careRecipientId) await assertShiftFormsDone(userId, { visitId: open.visitStartId ?? open.id, careRecipientId: open.careRecipientId });
 
   const entry = await db.timeEntry.update({
     where: { id: open.id },
@@ -235,11 +238,15 @@ export async function endBreakForDayFor(userId: string, input: { visitNote?: str
   const openBreak = await findOpenBreak(userId);
   if (!openBreak) throw new TimeClockError("Not on a break");
 
+  // Ending the day from a break ends the visit too — same note prompt and
+  // shift forms as a normal clock-out.
+  const beforeBreak = await entryBeforeBreak(userId, openBreak.breakStart);
+  if (beforeBreak?.careRecipientId) {
+    await assertShiftFormsDone(userId, { visitId: beforeBreak.visitStartId ?? beforeBreak.id, careRecipientId: beforeBreak.careRecipientId });
+  }
+
   const entry = await db.breakEntry.update({ where: { id: openBreak.id }, data: { breakEnd: new Date() } });
 
-  // Ending the day from a break ends the visit too — same note prompt as
-  // a normal clock-out.
-  const beforeBreak = await entryBeforeBreak(userId, openBreak.breakStart);
   if (beforeBreak) await saveVisitNote(beforeBreak, input.visitNote);
   // And it's a clock-out, so a running task timer stops too.
   await stopTaskTimersAtDayEnd(userId, entry.breakEnd!);

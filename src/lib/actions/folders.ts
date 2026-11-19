@@ -12,8 +12,10 @@ import {
   moveFiles,
   moveFolder,
   renameFolder,
+  LIBRARY_ID,
   type FolderOwner,
 } from "@/lib/file-folders";
+import { requireLibraryAccess } from "@/lib/workspace-library";
 
 // Folder actions for client and application files (docs/file-management-plan.md).
 // The access rule is the one the owner's files already use: application
@@ -25,16 +27,18 @@ const CLIENT_FILE_ROLES: AppRole[] = ["ADMIN", "MANAGER", "STAFF"];
 
 async function authorize(owner: FolderOwner, level: "view" | "edit") {
   if (owner.kind === "client") return requireRole(CLIENT_FILE_ROLES);
+  if (owner.kind === "library") return requireLibraryAccess();
   const session = await requireSession();
   await assertApplicationAccess(session, owner.id, level);
   return session;
 }
 
 function revalidateOwner(owner: FolderOwner) {
-  revalidatePath(owner.kind === "client" ? `/clients/${owner.id}` : `/applications/${owner.id}`);
+  revalidatePath(owner.kind === "library" ? "/files" : owner.kind === "client" ? `/clients/${owner.id}` : `/applications/${owner.id}`);
 }
 
 function parseOwner(owner: FolderOwner): FolderOwner {
+  if (owner?.kind === "library") return { kind: "library", id: LIBRARY_ID };
   if ((owner?.kind !== "client" && owner?.kind !== "application") || typeof owner.id !== "string" || !owner.id) {
     throw new Error("Bad folder owner");
   }
