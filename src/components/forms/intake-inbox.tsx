@@ -67,7 +67,7 @@ export function IntakeInbox({
   timeZone: string;
   clients: { id: string; name: string }[];
   projects: { id: string; name: string }[];
-  /** Create client / Attach to client: the licensing CRM only. */
+  /** Create client / Attach to client: the licensing CRM only, never for a shift form. */
   licensing?: boolean;
 }) {
   const router = useRouter();
@@ -186,7 +186,7 @@ export function IntakeInbox({
 
       <Sheet open={current !== null} onOpenChange={(o) => !o && openOne(null)}>
         <SheetContent className="w-full gap-0 overflow-y-auto sm:max-w-xl data-[side=right]:sm:max-w-xl">
-          {current && <Detail key={current.id} s={current} when={when} clients={clients} projects={projects} licensing={licensing} onDone={() => router.refresh()} />}
+          {current && <Detail key={current.id} s={current} when={when} clients={clients} projects={projects} licensing={licensing && !current.shift} onDone={() => router.refresh()} />}
         </SheetContent>
       </Sheet>
     </div>
