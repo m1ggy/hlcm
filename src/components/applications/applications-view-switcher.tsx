@@ -9,6 +9,7 @@ import { getFavoriteApplicationIds } from "@/lib/favorite-applications";
 import { APPLICATION_STATUSES, STATUS_LABELS, ApplicationStatus } from "@/lib/status";
 import { PipelineDiagramDialog, type DiagramStage } from "@/components/shared/pipeline-diagram";
 import { StageLegendStrip } from "@/components/applications/stage-legend-strip";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type Stage = { id: string; abbrev: string; name: string; hex: string };
 
@@ -29,6 +30,9 @@ type AppRow = {
 const VIEW_KEY = "hclm:applications-view";
 const FILTER_KEY = "hclm:applications-filter";
 const TAB_KEY = "hclm:applications-pipeline-tab";
+const VA_KEY = "hclm:applications-va";
+// The Assigned VA dropdown's "everyone" value (a user id otherwise).
+const ALL_VAS = "all";
 type Filter = "all" | "mine" | "favorites" | ApplicationStatus;
 type PipelineTab = "HOME_CARE" | "CILA_GROUP_HOME" | "MCO";
 
@@ -56,9 +60,18 @@ export function ApplicationsViewSwitcher({
   pipelines: PipelineTab[];
   pipelineLabels: Record<PipelineTab, string>;
 }) {
+  // Everyone who can be assigned, plus anyone still holding a case who no
+  // longer can (deactivated), so their cases can be found and reassigned.
+  const vaOptions = [
+    ...assignableUsers,
+    ...applications
+      .map((a) => a.assignedUser)
+      .filter((u, i, all) => !assignableUsers.some((x) => x.id === u.id) && all.findIndex((x) => x.id === u.id) === i),
+  ].sort((a, b) => a.name.localeCompare(b.name));
   const [view, setView] = useState<"table" | "board">("table");
   const [filter, setFilter] = useState<Filter>("all");
   const [tab, setTab] = useState<PipelineTab>(pipelines[0]);
+  const [va, setVa] = useState<string>(ALL_VAS);
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
   // Every mount starts on the "HOME_CARE" default for a tick before the
   // saved tab (below) loads — without this gate, the Pipeline Map's
@@ -73,9 +86,11 @@ export function ApplicationsViewSwitcher({
       const savedView = window.localStorage.getItem(VIEW_KEY);
       const savedFilter = window.localStorage.getItem(FILTER_KEY);
       const savedTab = window.localStorage.getItem(TAB_KEY);
+      const savedVa = window.localStorage.getItem(VA_KEY);
       if (savedView === "table" || savedView === "board") setView(savedView);
       if (savedFilter) setFilter(savedFilter as Filter);
       if (savedTab && (pipelines as string[]).includes(savedTab)) setTab(savedTab as PipelineTab);
+      if (savedVa && vaOptions.some((u) => u.id === savedVa)) setVa(savedVa);
       setFavoriteIds(getFavoriteApplicationIds());
       setHydrated(true);
     }, 0);
@@ -92,6 +107,11 @@ export function ApplicationsViewSwitcher({
   function changeFilter(next: Filter) {
     setFilter(next);
     window.localStorage.setItem(FILTER_KEY, next);
+  }
+
+  function changeVa(next: string) {
+    setVa(next);
+    window.localStorage.setItem(VA_KEY, next);
   }
 
   function changeTab(next: PipelineTab) {
@@ -122,6 +142,7 @@ export function ApplicationsViewSwitcher({
   );
 
   const filtered = byTab.filter((app) => {
+    if (va !== ALL_VAS && app.assignedUser.id !== va) return false;
     if (filter === "all") return true;
     if (filter === "mine") return app.assignedUser.id === currentUserId;
     if (filter === "favorites") return favoriteIds.has(app.id);
@@ -187,7 +208,24 @@ export function ApplicationsViewSwitcher({
 
       <div className="flex items-start gap-4">
         <div className="min-w-0 flex-1 space-y-3">
-          <div className="flex flex-wrap gap-1.5" data-tour="filter-chips">
+          <div className="flex flex-wrap items-center gap-1.5" data-tour="filter-chips">
+            <Select
+              items={{ [ALL_VAS]: "All VAs", ...Object.fromEntries(vaOptions.map((u) => [u.id, u.name])) }}
+              value={va}
+              onValueChange={(v) => changeVa(v ?? ALL_VAS)}
+            >
+              <SelectTrigger size="sm" className="h-7 w-[11rem] text-xs" aria-label="Assigned VA">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_VAS}>All VAs</SelectItem>
+                {vaOptions.map((u) => (
+                  <SelectItem key={u.id} value={u.id}>
+                    {u.id === currentUserId ? `${u.name} (me)` : u.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             {chips.map((chip) => (
               <button
                 key={chip.key}

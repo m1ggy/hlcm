@@ -77,6 +77,9 @@ export function NotificationBell({ variant = "staff" }: { variant?: EntityLinkVa
   }
 
   function handleClickNotification(id: string, goTo?: string) {
+    // The list stays open over the page otherwise, which on a phone looks
+    // like the tap did nothing.
+    setOpen(false);
     if (goTo) router.push(goTo);
     startTransition(async () => {
       try {

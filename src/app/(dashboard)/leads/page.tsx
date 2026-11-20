@@ -7,10 +7,12 @@ import { PageInfoButton } from "@/components/shared/page-info-button";
 import { blockCaregiverRoute } from "@/lib/rbac";
 import type { $Enums } from "@/generated/prisma/client";
 
-export default async function LeadsPage({ searchParams }: { searchParams: Promise<{ stage?: string }> }) {
+export default async function LeadsPage({ searchParams }: { searchParams: Promise<{ stage?: string; open?: string }> }) {
   await blockCaregiverRoute();
-  const { stage } = await searchParams;
-  const filterStage = stage === "all" ? undefined : ((stage as $Enums.LeadStage | undefined) ?? "BOOKED");
+  const { stage, open } = await searchParams;
+  // A notification link (?open=<lead id>) shows every stage, so the lead is
+  // on the list wherever it has moved since.
+  const filterStage = stage === "all" || (open && !stage) ? undefined : ((stage as $Enums.LeadStage | undefined) ?? "BOOKED");
 
   const [leads, clients, projects, assignableUsers] = await Promise.all([
     listLeads(filterStage),
@@ -39,6 +41,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
         projects={projects.map((p) => ({ id: p.id, name: p.name }))}
         assignableUsers={assignableUsers.map((u) => ({ id: u.id, name: u.name }))}
         currentFilter={filterStage ?? "all"}
+        openId={open}
       />
     </div>
   );

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { Expand, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -98,6 +98,15 @@ export function TaskDetailDialog({
   const [timeSummary, setTimeSummary] = useState<{ hours: number; estimatedHours: number | null } | null>(null);
   const [timeLoaded, setTimeLoaded] = useState(false);
   const [workingTimezone, setWorkingTimezone] = useState<string | null>(null);
+
+  // Opened from a notification link (/tasks/<id> redirects here with
+  // ?task=), also when it's clicked while already on this page.
+  const linkedTaskId = useSearchParams().get("task");
+  useEffect(() => {
+    if (linkedTaskId !== taskId) return;
+    const timer = setTimeout(() => setOpen(true), 0);
+    return () => clearTimeout(timer);
+  }, [linkedTaskId, taskId]);
 
   useEffect(() => {
     if (!open || workingTimezone) return;

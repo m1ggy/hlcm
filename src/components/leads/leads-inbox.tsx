@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -64,15 +64,28 @@ export function LeadsInbox({
   projects,
   assignableUsers,
   currentFilter,
+  openId,
 }: {
   leads: Lead[];
   clients: { id: string; name: string }[];
   projects: { id: string; name: string }[];
   assignableUsers: { id: string; name: string }[];
   currentFilter: string;
+  // From a notification link: start with this lead open, scrolled to and highlighted.
+  openId?: string;
 }) {
   const router = useRouter();
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(openId ?? null);
+
+  // Also when the link is clicked while already on this page.
+  useEffect(() => {
+    if (!openId) return;
+    const timer = setTimeout(() => {
+      setExpandedId(openId);
+      document.getElementById(`lead-${openId}`)?.scrollIntoView({ block: "center" });
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [openId]);
   const [isPending, startTransition] = useTransition();
   const [losingId, setLosingId] = useState<string | null>(null);
   const [sendingId, setSendingId] = useState<string | null>(null);
@@ -154,7 +167,7 @@ export function LeadsInbox({
           const qa = Array.isArray(lead.answers) ? (lead.answers as QuestionAnswer[]) : [];
 
           return (
-            <div key={lead.id} className="rounded-lg border">
+            <div key={lead.id} id={`lead-${lead.id}`} className={`rounded-lg border ${lead.id === openId ? "ring-2 ring-primary" : ""}`}>
               <button
                 type="button"
                 onClick={() => setExpandedId(expanded ? null : lead.id)}

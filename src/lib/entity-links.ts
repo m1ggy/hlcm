@@ -10,13 +10,13 @@ export type EntityLinkVariant = "staff";
 
 export const ENTITY_LINKS: Record<EntityLinkVariant, Record<string, (id: string) => string>> = {
   staff: {
-    Task: () => "/tasks",
+    // Resolved server-side to the task's application (or My Tasks) with it open.
+    Task: (id) => `/tasks/${id}`,
     Application: (id) => `/applications/${id}`,
     Client: (id) => `/clients/${id}`,
     Invoice: (id) => `/invoices/${id}`,
-    // No per-lead detail route exists (yet) — only the /leads list, same
-    // situation as Task above.
-    Lead: () => "/leads",
+    // The leads list, scrolled to this lead and highlighted.
+    Lead: (id) => `/leads?open=${id}`,
     // A Caregiver's own recipients (assignment notifications).
     CareRecipient: () => "/care-recipients",
     // Staff side of a recipient — they live on their agency's client page.
