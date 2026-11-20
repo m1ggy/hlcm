@@ -5,9 +5,11 @@ import { readStoredFile } from "@/lib/storage";
 import { taskWhere, workScope } from "@/lib/work";
 import { requireLibraryAccess } from "@/lib/workspace-library";
 
-// Raster images may be shown in place (correspondence thumbnails, ?inline=1);
-// everything else always downloads. No SVG: it can carry script.
-const INLINE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+// Raster images and PDFs may be shown in place (?inline=1: correspondence
+// thumbnails, the file preview); everything else always downloads. No SVG
+// or HTML: they can carry script that would run on our origin. A PDF opens
+// in the browser's own viewer, whose scripting can't reach the page.
+const INLINE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp", "application/pdf"]);
 
 export async function GET(req: NextRequest, ctx: RouteContext<"/api/files/[id]">) {
   const { id } = await ctx.params;

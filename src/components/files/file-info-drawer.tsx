@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Download, RotateCcw, Trash2, Upload } from "lucide-react";
+import { Download, Eye, RotateCcw, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -13,6 +13,7 @@ import { unexpectedErrorMessage } from "@/lib/action-result";
 import { MAX_FILE_BYTES, fileTooLargeMessage } from "@/lib/file-limits";
 import { formatBytes } from "./format-bytes";
 import type { FileRow } from "./types";
+import { canPreview, FilePreviewDialog } from "./file-preview-dialog";
 
 type VersionRow = {
   id: string;
@@ -48,6 +49,7 @@ export function FileInfoDrawer({
   /** More buttons in the action row (FileBrowser: Rename, Move). */
   extraActions?: React.ReactNode;
 }) {
+  const [previewing, setPreviewing] = useState(false);
   const [versionsState, setVersionsState] = useState<{ fileId: string; rows: VersionRow[] } | null>(null);
   const [isPending, startTransition] = useTransition();
   const [revertingId, setRevertingId] = useState<string | null>(null);
@@ -133,6 +135,11 @@ export function FileInfoDrawer({
         {file && (
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 pb-4">
             <div className="flex flex-wrap items-center gap-2">
+              {canPreview(file.mimeType) && (
+                <Button variant="outline" size="sm" onClick={() => setPreviewing(true)}>
+                  <Eye className="size-3.5" /> Preview
+                </Button>
+              )}
               <Button variant="outline" size="sm" nativeButton={false} render={<a href={`/api/files/${file.id}`} />}>
                 <Download className="size-3.5" /> Download
               </Button>
@@ -220,6 +227,7 @@ export function FileInfoDrawer({
           </div>
         )}
       </SheetContent>
+      <FilePreviewDialog file={file} open={previewing && !!file} onOpenChange={setPreviewing} />
     </Sheet>
   );
 }
