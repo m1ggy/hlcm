@@ -17,7 +17,7 @@ import { UploadQueue, type QueueItem } from "./queue";
 import { Tracker } from "./tracker";
 import { trayIcon, type IconState } from "./icon";
 import { Updater } from "./updater";
-import { workspaceLabel, workspaceUrl } from "./workspace";
+import { CONNECT_SCHEME, connectLinkInArgs, parseConnectLink, workspaceLabel, workspaceUrl } from "./workspace";
 import { clearAuth, rootDomain, loadAuth, loadSettings, log, queueKey, saveAuth, saveSettings } from "./store";
 
 // Carenela: tray app for office staff. Clock in/out here; while
@@ -112,7 +112,7 @@ function closeWindow(name: keyof typeof windows) {
 }
 
 function showPanel() {
-  if (!api) return openWindow("login", { width: 380, height: 520 });
+  if (!api) return openWindow("login", { width: 380, height: 560 });
   return openWindow("panel", { width: 360, height: 440 });
 }
 
@@ -383,6 +383,13 @@ async function signOut() {
 }
 
 async function forceSignedOut(message: string | null) {
+  await dropSignIn(message);
+  openWindow("login", { width: 380, height: 560 });
+  broadcast();
+}
+
+/** Forgets this computer's sign-in (and its unsent uploads). */
+async function dropSignIn(message: string | null) {
   tracker.stop();
   queue.setSender(null);
   // Queued items were for this device's session; a new sign-in is a new
@@ -394,8 +401,6 @@ async function forceSignedOut(message: string | null) {
   lastError = message;
   closeWindow("panel");
   closeWindow("consent");
-  openWindow("login", { width: 380, height: 520 });
-  broadcast();
 }
 
 async function sendItem(item: QueueItem) {
@@ -410,6 +415,84 @@ async function sendItem(item: QueueItem) {
     await api.request("/screenshots", { method: "POST", form });
   }
   broadcast();
+}
+
+// ---------------------------------------------------------------------------
+// Connect link (carenela://connect?server=…&code=…) from the web page's
+// "Connect the app" button: signs in to that workspace with a one-time code,
+// so nobody types a workspace name or password here.
+// ---------------------------------------------------------------------------
+
+let ready = false;
+let pendingLink: string | null = null;
+let connecting = false;
+
+function receiveLink(raw: string) {
+  if (!ready) {
+    pendingLink = raw;
+    return;
+  }
+  void connectWithLink(raw);
+}
+
+async function connectWithLink(raw: string) {
+  if (connecting) return;
+  const link = parseConnectLink(raw, rootDomain(), !app.isPackaged);
+  if (!link) {
+    await dialog.showMessageBox({ type: "error", message: "That connect link isn't for Carenela", detail: "Click Connect on the Carenela web page again." });
+    return;
+  }
+  connecting = true;
+  try {
+    const host = new URL(link.serverUrl).host;
+    if (api && me && me.status !== "CLOCKED_OUT") {
+      await dialog.showMessageBox({ type: "info", message: "Clock out first", detail: `You're clocked in. Clock out, then click Connect on the web page again to connect to ${host}.` });
+      return;
+    }
+    // Asked every time: a link can be clicked from anywhere, and connecting
+    // must only ever be something the person meant to do.
+    const current = api && me ? `\n\nThis signs ${me.user.name} out of ${new URL(api.serverUrl).host} on this computer.` : "";
+    const { response } = await dialog.showMessageBox({
+      type: "question",
+      message: `Connect Carenela to ${host}?`,
+      detail: `You'll be signed in as the person who clicked Connect on that web page. Only continue if that was you, just now.${current}`,
+      buttons: ["Connect", "Cancel"],
+      defaultId: 0,
+      cancelId: 1,
+    });
+    if (response !== 0) return;
+
+    if (api) {
+      const pending = queue.pendingCount();
+      if (pending > 0) {
+        const { response: discard } = await dialog.showMessageBox({
+          type: "warning",
+          message: `${pending} upload(s) haven't reached the server yet`,
+          detail: "Connecting now discards them. Wait until you're back online to keep them.",
+          buttons: ["Wait", "Connect anyway"],
+        });
+        if (discard === 0) return;
+      }
+      try {
+        await api.request("/logout", { method: "POST" });
+      } catch {
+        // Best effort, as in signOut().
+      }
+      await dropSignIn(null);
+    }
+
+    try {
+      const tokens = await ApiClient.pair(link.serverUrl, { code: link.code, device: deviceInfo });
+      await completeSignIn(link.serverUrl, tokens);
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : "Couldn't connect";
+      saveSettings({ serverUrl: link.serverUrl });
+      openWindow("login", { width: 380, height: 560 });
+      broadcast();
+    }
+  } finally {
+    connecting = false;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -488,10 +571,26 @@ function registerIpc() {
 // Lifecycle
 // ---------------------------------------------------------------------------
 
+// Opening a carenela:// link starts (or wakes) this app. A dev run
+// (`npm start`) registers electron.exe with this script's path instead.
+if (app.isPackaged) app.setAsDefaultProtocolClient(CONNECT_SCHEME);
+else if (process.argv[1]) app.setAsDefaultProtocolClient(CONNECT_SCHEME, process.execPath, [path.resolve(process.argv[1])]);
+
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on("second-instance", () => showPanel());
+  // Windows: a link click while running starts a second copy with the link
+  // as an argument; it hands it over here and quits.
+  app.on("second-instance", (_event, argv) => {
+    const link = connectLinkInArgs(argv);
+    if (link) receiveLink(link);
+    else showPanel();
+  });
+  // Mac: links arrive as an event, possibly before the app is ready.
+  app.on("open-url", (event, url) => {
+    event.preventDefault();
+    receiveLink(url);
+  });
 
   app.whenReady().then(async () => {
     if (process.platform === "darwin") app.dock?.hide();
@@ -527,13 +626,21 @@ if (!app.requestSingleInstanceLock()) {
     tray.on("click", () => showPanel());
     updateTray();
 
+    // Windows: started by a link click.
+    pendingLink ??= connectLinkInArgs(process.argv);
     const auth = await loadAuth();
     if (auth) {
       useAuth(auth);
       await loadMe();
-      if (me?.policy.accepted) showPanel();
-    } else {
-      openWindow("login", { width: 380, height: 520 });
+      if (me?.policy.accepted && !pendingLink) showPanel();
+    } else if (!pendingLink) {
+      openWindow("login", { width: 380, height: 560 });
+    }
+    ready = true;
+    if (pendingLink) {
+      const link = pendingLink;
+      pendingLink = null;
+      void connectWithLink(link);
     }
 
     setInterval(() => void heartbeat(), HEARTBEAT_MS);

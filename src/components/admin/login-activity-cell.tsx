@@ -23,6 +23,7 @@ const METHOD_LABELS: Record<string, string> = {
   switch: "Workspace switch",
   desktop_app: "Desktop app",
   "desktop_app+mfa": "Desktop app + MFA",
+  desktop_app_link: "Desktop app (connect link)",
 };
 
 const DEVICE_ICON = { DESKTOP: Monitor, MOBILE: Smartphone, TABLET: Tablet } as const;

@@ -40,3 +40,41 @@ export function workspaceLabel(serverUrl: string, rootDomain: string): string {
     return "";
   }
 }
+
+export const CONNECT_SCHEME = "carenela";
+
+/**
+ * A "Connect the app" link from the web page:
+ * carenela://connect?server=https://ctk.carenela.com&code=…
+ * Only a workspace on the product's own domain is accepted (or a local test
+ * server when `allowLocal`), so a link from anywhere else can't point the
+ * app at a server that isn't Carenela's.
+ */
+export function parseConnectLink(raw: string, rootDomain: string, allowLocal: boolean): { serverUrl: string; code: string } | null {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== `${CONNECT_SCHEME}:`) return null;
+  // carenela://connect?… parses "connect" as the host; carenela:connect?… as the path.
+  if ((url.hostname || url.pathname.replace(/^\/+|\/+$/g, "")) !== "connect") return null;
+  const code = url.searchParams.get("code") ?? "";
+  if (!code || code.length > 2000) return null;
+  let server: URL;
+  try {
+    server = new URL(url.searchParams.get("server") ?? "");
+  } catch {
+    return null;
+  }
+  const onRoot = !!rootDomain && server.protocol === "https:" && server.hostname.endsWith(`.${rootDomain}`) && SLUG.test(server.hostname.slice(0, -rootDomain.length - 1));
+  const local = allowLocal && isLocal(server.hostname) && (server.protocol === "http:" || server.protocol === "https:");
+  if (!onRoot && !local) return null;
+  return { serverUrl: server.origin, code };
+}
+
+/** The connect link among a second instance's (or the first launch's) command-line arguments, on Windows. */
+export function connectLinkInArgs(argv: string[]): string | null {
+  return argv.find((arg) => arg.toLowerCase().startsWith(`${CONNECT_SCHEME}:`)) ?? null;
+}

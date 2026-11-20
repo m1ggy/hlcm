@@ -46,6 +46,15 @@ p.sub {
   color: var(--muted);
 }
 
+p.tip {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--soft);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 label {
   display: block;
   font-size: 12px;

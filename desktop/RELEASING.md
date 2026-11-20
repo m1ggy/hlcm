@@ -22,6 +22,13 @@ download page (`/time/app`):
    `<name>.carenela.com`; a full address (e.g. `http://ctk.localhost:3000`)
    still works for testing.
 
+   Usually nobody types that: the download page's **Connect the app** button
+   opens `carenela://connect?server=…&code=…` (registered by the installer,
+   app 0.4.0 and later) and the app signs in with that one-time code
+   (`/api/agent/pair`). The app only accepts links to `*.<rootDomain>`
+   (plus localhost when run with `npm start`) and always asks before
+   connecting.
+
 2. Screenshot retention backstop on the bucket. The app server already deletes
    screenshots older than 90 days every day (`src/lib/activity-retention.ts`);
    this lifecycle rule catches anything it misses, including old versions

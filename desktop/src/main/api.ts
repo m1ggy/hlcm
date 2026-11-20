@@ -71,6 +71,11 @@ export class ApiClient {
     return rawRequest(serverUrl, "/login", { method: "POST", json: body });
   }
 
+  /** Signs in with the one-time code from the web page's connect link. */
+  static async pair(serverUrl: string, body: { code: string; device: DeviceInfo }): Promise<Tokens> {
+    return rawRequest(serverUrl, "/pair", { method: "POST", json: body });
+  }
+
   request<T>(path: string, init: { method?: string; json?: unknown; form?: FormData } = {}): Promise<T> {
     return this.withAuth((token) => rawRequest<T>(this.auth.serverUrl, path, { ...init, token }));
   }

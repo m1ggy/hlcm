@@ -1,7 +1,7 @@
 {
   "name": "carenela-desktop",
   "productName": "Carenela",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "Carenela desktop app: clock in and activity monitoring for office staff",
   "main": "dist/main/main.js",
@@ -36,6 +36,14 @@
       "src/preload.js",
       "config.json",
       "package.json"
+    ],
+    "protocols": [
+      {
+        "name": "Carenela",
+        "schemes": [
+          "carenela"
+        ]
+      }
     ],
     "win": {
       "target": "nsis",
