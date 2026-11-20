@@ -122,6 +122,10 @@ jobs:
     name: Publish to agent-releases/
     needs: release
     runs-on: ubuntu-latest
+    # Only the upload script is checked out, so there's no desktop/ to run in.
+    defaults:
+      run:
+        working-directory: .
     env:
       DEPLOY_PATH: ${{ secrets.DROPLET_DEPLOY_PATH || '/opt/hclm-app' }}
       SSH_PORT: ${{ secrets.DROPLET_SSH_PORT || 22 }}
