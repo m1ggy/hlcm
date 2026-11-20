@@ -4,6 +4,8 @@ import { listLicenseTypes } from "@/lib/actions/license-types";
 import { getPipelineConfig } from "@/lib/actions/pipelines";
 import { NewLicenseTypeDialog } from "@/components/admin/new-license-type-dialog";
 import { LicenseTypePipelineSelect } from "@/components/admin/license-type-pipeline-select";
+import { EditLicenseTypeDialog } from "@/components/admin/edit-license-type-dialog";
+import { Badge } from "@/components/ui/badge";
 import { PipelineSettingsForm } from "@/components/admin/pipeline-settings-form";
 import { ForbiddenError, blockCaregiverRoute, isAdmin } from "@/lib/rbac";
 import {
@@ -19,7 +21,7 @@ export default async function LicenseTypesPage() {
   await blockCaregiverRoute();
   let licenseTypes;
   try {
-    licenseTypes = await listLicenseTypes();
+    licenseTypes = await listLicenseTypes({ includeRetired: true });
   } catch (error) {
     if (error instanceof ForbiddenError) notFound();
     throw error;
@@ -46,12 +48,20 @@ export default async function LicenseTypesPage() {
             <TableHead>Name</TableHead>
             <TableHead>Description</TableHead>
             <TableHead className="w-56">Pipeline</TableHead>
+            {canEdit && <TableHead className="w-10" />}
           </TableRow>
         </TableHeader>
         <TableBody>
           {licenseTypes.map((lt) => (
-            <TableRow key={lt.id}>
-              <TableCell className="font-medium">{lt.name}</TableCell>
+            <TableRow key={lt.id} className={lt.active ? undefined : "text-muted-foreground"}>
+              <TableCell className="font-medium">
+                {lt.name}
+                {!lt.active && (
+                  <Badge variant="outline" className="ml-2">
+                    Retired
+                  </Badge>
+                )}
+              </TableCell>
               <TableCell>{lt.description ?? "—"}</TableCell>
               <TableCell>
                 {canEdit ? (
@@ -60,11 +70,16 @@ export default async function LicenseTypesPage() {
                   labels[lt.pipeline]
                 )}
               </TableCell>
+              {canEdit && (
+                <TableCell className="text-right">
+                  <EditLicenseTypeDialog licenseType={{ id: lt.id, name: lt.name, description: lt.description, active: lt.active }} />
+                </TableCell>
+              )}
             </TableRow>
           ))}
           {licenseTypes.length === 0 && (
             <TableRow>
-              <TableCell colSpan={3} className="text-center text-muted-foreground">
+              <TableCell colSpan={canEdit ? 4 : 3} className="text-center text-muted-foreground">
                 No license types yet.
               </TableCell>
             </TableRow>

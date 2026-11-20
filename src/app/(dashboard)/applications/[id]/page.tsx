@@ -116,7 +116,8 @@ export default async function ApplicationDetailPage({
     listNotes(id),
     listReachableStages(id),
     application.pipeline ? listPipelineStages(application.pipeline) : Promise.resolve([]),
-    listLicenseTypes(),
+    // A retired license type still shows on the cases that already have it.
+    listLicenseTypes({ alsoId: application.licenseTypeTemplateId }),
     listCaseTypes(),
     listAllStageNames(),
     getPicklists(),
