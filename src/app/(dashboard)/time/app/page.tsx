@@ -6,6 +6,7 @@ import { auth } from "@/auth";
 import { blockCaregiverRoute } from "@/lib/rbac";
 import { isTrackedHere } from "@/lib/activity-monitoring";
 import { getAppUrl } from "@/lib/email";
+import { db } from "@/lib/db";
 import { latestDownloads } from "@/lib/agent-releases";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,7 +26,15 @@ export default async function DesktopAppPage() {
     return root && root !== "localhost" && hostname.endsWith(`.${root}`) ? hostname.slice(0, -root.length - 1) : origin;
   })();
   // Newest installers from the update manifests in agent-releases/ (see desktop/RELEASING.md).
-  const latest = await latestDownloads();
+  const [latest, device] = await Promise.all([
+    latestDownloads(),
+    // Most recently connected computer still signed in, for the "Connected" line.
+    db.agentDevice.findFirst({
+      where: { userId: session.user.id, revokedAt: null, refreshExpiresAt: { gt: new Date() } },
+      orderBy: { createdAt: "desc" },
+      select: { name: true },
+    }),
+  ]);
   const downloads = [
     { key: "windows", os: "Windows", release: latest.windows },
     { key: "mac", os: "Mac with Apple chip (M1 or later)", release: latest.macArm },
@@ -104,7 +113,7 @@ export default async function DesktopAppPage() {
             With the app installed and running, click the button. The app signs in to this workspace as you; no workspace name or
             password to type. Then read the monitoring notice in the app and accept it.
           </p>
-          <ConnectDesktopApp workspace={workspace} />
+          <ConnectDesktopApp workspace={workspace} connectedDevice={device?.name ?? null} />
         </CardContent>
       </Card>
 

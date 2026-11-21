@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
-import { LayoutList, KanbanSquare, CalendarDays, Building2, FolderKanban, Users, ClipboardList, UserCog, CheckSquare, Clock, Timer, Receipt, Settings, Inbox, MapPin, CalendarCheck, BarChart3, Sun, Wallet, NotebookPen, BookMarked, HeartHandshake, FolderOpen } from "lucide-react";
+import { LayoutList, KanbanSquare, CalendarDays, Building2, FolderKanban, Users, ClipboardList, UserCog, CheckSquare, Clock, Timer, Receipt, Settings, Inbox, MapPin, CalendarCheck, BarChart3, Sun, Wallet, NotebookPen, BookMarked, HeartHandshake, FolderOpen, MonitorSmartphone, Activity, Download } from "lucide-react";
 import {
   SidebarGroup,
   SidebarGroupLabel,
@@ -67,6 +67,8 @@ export function AppSidebarNav({
   newSubmissions = 0,
   showForms = false,
   showFiles = false,
+  showTeamActivity = false,
+  showMyActivity = false,
 }: {
   isAdmin: boolean;
   canManageInvoices: boolean;
@@ -89,7 +91,17 @@ export function AppSidebarNav({
   showForms?: boolean;
   /** A tasks-only workspace's file library (src/lib/workspace-library.ts). */
   showFiles?: boolean;
+  /** Activity monitoring is on and this is the OWNER or a DEVELOPER: everyone's activity. */
+  showTeamActivity?: boolean;
+  /** Activity monitoring is on and this person is tracked here: their own activity. */
+  showMyActivity?: boolean;
 }) {
+  const activity: NavLink[] = [];
+  if (showTeamActivity) activity.push({ href: "/admin/activity", label: "Team activity", icon: Activity, tour: "nav-team-activity" });
+  if (showMyActivity) {
+    activity.push({ href: "/time/activity", label: "My activity", icon: MonitorSmartphone, tour: "nav-my-activity" });
+    activity.push({ href: "/time/app", label: "Desktop app", icon: Download, tour: "nav-desktop-app" });
+  }
   const pathname = usePathname();
 
   let groups: NavGroup[];
@@ -110,6 +122,7 @@ export function AppSidebarNav({
     // The client company's own staff clock in here (docs/activity-monitoring-plan.md);
     // the managing company's team clocks in at home.
     if (!isWorkTeam) general.push({ href: "/time", label: "Time", icon: Clock, tour: "nav-time" });
+    general.push(...activity);
     general.push({ href: "/account", label: "Settings", icon: Settings, tour: "nav-settings" });
     if (isAdmin) general.push({ href: "/admin/users", label: "Users", icon: UserCog, tour: "nav-admin" });
     const care: NavLink[] = [
@@ -135,6 +148,7 @@ export function AppSidebarNav({
     if (canManageInvoices) money.push({ href: "/invoices", label: "Invoices", icon: Receipt, tour: "nav-invoices" });
     if (canViewPayroll) money.push({ href: "/payroll", label: "Payroll", icon: Wallet, tour: "nav-payroll" });
     money.push({ href: "/reports", label: "Reports", icon: BarChart3, tour: "nav-reports" });
+    money.splice(1, 0, ...activity);
 
     const general: NavLink[] = [];
     if (showClientWorkspaces) general.push({ href: "/client-workspaces", label: "Client workspaces", icon: Building2, tour: "nav-client-workspaces" });

@@ -20,6 +20,7 @@ import { WorkspaceSwitcher } from "@/components/workspaces/workspace-switcher";
 import { hasCare } from "@/lib/workspace-kind";
 import { canManageCare } from "@/lib/care-access";
 import { canUseLibrary } from "@/lib/workspace-library";
+import { canViewTeamActivity, isTrackedHere, monitoringOn } from "@/lib/activity-monitoring";
 
 export async function AppSidebar() {
   const session = await auth();
@@ -34,10 +35,14 @@ export async function AppSidebar() {
   const actor = { id: session.user.id, organizationId: session.user.organizationId };
   // Every workspace has its own forms, client workspaces included.
   const seesForms = !isCaregiver && ["OWNER", "ADMIN", "ACCOUNTANT", "MANAGER", "STAFF", "DEVELOPER"].includes(session.user.role);
-  const [switchTargets, managesWorkspaces, newSubmissions] = await Promise.all([
+  // Activity monitoring (docs/activity-monitoring-plan.md): the team view for
+  // OWNER/DEVELOPER and each tracked person's own, right in the menu.
+  const monitoring = Boolean(org && monitoringOn(org));
+  const [switchTargets, managesWorkspaces, newSubmissions, tracked] = await Promise.all([
     listSwitchTargets(actor),
     canManageAnyWorkspace({ userId: actor.id, orgId: actor.organizationId, role: session.user.role }),
     seesForms ? db.formSubmission.count({ where: { status: "PENDING" } }).catch(() => 0) : Promise.resolve(0),
+    monitoring ? isTrackedHere(session.user.id) : Promise.resolve(false),
   ]);
 
   return (
@@ -62,6 +67,8 @@ export async function AppSidebar() {
           newSubmissions={newSubmissions}
           showForms={seesForms}
           showFiles={canUseLibrary(session.user.role, org?.kind)}
+          showTeamActivity={monitoring && canViewTeamActivity(session.user.role)}
+          showMyActivity={tracked}
         />
       </SidebarContent>
       <SidebarFooter className="gap-2 border-t px-3 py-3">
