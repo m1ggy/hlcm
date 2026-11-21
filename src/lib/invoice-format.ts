@@ -92,3 +92,18 @@ export function lineBalances(
   });
   return amounts.map((amount, i) => ({ amount, paid: cents(paid[i]), due: cents(amount - paid[i]) }));
 }
+
+/**
+ * Who an invoice is addressed to at the client: their first contact, else
+ * their first owner. The email falls back to the business email. Printed
+ * under Bill To on the PDF, and the default "Paid by" for a new payment.
+ */
+export function invoiceContact(client: {
+  businessEmail?: string | null;
+  contacts?: { name: string; email: string | null }[];
+  owners?: { name: string; email?: string | null }[];
+}): { name: string; email: string | null } | null {
+  const person = client.contacts?.[0] ?? client.owners?.[0];
+  if (!person) return client.businessEmail ? { name: "", email: client.businessEmail } : null;
+  return { name: person.name, email: person.email || client.businessEmail || null };
+}

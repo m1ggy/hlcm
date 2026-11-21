@@ -2579,6 +2579,10 @@ model Payment {
   // Optional — a check number, Zelle confirmation, etc. Printed in the
   // invoice PDF's "Payments received" table.
   reference      String?
+  // Optional — who sent it ("Paid by"), e.g. the name on the Zelle or
+  // check, so one client's payment isn't mistaken for another's. Printed in
+  // the invoice PDF's "Payments received" table and on the receipt.
+  payerName      String?
   // Optional — which line item on this same invoice the payment is for
   // (e.g. a deposit against one charge). A label only: the invoice's own
   // PAID/PARTIALLY_PAID status still comes from the total alone (see

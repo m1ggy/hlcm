@@ -9,7 +9,7 @@
 import { currentOrganization } from "@/lib/db";
 import { PDFDocument, StandardFonts, rgb, type PDFPage } from "pdf-lib";
 import { PAGE_SIZE, drawFitted, embedPdfFont, fitText, money, wrapText, type InvoicePdfInput } from "@/lib/invoice-pdf";
-import { displayInvoiceNumber, lineBalances } from "@/lib/invoice-format";
+import { displayInvoiceNumber, invoiceContact, lineBalances } from "@/lib/invoice-format";
 import { DEFAULT_TIMEZONE, toDateInputValue } from "@/lib/time-entries";
 import {
   BOTTOM_LIMIT,
@@ -52,15 +52,16 @@ const COLS: Col[] = [
 ];
 const LINE_LABELS = ["DATE", "ITEM / DESCRIPTION", "AMOUNT", "AMOUNT DUE", "AMOUNT PAID"];
 
-// Payments received: Date / Method / Reference / Applied to / Amount.
+// Payments received: Date / Method / Paid by / Reference / Applied to / Amount.
 const PAY_COLS: Col[] = [
-  { x: LEFT, width: 52 },
-  { x: LEFT + 52, width: 70 },
-  { x: LEFT + 122, width: 84 },
-  { x: LEFT + 206, width: 489 - LEFT - 206 },
+  { x: LEFT, width: 50 },
+  { x: LEFT + 50, width: 58 },
+  { x: LEFT + 108, width: 92 },
+  { x: LEFT + 200, width: 72 },
+  { x: LEFT + 272, width: 489 - LEFT - 272 },
   { x: 489, width: RIGHT - 489 },
 ];
-const PAY_LABELS = ["DATE", "METHOD", "REFERENCE", "APPLIED TO", "AMOUNT"];
+const PAY_LABELS = ["DATE", "METHOD", "PAID BY", "REFERENCE", "APPLIED TO", "AMOUNT"];
 
 const BALANCE_ROW_HEIGHT = 34;
 const HEADER_HEIGHT = 28;
@@ -125,7 +126,8 @@ export async function generateModernInvoicePdf(invoice: InvoicePdfInput): Promis
     : [invoice.client.billingAddressLine1, invoice.client.billingCity, invoice.client.billingState, invoice.client.billingPostalCode]
         .filter(Boolean)
         .join(", ");
-  const attn = recipient ? (recipient.billingContactName ? recipient.name : "") : invoice.client.owners?.[0]?.name ?? "";
+  const contact = recipient ? null : invoiceContact(invoice.client);
+  const attn = recipient ? (recipient.billingContactName ? recipient.name : "") : contact?.name ?? "";
   const billToBottom = drawPartyBox(page, fonts, {
     top: ruleTop + 28,
     label: "BILL TO",
@@ -136,6 +138,7 @@ export async function generateModernInvoicePdf(invoice: InvoicePdfInput): Promis
         value: (recipient ? recipient.billingContactName || recipient.name : invoice.client.businessName ?? invoice.client.name).toUpperCase(),
       },
       ...(attn ? [{ label: "Attn: ", value: attn }] : []),
+      ...(contact?.email ? [{ label: "Email: ", value: contact.email }] : []),
       ...(address ? [{ label: "Address / City / State: ", value: address }] : []),
     ],
   });
@@ -237,7 +240,7 @@ export async function generateModernInvoicePdf(invoice: InvoicePdfInput): Promis
         y = drawTableHeader(page, fonts, 44, PAY_COLS, PAY_LABELS);
       }
       const applied = p.lineItemId ? descriptionById.get(p.lineItemId) ?? "" : "Whole invoice";
-      drawPaymentRow(page, fonts, y, [shortDate(p.paidAt!), p.paymentMethod ?? "", p.reference ?? "", applied, money(p.amount)]);
+      drawPaymentRow(page, fonts, y, [shortDate(p.paidAt!), p.paymentMethod ?? "", p.payerName ?? "", p.reference ?? "", applied, money(p.amount)]);
       y += PAY_ROW_HEIGHT;
     }
     if (y + TOTAL_ROW_HEIGHT > BOTTOM_LIMIT) {
@@ -245,14 +248,14 @@ export async function generateModernInvoicePdf(invoice: InvoicePdfInput): Promis
       y = 44;
     }
     box(page, { x: LEFT, top: y, width: RIGHT - LEFT, height: TOTAL_ROW_HEIGHT, fill: LIGHT_BLUE, border: GRID });
-    textRight(page, "Total received", PAY_COLS[4].x - 6, y + 16, { size: 8.5, font: fonts.bold, color: NAVY });
+    textRight(page, "Total received", PAY_COLS[5].x - 6, y + 16, { size: 8.5, font: fonts.bold, color: NAVY });
     const received = payments.reduce((sum, p) => sum + p.amount, 0);
     drawFitted(page, money(received), {
       right: RIGHT - 4,
       y: yFromTop(y + 16),
       size: 9.5,
       font: fonts.bold,
-      maxWidth: PAY_COLS[4].width - 8,
+      maxWidth: PAY_COLS[5].width - 8,
       color: NAVY,
     });
     y += TOTAL_ROW_HEIGHT + 14;

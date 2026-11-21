@@ -21,6 +21,8 @@ export const invoiceInclude = {
       businessName: true,
       businessEmail: true,
       owners: { select: { email: true, name: true }, orderBy: { createdAt: "asc" }, take: 1 },
+      // The client's first contact — the invoice's "Attn:" (see invoiceContact).
+      contacts: { select: { name: true, email: true }, orderBy: { createdAt: "asc" }, take: 1 },
       stripeCustomerId: true,
       billingAddressLine1: true,
       billingCity: true,
@@ -180,5 +182,7 @@ export const paidItemSchema = z.object({
   paymentMethod: z.string().trim().min(1, "Pick how it was paid"),
   // Check number, Zelle confirmation, etc.
   reference: z.string().trim().optional(),
+  // Who sent it ("Paid by").
+  payerName: z.string().trim().max(200).optional(),
 });
 export type PaidItemInput = z.input<typeof paidItemSchema>;

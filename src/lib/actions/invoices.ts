@@ -609,6 +609,8 @@ const additionalPaymentInputSchema = z.object({
   paymentMethod: z.string().min(1, "Payment method is required"),
   // Check number, Zelle confirmation, etc. Empty = none.
   reference: z.string().trim().nullish().transform((v) => v || null),
+  // Who sent it ("Paid by"). Empty = not recorded.
+  payerName: z.string().trim().max(200).nullish().transform((v) => v || null),
   // Optional — one of this same invoice's line items (see
   // Payment.lineItemId). Empty string/null = the invoice as a whole.
   lineItemId: z.string().nullish().transform((v) => v || null),
@@ -667,6 +669,7 @@ export async function addManualPayment(id: string, input: z.input<typeof additio
         paidAt,
         paymentMethod: parsed.paymentMethod,
         reference: parsed.reference,
+        payerName: parsed.payerName,
         recordedById: session.user.id,
       },
     });
@@ -702,7 +705,7 @@ type InvoiceWithInclude = Prisma.InvoiceGetPayload<{ include: typeof invoiceIncl
 // reads as "receipt failed to generate" rather than a real one.
 async function storeReceiptPdf(
   invoice: InvoiceWithInclude,
-  payment: { id: string; amount: number; paidAt: Date; paymentMethod: string },
+  payment: { id: string; amount: number; paidAt: Date; paymentMethod: string; payerName?: string | null },
   receipt: { id: string; seq: number },
   lineItemDescription: string | null
 ) {
@@ -747,6 +750,7 @@ async function createPaidItemRows(tx: TenantTx, invoiceId: string, item: z.infer
       paidAt: new Date(item.paidAt),
       paymentMethod: item.paymentMethod,
       reference: item.reference || null,
+      payerName: item.payerName || null,
       recordedById,
     },
   });
@@ -854,7 +858,14 @@ export async function updatePayment(paymentId: string, input: z.input<typeof add
   const invoice = await db.$transaction(async (tx) => {
     await tx.payment.update({
       where: { id: paymentId },
-      data: { amount: parsed.amount, paidAt, paymentMethod: parsed.paymentMethod, reference: parsed.reference, lineItemId: lineItem?.id ?? null },
+      data: {
+        amount: parsed.amount,
+        paidAt,
+        paymentMethod: parsed.paymentMethod,
+        reference: parsed.reference,
+        payerName: parsed.payerName,
+        lineItemId: lineItem?.id ?? null,
+      },
     });
     return recomputeInvoiceFromPayments(tx, before.invoiceId, total);
   });
@@ -880,7 +891,7 @@ export async function updatePayment(paymentId: string, input: z.input<typeof add
       const pdfBytes = await renderReceiptPdf(
         {
           seq: before.receipt.seq,
-          payment: { amount: parsed.amount, paidAt, paymentMethod: parsed.paymentMethod },
+          payment: { amount: parsed.amount, paidAt, paymentMethod: parsed.paymentMethod, payerName: parsed.payerName },
           lineItemDescription: lineItem?.description ?? null,
           invoice,
           client: invoice.client,

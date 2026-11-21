@@ -19,7 +19,7 @@ import {
   money,
   projectLabel,
 } from "@/lib/invoice-pdf";
-import { displayInvoiceNumber, displayReceiptNumber, formatCalendarDate } from "@/lib/invoice-format";
+import { displayInvoiceNumber, displayReceiptNumber, formatCalendarDate, invoiceContact } from "@/lib/invoice-format";
 import type { SenderDetails } from "@/lib/pdf-templates/options";
 
 export type ReceiptPdfInput = {
@@ -28,6 +28,8 @@ export type ReceiptPdfInput = {
     amount: number;
     paidAt: Date;
     paymentMethod: string;
+    /** Who sent it ("Paid by"), if recorded. */
+    payerName?: string | null;
   };
   /** The line item this payment was recorded against, if any — see
    * Payment.lineItemId in prisma/schema.prisma. */
@@ -47,8 +49,10 @@ export type ReceiptPdfInput = {
     billingState: string | null;
     billingPostalCode: string | null;
     projects: { name: string }[];
-    /** First owner — printed as "Attn:" by the Modern layout. */
-    owners?: { name: string }[];
+    businessEmail?: string | null;
+    /** First contact, else first owner — "Attn:" and email under Bill To (invoiceContact). */
+    contacts?: { name: string; email: string | null }[];
+    owners?: { name: string; email?: string | null }[];
   };
   logo?: { bytes: Uint8Array; mimeType: string } | null;
   footerText?: string | null;
@@ -109,6 +113,10 @@ export async function generateReceiptPdf(receipt: ReceiptPdfInput): Promise<Uint
     maxWidth: leftWidth,
     lineHeight: 15,
   });
+  const contact = invoiceContact(receipt.client);
+  for (const line of [contact?.name ? `Attn: ${contact.name}` : "", contact?.email ?? ""].filter(Boolean)) {
+    drawWrappedTextPaged(cursor, line, { x: MARGIN, font, size: 10, maxWidth: leftWidth, lineHeight: 14, color: rgb(0.3, 0.3, 0.3) });
+  }
   const addressLine = [
     receipt.client.billingAddressLine1,
     receipt.client.billingCity,
@@ -140,6 +148,16 @@ export async function generateReceiptPdf(receipt: ReceiptPdfInput): Promise<Uint
     lineHeight: 14,
     color: gray,
   });
+  if (receipt.payment.payerName) {
+    drawWrappedTextPaged(cursor, `Paid by: ${receipt.payment.payerName}`, {
+      x: MARGIN,
+      font,
+      size: 10,
+      maxWidth: fullWidth,
+      lineHeight: 14,
+      color: gray,
+    });
+  }
   if (receipt.lineItemDescription) {
     drawWrappedTextPaged(cursor, `Applied to: ${receipt.lineItemDescription}`, {
       x: MARGIN,

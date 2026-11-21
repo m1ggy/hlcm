@@ -4,7 +4,7 @@
 import { currentOrganization } from "@/lib/db";
 import { PDFDocument, StandardFonts } from "pdf-lib";
 import { PAGE_SIZE, drawFitted, embedPdfFont, fitText, money, wrapText } from "@/lib/invoice-pdf";
-import { displayInvoiceNumber, displayReceiptNumber } from "@/lib/invoice-format";
+import { displayInvoiceNumber, displayReceiptNumber, invoiceContact } from "@/lib/invoice-format";
 import type { ReceiptPdfInput } from "@/lib/receipt-pdf";
 import {
   CREAM,
@@ -58,12 +58,15 @@ export async function generateModernReceiptPdf(receipt: ReceiptPdfInput): Promis
   });
 
   const client = receipt.client;
+  const contact = invoiceContact(client);
   const tableTop = drawPartyBox(page, fonts, {
     top: ruleTop + 46,
     label: "RECEIVED FROM",
     lines: [
       { label: "Client / Company Name:  ", value: (client.businessName ?? client.name).toUpperCase() },
-      { label: "Attn: ", value: client.owners?.[0]?.name ?? "" },
+      { label: "Attn: ", value: contact?.name ?? "" },
+      ...(contact?.email ? [{ label: "Email: ", value: contact.email }] : []),
+      ...(receipt.payment.payerName ? [{ label: "Paid by: ", value: receipt.payment.payerName }] : []),
       {
         label: "Address / City / State: ",
         value: [client.billingAddressLine1, client.billingCity, client.billingState, client.billingPostalCode].filter(Boolean).join(", "),

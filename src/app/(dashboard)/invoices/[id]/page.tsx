@@ -3,7 +3,7 @@ import Link from "next/link";
 import { TriangleAlert, PenLine, Download } from "lucide-react";
 import { getInvoice, getInvoiceAuditLog } from "@/lib/actions/invoices";
 import { listInvoiceAttachments } from "@/lib/actions/invoice-attachments";
-import { displayInvoiceNumber, displayReceiptNumber, formatCalendarDate, lineBalances } from "@/lib/invoice-format";
+import { displayInvoiceNumber, displayReceiptNumber, formatCalendarDate, invoiceContact, lineBalances } from "@/lib/invoice-format";
 import { listClients } from "@/lib/actions/clients";
 import { listApplications } from "@/lib/actions/applications";
 import { InvoiceStatusBadge, isInvoiceOverdue, isManualInvoice } from "@/components/invoices/invoice-status-badge";
@@ -101,7 +101,12 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           )}
         </div>
         <InvoiceActions
-          invoice={{ ...invoice, businessEmail: invoice.client.businessEmail, ownerEmail: invoice.client.owners[0]?.email ?? null }}
+          invoice={{
+            ...invoice,
+            businessEmail: invoice.client.businessEmail,
+            ownerEmail: invoice.client.owners[0]?.email ?? null,
+            contactName: invoiceContact(invoice.client)?.name || null,
+          }}
           clients={clients.map((c) => ({ id: c.id, name: c.name }))}
           applications={applications.map((a) => ({ id: a.id, name: a.name, clientId: a.client.id }))}
           paymentsCount={invoice.payments.length}
@@ -235,6 +240,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                     <tr className="border-b text-left text-muted-foreground">
                       <th className="pb-2 font-normal">Date</th>
                       <th className="pb-2 font-normal">Method</th>
+                      <th className="pb-2 font-normal">Paid by</th>
                       <th className="pb-2 font-normal">Applies to</th>
                       <th className="pb-2 text-right font-normal">Amount</th>
                       <th className="pb-2 text-right font-normal">Receipt</th>
@@ -249,6 +255,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                           {payment.paymentMethod}
                           {payment.reference && <span className="block text-xs">{payment.reference}</span>}
                         </td>
+                        <td className="py-2 pr-3 text-muted-foreground [overflow-wrap:anywhere]">{payment.payerName ?? "—"}</td>
                         <td className="py-2 pr-3 text-muted-foreground [overflow-wrap:anywhere]">{payment.lineItem?.description ?? "Whole invoice"}</td>
                         <td className="py-2 pr-3 text-right whitespace-nowrap tabular-nums">{formatMoney(payment.amount)}</td>
                         <td className="py-2">
@@ -298,6 +305,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                               paidAt={payment.paidAt}
                               paymentMethod={payment.paymentMethod}
                               reference={payment.reference}
+                              payerName={payment.payerName}
                               lineItemId={payment.lineItemId}
                               lineItems={invoice.lineItems.map((li) => ({ id: li.id, description: li.description }))}
                             />

@@ -2,7 +2,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { systemPrisma as prisma } from "@/lib/prisma";
 import { runAsTenant, tenantDb } from "@/lib/db";
 import { forgetOrg } from "@/lib/tenant";
-import { lineBalances } from "@/lib/invoice-format";
+import { invoiceContact, lineBalances } from "@/lib/invoice-format";
+import { renderInvoicePdf } from "@/lib/pdf-templates";
 
 // A manual invoice's payment can be recorded against one of its line items
 // (Payment.lineItemId), and that link survives editing the invoice.
@@ -242,5 +243,68 @@ describe("paid items", () => {
 
     const empty = await runAsTenant(ORG, () => createManualInvoice({ clientId: client.id, lineItems: [] }));
     expect(empty).toMatchObject({ ok: false, error: "Add at least one line item" });
+  });
+});
+
+describe("paid by and the invoice contact", () => {
+  it("keeps who paid on a payment, an edit and a paid item", async () => {
+    const invoice = await makeInvoice(ORG.id, userId);
+    await runAsTenant(ORG, () =>
+      addManualPayment(invoice.id, { amount: 50, paidAt: "2026-11-20", paymentMethod: "Zelle", payerName: " Maria Lopez " })
+    );
+    const payment = await prisma.payment.findFirstOrThrow({ where: { invoiceId: invoice.id } });
+    expect(payment.payerName).toBe("Maria Lopez");
+
+    await runAsTenant(ORG, () => updatePayment(payment.id, { amount: 50, paidAt: "2026-11-20", paymentMethod: "Zelle", payerName: "" }));
+    expect((await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } })).payerName).toBeNull();
+
+    const result = await runAsTenant(ORG, () =>
+      addPaidLineItem(invoice.id, { description: "Retainer", amount: 100, paidAt: "2026-11-21", paymentMethod: "Check", payerName: "J. Cruz" })
+    );
+    expect(result.ok).toBe(true);
+    const paidItem = await prisma.payment.findFirstOrThrow({ where: { invoiceId: invoice.id, paymentMethod: "Check" } });
+    expect(paidItem.payerName).toBe("J. Cruz");
+  });
+
+  it("addresses the invoice to the first contact, else the first owner", () => {
+    expect(invoiceContact({ businessEmail: "office@co.test", contacts: [{ name: "Ana", email: null }], owners: [{ name: "Bo", email: "bo@co.test" }] }))
+      .toEqual({ name: "Ana", email: "office@co.test" });
+    expect(invoiceContact({ businessEmail: null, contacts: [], owners: [{ name: "Bo", email: "bo@co.test" }] })).toEqual({ name: "Bo", email: "bo@co.test" });
+    expect(invoiceContact({ businessEmail: "office@co.test", contacts: [], owners: [] })).toEqual({ name: "", email: "office@co.test" });
+    expect(invoiceContact({ businessEmail: null })).toBeNull();
+  });
+
+  it("prints the contact and who paid on both layouts", async () => {
+    const input = {
+      seq: 1,
+      stripeInvoiceNumber: null,
+      invoiceNumber: "2026-099",
+      issueDate: new Date("2026-11-01"),
+      dueDate: null,
+      notes: null,
+      total: 300,
+      taxAmount: 0,
+      amountPaid: 50,
+      paidAt: new Date("2026-11-20"),
+      status: "PARTIALLY_PAID",
+      client: {
+        name: "Client",
+        businessName: "Client LLC",
+        businessEmail: "office@client.test",
+        billingAddressLine1: null,
+        billingCity: null,
+        billingState: null,
+        billingPostalCode: null,
+        projects: [],
+        contacts: [{ name: "Ana Reyes", email: "ana@client.test" }],
+        owners: [],
+      },
+      lineItems: [{ id: "l1", description: "Consulting", quantity: 1, unitPrice: 300 }],
+      payments: [{ amount: 50, lineItemId: null, paidAt: new Date("2026-11-20"), paymentMethod: "Zelle", reference: "ZX1", payerName: "Maria Lopez" }],
+    };
+    for (const template of ["MODERN", "CLASSIC"] as const) {
+      const bytes = await runAsTenant(ORG, () => renderInvoicePdf(input as Parameters<typeof renderInvoicePdf>[0], template));
+      expect(bytes.length).toBeGreaterThan(1000);
+    }
   });
 });

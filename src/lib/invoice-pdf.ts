@@ -7,7 +7,7 @@
 // the emailed copy and the downloaded copy are always identical.
 import { currentOrganization } from "@/lib/db";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
-import { displayInvoiceNumber, formatCalendarDate, lineBalances } from "@/lib/invoice-format";
+import { displayInvoiceNumber, formatCalendarDate, invoiceContact, lineBalances } from "@/lib/invoice-format";
 import { type QuantityLabelId, type SenderDetails } from "@/lib/pdf-templates/options";
 import { formatMoney } from "@/lib/money";
 
@@ -183,8 +183,10 @@ export type InvoicePdfInput = {
     billingState: string | null;
     billingPostalCode: string | null;
     projects: { name: string }[];
-    /** First owner — printed as "Attn:" by the Modern layout. */
-    owners?: { name: string }[];
+    businessEmail?: string | null;
+    /** First contact, else first owner — "Attn:" and email under Bill To (invoiceContact). */
+    contacts?: { name: string; email: string | null }[];
+    owners?: { name: string; email?: string | null }[];
   };
   /** Manual invoices only — who this bills for, if a Care Recipient (see
    * Invoice.careRecipientId). When set, the Bill To block addresses the
@@ -206,6 +208,7 @@ export type InvoicePdfInput = {
     paidAt?: Date;
     paymentMethod?: string;
     reference?: string | null;
+    payerName?: string | null;
   }[];
   /** Which InvoiceProfile this invoice was billed under — see src/lib/invoice-profiles.ts. */
   logo?: { bytes: Uint8Array; mimeType: string } | null;
@@ -339,6 +342,12 @@ export async function generateInvoicePdf(invoice: InvoicePdfInput): Promise<Uint
       lineHeight: 14,
       color: rgb(0.3, 0.3, 0.3),
     });
+  }
+  // The client's contact (name and email), so the invoice reaches and is
+  // matched to the right person.
+  const contact = recipient ? null : invoiceContact(invoice.client);
+  for (const line of [contact?.name ? `Attn: ${contact.name}` : "", contact?.email ?? ""].filter(Boolean)) {
+    drawWrappedTextPaged(cursor, line, { x: MARGIN, font, size: 10, maxWidth: leftWidth, lineHeight: 14, color: rgb(0.3, 0.3, 0.3) });
   }
   const addressLine = recipient
     ? recipient.address ?? ""

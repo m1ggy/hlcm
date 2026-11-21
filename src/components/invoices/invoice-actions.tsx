@@ -43,6 +43,8 @@ export function InvoiceActions({
     importedAt: Date | null;
     businessEmail: string | null;
     ownerEmail: string | null;
+    /** The client's contact (invoiceContact), the default "Paid by". */
+    contactName?: string | null;
   };
   clients: { id: string; name: string }[];
   applications: { id: string; name: string; clientId: string }[];
@@ -159,13 +161,14 @@ export function InvoiceActions({
         <AddManualPaymentDialog
           invoiceId={invoice.id}
           remaining={remaining}
+          defaultPayer={invoice.contactName ?? ""}
           lineItems={(() => {
             const balances = lineBalances(invoice.lineItems, invoice.amountPaid, invoice.payments);
             return invoice.lineItems.map((li, i) => ({ id: li.id, description: li.description, due: balances[i].due }));
           })()}
         />
       )}
-      {canAddPaidItem && <AddPaidItemDialog invoiceId={invoice.id} />}
+      {canAddPaidItem && <AddPaidItemDialog invoiceId={invoice.id} defaultPayer={invoice.contactName ?? ""} />}
       {canSendPdf && (
         <div className="flex items-center gap-1.5">
           <SendInvoicePdfDialog

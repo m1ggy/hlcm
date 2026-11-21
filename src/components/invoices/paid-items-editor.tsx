@@ -16,15 +16,15 @@ import { PaymentMethodSelect } from "./payment-method-select";
 // amount, so it shows on the list and in the totals without changing what's
 // still owed. See addPaidLineItem / createManualInvoice.
 
-export type PaidItem = { description: string; amount: string; paidAt: string; paymentMethod: string; reference?: string };
+export type PaidItem = { description: string; amount: string; paidAt: string; paymentMethod: string; reference?: string; payerName?: string };
 
 function today() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-export function emptyPaidItem(): PaidItem {
-  return { description: "", amount: "", paidAt: today(), paymentMethod: "" };
+export function emptyPaidItem(payerName = ""): PaidItem {
+  return { description: "", amount: "", paidAt: today(), paymentMethod: "", payerName };
 }
 
 /** What's missing, or null when the item is ready to save. */
@@ -42,6 +42,7 @@ export const paidItemInput = (item: PaidItem) => ({
   paidAt: item.paidAt,
   paymentMethod: item.paymentMethod.trim(),
   reference: item.reference?.trim() || undefined,
+  payerName: item.payerName?.trim() || undefined,
 });
 
 function PaidItemFields({ item, onChange, idPrefix }: { item: PaidItem; onChange: (next: PaidItem) => void; idPrefix: string }) {
@@ -72,6 +73,15 @@ function PaidItemFields({ item, onChange, idPrefix }: { item: PaidItem; onChange
           value={item.reference ?? ""}
           onChange={(e) => set({ reference: e.target.value })}
           placeholder="Check #, Zelle confirmation…"
+        />
+      </div>
+      <div className="space-y-1">
+        <Label htmlFor={`${idPrefix}-payer`}>Paid by (optional)</Label>
+        <Input
+          id={`${idPrefix}-payer`}
+          value={item.payerName ?? ""}
+          onChange={(e) => set({ payerName: e.target.value })}
+          placeholder="Name on the Zelle, check or card"
         />
       </div>
     </div>
@@ -109,10 +119,10 @@ export function PaidItemsEditor({ items, onChange }: { items: PaidItem[]; onChan
 }
 
 /** "Add paid item" on an existing manual invoice. */
-export function AddPaidItemDialog({ invoiceId }: { invoiceId: string }) {
+export function AddPaidItemDialog({ invoiceId, defaultPayer = "" }: { invoiceId: string; defaultPayer?: string }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [item, setItem] = useState(emptyPaidItem);
+  const [item, setItem] = useState(() => emptyPaidItem(defaultPayer));
   const [isPending, startTransition] = useTransition();
 
   function save() {

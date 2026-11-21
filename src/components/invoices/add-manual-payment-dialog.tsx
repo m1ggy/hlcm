@@ -34,10 +34,13 @@ function todayInputValue() {
 export function AddManualPaymentDialog({
   invoiceId,
   remaining,
+  defaultPayer = "",
   lineItems,
 }: {
   invoiceId: string;
   remaining: number;
+  /** The client's contact (invoiceContact), prefilled as "Paid by". */
+  defaultPayer?: string;
   lineItems: PaymentLineItemOption[];
 }) {
   const router = useRouter();
@@ -47,6 +50,7 @@ export function AddManualPaymentDialog({
   const [paidAt, setPaidAt] = useState(todayInputValue());
   const [paymentMethod, setPaymentMethod] = useState("");
   const [reference, setReference] = useState("");
+  const [payerName, setPayerName] = useState(defaultPayer);
   const [lineItemId, setLineItemId] = useState("");
   const value = Number(amount);
   const over = value > 0 ? Math.round((value - remaining) * 100) / 100 : 0;
@@ -70,7 +74,7 @@ export function AddManualPaymentDialog({
     }
     startTransition(async () => {
       try {
-        await addManualPayment(invoiceId, { amount: value, paidAt, paymentMethod: paymentMethod.trim(), reference, lineItemId });
+        await addManualPayment(invoiceId, { amount: value, paidAt, paymentMethod: paymentMethod.trim(), reference, payerName, lineItemId });
         toast.success("Payment recorded");
         setOpen(false);
         router.refresh();
@@ -104,6 +108,10 @@ export function AddManualPaymentDialog({
             <Input id="add-paidAt" type="date" value={paidAt} onChange={(e) => setPaidAt(e.target.value)} />
           </div>
           <PaymentMethodSelect value={paymentMethod} onChange={setPaymentMethod} />
+          <div className="space-y-1">
+            <Label htmlFor="add-payer">Paid by (optional)</Label>
+            <Input id="add-payer" placeholder="Name on the Zelle, check or card" value={payerName} onChange={(e) => setPayerName(e.target.value)} />
+          </div>
           <div className="space-y-1">
             <Label htmlFor="add-reference">Reference (optional)</Label>
             <Input id="add-reference" placeholder="Check #, Zelle confirmation…" value={reference} onChange={(e) => setReference(e.target.value)} />
