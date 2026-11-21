@@ -31,11 +31,22 @@ export async function getMyActiveBreak() {
 }
 
 /** Whether the signed-in user must clock in from the desktop app (see time-clock.ts#assertClockOriginAllowed). */
-export async function getMyDesktopClockRequired() {
+/**
+ * For the header: whether this person must clock in from the desktop app, and
+ * whether they still need to get it (tracked here, but no connected device —
+ * none that's unrevoked with a live sign-in).
+ */
+export async function getMyDesktopApp() {
   const session = await requireSession();
-  if (!(await isTrackedHere(session.user.id))) return false;
-  const user = await db.user.findUnique({ where: { id: session.user.id }, select: { requireDesktopClock: true } });
-  return user?.requireDesktopClock ?? false;
+  if (!(await isTrackedHere(session.user.id))) return { clockRequired: false, needsApp: false };
+  const [user, device] = await Promise.all([
+    db.user.findUnique({ where: { id: session.user.id }, select: { requireDesktopClock: true } }),
+    db.agentDevice.findFirst({
+      where: { userId: session.user.id, revokedAt: null, refreshExpiresAt: { gt: new Date() } },
+      select: { id: true },
+    }),
+  ]);
+  return { clockRequired: user?.requireDesktopClock ?? false, needsApp: !device };
 }
 
 // Clock rules live in src/lib/time-clock.ts, shared with the desktop

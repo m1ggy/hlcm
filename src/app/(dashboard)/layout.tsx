@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { orgAppUrl, PLATFORM_SLUG } from "@/lib/tenant-host";
 import { currentOrganization } from "@/lib/db";
@@ -16,8 +17,8 @@ import { TaskTimerWidget } from "@/components/time-clock/task-timer-widget";
 import { CaregiverBottomNav } from "@/components/caregiver-bottom-nav";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
-import { BookOpen } from "lucide-react";
-import { getMyActiveEntry, getMyActiveBreak, getMyDesktopClockRequired } from "@/lib/actions/time-entries";
+import { BookOpen, Download } from "lucide-react";
+import { getMyActiveEntry, getMyActiveBreak, getMyDesktopApp } from "@/lib/actions/time-entries";
 import { getMyOpenTaskTimer, listMyRecentTimerTasks } from "@/lib/actions/task-time-entries";
 import { listMyTaskOptions } from "@/lib/actions/tasks";
 import { listMyStartableRecipients, getMyCurrentVisitRecipientId } from "@/lib/actions/visits";
@@ -55,7 +56,7 @@ export default async function DashboardLayout({
     !isCaregiver && !session?.user?.isAssigned && !session?.user?.isSupport && session?.user?.role !== "CLIENT" && session?.user?.role !== "DEVELOPER";
   const showShiftClock = !tasksWorkspace || careVisits || ownStaff;
   const showTaskTimer = (!tasksWorkspace || onWorkTeam) && !(tasksWorkspace && isCaregiver);
-  const [activeEntry, activeBreak, careRecipients, visitRecipientId, openTimer, myTasks, recentTimerTasks, desktopClockRequired] = await Promise.all([
+  const [activeEntry, activeBreak, careRecipients, visitRecipientId, openTimer, myTasks, recentTimerTasks, desktopApp] = await Promise.all([
     getMyActiveEntry(),
     getMyActiveBreak(),
     careVisits ? listMyStartableRecipients() : Promise.resolve([]),
@@ -63,7 +64,7 @@ export default async function DashboardLayout({
     getMyOpenTaskTimer(),
     listMyTaskOptions(),
     listMyRecentTimerTasks(5),
-    getMyDesktopClockRequired(),
+    getMyDesktopApp(),
   ]);
 
   return (
@@ -97,7 +98,7 @@ export default async function DashboardLayout({
                 initialCareRecipientId={visitRecipientId}
                 isCaregiver={isCaregiver}
                 careRecipients={careRecipients}
-                desktopClockRequired={desktopClockRequired}
+                desktopClockRequired={desktopApp.clockRequired}
               />
             )}
             {showTaskTimer && (
@@ -115,6 +116,13 @@ export default async function DashboardLayout({
                 tasks={myTasks}
                 recentTaskIds={recentTimerTasks.map((t) => t.id)}
               />
+            )}
+            {/* Tracked here but no connected desktop app yet: a way to the
+                download page. Hidden on phones, where it can't be installed. */}
+            {desktopApp.needsApp && (
+              <Button variant="outline" size="sm" className="hidden md:inline-flex" nativeButton={false} render={<Link href="/time/app" />}>
+                <Download className="size-3.5" /> Get the desktop app
+              </Button>
             )}
             <Button
               variant="ghost"
