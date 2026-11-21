@@ -2,7 +2,7 @@ import { createHash, randomBytes, timingSafeEqual } from "crypto";
 import { NextResponse } from "next/server";
 import { SignJWT, jwtVerify } from "jose";
 import { ZodError } from "zod";
-import { db, currentOrg, currentOrganization } from "@/lib/db";
+import { db, currentOrg, currentOrganization, TenantNotResolvedError } from "@/lib/db";
 import { isTrackablePerson, monitoringOn } from "@/lib/activity-monitoring";
 import { UserFacingError } from "@/lib/user-facing-error";
 
@@ -210,6 +210,12 @@ export async function agentJson(fn: () => Promise<unknown>): Promise<NextRespons
       return NextResponse.json({ error: error.issues[0]?.message ?? "Invalid request" }, { status: 400 });
     }
     if (error instanceof UserFacingError) return NextResponse.json({ error: error.message }, { status: 400 });
+    // Bare domain, unknown short name or suspended workspace: say so instead of
+    // logging a crash. 503, not 404: the app keeps (and retries) queued uploads
+    // on 5xx but deletes them on 4xx, and a suspended workspace may come back.
+    if (error instanceof TenantNotResolvedError) {
+      return NextResponse.json({ error: "Workspace not found or not active. Check the workspace short name." }, { status: 503 });
+    }
     console.error("Agent API error:", error);
     return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
   }
