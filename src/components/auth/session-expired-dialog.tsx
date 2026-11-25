@@ -27,6 +27,11 @@ export function SessionExpiredDialog() {
   if (status === "authenticated" && !wasAuthenticated) setWasAuthenticated(true);
 
   const expired = wasAuthenticated && status === "unauthenticated";
+  // Back to this page afterwards — and for someone from the managing company
+  // working in a client workspace, /login sends them through their home
+  // workspace's sign-in first (src/lib/linked-home.ts). Only read once
+  // expired, which never happens during server rendering.
+  const loginHref = expired ? `/login?callbackUrl=${encodeURIComponent(window.location.pathname + window.location.search)}` : "/login";
 
   return (
     <Dialog open={expired}>
@@ -38,7 +43,7 @@ export function SessionExpiredDialog() {
             waiting for you.
           </DialogDescription>
         </DialogHeader>
-        <Button className="w-full" nativeButton={false} render={<a href="/login" />}>
+        <Button className="w-full" nativeButton={false} render={<a href={loginHref} />}>
           Log in again
         </Button>
       </DialogContent>

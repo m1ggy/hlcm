@@ -8,7 +8,8 @@ import { getHostOrg } from "@/lib/tenant";
 import { homePathFor } from "@/lib/workspace-kind";
 import { requireSession } from "@/lib/rbac";
 import { toActionResult } from "@/lib/action-result";
-import { safeSwitchPath, startWorkspaceSwitch } from "@/lib/workspace-switch";
+import { homeSlugForSwitchToken, safeSwitchPath, startWorkspaceSwitch } from "@/lib/workspace-switch";
+import { forgetLinkedHome, rememberLinkedHome } from "@/lib/linked-home";
 import {
   assignToWorkspace,
   endAssignment,
@@ -39,6 +40,11 @@ export async function switchWorkspace(slug: string, next?: string) {
 export async function enterSwitchedWorkspace(formData: FormData) {
   const token = String(formData.get("token") ?? "");
   const next = safeSwitchPath(String(formData.get("next") ?? "")) ?? homePathFor((await getHostOrg())?.kind);
+  // A linked account has no password here: remember its home workspace so
+  // signing in again after a timeout goes through there (src/lib/linked-home.ts).
+  const homeSlug = await homeSlugForSwitchToken(token);
+  if (homeSlug) await rememberLinkedHome(homeSlug);
+  else await forgetLinkedHome();
   try {
     await signIn("credentials", { switchToken: token, redirectTo: next });
   } catch (error) {

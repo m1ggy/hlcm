@@ -42,7 +42,7 @@ export async function peekAuthToken(raw: string, kinds: AuthTokenKind[] = PASSWO
   if (!raw) return null;
   const token = await db.authToken.findFirst({
     where: { tokenHash: hashToken(raw), kind: { in: kinds }, usedAt: null, expiresAt: { gt: new Date() } },
-    select: { kind: true, user: { select: { name: true, email: true, active: true } } },
+    select: { kind: true, user: { select: { id: true, name: true, email: true, active: true } } },
   });
   return token && token.user.active ? token : null;
 }

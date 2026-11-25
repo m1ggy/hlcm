@@ -1,6 +1,6 @@
 import { systemPrisma as prisma } from "@/lib/prisma";
 import { runAsTenant } from "@/lib/db";
-import { issueAuthToken } from "@/lib/auth-tokens";
+import { issueAuthToken, peekAuthToken } from "@/lib/auth-tokens";
 import { orgAppUrl } from "@/lib/tenant-host";
 import { UserFacingError } from "@/lib/user-facing-error";
 
@@ -17,13 +17,51 @@ import { UserFacingError } from "@/lib/user-facing-error";
 export type SwitchTarget = { slug: string; name: string; home: boolean; current: boolean };
 
 /**
- * Where a switch link may land after signing in: a path in the workspace's
- * projects area only (Phase 5 "Client work" opens a task directly) — never
- * another site or anything else.
+ * Where a switch link may land after signing in: a page of the app (Phase 5
+ * "Client work" opens a task directly; signing in again after a timeout goes
+ * back to the page that was open) — a plain path on the workspace's own
+ * host, never another site, the API or the sign-in pages.
  */
 export function safeSwitchPath(next: string | null | undefined): string | null {
-  if (!next || next.length > 300) return null;
-  return /^\/work(\/[A-Za-z0-9_-]+)*(\?[A-Za-z0-9_=&-]*)?$/.test(next) ? next : null;
+  if (!next || next.length > 500) return null;
+  if (!/^(\/[A-Za-z0-9_-]+)+\/?(\?[A-Za-z0-9_=&%+-]*)?$|^\/$/.test(next)) return null;
+  if (/^\/(api|login|switch|support|set-password|forgot-password|_next)(\/|\?|$)/.test(next)) return null;
+  return next;
+}
+
+/**
+ * The page a sign-in redirect was sent from (the proxy's absolute
+ * `callbackUrl`), as a path for safeSwitchPath — the host is dropped, since
+ * the browser may have used a different one than the app sees.
+ */
+export function returnPathFromCallback(callbackUrl: string | null | undefined): string | null {
+  if (!callbackUrl) return null;
+  try {
+    const url = new URL(callbackUrl, "http://placeholder.invalid");
+    return safeSwitchPath(`${url.pathname}${url.search}`);
+  } catch {
+    return null;
+  }
+}
+
+/** The home-workspace path that switches back into `slug` (at `next`) once signed in there. */
+export function switchBackPath(slug: string, next?: string | null): string {
+  const landing = safeSwitchPath(next);
+  return `/switch/to?workspace=${encodeURIComponent(slug)}${landing ? `&next=${encodeURIComponent(landing)}` : ""}`;
+}
+
+/**
+ * For a switch link about to be used: the home workspace's slug when it
+ * signs in a linked account (someone from the managing company), else null.
+ */
+export async function homeSlugForSwitchToken(raw: string): Promise<string | null> {
+  const token = await peekAuthToken(raw, ["WORKSPACE_SWITCH"]);
+  if (!token) return null;
+  const row = await prisma.workspaceAssignment.findUnique({
+    where: { userId: token.user.id },
+    select: { homeOrg: { select: { slug: true } } },
+  });
+  return row?.homeOrg.slug ?? null;
 }
 
 export function switchingAvailable() {

@@ -9,7 +9,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BrandLogo } from "@/components/brand-logo";
 
-export function LoginForm({ title }: { title: string }) {
+/** Signing in here to get back into a client workspace (src/app/login/page.tsx). */
+export type ReturnTo = { slug: string; name: string; next: string | null; directUrl: string };
+
+export function LoginForm({ title, returnTo }: { title: string; returnTo?: ReturnTo }) {
   const [state, formAction, pending] = useActionState(loginAction, undefined);
 
   return (
@@ -21,6 +24,15 @@ export function LoginForm({ title }: { title: string }) {
         </CardHeader>
         <CardContent>
           <form action={formAction} className="space-y-4">
+            {returnTo && (
+              <>
+                <input type="hidden" name="workspace" value={returnTo.slug} />
+                {returnTo.next && <input type="hidden" name="next" value={returnTo.next} />}
+                <p className="rounded-md bg-muted p-3 text-sm">
+                  You were signed out of <strong>{returnTo.name}</strong>. Sign in here and you&apos;ll go straight back to it.
+                </p>
+              </>
+            )}
             <div className="space-y-1">
               <Label htmlFor="email">Email or phone</Label>
               {/* Caregivers without an email sign in with their phone number (docs/client-care-plan.md). */}
@@ -39,6 +51,11 @@ export function LoginForm({ title }: { title: string }) {
             <Link href="/forgot-password" className="block text-center text-sm text-muted-foreground hover:underline">
               Forgot password?
             </Link>
+            {returnTo && (
+              <a href={returnTo.directUrl} className="block text-center text-sm text-muted-foreground hover:underline">
+                Have your own {returnTo.name} account? Sign in there
+              </a>
+            )}
           </form>
         </CardContent>
       </Card>
