@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight, MessageSquare, Users } from "lucide-react";
 import { currentOrganization } from "@/lib/db";
 import { eodActor } from "@/lib/eod-session";
 import { canManageEods, canWriteEod, eodToday, getReportFor, listMyReports } from "@/lib/eod";
-import { toReportData } from "@/lib/eod-view";
+import { loadReportData } from "@/lib/eod-view";
 import { listMyTaskOptions } from "@/lib/actions/tasks";
 import { listLinkableCorrespondence } from "@/lib/correspondence";
 import { workTaskOptions } from "@/lib/work-everywhere";
@@ -93,7 +93,7 @@ export default async function EodPage({ searchParams }: { searchParams: Promise<
         ) : report.status === "DRAFT" ? (
           <EodEditor
             key={report.id}
-            report={toReportData(report)}
+            report={await loadReportData(report)}
             tasks={tasks}
             workTasks={await workTaskOptions(actor.userId)}
             linkable={await listLinkableCorrespondence(
@@ -102,7 +102,7 @@ export default async function EodPage({ searchParams }: { searchParams: Promise<
             )}
           />
         ) : (
-          <EodReportView report={toReportData(report)} canReopen={isToday || manager} showAuthor={false} />
+          <EodReportView report={await loadReportData(report)} canReopen={isToday || manager} showAuthor={false} />
         )}
       </div>
 

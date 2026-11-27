@@ -1,9 +1,10 @@
+import { db } from "@/lib/db";
 import type { EodReportFull } from "@/lib/eod";
 import type { EodReportData } from "@/components/eod/eod-types";
 import type { TaskStatusValue } from "@/lib/task-status";
 
 /** A report as the EOD pages pass it to their client components. */
-export function toReportData(r: EodReportFull): EodReportData {
+export function toReportData(r: EodReportFull, clientNames: Map<string, string> = new Map()): EodReportData {
   return {
     id: r.id,
     reportDate: r.reportDate.toISOString().slice(0, 10),
@@ -21,6 +22,7 @@ export function toReportData(r: EodReportFull): EodReportData {
       taskId: i.taskId,
       title: i.title,
       clientId: i.clientId,
+      clientName: i.clientId ? (clientNames.get(i.clientId) ?? null) : null,
       statusBefore: i.statusBefore as TaskStatusValue | null,
       statusAfter: i.statusAfter as TaskStatusValue | null,
       workDone: i.workDone,
@@ -36,4 +38,11 @@ export function toReportData(r: EodReportFull): EodReportData {
     })),
     comments: r.comments.map((c) => ({ id: c.id, body: c.body, createdAt: c.createdAt, author: c.author })),
   };
+}
+
+/** toReportData with each line's client name looked up, so the pages can group lines by company. */
+export async function loadReportData(r: EodReportFull): Promise<EodReportData> {
+  const ids = [...new Set(r.items.flatMap((i) => (i.clientId ? [i.clientId] : [])))];
+  const clients = ids.length ? await db.client.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } }) : [];
+  return toReportData(r, new Map(clients.map((c) => [c.id, c.name])));
 }

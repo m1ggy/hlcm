@@ -8,6 +8,8 @@ export type EodLine = {
   taskId: string | null;
   title: string;
   clientId: string | null;
+  /** The CRM client's name, for grouping lines by company. */
+  clientName: string | null;
   statusBefore: TaskStatusValue | null;
   statusAfter: TaskStatusValue | null;
   workDone: string;
@@ -47,6 +49,6 @@ export type EodReportData = {
   comments: EodComment[];
 };
 
-export type TaskOption = { id: string; label: string; applicationName: string | null };
+export type TaskOption = { id: string; label: string; applicationName: string | null; clientId?: string | null; clientName?: string | null };
 /** One of my open tasks in a client workspace, for "Add a task". */
 export type WorkTaskOption = { orgId: string; taskId: string; title: string; workspaceName: string; projectName: string; clientVisible: boolean };

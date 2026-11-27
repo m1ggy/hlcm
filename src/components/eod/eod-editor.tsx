@@ -18,10 +18,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { formatMinutes } from "@/lib/eod-format";
 import type { EodLine, EodReportData, LinkableCorrespondence, TaskOption, WorkTaskOption } from "./eod-types";
+import { CompanyRail, OTHER_COMPANY, companiesFor, companyOf, pickCompany } from "./company-rail";
 
 // Today's report while it's a draft (docs/client-portal-eod-plan.md, Phase
 // C): a card per line — what you did, the task's new status, minutes, and
 // whether the client sees it — then summary, blockers and tomorrow's plan.
+// Lines are grouped by company: pick one on the left to see and add its lines.
 // Saves itself a moment after each change; Submit saves first.
 
 type Draft = Omit<EodLine, "id"> & { id?: string; key: string };
@@ -29,6 +31,7 @@ const AUTOSAVE_MS = 1200;
 let nextKey = 0;
 const keyed = (l: EodLine): Draft => ({ ...l, key: l.id });
 const workKey = (w: { orgId: string; taskId: string }) => `w:${w.orgId}:${w.taskId}`;
+const taskCompany = (t: TaskOption) => companyOf({ clientId: t.clientId ?? null, clientName: t.clientName ?? null, work: null });
 
 export function EodEditor({
   report,
@@ -51,6 +54,7 @@ export function EodEditor({
   const [adding, setAdding] = useState<string | null>(null);
   const [extraTitle, setExtraTitle] = useState("");
   const [submitting, startSubmit] = useTransition();
+  const [selected, setSelected] = useState<string | null>(null);
   const version = useRef(0);
   const saving = useRef<Promise<boolean> | null>(null);
 
@@ -151,6 +155,7 @@ export function EodEditor({
           taskId: null,
           title: work.title,
           clientId: null,
+          clientName: null,
           statusBefore: null,
           statusAfter: null,
           workDone: "",
@@ -165,14 +170,17 @@ export function EodEditor({
           addedAfterSubmit: false,
         },
       ]);
+      setSelected(`w:${work.orgId}`);
       touch();
       return;
     }
     const task = tasks.find((t) => t.id === taskId);
     if (!task) return;
+    const client = { clientId: task.clientId ?? null, clientName: task.clientName ?? null };
+    setSelected(companyOf({ ...client, work: null }).key);
     setLines((current) => [
       ...current,
-      { key: `new-${nextKey++}`, taskId: task.id, title: task.label, clientId: null, statusBefore: null, statusAfter: null, workDone: "", internalNote: null, minutes: null, clientVisible: false, correspondence: [], work: null, workStatusBefore: null, workStatusAfter: null, fromTaskUpdate: false, addedAfterSubmit: false },
+      { key: `new-${nextKey++}`, taskId: task.id, title: task.label, ...client, statusBefore: null, statusAfter: null, workDone: "", internalNote: null, minutes: null, clientVisible: false, correspondence: [], work: null, workStatusBefore: null, workStatusAfter: null, fromTaskUpdate: false, addedAfterSubmit: false },
     ]);
     touch();
   }
@@ -181,10 +189,11 @@ export function EodEditor({
     if (!title) return;
     setLines((current) => [
       ...current,
-      { key: `new-${nextKey++}`, taskId: null, title, clientId: null, statusBefore: null, statusAfter: null, workDone: "", internalNote: null, minutes: null, clientVisible: false, correspondence: [], work: null, workStatusBefore: null, workStatusAfter: null, fromTaskUpdate: false, addedAfterSubmit: false },
+      { key: `new-${nextKey++}`, taskId: null, title, clientId: null, clientName: null, statusBefore: null, statusAfter: null, workDone: "", internalNote: null, minutes: null, clientVisible: false, correspondence: [], work: null, workStatusBefore: null, workStatusAfter: null, fromTaskUpdate: false, addedAfterSubmit: false },
     ]);
     setExtraTitle("");
     setAdding(null);
+    setSelected(OTHER_COMPANY);
     touch();
   }
 
@@ -202,13 +211,28 @@ export function EodEditor({
   }
 
   const onReport = useMemo(() => new Set(lines.map((l) => (l.work ? workKey(l.work) : l.taskId)).filter(Boolean)), [lines]);
+  const companies = useMemo(
+    () =>
+      companiesFor(lines, [
+        ...tasks.filter((t) => !onReport.has(t.id)).map(taskCompany),
+        ...workTasks.filter((w) => !onReport.has(workKey(w))).map((w) => ({ key: `w:${w.orgId}`, name: w.workspaceName })),
+        { key: OTHER_COMPANY, name: "Other work" },
+      ]),
+    [lines, tasks, workTasks, onReport]
+  );
+  const current = pickCompany(companies, selected);
+  const currentName = companies.find((c) => c.key === current)?.name ?? "";
+  const shown = lines.filter((l) => companyOf(l).key === current);
+  // "Add a task" offers only the selected company's open tasks.
   const pickable = useMemo(
     () =>
       Object.fromEntries([
-        ...tasks.filter((t) => !onReport.has(t.id)).map((t) => [t.id, t.applicationName ? `${t.label} — ${t.applicationName}` : t.label]),
-        ...workTasks.filter((w) => !onReport.has(workKey(w))).map((w) => [workKey(w), `${w.title} — ${w.workspaceName} · ${w.projectName}`]),
+        ...tasks
+          .filter((t) => !onReport.has(t.id) && taskCompany(t).key === current)
+          .map((t) => [t.id, t.applicationName ? `${t.label} — ${t.applicationName}` : t.label]),
+        ...workTasks.filter((w) => !onReport.has(workKey(w)) && `w:${w.orgId}` === current).map((w) => [workKey(w), `${w.title} — ${w.projectName}`]),
       ]),
-    [tasks, workTasks, onReport]
+    [tasks, workTasks, onReport, current]
   );
   const written = lines.filter((l) => l.workDone.trim()).length;
   const totalMinutes = lines.reduce((s, l) => s + (l.workDone.trim() ? l.minutes ?? 0 : 0), 0);
@@ -222,52 +246,66 @@ export function EodEditor({
         <SaveIndicator state={saveState} />
       </div>
 
-      <ol className="space-y-3">
-        {lines.map((l) => (
-          <LineCard
-            key={l.key}
-            line={l}
-            linkable={l.taskId ? linkable.filter((c) => c.taskId === l.taskId) : []}
-            onChange={(patch) => update(l.key, patch)}
-            onRemove={() => remove(l.key)}
-          />
-        ))}
-      </ol>
+      <div className="grid gap-4 md:grid-cols-[16rem_1fr]">
+        <CompanyRail companies={companies} selected={current} onSelect={(key) => (setSelected(key), setAdding(null))} showWritten />
+        <div className="min-w-0 space-y-3">
+          <h2 className="font-medium">{currentName}</h2>
+          <ol className="space-y-3">
+            {shown.map((l) => (
+              <LineCard
+                key={l.key}
+                line={l}
+                linkable={l.taskId ? linkable.filter((c) => c.taskId === l.taskId) : []}
+                onChange={(patch) => update(l.key, patch)}
+                onRemove={() => remove(l.key)}
+              />
+            ))}
+            {shown.length === 0 && (
+              <li className="rounded-xl border border-dashed p-6 text-sm text-muted-foreground">
+                Nothing for {currentName} yet.{" "}
+                {current === OTHER_COMPANY ? "Add work that isn't on a task below." : Object.keys(pickable).length ? "Add a task below." : "You have no other open tasks here."}
+              </li>
+            )}
+          </ol>
 
-      <div className="flex flex-wrap items-center gap-2" data-print-hide>
-        {adding === "task" ? (
-          <div className="flex w-full max-w-md items-center gap-2">
-            <SearchableSelect items={pickable} value={null} onValueChange={addTask} placeholder="Pick a task…" searchPlaceholder="Search your tasks…" emptyText="No other tasks." className="flex-1" />
-            <Button variant="ghost" onClick={() => setAdding(null)}>
-              Cancel
-            </Button>
+          <div className="flex flex-wrap items-center gap-2" data-print-hide>
+            {adding === "task" ? (
+              <div className="flex w-full max-w-md items-center gap-2">
+                <SearchableSelect items={pickable} value={null} onValueChange={addTask} placeholder="Pick a task…" searchPlaceholder="Search your tasks…" emptyText={`No other open tasks for ${currentName}.`} className="flex-1" />
+                <Button variant="ghost" onClick={() => setAdding(null)}>
+                  Cancel
+                </Button>
+              </div>
+            ) : adding === "extra" ? (
+              <form
+                className="flex w-full max-w-md items-center gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  addExtra();
+                }}
+              >
+                <Input autoFocus value={extraTitle} onChange={(e) => setExtraTitle(e.target.value)} placeholder="e.g. Team meeting, inbox cleanup" aria-label="What was it" />
+                <Button type="submit" disabled={!extraTitle.trim()}>
+                  Add
+                </Button>
+                <Button type="button" variant="ghost" onClick={() => setAdding(null)}>
+                  Cancel
+                </Button>
+              </form>
+            ) : (
+              <>
+                {current !== OTHER_COMPANY && (
+                  <Button variant="outline" onClick={() => setAdding("task")} disabled={!Object.keys(pickable).length}>
+                    <Plus className="size-4" /> Add a task
+                  </Button>
+                )}
+                <Button variant="outline" onClick={() => setAdding("extra")}>
+                  <Plus className="size-4" /> Work not on a task
+                </Button>
+              </>
+            )}
           </div>
-        ) : adding === "extra" ? (
-          <form
-            className="flex w-full max-w-md items-center gap-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              addExtra();
-            }}
-          >
-            <Input autoFocus value={extraTitle} onChange={(e) => setExtraTitle(e.target.value)} placeholder="e.g. Team meeting, inbox cleanup" aria-label="What was it" />
-            <Button type="submit" disabled={!extraTitle.trim()}>
-              Add
-            </Button>
-            <Button type="button" variant="ghost" onClick={() => setAdding(null)}>
-              Cancel
-            </Button>
-          </form>
-        ) : (
-          <>
-            <Button variant="outline" onClick={() => setAdding("task")}>
-              <Plus className="size-4" /> Add a task
-            </Button>
-            <Button variant="outline" onClick={() => setAdding("extra")}>
-              <Plus className="size-4" /> Work not on a task
-            </Button>
-          </>
-        )}
+        </div>
       </div>
 
       <section className="grid gap-4 rounded-xl border bg-card p-5 md:grid-cols-3">
@@ -312,11 +350,7 @@ function LineCard({
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="font-medium">{line.title}</p>
-          {line.work ? (
-            <p className="text-xs text-muted-foreground">In {line.work.workspaceName}</p>
-          ) : (
-            !line.taskId && <p className="text-xs text-muted-foreground">Not on a task</p>
-          )}
+          {!line.work && !line.taskId && <p className="text-xs text-muted-foreground">Not on a task</p>}
           {line.fromTaskUpdate && (
             <p className="text-xs text-muted-foreground">From your updates on the task{line.addedAfterSubmit ? " · added after submitting" : ""}</p>
           )}

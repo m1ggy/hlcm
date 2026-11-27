@@ -14,10 +14,11 @@ import { AvatarInitials } from "@/components/ui/avatar-initials";
 import { formatMinutes } from "@/lib/eod-format";
 import { WORK_TASK_STATUS_LABELS } from "@/lib/work";
 import type { EodReportData } from "./eod-types";
+import { CompanyRail, companiesFor, companyOf, pickCompany } from "./company-rail";
 
 // A submitted report, read-only (docs/client-portal-eod-plan.md, Phase C):
-// the lines, the day's summary, and the comment thread between the author
-// and their managers.
+// the lines (grouped by company, one at a time), the day's summary, and the
+// comment thread between the author and their managers.
 
 const time = (d: Date) => new Date(d).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 
@@ -25,6 +26,12 @@ export function EodReportView({ report, canReopen, showAuthor }: { report: EodRe
   const router = useRouter();
   const [reopening, startReopen] = useTransition();
   const minutes = report.items.reduce((s, i) => s + (i.minutes ?? 0), 0);
+  const companies = companiesFor(report.items);
+  const [selected, setSelected] = useState<string | null>(null);
+  const current = pickCompany(companies, selected);
+  // One company: no rail, just its lines.
+  const grouped = companies.length > 1;
+  const shown = grouped ? report.items.filter((l) => companyOf(l).key === current) : report.items;
 
   function reopen() {
     startReopen(async () => {
@@ -62,8 +69,10 @@ export function EodReportView({ report, canReopen, showAuthor }: { report: EodRe
         )}
       </div>
 
-      <ol className="space-y-3">
-        {report.items.map((l) => {
+      <div className={grouped ? "grid gap-4 md:grid-cols-[16rem_1fr]" : undefined}>
+        {grouped && <CompanyRail companies={companies} selected={current} onSelect={setSelected} showWritten={false} />}
+        <ol className="min-w-0 space-y-3">
+        {shown.map((l) => {
           const moved = l.taskId && l.statusAfter && l.statusAfter !== l.statusBefore;
           const workMoved = l.work && l.workStatusAfter && l.workStatusAfter !== l.workStatusBefore;
           return (
@@ -71,7 +80,7 @@ export function EodReportView({ report, canReopen, showAuthor }: { report: EodRe
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <p className="font-medium">{l.title}</p>
-                  {l.work && <p className="text-xs text-muted-foreground">In {l.work.workspaceName}</p>}
+                  {l.work && !grouped && <p className="text-xs text-muted-foreground">In {l.work.workspaceName}</p>}
                   {l.fromTaskUpdate && (
                     <p className="text-xs text-muted-foreground">
                       From updates on the task
@@ -124,7 +133,8 @@ export function EodReportView({ report, canReopen, showAuthor }: { report: EodRe
           );
         })}
         {report.items.length === 0 && <li className="text-sm text-muted-foreground">No lines.</li>}
-      </ol>
+        </ol>
+      </div>
 
       <section className="grid gap-4 rounded-xl border bg-card p-5 md:grid-cols-3">
         <Block label="Summary" text={report.summary} />

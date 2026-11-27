@@ -520,10 +520,18 @@ async function taskOptionsFor(userId: string) {
       archived: false,
       OR: [{ applicationId: null }, { application: { active: true } }],
     },
-    select: { id: true, label: true, application: { select: { name: true } } },
+    select: {
+      id: true,
+      label: true,
+      application: { select: { name: true, client: { select: { id: true, name: true } } } },
+      clientService: { select: { client: { select: { id: true, name: true } } } },
+    },
     orderBy: { createdAt: "desc" },
   });
-  return tasks.map((t) => ({ id: t.id, label: t.label, applicationName: t.application?.name ?? null }));
+  return tasks.map((t) => {
+    const client = t.application?.client ?? t.clientService?.client ?? null;
+    return { id: t.id, label: t.label, applicationName: t.application?.name ?? null, clientId: client?.id ?? null, clientName: client?.name ?? null };
+  });
 }
 
 export async function listMyTaskOptions() {

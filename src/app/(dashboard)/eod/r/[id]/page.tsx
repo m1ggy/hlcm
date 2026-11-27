@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { eodActor } from "@/lib/eod-session";
 import { canManageEods, getReport } from "@/lib/eod";
-import { toReportData } from "@/lib/eod-view";
+import { loadReportData } from "@/lib/eod-view";
 import { UserFacingError } from "@/lib/user-facing-error";
 import { Button } from "@/components/ui/button";
 import { EodReportView } from "@/components/eod/eod-report-view";
@@ -35,7 +35,7 @@ export default async function EodReportPage({ params }: { params: Promise<{ id: 
         </div>
       </div>
       {report.status === "DRAFT" && <p className="text-sm text-muted-foreground">Still a draft — {report.user.name} hasn&apos;t submitted it yet.</p>}
-      <EodReportView report={toReportData(report)} canReopen={manager} showAuthor={!own} />
+      <EodReportView report={await loadReportData(report)} canReopen={manager} showAuthor={!own} />
     </div>
   );
 }
