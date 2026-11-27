@@ -62,7 +62,7 @@ export type ScoreSummary = ReturnType<typeof scoreSummary>;
 
 async function loadRules(): Promise<ScoringRule[]> {
   const rules = await db.productivityRule.findMany({
-    select: { id: true, matchType: true, pattern: true, category: true, priority: true, enabled: true, roles: true, userId: true },
+    select: { id: true, matchType: true, pattern: true, category: true, priority: true, enabled: true, roles: true, userIds: true },
   });
   return rules;
 }
@@ -327,16 +327,18 @@ export async function listProductivityRules() {
   await requireMonitoringViewer();
   const rules = await db.productivityRule.findMany({
     orderBy: [{ enabled: "desc" }, { priority: "desc" }, { pattern: "asc" }],
-    include: { user: { select: { id: true, name: true } } },
   });
+  const people = await db.user.findMany({ where: { id: { in: [...new Set(rules.flatMap((r) => r.userIds))] } }, select: { id: true, name: true } });
+  const nameById = new Map(people.map((u) => [u.id, u.name]));
   return rules.map((r) => ({
     id: r.id,
     matchType: r.matchType,
     pattern: r.pattern,
     category: r.category,
     roles: r.roles as string[],
-    userId: r.userId,
-    userName: r.user?.name ?? null,
+    // Drop ids of people who no longer exist.
+    userIds: r.userIds.filter((id) => nameById.has(id)),
+    userNames: r.userIds.flatMap((id) => nameById.get(id) ?? []),
     priority: r.priority,
     enabled: r.enabled,
   }));
@@ -357,7 +359,7 @@ export async function listUnclassifiedApps(days = 7, limit = 30) {
   ]);
   // Any enabled rule counts as covering it, whatever its scope.
   const all = rulesForUser(
-    rules.map((r) => ({ ...r, userId: null, roles: [] })),
+    rules.map((r) => ({ ...r, userIds: [], roles: [] })),
     { id: "", role: "" }
   );
   const intervals = rows.map((r) => ({ start: new Date(0), end: new Date(0), apps: Array.isArray(r.apps) ? (r.apps as AppUsage[]) : [] }));

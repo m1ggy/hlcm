@@ -23,7 +23,7 @@ const ruleSchema = z.object({
   pattern: z.string().trim().min(1, "Enter what to match").max(200),
   category: z.enum(["PRODUCTIVE", "NEUTRAL", "UNPRODUCTIVE"]),
   roles: z.array(z.enum(TRACKED as [Role, ...Role[]])).default([]),
-  userId: z.string().min(1).nullable(),
+  userIds: z.array(z.string().min(1)).max(200).default([]),
   priority: z.coerce.number().int().min(-100).max(100).default(0),
   enabled: z.boolean().default(true),
 });
@@ -37,6 +37,15 @@ function normalizePattern(matchType: string, pattern: string) {
   return host.startsWith("www.") ? host.slice(4) : host;
 }
 
+/** Dedupes the people and checks they're in this workspace; naming people clears roles. */
+async function scopeFor(data: z.output<typeof ruleSchema>) {
+  const userIds = [...new Set(data.userIds)];
+  if (userIds.length && (await db.user.count({ where: { id: { in: userIds } } })) !== userIds.length) {
+    throw new UserFacingError("One of those people isn't in this workspace");
+  }
+  return { userIds, roles: userIds.length ? [] : data.roles };
+}
+
 function revalidate() {
   revalidatePath("/admin/activity", "layout");
   revalidatePath("/time/activity");
@@ -46,7 +55,7 @@ export async function createProductivityRule(input: RuleInput) {
   const session = await requireMonitoringViewer();
   const data = ruleSchema.parse(input);
   const rule = await db.productivityRule.create({
-    data: { ...data, pattern: normalizePattern(data.matchType, data.pattern), roles: data.userId ? [] : data.roles, createdById: session.user.id },
+    data: { ...data, ...(await scopeFor(data)), pattern: normalizePattern(data.matchType, data.pattern), createdById: session.user.id },
   });
   await recordAudit({ entityType: "ProductivityRule", entityId: rule.id, action: "create", actorId: session.user.id, newValue: { ...data, pattern: rule.pattern } });
   revalidate();
@@ -60,14 +69,14 @@ export async function updateProductivityRule(id: string, input: RuleInput) {
   if (!before) throw new UserFacingError("That rule no longer exists");
   const rule = await db.productivityRule.update({
     where: { id },
-    data: { ...data, pattern: normalizePattern(data.matchType, data.pattern), roles: data.userId ? [] : data.roles },
+    data: { ...data, ...(await scopeFor(data)), pattern: normalizePattern(data.matchType, data.pattern) },
   });
   await recordAudit({
     entityType: "ProductivityRule",
     entityId: id,
     action: "update",
     actorId: session.user.id,
-    oldValue: { matchType: before.matchType, pattern: before.pattern, category: before.category, roles: before.roles, userId: before.userId, priority: before.priority, enabled: before.enabled },
+    oldValue: { matchType: before.matchType, pattern: before.pattern, category: before.category, roles: before.roles, userIds: before.userIds, priority: before.priority, enabled: before.enabled },
     newValue: { ...data, pattern: rule.pattern },
   });
   revalidate();
@@ -90,7 +99,7 @@ export async function deleteProductivityRule(id: string) {
 /** Adds the plan's starter rules (section 7) that aren't there yet, plus one for this app's own site. */
 export async function loadStarterRules() {
   const session = await requireMonitoringViewer();
-  const existing = await db.productivityRule.findMany({ where: { userId: null }, select: { matchType: true, pattern: true } });
+  const existing = await db.productivityRule.findMany({ where: { userIds: { isEmpty: true } }, select: { matchType: true, pattern: true } });
   const have = new Set(existing.map((r) => `${r.matchType}:${r.pattern.toLowerCase()}`));
 
   const starters: (typeof STARTER_RULES)[number][] = [...STARTER_RULES];

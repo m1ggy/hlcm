@@ -18,7 +18,8 @@ export type ScoringRule = {
   priority: number;
   enabled: boolean;
   roles: string[];
-  userId: string | null;
+  /** Specific people; non-empty makes it a USER-scope rule. */
+  userIds: string[];
 };
 
 type ScopedRule = ScoringRule & { scope: RuleScope };
@@ -71,8 +72,8 @@ export function ruleMatches(rule: Pick<ScoringRule, "matchType" | "pattern">, us
  */
 export function rulesForUser(rules: ScoringRule[], user: { id: string; role: string }): ScopedRule[] {
   return rules
-    .filter((r) => r.enabled && (r.userId === null || r.userId === user.id) && (r.roles.length === 0 || r.roles.includes(user.role)))
-    .map((r): ScopedRule => ({ ...r, scope: r.userId ? "USER" : r.roles.length ? "ROLE" : "GLOBAL" }))
+    .filter((r) => r.enabled && (r.userIds.length === 0 || r.userIds.includes(user.id)) && (r.roles.length === 0 || r.roles.includes(user.role)))
+    .map((r): ScopedRule => ({ ...r, scope: r.userIds.length ? "USER" : r.roles.length ? "ROLE" : "GLOBAL" }))
     .sort(
       (a, b) =>
         SCOPE_RANK[b.scope] - SCOPE_RANK[a.scope] || b.priority - a.priority || MATCH_RANK[b.matchType] - MATCH_RANK[a.matchType]
@@ -183,7 +184,7 @@ export function appTotals(intervals: IntervalInput[], sortedRules: ScopedRule[],
 }
 
 /** Starter rules from the plan (section 7). Offered as a one-click load on the rules page. */
-export const STARTER_RULES: Omit<ScoringRule, "id" | "enabled" | "roles" | "userId" | "priority">[] = [
+export const STARTER_RULES: Omit<ScoringRule, "id" | "enabled" | "roles" | "userIds" | "priority">[] = [
   { matchType: "APP", pattern: "Code", category: "PRODUCTIVE" },
   { matchType: "TITLE_CONTAINS", pattern: "Visual Studio Code", category: "PRODUCTIVE" },
   { matchType: "APP", pattern: "Zoom", category: "PRODUCTIVE" },

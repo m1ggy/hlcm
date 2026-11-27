@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { MultiUserSelect } from "@/components/ui/multi-user-select";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -43,12 +44,12 @@ type Draft = {
   category: Category;
   scope: "GLOBAL" | "ROLE" | "USER";
   roles: string[];
-  userId: string;
+  userIds: string[];
   priority: string;
   enabled: boolean;
 };
 
-const EMPTY: Draft = { id: null, matchType: "APP", pattern: "", category: "PRODUCTIVE", scope: "GLOBAL", roles: [], userId: "", priority: "0", enabled: true };
+const EMPTY: Draft = { id: null, matchType: "APP", pattern: "", category: "PRODUCTIVE", scope: "GLOBAL", roles: [], userIds: [], priority: "0", enabled: true };
 
 function fromRule(r: RuleRow): Draft {
   return {
@@ -56,16 +57,16 @@ function fromRule(r: RuleRow): Draft {
     matchType: r.matchType,
     pattern: r.pattern,
     category: r.category,
-    scope: r.userId ? "USER" : r.roles.length ? "ROLE" : "GLOBAL",
+    scope: r.userIds.length ? "USER" : r.roles.length ? "ROLE" : "GLOBAL",
     roles: r.roles,
-    userId: r.userId ?? "",
+    userIds: r.userIds,
     priority: String(r.priority),
     enabled: r.enabled,
   };
 }
 
 function scopeLabel(r: RuleRow) {
-  if (r.userName) return r.userName;
+  if (r.userNames.length) return r.userNames.join(", ");
   if (r.roles.length) return r.roles.map((x) => x.toLowerCase()).join(", ");
   return "Everyone";
 }
@@ -92,11 +93,11 @@ export function RulesManager({ rules, unclassified, users }: { rules: RuleRow[];
       pattern: draft.pattern,
       category: draft.category,
       roles: draft.scope === "ROLE" ? (draft.roles as RuleInput["roles"]) : [],
-      userId: draft.scope === "USER" ? draft.userId || null : null,
+      userIds: draft.scope === "USER" ? draft.userIds : [],
       priority: Number(draft.priority || 0),
       enabled: draft.enabled,
     };
-    if (draft.scope === "USER" && !input.userId) return toast.error("Pick a person");
+    if (draft.scope === "USER" && !draft.userIds.length) return toast.error("Pick at least one person");
     if (draft.scope === "ROLE" && !input.roles?.length) return toast.error("Pick at least one role");
     startTransition(async () => {
       try {
@@ -276,12 +277,12 @@ export function RulesManager({ rules, unclassified, users }: { rules: RuleRow[];
                 <Label>Applies to</Label>
                 <Select value={draft.scope} onValueChange={(v) => setDraft({ ...draft, scope: (v ?? draft.scope) as Draft["scope"] })}>
                   <SelectTrigger className="w-full">
-                    <SelectValue>{(v: Draft["scope"]) => ({ GLOBAL: "Everyone", ROLE: "Some roles", USER: "One person" })[v]}</SelectValue>
+                    <SelectValue>{(v: Draft["scope"]) => ({ GLOBAL: "Everyone", ROLE: "Some roles", USER: "Some people" })[v]}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="GLOBAL">Everyone</SelectItem>
                     <SelectItem value="ROLE">Some roles</SelectItem>
-                    <SelectItem value="USER">One person</SelectItem>
+                    <SelectItem value="USER">Some people</SelectItem>
                   </SelectContent>
                 </Select>
                 {draft.scope === "ROLE" && (
@@ -298,20 +299,15 @@ export function RulesManager({ rules, unclassified, users }: { rules: RuleRow[];
                   </div>
                 )}
                 {draft.scope === "USER" && (
-                  <Select value={draft.userId} onValueChange={(v) => setDraft({ ...draft, userId: v ?? "" })}>
-                    <SelectTrigger className="mt-1 w-full">
-                      <SelectValue placeholder="Pick a person">{(v: string) => users.find((u) => u.id === v)?.name ?? "Pick a person"}</SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {users.map((u) => (
-                        <SelectItem key={u.id} value={u.id}>
-                          {u.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <MultiUserSelect
+                    className="mt-1"
+                    items={Object.fromEntries(users.map((u) => [u.id, u.name]))}
+                    value={draft.userIds}
+                    onValueChange={(userIds) => setDraft({ ...draft, userIds })}
+                    placeholder="Search people..."
+                  />
                 )}
-                <p className="text-xs text-muted-foreground">A rule for one person beats a role rule, which beats an everyone rule.</p>
+                <p className="text-xs text-muted-foreground">A rule for specific people beats a role rule, which beats an everyone rule.</p>
               </div>
               <div className="space-y-1">
                 <Label htmlFor="rule-priority">Priority</Label>
